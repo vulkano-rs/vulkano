@@ -130,3 +130,7 @@ Pipelines, however, would still be created manually.
 ## Memory views
 
 **To do**
+
+## Context loss
+
+**To do**
