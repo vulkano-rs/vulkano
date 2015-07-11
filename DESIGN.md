@@ -127,10 +127,61 @@ The dynamic state objects are annoying for the programmer to manage. Therefore I
 
 Pipelines, however, would still be created manually.
 
-## Memory views
+## Descriptor sets, samplers, memory views
+
+Descriptor sets are the Vulkan equivalent of OpenGL uniforms. The Mantle specs seem to imply that different layouts can lead to tradeoffs between GPU and CPU performances. The best solution is to have a default system that just gives a basic layout, but make it possible for the user to use a custom layout instead.
+
+Samplers should be handled internally by this library and never be destroyed. This simplifies a lot of things when it comes to synchronization.
+
+The memory layout of each buffer access should be passed by value when adding a draw command to a command buffer.
 
 **To do**
 
 ## Context loss
+
+**To do**
+
+## Examples of what it should look like
+
+These examples are likely to change, but they should give a good overview:
+
+### Uploading a buffer
+
+Uploading to CPU-accessible memory, ie. slow write:
+
+```rust
+#[derive(Copy, Clone, BufferLayout)]      // `#[derive_BufferLayout]` is not possible until plugins are stable though
+struct Data {
+    position: (f32, f32, f32),
+    tex_coords: (f32, f32),
+}
+
+let data: &[Data] = &[Data { ... }, Data { ... }, ...];
+let mut buffer = AccessBuffer::cpu_accessible_with_data(&device, &data);
+
+// let's modify a value of the sake of the example
+{
+    let mut mapping = buffer.write();       // same API as RwLock
+    mapping[1].position.0 = 1.0;
+}
+```
+
+Using the DMA to copy:
+
+```rust
+let local_buffer = AccessBuffer::pinned_memory_with_data(&device, &data);
+let remote_buffer = Buffer::empty(&device, std::mem::size_of_val(&data));
+
+let dma_queue = device.dma_queues().next().unwrap();
+let command_buffer = CommandBufferBuilder::once(&device)            // `once` optimizes for buffers that trigger once
+                        .copy_buffer(&local_buffer, &remote_buffer)
+                        .build();
+dma_queue.submit(&command_buffer);
+
+assert!(local_buffer.try_write().is_none());        // buffer is in use, we can't access it because of safety
+assert!(local_buffer.try_read().is_some());         // however we can read its content
+```
+
+### Hello triangle
 
 **To do**
