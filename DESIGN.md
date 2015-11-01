@@ -48,20 +48,15 @@ However the Vulkan API will likely not provide any way to introspect a shader. T
 
 This situation could be improved after Rust plugins are made stable, so that the analysis is done at compile-time.
 
-## Resources lifetime management
+## Resources borrowing management
 
 *In this sections, "resources" describes everything that is used by a command buffer: buffers, images, pipelines, dynamic state, etc.*
 
-The rule is that objects must not be written by the CPU nor destroyed while they are still used by the GPU. The library doesn't automatically handle this for you.
+The rule is that objects must not be written by the CPU nor destroyed while they are still used by the GPU. The Vulkan library doesn't automatically handle this for you, but this library should enforce it.
 
-This situation can be compared to how Rust handles multithreading. There are two ways:
+### Ownership by command buffers
 
- - Handle memory "automatically" with an `Arc`, as with `thread::spawn`. The variable can be accessed by both threads, but `Arc` doesn't allow its content to be mutably borrowed.
- - Use regular overhead-free Rust lifetimes, as with `thread::scoped`. The mutable borrow gives exclusive access to the thread that uses the value.
-
-### Stayin' alive
-
-However something else has to be taken into consideration: command buffers also need to somehow make sure that the resources they use are still valid as long as they exist. This could be handled with regular Rust lifetimes, but since Rust doesn't allow structs to borrow themselves my personal opinion is that a `CommandBuffer<'a>` struct would be too cumbersome. You would end up with something like this:
+Command buffers need to somehow make sure that the resources they use are still valid as long as they exist. This could be handled with regular Rust lifetimes, but since Rust doesn't allow structs to borrow themselves my personal opinion is that a `CommandBuffer<'a>` struct would be too cumbersome. You would end up with something like this:
 
 ```rust
 pub struct GameResources {
@@ -79,27 +74,69 @@ fn main() {
 }
 ```
 
-If, say, a 3D engine wants to use this library, this split between resources and command buffers would need to be propagated throughout the whole 3D engine. It is just too annoying to deal with. Instead resources should all have their lifetimes managed automatically with a reference counter.
+It could also be handled with `Arc`s or `Rc`s. In my opinion the best way is to give the choice to the user through a trait.
+
+Example:
+
+```rust
+impl CommandBufferBuilder {
+    pub fn buffer_copy_command<B>(&mut self, buffer: B) where B: SomeTrait<Buffer> {
+        ...
+    }
+}
+```
 
 ### When to destroy?
 
-Reference counting is similar to using an `Arc`. In Rust, if you use `thread::spawn`, pass an `Arc`, and destroy the original `Arc`, then it's the other thread that becomes responsible for destroying the object. With Vulkan we have a problem: the GPU can't do that.
+Resources should not be destroyed as long as they are still in use by the GPU.
 
-Therefore we need the reference counter to stay to `1` as long as the GPU still uses our object. I can see three solutions:
+The trick is that the only way that a resource could be in use by the GPU is through a command buffer. Command buffers already ensure that the resources they use stay alive, therefore the only tricky part is to know when to destroy command buffers.
 
- - We handle this internally by storing a list of fences and associated objects, and just a garbage collector we check from time to time whether each object is still in use.
- - Add a `garbage_collect()` method. Similar to the first solution but make it explicit.
- - We give this responsibility to the user by returning a `Fence` object when submitting a command buffer. This `Fence` holds reference counters to the associated resources. When the user destroys the `Fence` it waits for it to be complete and destroys all associated objects. Multiple `Fence` objects can be combined into one.
+If all command buffers that use a specific resource are destroyed, then we are sure that this resource is not in use by the GPU and we can delete it. The destructors of buffers, textures, etc. are trivial.
 
-I prefer the last option.
+When it comes to command buffers, in my opinion it should look like this:
+
+```rust
+pub fn submit_command_buffer<'a>(cmd: &'a CommandsBuffer) -> FenceGuard<'a> {
+    ...
+}
+```
+
+The `FenceGuard` ensures that the command buffer is alive. Destroying a `FenceGuard` blocks until the vulkan fence is fulfilled.
 
 ### Mutability
 
 *Only relevant for buffers and images.*
 
-Since both a command buffer and the user have access to a borrow of the same resource, we have no other choice but to use interior mutability.
+Since both a command buffer and the user have access to a borrow of the same resource, we have to ensure that a resource can't be read and written simultaneously (similarly to any other CPU object).
 
-Submitting a command buffer should create a fence and add a reference to that fence in each of the resources. When the user attempts to access the resource, it checks the list of fences in order to wait for the resource to stop being used by the GPU. Methods such as `try_write` should be added if the user doesn't want to block.
+This is going to be done with a wrapper object, just like `RefCell` or `Mutex`.
+
+Example:
+
+```rust
+pub struct Buffer {
+    ...
+}
+
+impl Buffer {
+    // always available
+    pub fn modify(&mut self, ...) { ... }
+}
+
+pub struct GpuAccess<T> {
+    content: T,
+    in_use: Option<Fence>,
+}
+
+impl GpuAccess<T> {
+    // waits for the fence if necessary
+    pub fn lock(&self) -> &mut T { ... }
+    pub fn try_lock(&self) -> Option<&mut T> { ... }
+}
+```
+
+The command buffer writes the fence in the `GpuAccess` through a trait.
 
 But should submitting a command buffer wait for fences in the resources they use? The answer would be no if all command buffers are submitted to the same queue, since you would be sure that the first command buffer is over when the second one starts. However we have multiple queues accessible to us (including the DMA and multiple GPUs). Mantle provides semaphore objects for this. It is unknown if Vulkan uses the same mechanism. **This point remains to be seen**.
 
