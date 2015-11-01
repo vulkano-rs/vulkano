@@ -106,6 +106,8 @@ pub fn submit_command_buffer<'a>(cmd: &'a CommandsBuffer) -> FenceGuard<'a> {
 
 The `FenceGuard` ensures that the command buffer is alive. Destroying a `FenceGuard` blocks until the vulkan fence is fulfilled.
 
+*Leak-safety: `CommandsBuffer` should contain a flag indicating whether or not it is currently locked. Destroying the `FenceGuard` clears the flag. Destroying a locked command buffer panicks. This avoids problems if the user `mem::forget`s the guard.*.
+
 ### Mutability
 
 *Only relevant for buffers and images.*
@@ -135,6 +137,11 @@ impl GpuAccess<T> {
     // waits for the fence if necessary
     pub fn lock(&self) -> &mut T { ... }
     pub fn try_lock(&self) -> Option<&mut T> { ... }
+}
+
+unsafe impl<T> SomeTrait<T> for GpuAccess<T> {
+    unsafe fn force_access(&self) -> &mut T { ... }
+    fn block_until(&self, fence: Fence) { ... }
 }
 ```
 
