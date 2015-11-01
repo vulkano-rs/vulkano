@@ -128,26 +128,29 @@ impl Buffer {
     pub fn modify(&mut self, ...) { ... }
 }
 
+/// Wraps around a resource that can be accessed either by the CPU or by the GPU.
 pub struct GpuAccess<T> {
-    content: T,
-    in_use: Option<Fence>,
+    // the whole synchronization scheme here needs some thought
+    content: Mutex<T>,   // need to synchronize CPU access as well
+    in_use: Mutex<Option<Fence>>,
 }
 
 impl GpuAccess<T> {
     // waits for the fence if necessary
     pub fn lock(&self) -> &mut T { ... }
-    pub fn try_lock(&self) -> Option<&mut T> { ... }
+    pub fn try_lock(&self) -> Result<&mut T, ...> { ... }
 }
 
 unsafe impl<T> SomeTrait<T> for GpuAccess<T> {
     unsafe fn force_access(&self) -> &mut T { ... }
-    fn block_until(&self, fence: Fence) { ... }
+    fn read_only_lock_until(&self, fence: Fence) { ... }
+    fn exlusive_lock_until(&self, fence: Fence) { ... }
 }
 ```
 
 The command buffer writes the fence in the `GpuAccess` through a trait.
 
-But should submitting a command buffer wait for fences in the resources they use? The answer would be no if all command buffers are submitted to the same queue, since you would be sure that the first command buffer is over when the second one starts. However we have multiple queues accessible to us (including the DMA and multiple GPUs). Mantle provides semaphore objects for this. It is unknown if Vulkan uses the same mechanism. **This point remains to be seen**.
+There could be multiple wrappers. One for single-threaded CPU accesses only. One that does read-write locks instead of exclusive locks. And so on.
 
 ### Fence or no fence
 
@@ -178,6 +181,8 @@ impl<'a> NoFence<'a> {
 }
 ```
 
+The `GpuAccess` trait also needs new method to lock a resource until further notice to adjust for `NoFence`.
+
 If possible this could be made more convenient by merging the two methods and returning a trait implementation instead:
 
 ```rust
@@ -187,6 +192,14 @@ impl<'a> NoFence<'a> {
     pub fn submit_after<F>(self, cmd: &'a CommandsBuffer) -> F where F: GpuBlock<'a> { ... }
 }
 ```
+
+### Multiple queues
+
+There is also the problem of multiple GPU queues.
+
+The `GpuAccess` structs and similar should hold the ID of the queue that uses the resource, and the trait that gives access to its content should account for that.
+
+It is unclear how Vulkan will handle that. Mantle uses a semaphore mechanism different from the fence mechanism, in which case this would add a `SemaphoreGuard` in addition to `FenceGuard` and `NoFence`. But it is likely that this changed in Vulkan.
 
 ## Resources state management
 
