@@ -4,9 +4,11 @@ The Vulkan specs are not public, but [the Mantle specs are](http://www.amd.com/D
 
 ## Objectives of this library
 
- - Be safe.
- - Be convenient to use.
+From highest to lowest priority:
+
+ - Be memory safe.
  - Don't hide what it's doing.
+ - Be convenient to use.
 
 ## Extensions
 
