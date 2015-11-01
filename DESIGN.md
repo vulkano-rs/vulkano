@@ -82,7 +82,7 @@ Example:
 
 ```rust
 impl CommandBufferBuilder {
-    pub fn buffer_copy_command<B>(&mut self, buffer: B) where B: SomeTrait<Buffer> {
+    pub fn add_buffer_copy_command<B>(&mut self, buffer: B) where B: SomeTrait<Buffer> {
         ...
     }
 }
@@ -92,7 +92,7 @@ impl CommandBufferBuilder {
 
 Resources should not be destroyed as long as they are still in use by the GPU.
 
-The trick is that the only way that a resource could be in use by the GPU is through a command buffer. Command buffers already ensure that the resources they use stay alive, therefore the only tricky part is to know when to destroy command buffers.
+The trick is that the only way that a resource could be in use by the GPU is through a command buffer. Command buffers too must be not destroyed as long as they are still in use. Command buffers already ensure that the resources they use stay alive, therefore the only tricky part is to know when to destroy command buffers.
 
 If all command buffers that use a specific resource are destroyed, then we are sure that this resource is not in use by the GPU and we can delete it. The destructors of buffers, textures, etc. are trivial.
 
@@ -141,6 +141,45 @@ impl GpuAccess<T> {
 The command buffer writes the fence in the `GpuAccess` through a trait.
 
 But should submitting a command buffer wait for fences in the resources they use? The answer would be no if all command buffers are submitted to the same queue, since you would be sure that the first command buffer is over when the second one starts. However we have multiple queues accessible to us (including the DMA and multiple GPUs). Mantle provides semaphore objects for this. It is unknown if Vulkan uses the same mechanism. **This point remains to be seen**.
+
+### Fence or no fence
+
+If you submit several command buffers in a row to the same queue, then you only need to create a fence at the last submission.
+
+Creating a fence every time could become a big overhead. However you usually know too late whether you needed a fence or not at the previous submission. We can't predict the future, therefore the choice should be given to the user whether to create a fence or not.
+
+Consequently, submitting a command buffer would look like this:
+
+```rust
+pub fn submit_command_buffer_fence<'a>(cmd: &'a CommandsBuffer) -> FenceGuard<'a> {
+    ...
+}
+
+pub fn submit_command_buffer_nofence<'a>(cmd: &'a CommandsBuffer) -> NoFence<'a> {
+    ...
+}
+```
+
+`NoFence` would be a linear type. Rust doesn't have linear types, but this can be emulated by panicking in the destructor.
+
+The only way to use a `NoFence` is to consume it by submitting another command buffer immediately after:
+
+```rust
+impl<'a> NoFence<'a> {
+    pub fn submit_after_fence(self, cmd: &'a CommandsBuffer) -> FenceGuard<'a> { ... }
+    pub fn submit_after_nofence(self, cmd: &'a CommandsBuffer) -> NoFence<'a> { ... }
+}
+```
+
+If possible this could be made more convenient by merging the two methods and returning a trait implementation instead:
+
+```rust
+pub fn submit_command_buffer<'a, F>(cmd: &'a CommandsBuffer) -> F where F: GpuBlock<'a> { ... }
+
+impl<'a> NoFence<'a> {
+    pub fn submit_after<F>(self, cmd: &'a CommandsBuffer) -> F where F: GpuBlock<'a> { ... }
+}
+```
 
 ## Resources state management
 
