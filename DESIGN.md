@@ -267,17 +267,20 @@ let mut buffer = AccessBuffer::cpu_accessible_with_data(&device, &data);
 Using the DMA to copy:
 
 ```rust
-let local_buffer = AccessBuffer::pinned_memory_with_data(&device, &data);
-let remote_buffer = Buffer::empty(&device, std::mem::size_of_val(&data));
+let local_buffer = RwGpuAccess::new(AccessBuffer::pinned_memory_with_data(&device, &data));
+let remote_buffer = RwGpuAccess::new(Buffer::empty(&device, std::mem::size_of_val(&data)));
 
 let dma_queue = device.dma_queues().next().unwrap();
 let command_buffer = CommandBufferBuilder::once(&device)            // `once` optimizes for buffers that trigger once
                         .copy_buffer(&local_buffer, &remote_buffer)
                         .build();
-dma_queue.submit(&command_buffer);
+let fence = dma_queue.submit(&command_buffer);
 
 assert!(local_buffer.try_write().is_none());        // buffer is in use, we can't access it because of safety
 assert!(local_buffer.try_read().is_some());         // however we can read its content
+
+// dropping the fence blocks until the fence is fulfilled
+drop(fence);
 ```
 
 ### Hello triangle
