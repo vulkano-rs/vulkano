@@ -1,3 +1,4 @@
+use buffer::BufferLock;
 
 /// Represents a prototype of a command buffer.
 ///
@@ -24,7 +25,7 @@ pub struct CommandBufferBuilder {
     device: Arc<Device>,
     cmd: Option<ffi::GR_CMD_BUFFER>,
     memory_refs: Vec<ffi::GR_MEMORY_REF>,
-    buffers: Vec<Arc<Buffer>>,
+    buffers: Vec<Arc<BufferLock>>,
     images: Vec<Arc<Image>>,
     pipelines: Vec<Arc<Pipeline>>,
 }
@@ -85,7 +86,7 @@ pub struct CommandBuffer {
     device: Arc<Device>,
     cmd: ffi::GR_CMD_BUFFER,
     memory_refs: Vec<ffi::GR_MEMORY_REF>,
-    buffers: Vec<Arc<Buffer>>,
+    buffers: Vec<Arc<BufferLock>>,
     images: Vec<Arc<Image>>,
     pipelines: Vec<Arc<Pipeline>>,
 }
