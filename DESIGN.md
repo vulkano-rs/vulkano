@@ -76,17 +76,7 @@ fn main() {
 }
 ```
 
-It could also be handled with `Arc`s or `Rc`s. In my opinion the best way is to give the choice to the user through a trait.
-
-Example:
-
-```rust
-impl CommandBufferBuilder {
-    pub fn add_buffer_copy_command<B>(&mut self, buffer: B) where B: SomeTrait<Buffer> {
-        ...
-    }
-}
-```
+In my opinion everything should simply use `Arc`s.
 
 ### When to destroy?
 
@@ -99,12 +89,12 @@ If all command buffers that use a specific resource are destroyed, then we are s
 When it comes to command buffers, in my opinion it should look like this:
 
 ```rust
-pub fn submit_command_buffer<'a>(cmd: &'a CommandsBuffer) -> FenceGuard<'a> {
+pub fn submit_command_buffer(cmd: Arc<CommandsBuffer>) -> FenceGuard {
     ...
 }
 ```
 
-The `FenceGuard` ensures that the command buffer is alive. Destroying a `FenceGuard` blocks until the vulkan fence is fulfilled.
+The `FenceGuard` holds the `Arc` and ensures that the command buffer is alive. Destroying a `FenceGuard` blocks until the Vulkan fence is fulfilled.
 
 *Leak-safety: `CommandsBuffer` should contain a flag indicating whether or not it is currently locked. Destroying the `FenceGuard` clears the flag. Destroying a locked command buffer panicks. This avoids problems if the user `mem::forget`s the guard.*.
 
@@ -161,11 +151,11 @@ Creating a fence every time could become a big overhead. However you usually kno
 Consequently, submitting a command buffer would look like this:
 
 ```rust
-pub fn submit_command_buffer_fence<'a>(cmd: &'a CommandsBuffer) -> FenceGuard<'a> {
+pub fn submit_command_buffer_fence(cmd: Arc<CommandsBuffer>) -> FenceGuard {
     ...
 }
 
-pub fn submit_command_buffer_nofence<'a>(cmd: &'a CommandsBuffer) -> NoFence<'a> {
+pub fn submit_command_buffer_nofence(cmd: Arc<CommandsBuffer>) -> NoFence {
     ...
 }
 ```
@@ -175,9 +165,9 @@ pub fn submit_command_buffer_nofence<'a>(cmd: &'a CommandsBuffer) -> NoFence<'a>
 The only way to use a `NoFence` is to consume it by submitting another command buffer immediately after:
 
 ```rust
-impl<'a> NoFence<'a> {
-    pub fn submit_after_fence(self, cmd: &'a CommandsBuffer) -> FenceGuard<'a> { ... }
-    pub fn submit_after_nofence(self, cmd: &'a CommandsBuffer) -> NoFence<'a> { ... }
+impl NoFence {
+    pub fn submit_after_fence(self, cmd: Arc<CommandsBuffer>) -> FenceGuard { ... }
+    pub fn submit_after_nofence(self, cmd: Arc<CommandsBuffer>) -> NoFence { ... }
 }
 ```
 
@@ -186,10 +176,10 @@ The `GpuAccess` trait also needs new method to lock a resource until further not
 If possible this could be made more convenient by merging the two methods and returning a trait implementation instead:
 
 ```rust
-pub fn submit_command_buffer<'a, F>(cmd: &'a CommandsBuffer) -> F where F: GpuBlock<'a> { ... }
+pub fn submit_command_buffer<F>(cmd: Arc<CommandsBuffer>) -> F where F: GpuBlock { ... }
 
-impl<'a> NoFence<'a> {
-    pub fn submit_after<F>(self, cmd: &'a CommandsBuffer) -> F where F: GpuBlock<'a> { ... }
+impl NoFence {
+    pub fn submit_after<F>(self, cmd: Arc<CommandsBuffer>) -> F where F: GpuBlock { ... }
 }
 ```
 
