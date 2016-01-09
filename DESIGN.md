@@ -207,27 +207,26 @@ Instead to solve this problem, resources will have a "default state".
 
 ## Pipelines and dynamic state
 
-There are five type of objects in Mantle that are "dynamic states": the rasterizer, the viewport/scissor, the blender, the depth-stencil, and the multisampling states. In addition to this, there is a pipeline object that holds the list of shaders and more states.
+Before being able to draw, you have to create a "pipeline object" that holds all the state of the pipeline (list of shaders, blend function, etc.). It has been hinted that some parts are dynamic and some parts static, although it's a big unclear.
 
-One instance of each of these object types must be binded by command buffers before drawing.
+There are five type of objects in Mantle that are "dynamic states": the rasterizer, the viewport/scissor, the blender, the depth-stencil, and the multisampling states. One instance of each of these object types must be binded by command buffers before drawing.
 
-The dynamic state objects are annoying for the programmer to manage. Therefore I think it is a good idea to have the user pass a Rust `enum` that describes the dynamic state, and look for an existing object in a `HashMap`. This hash map would hold `Weak` pointers.
+## Descriptor sets
 
-Pipelines, however, would still be created manually.
+Descriptor sets are the Vulkan equivalent of OpenGL uniform buffers and texture binding points.
 
-## Descriptor sets, samplers, memory views
+This poses a big challenge because the user manually chooses the layout in their shader, and manually chooses the bind points and the layout of their buffers, and then the two have to match. In glium for example, this is checked at runtime. But ideally it should be checked at compile-time.
 
-Descriptor sets are the Vulkan equivalent of OpenGL uniforms. The Mantle specs seem to imply that different layouts can lead to tradeoffs between GPU and CPU performances. The best solution is to have a default system that just gives a basic layout, but make it possible for the user to use a custom layout instead.
-
-Samplers should be handled internally by this library and never be destroyed. This simplifies a lot of things when it comes to synchronization.
-
-The memory layout of each buffer access should be passed by value when adding a draw command to a command buffer.
-
-**To do**
+What is sure is that this library will provide an unsafe API that maps exactly to the Vulkan API. The user has to manually make sure that the layouts do match, hence the unsafety.
+The library may also provide a safe API thanks to plugins, although it's still very blurry.
 
 ## Context loss
 
-**To do**
+Context losses will probably be similar to OpenGL, where commands can trigger errors. When a context loss occurs, the user has to destroy the context and reupload everything.
+
+The design of glium is the following: only functions and methods that return actual data to the user can return a "context lost" error through a Result (for example reading from a buffer). Submitting a draw command, copying data between buffers, uploading data, etc. never trigger this error.
+
+It is unclear whether context losses should result in panics or in regular errors. If more commands than in OpenGL can fail because of a context loss (for example mapping a buffer), then it may be too annoying to handle with regular results compared to OpenGL.
 
 ## Examples of what it should look like
 
