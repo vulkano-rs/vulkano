@@ -5,12 +5,13 @@ fn main() {
     let shader = r#"
 #version 450
 
-uniform vec4 u_test;
+uniform sampler2D u_texture;
 
-vec4 f_color;
+in vec2 v_texcoords;
+out vec4 f_color;
 
 void main() {
-    f_color = u_test;
+    f_color = texture(u_texture, v_texcoords);
 }
 
 "#;

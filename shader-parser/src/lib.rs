@@ -16,7 +16,26 @@ pub fn reflect<R>(mut spirv: R) -> Result<String, Error>
 
     let mut output = String::new();
 
-    for instruction in doc.instructions.iter() {
+    {
+        let spirv_data = data.iter().map(|&byte| byte.to_string())
+                             .collect::<Vec<String>>()
+                             .join(", ");
+        output.push_str(&format!(r#"
+pub struct Shader;
+
+impl Shader {{
+    pub fn load(device: &::std::sync::Arc<::vulkano::Device>) {{
+        unsafe {{
+            let data = [{spirv_data}];
+
+            ::vulkano::Shader::new(device, &data)
+        }}
+    }}
+}}
+        "#, spirv_data = spirv_data));
+    }
+
+    /*for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. } => {
                 match *storage_class {
@@ -31,7 +50,7 @@ pub fn reflect<R>(mut spirv: R) -> Result<String, Error>
             },
             _ => ()
         }
-    }
+    }*/
 
     Ok(output)
 }
