@@ -3,6 +3,7 @@ use std::io::Read;
 
 pub use parse::ParseError;
 
+mod enums;
 mod parse;
 
 pub fn reflect<R>(mut spirv: R) -> Result<String, Error>
@@ -35,15 +36,15 @@ impl Shader {{
         "#, spirv_data = spirv_data));
     }
 
-    println!("{:?}", doc);
+    println!("{:#?}", doc);
 
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. } => {
                 match *storage_class {
-                    parse::StorageClass::UniformConstant => (),
-                    parse::StorageClass::Uniform => (),
-                    parse::StorageClass::PushConstant => (),
+                    enums::StorageClass::StorageClassUniformConstant => (),
+                    enums::StorageClass::StorageClassUniform => (),
+                    enums::StorageClass::StorageClassPushConstant => (),
                     _ => continue
                 };
 
