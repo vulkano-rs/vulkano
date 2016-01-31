@@ -67,6 +67,8 @@ pub enum ParseError {
     UnknownCapability(u32),
     UnknownExecutionModel(u32),
     UnknownStorageClass(u32),
+    UnknownAddressingModel(u32),
+    UnknownMemoryModel(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +85,7 @@ pub enum Instruction {
     Name { target_id: u32, name: String },
     MemberName { target_id: u32, member: u32, name: String },
     ExtInstImport { result_id: u32, name: String },
+    MemoryModel(AddressingModel, MemoryModel),
     EntryPoint { execution: ExecutionModel, id: u32, name: String, interface: Vec<u32> },
     Capability(Capability),
     TypeVoid { result_id: u32 },
@@ -125,6 +128,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             result_id: operands[0],
             name: parse_string(&operands[1..]).0
         },
+        14 => Instruction::MemoryModel(try!(AddressingModel::from_num(operands[0])), try!(MemoryModel::from_num(operands[1]))),
         15 => {
             let (n, r) = parse_string(&operands[2..]);
             Instruction::EntryPoint {
@@ -352,6 +356,42 @@ impl StorageClass {
             10 => Ok(StorageClass::AtomicCounter),
             11 => Ok(StorageClass::Image),
             _ => Err(ParseError::UnknownStorageClass(num)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AddressingModel {
+    Logical,
+    Physical32,
+    Physical64,
+}
+
+impl AddressingModel {
+    fn from_num(num: u32) -> Result<AddressingModel, ParseError> {
+        match num {
+            0 => Ok(AddressingModel::Logical),
+            1 => Ok(AddressingModel::Physical32),
+            2 => Ok(AddressingModel::Physical64),
+            _ => Err(ParseError::UnknownAddressingModel(num)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum MemoryModel {
+    Simple,
+    Glsl450,
+    OpenCL,
+}
+
+impl MemoryModel {
+    fn from_num(num: u32) -> Result<MemoryModel, ParseError> {
+        match num {
+            0 => Ok(MemoryModel::Simple),
+            1 => Ok(MemoryModel::Glsl450),
+            2 => Ok(MemoryModel::OpenCL),
+            _ => Err(ParseError::UnknownMemoryModel(num)),
         }
     }
 }
