@@ -403,6 +403,6 @@ mod test {
     #[test]
     fn test() {
         let data = include_bytes!("../examples/example.spv");
-        println!("{:?}", parse::parse_spirv(data).unwrap());
+        println!("{:#?}", parse::parse_spirv(data).unwrap());
     }
 }
