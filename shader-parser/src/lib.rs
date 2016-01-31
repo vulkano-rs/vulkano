@@ -120,7 +120,11 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
             },
             &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
                 let t = type_from_id(doc, type_id);
-                return format!("[{}; {}]", t, length_id);       // FIXME:
+                let len = doc.instructions.iter().filter_map(|e| {
+                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
+                }).next().expect("failed to find array length");
+                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
+                return format!("[{}; {}]", t, len);       // FIXME:
             },
             &parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
                 let t = type_from_id(doc, type_id);

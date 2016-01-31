@@ -97,6 +97,7 @@ pub enum Instruction {
     TypeStruct { result_id: u32, member_types: Vec<u32> },
     TypeOpaque { result_id: u32, name: String },
     TypePointer { result_id: u32, storage_class: StorageClass, type_id: u32 },
+    Constant { result_type_id: u32, result_id: u32, data: Vec<u32> },
     FunctionEnd,
     Variable { result_type_id: u32, result_id: u32, storage_class: StorageClass, initializer: Option<u32> },
     Label { result_id: u32 },
@@ -162,6 +163,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
         30 => Instruction::TypeStruct { result_id: operands[0], member_types: operands[1..].to_owned() },
         31 => Instruction::TypeOpaque { result_id: operands[0], name: parse_string(&operands[1..]).0 },
         32 => Instruction::TypePointer { result_id: operands[0], storage_class: try!(StorageClass::from_num(operands[1])), type_id: operands[2] },
+        43 => Instruction::Constant { result_type_id: operands[0], result_id: operands[1], data: operands[2..].to_owned() },
         56 => Instruction::FunctionEnd,
         59 => Instruction::Variable {
             result_type_id: operands[0], result_id: operands[1],
