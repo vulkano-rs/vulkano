@@ -35,7 +35,9 @@ impl Shader {{
         "#, spirv_data = spirv_data));
     }
 
-    /*for instruction in doc.instructions.iter() {
+    println!("{:?}", doc);
+
+    for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. } => {
                 match *storage_class {
@@ -50,7 +52,7 @@ impl Shader {{
             },
             _ => ()
         }
-    }*/
+    }
 
     Ok(output)
 }
@@ -103,6 +105,17 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 let t = type_from_id(doc, component_id);
                 return format!("[{}; {}]", t, count);
+            },
+            &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, depth, arrayed, ms, sampled, ref format, ref access } if result_id == searched => {
+                return format!("{}{}Texture{:?}{}{:?}",
+                    if ms { "Multisample" } else { "" },
+                    if depth == Some(true) { "Depth" } else { "" },
+                    dim,
+                    if arrayed { "Array" } else { "" },
+                    format);
+            },
+            &parse::Instruction::TypeSampledImage { result_id, image_type_id } if result_id == searched => {
+                return type_from_id(doc, image_type_id);
             },
             &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
                 let t = type_from_id(doc, type_id);

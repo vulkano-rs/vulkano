@@ -69,6 +69,9 @@ pub enum ParseError {
     UnknownStorageClass(u32),
     UnknownAddressingModel(u32),
     UnknownMemoryModel(u32),
+    UnknownDim(u32),
+    UnknownImageFormat(u32),
+    UnknownAccessQualifier(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +96,8 @@ pub enum Instruction {
     TypeInt { result_id: u32, width: u32, signedness: bool },
     TypeFloat { result_id: u32, width: u32 },
     TypeVector { result_id: u32, component_id: u32, count: u32 },
+    TypeImage { result_id: u32, sampled_type_id: u32, dim: Dim, depth: Option<bool>, arrayed: bool, ms: bool, sampled: Option<bool>, format: ImageFormat, access: Option<AccessQualifier> },
+    TypeSampledImage { result_id: u32, image_type_id: u32 },
     TypeArray { result_id: u32, type_id: u32, length_id: u32 },
     TypeRuntimeArray { result_id: u32, type_id: u32 },
     TypeStruct { result_id: u32, member_types: Vec<u32> },
@@ -144,6 +149,18 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
         21 => Instruction::TypeInt { result_id: operands[0], width: operands[1], signedness: operands[2] != 0 },
         22 => Instruction::TypeFloat { result_id: operands[0], width: operands[1] },
         23 => Instruction::TypeVector { result_id: operands[0], component_id: operands[1], count: operands[2] },
+        25 => Instruction::TypeImage {
+                result_id: operands[0],
+                sampled_type_id: operands[1],
+                dim: try!(Dim::from_num(operands[2])),
+                depth: match operands[3] { 0 => Some(false), 1 => Some(true), 2 => None, _ => unreachable!() },
+                arrayed: operands[4] != 0,
+                ms: operands[5] != 0,
+                sampled: match operands[6] { 0 => None, 1 => Some(true), 2 => Some(false), _ => unreachable!() },
+                format: try!(ImageFormat::from_num(operands[7])),
+                access: if operands.len() >= 9 { Some(try!(AccessQualifier::from_num(operands[8]))) } else { None },
+        },
+        27 => Instruction::TypeSampledImage { result_id: operands[0], image_type_id: operands[1] },
         28 => Instruction::TypeArray { result_id: operands[0], type_id: operands[1], length_id: operands[2] },
         29 => Instruction::TypeRuntimeArray { result_id: operands[0], type_id: operands[1] },
         30 => Instruction::TypeStruct { result_id: operands[0], member_types: operands[1..].to_owned() },
@@ -392,6 +409,142 @@ impl MemoryModel {
             1 => Ok(MemoryModel::Glsl450),
             2 => Ok(MemoryModel::OpenCL),
             _ => Err(ParseError::UnknownMemoryModel(num)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Dim {
+    Dim1D,
+    Dim2D,
+    Dim3D,
+    Cube,
+    Rect,
+    Buffer,
+    SubpassData,
+}
+
+impl Dim {
+    fn from_num(num: u32) -> Result<Dim, ParseError> {
+        match num {
+            0 => Ok(Dim::Dim1D),
+            1 => Ok(Dim::Dim2D),
+            2 => Ok(Dim::Dim3D),
+            3 => Ok(Dim::Cube),
+            4 => Ok(Dim::Rect),
+            5 => Ok(Dim::Buffer),
+            6 => Ok(Dim::SubpassData),
+            _ => Err(ParseError::UnknownDim(num)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum AccessQualifier {
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
+}
+
+impl AccessQualifier {
+    fn from_num(num: u32) -> Result<AccessQualifier, ParseError> {
+        match num {
+            0 => Ok(AccessQualifier::ReadOnly),
+            1 => Ok(AccessQualifier::WriteOnly),
+            2 => Ok(AccessQualifier::ReadWrite),
+            _ => Err(ParseError::UnknownAccessQualifier(num)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ImageFormat {
+    Unknown,
+    Rgba32f,
+    Rgba16f,
+    R32f,
+    Rgba8,
+    Rgba8Snorm,
+    Rg32f,
+    Rg16f,
+    R11fG11fB10f,
+    R16f,
+    Rgba16,
+    Rgb10A2,
+    Rg16,
+    Rg8,
+    R16,
+    R8,
+    Rgba16Snorm,
+    Rg16Snorm,
+    Rg8Snorm,
+    R16Snorm,
+    R8Snorm,
+    Rgba32i,
+    Rgba16i,
+    Rgba8i,
+    R32i,
+    Rg32i,
+    Rg16i,
+    Rg8i,
+    R16i,
+    R8i,
+    Rgba32ui,
+    Rgba16ui,
+    Rgba8ui,
+    R32ui,
+    Rgb10a2ui,
+    Rg32ui,
+    Rg16ui,
+    Rg8ui,
+    R16ui,
+    R8ui,
+}
+
+impl ImageFormat {
+    fn from_num(num: u32) -> Result<ImageFormat, ParseError> {
+        match num {
+            0 => Ok(ImageFormat::Unknown),
+            1 => Ok(ImageFormat::Rgba32f),
+            2 => Ok(ImageFormat::Rgba16f),
+            3 => Ok(ImageFormat::R32f),
+            4 => Ok(ImageFormat::Rgba8),
+            5 => Ok(ImageFormat::Rgba8Snorm),
+            6 => Ok(ImageFormat::Rg32f),
+            7 => Ok(ImageFormat::Rg16f),
+            8 => Ok(ImageFormat::R11fG11fB10f),
+            9 => Ok(ImageFormat::R16f),
+            10 => Ok(ImageFormat::Rgba16),
+            11 => Ok(ImageFormat::Rgb10A2),
+            12 => Ok(ImageFormat::Rg16),
+            13 => Ok(ImageFormat::Rg8),
+            14 => Ok(ImageFormat::R16),
+            15 => Ok(ImageFormat::R8),
+            16 => Ok(ImageFormat::Rgba16Snorm),
+            17 => Ok(ImageFormat::Rg16Snorm),
+            18 => Ok(ImageFormat::Rg8Snorm),
+            19 => Ok(ImageFormat::R16Snorm),
+            20 => Ok(ImageFormat::R8Snorm),
+            21 => Ok(ImageFormat::Rgba32i),
+            22 => Ok(ImageFormat::Rgba16i),
+            23 => Ok(ImageFormat::Rgba8i),
+            24 => Ok(ImageFormat::R32i),
+            25 => Ok(ImageFormat::Rg32i),
+            26 => Ok(ImageFormat::Rg16i),
+            27 => Ok(ImageFormat::Rg8i),
+            28 => Ok(ImageFormat::R16i),
+            29 => Ok(ImageFormat::R8i),
+            30 => Ok(ImageFormat::Rgba32ui),
+            31 => Ok(ImageFormat::Rgba16ui),
+            32 => Ok(ImageFormat::Rgba8ui),
+            33 => Ok(ImageFormat::R32ui),
+            34 => Ok(ImageFormat::Rgb10a2ui),
+            35 => Ok(ImageFormat::Rg32ui),
+            36 => Ok(ImageFormat::Rg16ui),
+            37 => Ok(ImageFormat::Rg8ui),
+            38 => Ok(ImageFormat::R16ui),
+            39 => Ok(ImageFormat::R8ui),
+            _ => Err(ParseError::UnknownImageFormat(num)),
         }
     }
 }
