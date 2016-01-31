@@ -1,0 +1,4 @@
+[package]
+name = "shader-parser"
+version = "0.1.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
