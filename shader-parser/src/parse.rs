@@ -66,6 +66,7 @@ pub enum ParseError {
     IncompleteInstruction,
     UnknownCapability(u32),
     UnknownExecutionModel(u32),
+    UnknownStorageClass(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -79,10 +80,23 @@ pub struct Spirv {
 pub enum Instruction {
     Unknown(u16, Vec<u32>),
     Nop,
+    Name { target_id: u32, name: String },
+    MemberName { target_id: u32, member: u32, name: String },
     ExtInstImport { result_id: u32, name: String },
     EntryPoint { execution: ExecutionModel, id: u32, name: String, interface: Vec<u32> },
     Capability(Capability),
+    TypeVoid { result_id: u32 },
+    TypeBool { result_id: u32 },
+    TypeInt { result_id: u32, width: u32, signedness: bool },
+    TypeFloat { result_id: u32, width: u32 },
+    TypeVector { result_id: u32, component_id: u32, count: u32 },
+    TypeArray { result_id: u32, type_id: u32, length_id: u32 },
+    TypeRuntimeArray { result_id: u32, type_id: u32 },
+    TypeStruct { result_id: u32, member_types: Vec<u32> },
+    TypeOpaque { result_id: u32, name: String },
+    TypePointer { result_id: u32, storage_class: StorageClass, type_id: u32 },
     FunctionEnd,
+    Variable { result_type_id: u32, result_id: u32, storage_class: StorageClass, initializer: Option<u32> },
     Kill,
     Return,
 }
@@ -105,6 +119,8 @@ fn parse_instruction(i: &[u32]) -> Result<(Instruction, &[u32]), ParseError> {
 fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, ParseError> {
     Ok(match opcode {
         0 => Instruction::Nop,
+        5 => Instruction::Name { target_id: operands[0], name: parse_string(&operands[1..]).0 },
+        6 => Instruction::MemberName { target_id: operands[0], member: operands[1], name: parse_string(&operands[2..]).0 },
         11 => Instruction::ExtInstImport {
             result_id: operands[0],
             name: parse_string(&operands[1..]).0
@@ -119,7 +135,22 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             }
         },
         17 => Instruction::Capability(try!(Capability::from_num(operands[0]))),
+        19 => Instruction::TypeVoid { result_id: operands[0] },
+        20 => Instruction::TypeBool { result_id: operands[0] },
+        21 => Instruction::TypeInt { result_id: operands[0], width: operands[1], signedness: operands[2] != 0 },
+        22 => Instruction::TypeFloat { result_id: operands[0], width: operands[1] },
+        23 => Instruction::TypeVector { result_id: operands[0], component_id: operands[1], count: operands[2] },
+        28 => Instruction::TypeArray { result_id: operands[0], type_id: operands[1], length_id: operands[2] },
+        29 => Instruction::TypeRuntimeArray { result_id: operands[0], type_id: operands[1] },
+        30 => Instruction::TypeStruct { result_id: operands[0], member_types: operands[1..].to_owned() },
+        31 => Instruction::TypeOpaque { result_id: operands[0], name: parse_string(&operands[1..]).0 },
+        32 => Instruction::TypePointer { result_id: operands[0], storage_class: try!(StorageClass::from_num(operands[1])), type_id: operands[2] },
         56 => Instruction::FunctionEnd,
+        59 => Instruction::Variable {
+            result_type_id: operands[0], result_id: operands[1],
+            storage_class: try!(StorageClass::from_num(operands[2])),
+            initializer: operands.get(3).map(|&v| v)
+        },
         252 => Instruction::Kill,
         253 => Instruction::Return,
         _ => Instruction::Unknown(opcode, operands.to_owned()),
@@ -289,13 +320,49 @@ impl ExecutionModel {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum StorageClass {
+    UniformConstant,
+    Input,
+    Uniform,
+    Output,
+    Workgroup,
+    CrossWorkgroup,
+    Private,
+    Function,
+    Generic,
+    PushConstant,
+    AtomicCounter,
+    Image,
+}
+
+impl StorageClass {
+    fn from_num(num: u32) -> Result<StorageClass, ParseError> {
+        match num {
+            0 => Ok(StorageClass::UniformConstant),
+            1 => Ok(StorageClass::Input),
+            2 => Ok(StorageClass::Uniform),
+            3 => Ok(StorageClass::Output),
+            4 => Ok(StorageClass::Workgroup),
+            5 => Ok(StorageClass::CrossWorkgroup),
+            6 => Ok(StorageClass::Private),
+            7 => Ok(StorageClass::Function),
+            8 => Ok(StorageClass::Generic),
+            9 => Ok(StorageClass::PushConstant),
+            10 => Ok(StorageClass::AtomicCounter),
+            11 => Ok(StorageClass::Image),
+            _ => Err(ParseError::UnknownStorageClass(num)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use parse;
 
     #[test]
     fn test() {
-        let data = include_bytes!("../tests/frag.spv");
-        parse::parse_spirv(data).unwrap();
+        let data = include_bytes!("../examples/example.spv");
+        println!("{:?}", parse::parse_spirv(data).unwrap());
     }
 }
