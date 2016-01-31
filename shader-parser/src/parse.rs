@@ -1,4 +1,5 @@
 
+/// Parses a SPIR-V document.
 pub fn parse_spirv(data: &[u8]) -> Result<Spirv, ParseError> {
     if data.len() < 20 {
         return Err(ParseError::MissingHeader);
@@ -25,6 +26,9 @@ pub fn parse_spirv(data: &[u8]) -> Result<Spirv, ParseError> {
     parse_u32s(&data)
 }
 
+/// Parses a SPIR-V document from a list of u32s.
+///
+/// Endianess has already been handled.
 fn parse_u32s(i: &[u32]) -> Result<Spirv, ParseError> {
     if i.len() < 5 {
         return Err(ParseError::MissingHeader);
@@ -54,6 +58,7 @@ fn parse_u32s(i: &[u32]) -> Result<Spirv, ParseError> {
     })
 }
 
+/// Error that can happen when parsing.
 #[derive(Debug, Clone)]
 pub enum ParseError {
     MissingHeader,
@@ -291,8 +296,6 @@ mod test {
     #[test]
     fn test() {
         let data = include_bytes!("../tests/frag.spv");
-        let doc = parse::parse_spirv(data).unwrap();
-
-        println!("{:?}", doc);
+        parse::parse_spirv(data).unwrap();
     }
 }
