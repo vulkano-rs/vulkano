@@ -33,6 +33,21 @@ impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
     pub fn load(device: &::std::sync::Arc<::vulkano::Device>) -> {name} {{
+
+        "#, name = name));
+
+        // checking whether each required capability is supported by the vulkan implementation
+        for i in doc.instructions.iter() {
+            if let &parse::Instruction::Capability(ref cap) = i {
+                output.push_str(&format!(r#"
+                    if !device.is_capability_supported("{cap}") {{
+                        return Err(CapabilityNotSupported);
+                    }}"#, cap = capability_name(cap)));
+            }
+        }
+
+        // follow-up of the header
+        output.push_str(&format!(r#"
         unsafe {{
             let data = [{spirv_data}];
 
@@ -242,4 +257,65 @@ fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) 
         }
     }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
       .unwrap_or("__unnamed".to_owned())
+}
+
+// TODO: this function is a draft, as the actual names may not be the same
+fn capability_name(cap: &enums::Capability) -> &'static str {
+    match *cap {
+        enums::Capability::CapabilityMatrix => "Matrix",
+        enums::Capability::CapabilityShader => "Shader",
+        enums::Capability::CapabilityGeometry => "Geometry",
+        enums::Capability::CapabilityTessellation => "Tessellation",
+        enums::Capability::CapabilityAddresses => "Addresses",
+        enums::Capability::CapabilityLinkage => "Linkage",
+        enums::Capability::CapabilityKernel => "Kernel",
+        enums::Capability::CapabilityVector16 => "Vector16",
+        enums::Capability::CapabilityFloat16Buffer => "Float16Buffer",
+        enums::Capability::CapabilityFloat16 => "Float16",
+        enums::Capability::CapabilityFloat64 => "Float64",
+        enums::Capability::CapabilityInt64 => "Int64",
+        enums::Capability::CapabilityInt64Atomics => "Int64Atomics",
+        enums::Capability::CapabilityImageBasic => "ImageBasic",
+        enums::Capability::CapabilityImageReadWrite => "ImageReadWrite",
+        enums::Capability::CapabilityImageMipmap => "ImageMipmap",
+        enums::Capability::CapabilityPipes => "Pipes",
+        enums::Capability::CapabilityGroups => "Groups",
+        enums::Capability::CapabilityDeviceEnqueue => "DeviceEnqueue",
+        enums::Capability::CapabilityLiteralSampler => "LiteralSampler",
+        enums::Capability::CapabilityAtomicStorage => "AtomicStorage",
+        enums::Capability::CapabilityInt16 => "Int16",
+        enums::Capability::CapabilityTessellationPointSize => "TessellationPointSize",
+        enums::Capability::CapabilityGeometryPointSize => "GeometryPointSize",
+        enums::Capability::CapabilityImageGatherExtended => "ImageGatherExtended",
+        enums::Capability::CapabilityStorageImageMultisample => "StorageImageMultisample",
+        enums::Capability::CapabilityUniformBufferArrayDynamicIndexing => "UniformBufferArrayDynamicIndexing",
+        enums::Capability::CapabilitySampledImageArrayDynamicIndexing => "SampledImageArrayDynamicIndexing",
+        enums::Capability::CapabilityStorageBufferArrayDynamicIndexing => "StorageBufferArrayDynamicIndexing",
+        enums::Capability::CapabilityStorageImageArrayDynamicIndexing => "StorageImageArrayDynamicIndexing",
+        enums::Capability::CapabilityClipDistance => "ClipDistance",
+        enums::Capability::CapabilityCullDistance => "CullDistance",
+        enums::Capability::CapabilityImageCubeArray => "ImageCubeArray",
+        enums::Capability::CapabilitySampleRateShading => "SampleRateShading",
+        enums::Capability::CapabilityImageRect => "ImageRect",
+        enums::Capability::CapabilitySampledRect => "SampledRect",
+        enums::Capability::CapabilityGenericPointer => "GenericPointer",
+        enums::Capability::CapabilityInt8 => "Int8",
+        enums::Capability::CapabilityInputAttachment => "InputAttachment",
+        enums::Capability::CapabilitySparseResidency => "SparseResidency",
+        enums::Capability::CapabilityMinLod => "MinLod",
+        enums::Capability::CapabilitySampled1D => "Sampled1D",
+        enums::Capability::CapabilityImage1D => "Image1D",
+        enums::Capability::CapabilitySampledCubeArray => "SampledCubeArray",
+        enums::Capability::CapabilitySampledBuffer => "SampledBuffer",
+        enums::Capability::CapabilityImageBuffer => "ImageBuffer",
+        enums::Capability::CapabilityImageMSArray => "ImageMSArray",
+        enums::Capability::CapabilityStorageImageExtendedFormats => "StorageImageExtendedFormats",
+        enums::Capability::CapabilityImageQuery => "ImageQuery",
+        enums::Capability::CapabilityDerivativeControl => "DerivativeControl",
+        enums::Capability::CapabilityInterpolationFunction => "InterpolationFunction",
+        enums::Capability::CapabilityTransformFeedback => "TransformFeedback",
+        enums::Capability::CapabilityGeometryStreams => "GeometryStreams",
+        enums::Capability::CapabilityStorageImageReadWithoutFormat => "StorageImageReadWithoutFormat",
+        enums::Capability::CapabilityStorageImageWriteWithoutFormat => "StorageImageWriteWithoutFormat",
+    }
 }
