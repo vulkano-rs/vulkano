@@ -26,7 +26,7 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         // writing the header
         output.push_str(&format!(r#"
 pub struct {name} {{
-    shader: ::std::sync::Arc<::vulkano::ShaderModule>,
+    shader: ::std::sync::Arc<::vulkano::shader::ShaderModule>,
 }}
 
 impl {name} {{
@@ -52,14 +52,14 @@ impl {name} {{
             let data = [{spirv_data}];
 
             {name} {{
-                shader: ::vulkano::ShaderModule::new(device, &data)
+                shader: ::vulkano::shader::ShaderModule::new(device, &data)
             }}
         }}
     }}
 
     /// Returns the module that was created.
     #[inline]
-    pub fn module(&self) -> &::std::sync::Arc<::vulkano::ShaderModule> {{
+    pub fn module(&self) -> &::std::sync::Arc<::vulkano::shader::ShaderModule> {{
         &self.shader
     }}
         "#, name = name, spirv_data = spirv_data));
@@ -113,19 +113,19 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
     let ty = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
-            format!("VertexShaderEntryPoint")
+            format!("::vulkano::shader::VertexShaderEntryPoint")
         },
 
         enums::ExecutionModel::ExecutionModelTessellationControl => {
-            format!("TessControlShaderEntryPoint")
+            format!("::vulkano::shader::TessControlShaderEntryPoint")
         },
 
         enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            format!("TessEvaluationShaderEntryPoint")
+            format!("::vulkano::shader::TessEvaluationShaderEntryPoint")
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
-            format!("GeometryShaderEntryPoint")
+            format!("::vulkano::shader::GeometryShaderEntryPoint")
         },
 
         enums::ExecutionModel::ExecutionModelFragment => {
@@ -145,12 +145,12 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 }
             }
 
-            format!("FragmentShaderEntryPoint<({output})>",
+            format!("::vulkano::shader::FragmentShaderEntryPoint<({output})>",
                     output = output_types.join(", ") + ",")
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
-            format!("ComputeShaderEntryPoint")
+            format!("::vulkano::shader::ComputeShaderEntryPoint")
         },
 
         enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
