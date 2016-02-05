@@ -113,7 +113,26 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
     let ty = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
-            format!("::vulkano::shader::VertexShaderEntryPoint")
+            let mut input_types = Vec::new();
+
+            // TODO: sort types by location
+
+            for interface in interface.iter() {
+                for i in doc.instructions.iter() {
+                    match i {
+                        &parse::Instruction::Variable { result_type_id, result_id,
+                                    storage_class: enums::StorageClass::StorageClassInput, .. }
+                                    if &result_id == interface =>
+                        {
+                            input_types.push(type_from_id(doc, result_type_id));
+                        },
+                        _ => ()
+                    }
+                }
+            }
+
+            format!("::vulkano::shader::VertexShaderEntryPoint<({input})>",
+                    input = input_types.join(", ") + ",")
         },
 
         enums::ExecutionModel::ExecutionModelTessellationControl => {
