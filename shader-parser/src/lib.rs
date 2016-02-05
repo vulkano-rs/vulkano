@@ -18,74 +18,136 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     let mut output = String::new();
 
     {
+        // contains the data that was passed as input to this function
         let spirv_data = data.iter().map(|&byte| byte.to_string())
                              .collect::<Vec<String>>()
                              .join(", ");
+
+        // writing the header
         output.push_str(&format!(r#"
-pub struct {name};
+pub struct {name} {{
+    shader: ::std::sync::Arc<::vulkano::ShaderModule>,
+}}
 
 impl {name} {{
-    pub fn load(device: &::std::sync::Arc<::vulkano::Device>) {{
+    /// Loads the shader in Vulkan as a `ShaderModule`.
+    #[inline]
+    pub fn load(device: &::std::sync::Arc<::vulkano::Device>) -> {name} {{
         unsafe {{
             let data = [{spirv_data}];
 
-            ::vulkano::ShaderModule::new(device, &data)
+            {name} {{
+                shader: ::vulkano::ShaderModule::new(device, &data)
+            }}
         }}
     }}
-}}
+
+    /// Returns the module that was created.
+    #[inline]
+    pub fn module(&self) -> &::std::sync::Arc<::vulkano::ShaderModule> {{
+        &self.shader
+    }}
         "#, name = name, spirv_data = spirv_data));
-    }
 
-    println!("{:#?}", doc);
-
-    for instruction in doc.instructions.iter() {
-        match instruction {
-            &parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. } => {
-                match *storage_class {
-                    enums::StorageClass::StorageClassUniformConstant => (),
-                    enums::StorageClass::StorageClassUniform => (),
-                    enums::StorageClass::StorageClassPushConstant => (),
-                    _ => continue
-                };
-
-                let name = name_from_id(&doc, result_id);
-                output.push_str(&format!("{}: {};", name, type_from_id(&doc, result_type_id)));
-            },
-            _ => ()
+        // writing one method for each entry point of this module
+        for instruction in doc.instructions.iter() {
+            if let &parse::Instruction::EntryPoint { .. } = instruction {
+                output.push_str(&write_entry_point(&doc, instruction));
+            }
         }
+
+        // footer
+        output.push_str(&format!(r#"
+}}
+        "#));
     }
+
+    // TODO: remove
+    println!("{:#?}", doc);
 
     Ok(output)
 }
 
-fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
-    doc.instructions.iter().filter_map(|i| {
-        if let &parse::Instruction::Name { target_id, ref name } = i {
-            if target_id == searched {
-                Some(name.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
-      .unwrap_or("__unnamed".to_owned())
+#[derive(Debug)]
+pub enum Error {
+    IoError(IoError),
+    ParseError(ParseError),
 }
 
-fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) -> String {
-    doc.instructions.iter().filter_map(|i| {
-        if let &parse::Instruction::MemberName { target_id, member, ref name } = i {
-            if target_id == searched && member == searched_member {
-                Some(name.clone())
-            } else {
-                None
+impl From<IoError> for Error {
+    #[inline]
+    fn from(err: IoError) -> Error {
+        Error::IoError(err)
+    }
+}
+
+impl From<ParseError> for Error {
+    #[inline]
+    fn from(err: ParseError) -> Error {
+        Error::ParseError(err)
+    }
+}
+
+fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> String {
+    let (execution, ep_name, interface) = match instruction {
+        &parse::Instruction::EntryPoint { ref execution, id, ref name, ref interface } => {
+            (execution, name, interface)
+        },
+        _ => unreachable!()
+    };
+
+    let ty = match *execution {
+        enums::ExecutionModel::ExecutionModelVertex => {
+            format!("VertexShaderEntryPoint")
+        },
+
+        enums::ExecutionModel::ExecutionModelTessellationControl => {
+            format!("TessControlShaderEntryPoint")
+        },
+
+        enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
+            format!("TessEvaluationShaderEntryPoint")
+        },
+
+        enums::ExecutionModel::ExecutionModelGeometry => {
+            format!("GeometryShaderEntryPoint")
+        },
+
+        enums::ExecutionModel::ExecutionModelFragment => {
+            let mut output_types = Vec::new();
+
+            for interface in interface.iter() {
+                for i in doc.instructions.iter() {
+                    match i {
+                        &parse::Instruction::Variable { result_type_id, result_id,
+                                    storage_class: enums::StorageClass::StorageClassOutput, .. }
+                                    if &result_id == interface =>
+                        {
+                            output_types.push(type_from_id(doc, result_type_id));
+                        },
+                        _ => ()
+                    }
+                }
             }
-        } else {
-            None
-        }
-    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
-      .unwrap_or("__unnamed".to_owned())
+
+            format!("FragmentShaderEntryPoint<({output})>",
+                    output = output_types.join(", ") + ",")
+        },
+
+        enums::ExecutionModel::ExecutionModelGLCompute => {
+            format!("ComputeShaderEntryPoint")
+        },
+
+        enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
+    };
+
+    format!(r#"
+    /// Returns a logical struct describing the entry point named `{ep_name}`.
+    #[inline]
+    pub fn {ep_name}_entry_point(&self) -> {ty} {{
+        self.shader.entry_point("{ep_name}")
+    }}
+            "#, ep_name = ep_name, ty = ty)
 }
 
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
@@ -152,22 +214,32 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
     panic!("Type #{} not found", searched)
 }
 
-#[derive(Debug)]
-pub enum Error {
-    IoError(IoError),
-    ParseError(ParseError),
+fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
+    doc.instructions.iter().filter_map(|i| {
+        if let &parse::Instruction::Name { target_id, ref name } = i {
+            if target_id == searched {
+                Some(name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
+      .unwrap_or("__unnamed".to_owned())
 }
 
-impl From<IoError> for Error {
-    #[inline]
-    fn from(err: IoError) -> Error {
-        Error::IoError(err)
-    }
-}
-
-impl From<ParseError> for Error {
-    #[inline]
-    fn from(err: ParseError) -> Error {
-        Error::ParseError(err)
-    }
+fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) -> String {
+    doc.instructions.iter().filter_map(|i| {
+        if let &parse::Instruction::MemberName { target_id, member, ref name } = i {
+            if target_id == searched && member == searched_member {
+                Some(name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
+      .unwrap_or("__unnamed".to_owned())
 }
