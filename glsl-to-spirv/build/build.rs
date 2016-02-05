@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::fs::Permissions;
 use std::path::Path;
 
 fn main() {
@@ -21,5 +22,15 @@ fn main() {
         fs::copy(&path, &out_file).unwrap();
     }
 
-    //fs::set_permissions(&out_file, std::io::USER_EXEC).unwrap();
+    // setting permissions of the executable
+    {
+        #[cfg(linux)] fn permissions() -> Option<Permissions> {
+            use std::os::unix::fs::PermissionsExt;
+            Some(Permissions::from_mode(755))
+        }
+        #[cfg(not(linux))] fn permissions() -> Option<Permissions> { None }
+        if let Some(permissions) = permissions() {
+            fs::set_permissions(&out_file, permissions).unwrap();
+        }
+    }
 }
