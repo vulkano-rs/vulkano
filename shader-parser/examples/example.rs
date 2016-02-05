@@ -27,6 +27,6 @@ void main() {
 "#;
 
     let content = glsl_to_spirv::compile(Some((shader, glsl_to_spirv::ShaderType::Fragment))).unwrap();
-    let output = shader_parser::reflect(content).unwrap();
+    let output = shader_parser::reflect("Shader", content).unwrap();
     println!("{}", output);
 }

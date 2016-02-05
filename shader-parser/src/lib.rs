@@ -6,7 +6,7 @@ pub use parse::ParseError;
 mod enums;
 mod parse;
 
-pub fn reflect<R>(mut spirv: R) -> Result<String, Error>
+pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     where R: Read
 {
     let mut data = Vec::new();
@@ -22,18 +22,18 @@ pub fn reflect<R>(mut spirv: R) -> Result<String, Error>
                              .collect::<Vec<String>>()
                              .join(", ");
         output.push_str(&format!(r#"
-pub struct Shader;
+pub struct {name};
 
-impl Shader {{
+impl {name} {{
     pub fn load(device: &::std::sync::Arc<::vulkano::Device>) {{
         unsafe {{
             let data = [{spirv_data}];
 
-            ::vulkano::Shader::new(device, &data)
+            ::vulkano::ShaderModule::new(device, &data)
         }}
     }}
 }}
-        "#, spirv_data = spirv_data));
+        "#, name = name, spirv_data = spirv_data));
     }
 
     println!("{:#?}", doc);
