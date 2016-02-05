@@ -19,7 +19,7 @@ fn main() {
     };
 
     if let Err(_) = fs::hard_link(&path, &out_file) {
-        fs::copy(&path, &out_file).unwrap();
+        fs::copy(&path, &out_file).expect("failed to copy executable");
     }
 
     // TODO: check the hash of the files to make sure that they are not altered
@@ -32,7 +32,7 @@ fn main() {
         }
         #[cfg(not(unix))] fn permissions() -> Option<Permissions> { None }
         if let Some(permissions) = permissions() {
-            fs::set_permissions(&out_file, permissions).unwrap();
+            fs::set_permissions(&out_file, permissions).expect("failed to set permissions");
         }
     }
 }
