@@ -160,9 +160,14 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
     /// Returns a logical struct describing the entry point named `{ep_name}`.
     #[inline]
     pub fn {ep_name}_entry_point(&self) -> {ty} {{
-        self.shader.entry_point("{ep_name}")
+        unsafe {{
+            static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];
+            self.shader.entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))
+        }}
     }}
-            "#, ep_name = ep_name, ty = ty)
+            "#, ep_name = ep_name, ep_name_lenp1 = ep_name.chars().count() + 1, ty = ty,
+                encoded_ep_name = ep_name.chars().map(|c| (c as u32).to_string())
+                                         .collect::<Vec<String>>().join(", "))
 }
 
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
