@@ -22,6 +22,8 @@ fn main() {
         fs::copy(&path, &out_file).unwrap();
     }
 
+    // TODO: check the hash of the files to make sure that they are not altered
+
     // setting permissions of the executable
     {
         #[cfg(linux)] fn permissions() -> Option<Permissions> {
