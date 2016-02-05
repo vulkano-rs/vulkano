@@ -26,11 +26,11 @@ fn main() {
 
     // setting permissions of the executable
     {
-        #[cfg(linux)] fn permissions() -> Option<Permissions> {
+        #[cfg(unix)] fn permissions() -> Option<Permissions> {
             use std::os::unix::fs::PermissionsExt;
             Some(Permissions::from_mode(755))
         }
-        #[cfg(not(linux))] fn permissions() -> Option<Permissions> { None }
+        #[cfg(not(unix))] fn permissions() -> Option<Permissions> { None }
         if let Some(permissions) = permissions() {
             fs::set_permissions(&out_file, permissions).unwrap();
         }
