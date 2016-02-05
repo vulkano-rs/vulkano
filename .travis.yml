@@ -1,0 +1,10 @@
+sudo: false
+
+language: rust
+rust:
+    - nightly
+    - stable
+
+script:
+    - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
+    - cargo test -v --manifest-path shader-parser/Cargo.toml
