@@ -202,10 +202,10 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
                 return format!("struct {} {{\n{}\n}}", name, members.join(",\n"));
             },
             &parse::Instruction::TypeOpaque { result_id, ref name } if result_id == searched => {
+                return "<opaque>".to_owned();
             },
             &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
-                let t = type_from_id(doc, type_id);
-                return format!("*const {}", t);
+                return type_from_id(doc, type_id);
             },
             _ => ()
         }
