@@ -25,7 +25,7 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
 
         // writing the header
         output.push_str(&format!(r#"
-pub struct {name} {{
+struct {name} {{
     shader: ::std::sync::Arc<::vulkano::shader::ShaderModule>,
 }}
 
