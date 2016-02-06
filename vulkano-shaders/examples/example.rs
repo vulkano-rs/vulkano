@@ -1,5 +1,5 @@
 extern crate glsl_to_spirv;
-extern crate shader_parser;
+extern crate vulkano_shaders;
 
 fn main() {
     let shader = r#"
@@ -27,6 +27,6 @@ void main() {
 "#;
 
     let content = glsl_to_spirv::compile(Some((shader, glsl_to_spirv::ShaderType::Fragment))).unwrap();
-    let output = shader_parser::reflect("Shader", content).unwrap();
+    let output = vulkano_shaders::reflect("Shader", content).unwrap();
     println!("{}", output);
 }
