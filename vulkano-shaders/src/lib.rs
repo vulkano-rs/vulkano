@@ -187,7 +187,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
     pub fn {ep_name}_entry_point(&self) -> {ty} {{
         unsafe {{
             #[allow(dead_code)]
-            static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];
+            static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];     // "{ep_name}"
             self.shader.{f_name}(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))
         }}
     }}
