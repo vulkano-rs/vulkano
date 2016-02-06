@@ -61,6 +61,7 @@ impl {name} {{
     }}
 
     /// Returns the module that was created.
+    #[allow(dead_code)]
     #[inline]
     pub fn module(&self) -> &::std::sync::Arc<::vulkano::shader::ShaderModule> {{
         &self.shader
@@ -185,6 +186,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
     #[inline]
     pub fn {ep_name}_entry_point(&self) -> {ty} {{
         unsafe {{
+            #[allow(dead_code)]
             static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];
             self.shader.{f_name}(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))
         }}
