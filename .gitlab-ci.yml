@@ -1,0 +1,10 @@
+image: dockingbay/fedora-rust:nightly
+
+stages:
+  - test
+
+job1:
+  stage: test
+  script:
+    - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
+    - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
