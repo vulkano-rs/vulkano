@@ -11,22 +11,25 @@ struct S {
 };
 
 uniform sampler2D u_texture;
-uniform S u_data;
+
+uniform Block {
+    S u_data;
+} block;
 
 in vec2 v_texcoords;
 out vec4 f_color;
 
 void main() {
-    if (u_data.val2[4]) {
+    if (block.u_data.val2[3]) {
         f_color = texture(u_texture, v_texcoords);
     } else {
-        f_color = vec4(u_data.val1, 1.0);
+        f_color = vec4(1.0);
     }
 }
 
 "#;
 
-    let content = glsl_to_spirv::compile(Some((shader, glsl_to_spirv::ShaderType::Fragment))).unwrap();
+    let content = glsl_to_spirv::compile(shader, glsl_to_spirv::ShaderType::Fragment).unwrap();
     let output = vulkano_shaders::reflect("Shader", content).unwrap();
     println!("{}", output);
 }

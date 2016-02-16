@@ -6,7 +6,13 @@ use std::process::Command;
 
 pub type SpirvOutput = File;
 
-pub fn compile<'a, I>(shaders: I) -> Result<SpirvOutput, String>
+pub fn compile(code: &str, ty: ShaderType) -> Result<SpirvOutput, String> {
+    compile_inner(Some((code, ty)))
+}
+
+// Eventually the API will look like this, with an iterator for multiple shader stages.
+// However for the moment GLSLang doesn't like that, so we only pass one shader at a time.
+fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
     where I: IntoIterator<Item = (&'a str, ShaderType)>
 {
     let temp_dir = tempdir::TempDir::new("glslang-compile").unwrap();
