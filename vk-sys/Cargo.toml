@@ -1,0 +1,6 @@
+[package]
+name = "vk-sys"
+version = "0.1.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+
+[dependencies]
