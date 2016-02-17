@@ -42,7 +42,7 @@ impl {name} {{
                 if let Some(cap) = capability_name(cap) {
                     output.push_str(&format!(r#"
                         if !device.enabled_features().{cap} {{
-                            panic!("capability not supported")  // FIXME: error
+                            panic!("capability {{:?}} not supported", "{cap}")  // FIXME: error
                             //return Err(CapabilityNotSupported);
                         }}"#, cap = cap));
                 }
@@ -309,16 +309,16 @@ fn capability_name(cap: &enums::Capability) -> Option<&'static str> {
     match *cap {
         enums::Capability::CapabilityMatrix => None,        // always supported
         enums::Capability::CapabilityShader => None,        // always supported
-        enums::Capability::CapabilityGeometry => Some("geometryShader"),
-        enums::Capability::CapabilityTessellation => Some("tessellationShader"),
+        enums::Capability::CapabilityGeometry => Some("geometry_shader"),
+        enums::Capability::CapabilityTessellation => Some("tessellation_shader"),
         enums::Capability::CapabilityAddresses => panic!(), // not supported
         enums::Capability::CapabilityLinkage => panic!(),   // not supported
         enums::Capability::CapabilityKernel => panic!(),    // not supported
         enums::Capability::CapabilityVector16 => panic!(),  // not supported
         enums::Capability::CapabilityFloat16Buffer => panic!(), // not supported
         enums::Capability::CapabilityFloat16 => panic!(),   // not supported
-        enums::Capability::CapabilityFloat64 => Some("shaderFloat64"),
-        enums::Capability::CapabilityInt64 => Some("shaderInt64"),
+        enums::Capability::CapabilityFloat64 => Some("shader_f3264"),
+        enums::Capability::CapabilityInt64 => Some("shader_int64"),
         enums::Capability::CapabilityInt64Atomics => panic!(),  // not supported
         enums::Capability::CapabilityImageBasic => panic!(),    // not supported
         enums::Capability::CapabilityImageReadWrite => panic!(),    // not supported
@@ -328,40 +328,40 @@ fn capability_name(cap: &enums::Capability) -> Option<&'static str> {
         enums::Capability::CapabilityDeviceEnqueue => panic!(), // not supported
         enums::Capability::CapabilityLiteralSampler => panic!(),    // not supported
         enums::Capability::CapabilityAtomicStorage => panic!(), // not supported
-        enums::Capability::CapabilityInt16 => Some("shaderInt16"),
-        enums::Capability::CapabilityTessellationPointSize => Some("shaderTessellationAndGeometryPointSize"),
-        enums::Capability::CapabilityGeometryPointSize => Some("shaderTessellationAndGeometryPointSize"),
-        enums::Capability::CapabilityImageGatherExtended => Some("shaderImageGatherExtended"),
-        enums::Capability::CapabilityStorageImageMultisample => Some("shaderStorageImageMultisample"),
-        enums::Capability::CapabilityUniformBufferArrayDynamicIndexing => Some("shaderUniformBufferArrayDynamicIndexing"),
-        enums::Capability::CapabilitySampledImageArrayDynamicIndexing => Some("shaderSampledImageArrayDynamicIndexing"),
-        enums::Capability::CapabilityStorageBufferArrayDynamicIndexing => Some("shaderStorageBufferArrayDynamicIndexing"),
-        enums::Capability::CapabilityStorageImageArrayDynamicIndexing => Some("shaderStorageImageArrayDynamicIndexing"),
-        enums::Capability::CapabilityClipDistance => Some("shaderClipDistance"),
-        enums::Capability::CapabilityCullDistance => Some("shaderCullDistance"),
-        enums::Capability::CapabilityImageCubeArray => Some("imageCubeArray"),
-        enums::Capability::CapabilitySampleRateShading => Some("sampleRateShading"),
+        enums::Capability::CapabilityInt16 => Some("shader_int16"),
+        enums::Capability::CapabilityTessellationPointSize => Some("shader_tessellation_and_geometry_point_size"),
+        enums::Capability::CapabilityGeometryPointSize => Some("shader_tessellation_and_geometry_point_size"),
+        enums::Capability::CapabilityImageGatherExtended => Some("shader_image_gather_extended"),
+        enums::Capability::CapabilityStorageImageMultisample => Some("shader_storage_image_multisample"),
+        enums::Capability::CapabilityUniformBufferArrayDynamicIndexing => Some("shader_uniform_buffer_array_dynamic_indexing"),
+        enums::Capability::CapabilitySampledImageArrayDynamicIndexing => Some("shader_sampled_image_array_dynamic_indexing"),
+        enums::Capability::CapabilityStorageBufferArrayDynamicIndexing => Some("shader_storage_buffer_array_dynamic_indexing"),
+        enums::Capability::CapabilityStorageImageArrayDynamicIndexing => Some("shader_storage_image_array_dynamic_indexing"),
+        enums::Capability::CapabilityClipDistance => Some("shader_clip_distance"),
+        enums::Capability::CapabilityCullDistance => Some("shader_cull_distance"),
+        enums::Capability::CapabilityImageCubeArray => Some("image_cube_array"),
+        enums::Capability::CapabilitySampleRateShading => Some("sample_rate_shading"),
         enums::Capability::CapabilityImageRect => panic!(), // not supported
         enums::Capability::CapabilitySampledRect => panic!(),   // not supported
         enums::Capability::CapabilityGenericPointer => panic!(),    // not supported
         enums::Capability::CapabilityInt8 => panic!(),  // not supported
         enums::Capability::CapabilityInputAttachment => None,       // always supported
-        enums::Capability::CapabilitySparseResidency => Some("shaderResourceResidency"),
-        enums::Capability::CapabilityMinLod => Some("shaderResourceMinLod"),
+        enums::Capability::CapabilitySparseResidency => Some("shader_resource_residency"),
+        enums::Capability::CapabilityMinLod => Some("shader_resource_min_lod"),
         enums::Capability::CapabilitySampled1D => None,        // always supported
         enums::Capability::CapabilityImage1D => None,        // always supported
-        enums::Capability::CapabilitySampledCubeArray => Some("imageCubeArray"),
+        enums::Capability::CapabilitySampledCubeArray => Some("image_cube_array"),
         enums::Capability::CapabilitySampledBuffer => None,         // always supported
         enums::Capability::CapabilityImageBuffer => None,        // always supported
-        enums::Capability::CapabilityImageMSArray => Some("shaderStorageImageMultisample"),
-        enums::Capability::CapabilityStorageImageExtendedFormats => Some("shaderStorageImageExtendedFormats"),
+        enums::Capability::CapabilityImageMSArray => Some("shader_storage_image_multisample"),
+        enums::Capability::CapabilityStorageImageExtendedFormats => Some("shader_storage_image_extended_formats"),
         enums::Capability::CapabilityImageQuery => None,        // always supported
         enums::Capability::CapabilityDerivativeControl => None,        // always supported
-        enums::Capability::CapabilityInterpolationFunction => Some("sampleRateShading"),
+        enums::Capability::CapabilityInterpolationFunction => Some("sample_rate_shading"),
         enums::Capability::CapabilityTransformFeedback => panic!(), // not supported
         enums::Capability::CapabilityGeometryStreams => panic!(),   // not supported
-        enums::Capability::CapabilityStorageImageReadWithoutFormat => Some("shaderStorageImageReadWithoutFormat"),
-        enums::Capability::CapabilityStorageImageWriteWithoutFormat => Some("shaderStorageImageWriteWithoutFormat"),
-        enums::Capability::CapabilityMultiViewport => Some("multiViewport"),
+        enums::Capability::CapabilityStorageImageReadWithoutFormat => Some("shader_storage_image_read_without_format"),
+        enums::Capability::CapabilityStorageImageWriteWithoutFormat => Some("shader_storage_image_write_without_format"),
+        enums::Capability::CapabilityMultiViewport => Some("multi_viewport"),
     }
 }
