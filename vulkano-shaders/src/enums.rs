@@ -533,5 +533,6 @@ enumeration! {
         CapabilityGeometryStreams = 54,
         CapabilityStorageImageReadWithoutFormat = 55,
         CapabilityStorageImageWriteWithoutFormat = 56,
+        CapabilityMultiViewport = 57,
     } Capability;
 }
