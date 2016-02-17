@@ -135,8 +135,13 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 }
             }
 
+            let input = {
+                let input = input_types.join(", ");
+                if input.is_empty() { input } else { input + "," }
+            };
+
             let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input})>",
-                            input = input_types.join(", ") + ",");
+                            input = input);
             (t, "vertex_shader_entry_point")
         },
 
@@ -169,8 +174,13 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 }
             }
 
+            let output = {
+                let output = output_types.join(", ");
+                if output.is_empty() { output } else { output + "," }
+            };
+
             let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output})>",
-                            output = output_types.join(", ") + ",");
+                            output = output);
             (t, "fragment_shader_entry_point")
         },
 
