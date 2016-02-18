@@ -210,6 +210,16 @@ impl<T, M> Buffer<[T], M> {
 
 unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
     #[inline]
+    fn requires_fence(&self) -> bool {
+        self.inner.memory.requires_fence()
+    }
+
+    #[inline]
+    fn requires_semaphore(&self) -> bool {
+        self.inner.memory.requires_semaphore()
+    }
+
+    #[inline]
     fn sharing_mode(&self) -> &SharingMode {
         &self.inner.sharing
     }

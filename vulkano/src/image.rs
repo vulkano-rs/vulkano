@@ -358,9 +358,30 @@ impl<Ty, F, M> Image<Ty, F, M>
     }
 }
 
+impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
+    where Ty: ImageTypeMarker
+{
+    type Object = vk::Image;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Image {
+        self.image
+    }
+}
+
 unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
     where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
+    #[inline]
+    fn requires_fence(&self) -> bool {
+        self.memory.requires_fence()
+    }
+
+    #[inline]
+    fn requires_semaphore(&self) -> bool {
+        self.memory.requires_semaphore()
+    }
+
     #[inline]
     fn sharing_mode(&self) -> &SharingMode {
         &self.sharing
@@ -372,7 +393,7 @@ unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
                   -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
     {
         let out = self.memory.gpu_access(write, 0, self.memory.size(), queue, fence, semaphore);
-        // FIXME: if the image is still in its initial transition phase, we need to return a second semaphore
+        // FIXME: if the image is in its initial transition phase, we need to return a second semaphore
         (out, None)
     }
 }
