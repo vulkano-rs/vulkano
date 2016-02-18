@@ -1,0 +1,21 @@
+[package]
+name = "vulkano"
+version = "0.1.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+build = "build.rs"
+description = "Safe wrapper for the Vulkan graphics API"
+
+[dependencies]
+shared_library = "0.1"
+lazy_static = "0.1"
+
+[build-dependencies]
+vk-sys = { path = "../vk-sys" }
+glsl-to-spirv = { path = "../glsl-to-spirv" }
+vulkano-shaders = { path = "../vulkano-shaders" }
+
+[dev-dependencies]
+gdi32-sys = "*"
+kernel32-sys = "*"
+user32-sys = "*"
+winapi = "*"

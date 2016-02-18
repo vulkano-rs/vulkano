@@ -1,0 +1,288 @@
+use std::mem;
+use std::ptr;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::TryLockError;
+
+use memory::ChunkProperties;
+use memory::CpuAccessible;
+use memory::CpuWriteAccessible;
+use memory::MemorySource;
+use memory::MemorySourceChunk;
+use memory::DeviceMemory;
+use memory::MappedDeviceMemory;
+use sync::Fence;
+use sync::Semaphore;
+
+use device::Device;
+use device::Queue;
+
+use VulkanObject;
+use VulkanPointers;
+use vk;
+
+/// Dummy marker whose strategy is to allocate a new chunk of memory for each allocation.
+///
+/// The memory will not be accessible since it is not necessarily in host-visible memory.
+///
+/// This is good for large buffers, but inefficient is you use a lot of small buffers.
+///
+/// The memory is locked globally. That means that it doesn't matter whether you access the buffer
+/// for reading or writing (like a `Mutex`).
+#[derive(Debug, Copy, Clone)]
+pub struct DeviceLocal;
+
+unsafe impl MemorySource for DeviceLocal {
+    type Chunk = DeviceLocalChunk;
+
+    #[inline]
+    fn is_sparse(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<DeviceLocalChunk, ()>
+    {
+        let mem_ty = device.physical_device().memory_types()
+                           .skip(memory_type_bits.trailing_zeros() as usize).next().unwrap();
+        let mem = try!(DeviceMemory::alloc(device, &mem_ty, size).map_err(|_| ()));
+
+        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
+        //       fulfill any alignment requirement
+        Ok(DeviceLocalChunk {
+            mem: mem,
+            semaphore: Mutex::new(None),
+        })
+    }
+}
+
+/// A chunk allocated from a `DeviceLocal`.
+pub struct DeviceLocalChunk {
+    mem: DeviceMemory,
+    semaphore: Mutex<Option<Arc<Semaphore>>>,
+}
+
+unsafe impl MemorySourceChunk for DeviceLocalChunk {
+    #[inline]
+    fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
+                  _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
+                  -> Option<Arc<Semaphore>>
+    {
+        assert!(semaphore.is_some());
+
+        let mut self_semaphore = self.semaphore.lock().unwrap();
+        mem::swap(&mut *self_semaphore, &mut semaphore);
+
+        semaphore
+    }
+
+    #[inline]
+    fn requires_fence(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        ChunkProperties::Regular {
+            memory: &self.mem,
+            offset: 0,
+            size: self.mem.size(),
+        }
+    }
+
+    #[inline]
+    fn may_alias(&self) -> bool {
+        false
+    }
+}
+
+/// Dummy marker whose strategy is to allocate a new chunk of memory for each allocation.
+///
+/// Guaranteed to allocate from a host-visible memory type.
+///
+/// This is good for large buffers, but inefficient is you use a lot of small buffers.
+///
+/// The memory is locked globally. That means that it doesn't matter whether you access the buffer
+/// for reading or writing (like a `Mutex`).
+#[derive(Debug, Copy, Clone)]
+pub struct HostVisible;
+
+unsafe impl MemorySource for HostVisible {
+    type Chunk = HostVisibleChunk;
+
+    #[inline]
+    fn is_sparse(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<HostVisibleChunk, ()>
+    {
+        let mem_ty = device.physical_device().memory_types()
+                           .filter(|t| (memory_type_bits & (1 << t.id())) != 0)
+                           .filter(|t| t.is_host_visible())
+                           .next().unwrap();
+        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, size).map_err(|_| ()));
+
+        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
+        //       fulfill any alignment requirement
+        Ok(HostVisibleChunk {
+            mem: mem,
+            lock: Mutex::new((None, None)),
+        })
+    }
+}
+
+/// A chunk allocated from a `HostVisible`.
+pub struct HostVisibleChunk {
+    mem: MappedDeviceMemory,
+    lock: Mutex<(Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
+}
+
+unsafe impl MemorySourceChunk for HostVisibleChunk {
+    #[inline]
+    fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
+                  fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
+                  -> Option<Arc<Semaphore>>
+    {
+        assert!(fence.is_some());
+        assert!(semaphore.is_some());
+
+        let mut self_lock = self.lock.lock().unwrap();
+        mem::swap(&mut self_lock.0, &mut semaphore);
+        self_lock.1 = fence;
+
+        semaphore
+    }
+
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        ChunkProperties::Regular {
+            memory: &self.mem.memory(),
+            offset: 0,
+            size: self.mem.memory().size(),
+        }
+    }
+
+    #[inline]
+    fn may_alias(&self) -> bool {
+        false
+    }
+}
+
+unsafe impl<'a, T: 'a> CpuAccessible<'a, T> for HostVisibleChunk {       // TODO: ?Sized
+    type Read = GpuAccess<'a, T>;
+
+    #[inline]
+    fn read(&'a self, timeout_ns: u64) -> GpuAccess<'a, T> {
+        self.write(timeout_ns)
+    }
+
+    #[inline]
+    fn try_read(&'a self) -> Option<GpuAccess<'a, T>> {
+        self.try_write()
+    }
+}
+
+unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       // TODO: ?Sized
+    type Write = GpuAccess<'a, T>;
+
+    #[inline]
+    fn write(&'a self, timeout_ns: u64) -> GpuAccess<'a, T> {
+        let pointer = self.mem.mapping_pointer() as *mut T;
+
+        let mut lock = self.lock.lock().unwrap();
+        if let Some(ref fence) = lock.1 {
+            fence.wait(timeout_ns).unwrap();        // FIXME: error
+        }
+        lock.1 = None;
+
+        // TODO: invalidate
+
+        GpuAccess {
+            mem: &self.mem,
+            guard: lock,
+            pointer: pointer,
+        }
+    }
+
+    #[inline]
+    fn try_write(&'a self) -> Option<GpuAccess<'a, T>> {
+        let pointer = self.mem.mapping_pointer() as *mut T;
+
+        let mut lock = match self.lock.try_lock() {
+            Ok(l) => l,
+            Err(TryLockError::Poisoned(_)) => panic!(),
+            Err(TryLockError::WouldBlock) => return None,
+        };
+
+        if let Some(ref fence) = lock.1 {
+            if fence.ready() != Ok(true) {      // TODO: we ignore ready()'s error here?
+                return None;
+            }
+        }
+
+        lock.1 = None;
+
+        // TODO: invalidate
+
+        Some(GpuAccess {
+            mem: &self.mem,
+            guard: lock,
+            pointer: pointer,
+        })
+    }
+}
+
+/// Object that can be used to read or write the content of a `HostVisibleChunk`.
+///
+/// Note that this object holds a mutex guard on the chunk. If another thread tries to access
+/// this memory's content or tries to submit a GPU command that uses this memory, it will block.
+pub struct GpuAccess<'a, T: ?Sized + 'a> {
+    mem: &'a MappedDeviceMemory,
+    guard: MutexGuard<'a, (Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
+    pointer: *mut T,
+}
+
+impl<'a, T: ?Sized + 'a> Deref for GpuAccess<'a, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        unsafe { &*self.pointer }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> DerefMut for GpuAccess<'a, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.pointer }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> Drop for GpuAccess<'a, T> {
+    #[inline]
+    fn drop(&mut self) {
+        // TODO: only flush if necessary
+
+        let vk = self.mem.memory().device().pointers();
+
+        let range = vk::MappedMemoryRange {
+            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+            pNext: ptr::null(),
+            memory: self.mem.memory().internal_object(),
+            offset: 0,
+            size: vk::WHOLE_SIZE,
+        };
+
+        // TODO: check result?
+        unsafe {
+            vk.FlushMappedMemoryRanges(self.mem.memory().device().internal_object(), 1, &range);
+        }
+    }
+}
