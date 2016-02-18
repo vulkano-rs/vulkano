@@ -151,11 +151,17 @@ impl Fence {
     /// timeout has elapsed.
     ///
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
-    pub fn wait(&self, timeout_ns: u64) -> Result<(), ()> {
+    pub fn wait(&self, timeout_ns: u64) -> Result<(), OomError> {       // FIXME: wrong error
         unsafe {
             let vk = self.device.pointers();
-            vk.WaitForFences(self.device.internal_object(), 1, &self.fence, vk::TRUE, timeout_ns);
-            Ok(())      // FIXME: 
+            let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
+                                                       &self.fence, vk::TRUE, timeout_ns)));
+
+            match r {
+                Success::Success => Ok(()),
+                Success::Timeout => panic!(),        // FIXME:
+                _ => unreachable!()
+            }
         }
     }
 
