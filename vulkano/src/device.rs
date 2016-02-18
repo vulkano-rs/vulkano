@@ -53,6 +53,7 @@ impl Device {
     /// - Panicks if you request more queues from a family than available.
     /// - Panicks if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
+    // TODO: return Arc<Queue> and handle synchronization in the Queue
     pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I)
                       -> Result<(Arc<Device>, Vec<Arc<Mutex<Queue>>>), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>
@@ -251,6 +252,7 @@ impl From<Error> for DeviceCreationError {
 }
 
 /// Represents a queue where commands can be submitted.
+// TODO: should use internal synchronization
 pub struct Queue {
     device: Arc<Device>,
     queue: vk::Queue,
