@@ -12,6 +12,7 @@ use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
 use memory::MemorySourceChunk;
+use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::MultiVertex;
 use sync::Fence;
@@ -35,6 +36,11 @@ pub struct InnerCommandBufferBuilder {
 
     // List of all resources that are used by this command buffer.
     resources: Vec<Arc<Resource>>,
+
+    // List of pipelines that are used by this command buffer.
+    //
+    // These are stored just so that they don't get destroyed.
+    pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
     graphics_pipeline: Option<vk::Pipeline>,
@@ -90,6 +96,7 @@ impl InnerCommandBufferBuilder {
             pool: pool.clone(),
             cmd: Some(cmd),
             resources: Vec::new(),
+            pipelines: Vec::new(),
             graphics_pipeline: None,
             compute_pipeline: None,
             dynamic_state: DynamicState::none(),
@@ -110,6 +117,7 @@ impl InnerCommandBufferBuilder {
 
             for cb in iter {
                 command_buffers.push(cb.cmd);
+                for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
                 for r in cb.resources.iter() { self.resources.push(r.clone()); }
             }
 
@@ -246,9 +254,8 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V>(mut self, pipeline: &Arc<GraphicsPipeline<V>>,
-                      vertices: V, dynamic: &DynamicState)
-                                -> InnerCommandBufferBuilder
+    pub unsafe fn draw<V: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V>>,
+                                   vertices: V, dynamic: &DynamicState) -> InnerCommandBufferBuilder
         where V: MultiVertex
     {
 
@@ -269,17 +276,17 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    fn bind_gfx_pipeline_state<V>(&mut self, pipeline: &Arc<GraphicsPipeline<V>>,
-                                  dynamic: &DynamicState)
+    fn bind_gfx_pipeline_state<V: 'static>(&mut self, pipeline: &Arc<GraphicsPipeline<V>>,
+                                           dynamic: &DynamicState)
     {
         let vk = self.device.pointers();
 
         if self.graphics_pipeline != Some(pipeline.internal_object()) {
-            // FIXME: add pipeline to resources list
             unsafe {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
                                    pipeline.internal_object());
             }
+            self.pipelines.push(pipeline.clone());
             self.graphics_pipeline = Some(pipeline.internal_object());
         }
 
@@ -419,6 +426,7 @@ impl InnerCommandBufferBuilder {
                 pool: self.pool.clone(),
                 cmd: cmd,
                 resources: mem::replace(&mut self.resources, Vec::new()),
+                pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
         }
     }
@@ -444,6 +452,7 @@ pub struct InnerCommandBuffer {
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
     resources: Vec<Arc<Resource>>,
+    pipelines: Vec<Arc<GenericPipeline>>,
 }
 
 impl InnerCommandBuffer {

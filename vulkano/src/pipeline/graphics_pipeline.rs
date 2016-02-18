@@ -13,6 +13,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+use pipeline::GenericPipeline;
 use pipeline::blend::Blend;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::multisample::Multisample;
@@ -284,6 +285,9 @@ impl<MultiVertex> GraphicsPipeline<MultiVertex> {
     pub fn has_dynamic_line_width(&self) -> bool {
         self.dynamic_line_width
     }
+}
+
+impl<MultiVertex> GenericPipeline for GraphicsPipeline<MultiVertex> {
 }
 
 impl<MultiVertex> VulkanObject for GraphicsPipeline<MultiVertex> {

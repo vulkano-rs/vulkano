@@ -199,7 +199,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     // FIXME: push constants
     pub fn draw<V>(self, pipeline: &Arc<GraphicsPipeline<V>>,
                    vertices: V, dynamic: &DynamicState) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex
+        where V: MultiVertex + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {

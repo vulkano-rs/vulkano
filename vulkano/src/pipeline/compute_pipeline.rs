@@ -3,6 +3,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use pipeline::GenericPipeline;
 use shader::EntryPoint;
 
 use device::Device;
@@ -72,6 +73,9 @@ impl<D, C> ComputePipeline<D, C> {
             output
         };
     }
+}
+
+impl GenericPipeline for ComputePipeline {
 }
 
 impl<D, C> Drop for ComputePipeline<D, C> {
