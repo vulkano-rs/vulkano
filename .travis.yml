@@ -5,6 +5,11 @@ rust:
     - nightly
     - stable
 
+addons:
+  apt:
+    packages:
+    - libstdc++6
+
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
