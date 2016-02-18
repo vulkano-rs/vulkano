@@ -44,11 +44,6 @@ pub struct InnerCommandBufferBuilder {
 
     // Current state of the dynamic state within the command buffer.
     dynamic_state: DynamicState,
-
-    // When we use a buffer whose sharing mode is exclusive in a different queue family, we have
-    // to transfer back ownership to the original queue family. To do so, we store the list of
-    // barriers that must be queued before calling `vkEndCommandBuffer`.
-    buffer_restore_queue_family: Vec<vk::BufferMemoryBarrier>,
 }
 
 impl InnerCommandBufferBuilder {
@@ -98,7 +93,6 @@ impl InnerCommandBufferBuilder {
             graphics_pipeline: None,
             compute_pipeline: None,
             dynamic_state: DynamicState::none(),
-            buffer_restore_queue_family: Vec::new(),
         })
     }
 
@@ -391,16 +385,6 @@ impl InnerCommandBufferBuilder {
         unsafe {
             let vk = self.device.pointers();
             let cmd = self.cmd.take().unwrap();
-
-            // committing the necessary barriers
-            if !self.buffer_restore_queue_family.is_empty() {
-                vk.CmdPipelineBarrier(cmd, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                      vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-                                      0, ptr::null(),
-                                      self.buffer_restore_queue_family.len() as u32,
-                                      self.buffer_restore_queue_family.as_ptr(),
-                                      0, ptr::null());
-            }
 
             // ending the commands recording
             try!(check_errors(vk.EndCommandBuffer(cmd)));
