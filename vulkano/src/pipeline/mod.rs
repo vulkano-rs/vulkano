@@ -11,6 +11,6 @@ pub mod input_assembly;
 pub mod multisample;
 pub mod raster;
 pub mod vertex;
-//pub mod viewport;
+pub mod viewport;
 
 pub trait GenericPipeline {}

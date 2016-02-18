@@ -17,7 +17,7 @@ pub struct InputAssembly {
 
 /// Describes how vertices must be grouped together to form primitives.
 ///
-/// Note that some tologies don't support primitive restart.
+/// Note that some topologies don't support primitive restart.
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum PrimitiveTopology {

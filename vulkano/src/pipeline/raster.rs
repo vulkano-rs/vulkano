@@ -1,6 +1,11 @@
+//! Stage when triangles are turned into pixels.
+//! 
+//! The rasterization is the stage when collections of triangles are turned into collections
+//! of pixels or samples.
+//!
 use vk;
 
-/// The rasterization stage is when collections of triangles are turned into collections of pixels.
+/// State of the rasterizer.
 #[derive(Clone, Debug)]
 pub struct Rasterization {
     /// If true, then the depth value of the vertices will be clamped to [0.0 ; 1.0]. If false,
@@ -11,6 +16,8 @@ pub struct Rasterization {
     /// has some side effects and you don't need to run the fragment shader.
     pub rasterizer_discard: bool,
 
+    /// This setting can ask the rasterizer to downgrade triangles into lines or points, or lines
+    /// into points.
     pub polygon_mode: PolygonMode,
 
     /// Specifies whether front faces or back faces should be discarded, or none, or both.

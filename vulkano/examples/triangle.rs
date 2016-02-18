@@ -174,8 +174,22 @@ fn main() {
             blend_constants: Some([0.0; 4]),
         };
 
-        vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &raster,
-                                                 &ms, &blend, &fs.main_entry_point(),
+        let viewports = vulkano::pipeline::viewport::ViewportsState::Fixed {
+            data: vec![(
+                vulkano::pipeline::viewport::Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [1244.0, 699.0],
+                    depth_range: 0.0 .. 1.0
+                },
+                vulkano::pipeline::viewport::Scissor {
+                    origin: [0, 0],
+                    dimensions: [1244, 699],
+                }
+            )],
+        };
+
+        vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
+                                                 &raster, &ms, &blend, &fs.main_entry_point(),
                                                  &renderpass.subpass(0).unwrap()).unwrap()
     };
 

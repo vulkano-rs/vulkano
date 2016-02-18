@@ -20,6 +20,7 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::Rasterization;
 use pipeline::vertex::MultiVertex;
 use pipeline::vertex::Vertex;
+use pipeline::viewport::ViewportsState;
 
 ///
 ///
@@ -30,6 +31,10 @@ pub struct GraphicsPipeline<MultiVertex> {
     pipeline: vk::Pipeline,
 
     dynamic_line_width: bool,
+    dynamic_viewport: bool,
+    dynamic_scissor: bool,
+
+    num_viewports: u32,
 
     marker: PhantomData<(MultiVertex,)>
 }
@@ -47,8 +52,8 @@ impl<MV> GraphicsPipeline<MV>
     ///
     // TODO: check all the device's limits
     pub fn new<V, F, R>(device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<V>,
-                        input_assembly: &InputAssembly, raster: &Rasterization,
-                        multisample: &Multisample, blend: &Blend,
+                        input_assembly: &InputAssembly, viewport: &ViewportsState,
+                        raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                         fragment_shader: &FragmentShaderEntryPoint<F>, render_pass: &Subpass<R>)
                         -> Result<Arc<GraphicsPipeline<MV>>, OomError>
     {
@@ -117,16 +122,37 @@ impl<MV> GraphicsPipeline<MV>
                 primitiveRestartEnable: if input_assembly.primitive_restart_enable { vk::TRUE } else { vk::FALSE },
             };
 
-            let vp = vk::Viewport { x: 0.0, y: 0.0, width: 1244.0, height: 699.0, minDepth: 0.0, maxDepth: 1.0 };
-            let sc = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: vk::Extent2D { width: 1244, height: 699 } };
-            let viewport = vk::PipelineViewportStateCreateInfo {
+            let (vp_vp, vp_sc, vp_num) = match *viewport {
+                ViewportsState::Fixed { ref data } => (
+                    data.iter().map(|e| e.0.clone().into()).collect::<Vec<vk::Viewport>>(),
+                    data.iter().map(|e| e.1.clone().into()).collect::<Vec<vk::Rect2D>>(),
+                    data.len() as u32
+                ),
+                ViewportsState::DynamicViewports { ref scissors } => {
+                    let num = scissors.len() as u32;
+                    let scissors = scissors.iter().map(|e| e.clone().into())
+                                           .collect::<Vec<vk::Rect2D>>();
+                    dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                    (vec![], scissors, num)
+                },
+                ViewportsState::DynamicScissors { ref viewports } => {
+                    let num = viewports.len() as u32;
+                    let viewports = viewports.iter().map(|e| e.clone().into())
+                                             .collect::<Vec<vk::Viewport>>();
+                    dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                    (viewports, vec![], num)
+                },
+                ViewportsState::Dynamic { num } => (vec![], vec![], num),
+            };
+
+            let viewport_info = vk::PipelineViewportStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                viewportCount: 1,       // FIXME:
-                pViewports: &vp,        // FIXME:
-                scissorCount: 1,        // FIXME:
-                pScissors: &sc,     // FIXME:
+                viewportCount: vp_num,
+                pViewports: vp_vp.as_ptr(),
+                scissorCount: vp_num,
+                pScissors: vp_sc.as_ptr(),
             };
 
             if raster.line_width.is_none() {
@@ -250,7 +276,7 @@ impl<MV> GraphicsPipeline<MV>
                 pVertexInputState: &vertex_input_state,
                 pInputAssemblyState: &input_assembly,
                 pTessellationState: ptr::null(),        // FIXME:
-                pViewportState: &viewport,
+                pViewportState: &viewport_info,
                 pRasterizationState: &rasterization,
                 pMultisampleState: &multisample,
                 pDepthStencilState: &depth_stencil,
@@ -274,6 +300,10 @@ impl<MV> GraphicsPipeline<MV>
             pipeline: pipeline,
 
             dynamic_line_width: raster.line_width.is_none(),
+            dynamic_viewport: viewport.dynamic_viewports(),
+            dynamic_scissor: viewport.dynamic_scissors(),
+
+            num_viewports: viewport.num_viewports(),
 
             marker: PhantomData,
         }))
