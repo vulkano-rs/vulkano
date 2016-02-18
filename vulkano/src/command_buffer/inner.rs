@@ -288,9 +288,9 @@ impl InnerCommandBufferBuilder {
     ///
     #[inline]
     pub unsafe fn begin_renderpass<R, F>(self, renderpass: &Arc<RenderPass<R>>,
-                                     framebuffer: &Arc<Framebuffer<F>>,
-                                     secondary_cmd_buffers: bool,
-                                     clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
+                                         framebuffer: &Arc<Framebuffer<F>>,
+                                         secondary_cmd_buffers: bool,
+                                         clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
         where R: RenderPassLayout
     {
         // FIXME: framebuffer synchronization
@@ -317,9 +317,15 @@ impl InnerCommandBufferBuilder {
             }
         }).collect::<Vec<_>>();
 
-        // TODO: change attachment image layouts if necessary, for both initial and final
+        // FIXME: change attachment image layouts if necessary, for both initial and final
         /*for attachment in R::attachments() {
 
+        }*/
+
+        // TODO: this doesn't work because Rust can't turn a Arc<ImageResource> into a Arc<Resource>
+        //       a work-around must be found
+        /*for attachment in framebuffer.attachments() {
+            self.resources.push(attachment.clone() as Arc<Resource>);
         }*/
 
         {

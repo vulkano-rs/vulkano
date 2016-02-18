@@ -56,7 +56,7 @@ pub unsafe trait RenderPassLayout {
 pub unsafe trait RenderPassLayoutExt<'a, M: 'a>: RenderPassLayout {
     type AttachmentsList;
 
-    fn ids(&self, &Self::AttachmentsList) -> Vec<u64>;
+    fn ids(&self, &Self::AttachmentsList) -> (Vec<Arc<ImageResource>>, Vec<u64>);
 }
 
 /// Describes a uniform value that will be used to fill an attachment at the start of the
@@ -126,11 +126,15 @@ macro_rules! renderpass {
                 }
             }
 
-            unsafe impl<'a, M: 'a> $crate::framebuffer::RenderPassLayoutExt<'a, M> for Layout {
-                type AttachmentsList = (&'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M>>);      // FIXME:
+            unsafe impl<'a, M> $crate::framebuffer::RenderPassLayoutExt<'a, M> for Layout
+                where M: $crate::memory::MemorySourceChunk + 'static
+            {
+                type AttachmentsList = &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M>>;      // FIXME:
 
-                fn ids(&self, l: &Self::AttachmentsList) -> Vec<u64> {
-                    vec![l.id()]
+                fn ids(&self, l: &Self::AttachmentsList) -> (Vec<Arc<$crate::image::ImageResource>>, Vec<u64>) {
+                    let a = vec![(**l).clone() as Arc<$crate::image::ImageResource>];
+                    let b = vec![l.id()];
+                    (a, b)
                 }
             }
 
@@ -370,9 +374,9 @@ impl<L> Framebuffer<L> {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
 
-        let framebuffer = unsafe {
-            let ids = renderpass.layout.ids(&attachments);
+        let (resources, ids) = renderpass.layout.ids(&attachments);
 
+        let framebuffer = unsafe {
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
@@ -396,7 +400,7 @@ impl<L> Framebuffer<L> {
             renderpass: renderpass.clone(),
             framebuffer: framebuffer,
             dimensions: dimensions,
-            resources: vec![],      // FIXME: important
+            resources: resources,
         }))
     }
 

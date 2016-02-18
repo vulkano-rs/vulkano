@@ -649,6 +649,42 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     pub fn id(&self) -> u64 { self.view }
 }
 
+unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
+    where Ty: ImageTypeMarker, M: MemorySourceChunk
+{
+    #[inline]
+    fn requires_fence(&self) -> bool {
+        self.image.requires_fence()
+    }
+
+    #[inline]
+    fn requires_semaphore(&self) -> bool {
+        self.image.requires_semaphore()
+    }
+
+    #[inline]
+    fn sharing_mode(&self) -> &SharingMode {
+        self.image.sharing_mode()
+    }
+
+    #[inline]
+    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                  semaphore: Option<Arc<Semaphore>>)
+                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+    {
+        self.image.gpu_access(write, queue, fence, semaphore)
+    }
+}
+
+unsafe impl<Ty, F, M> ImageResource for ImageView<Ty, F, M>
+    where Ty: ImageTypeMarker, M: MemorySourceChunk
+{
+    #[inline]
+    fn default_layout(&self) -> Layout {
+        self.image.default_layout()
+    }
+}
+
 impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     #[inline]
     fn drop(&mut self) {
