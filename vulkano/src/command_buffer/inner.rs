@@ -308,9 +308,9 @@ impl InnerCommandBufferBuilder {
         }).collect::<Vec<_>>();
 
         // TODO: change attachment image layouts if necessary, for both initial and final
-        for attachment in R::attachments() {
+        /*for attachment in R::attachments() {
 
-        }
+        }*/
 
         {
             let vk = self.device.pointers();

@@ -36,7 +36,6 @@ use check_errors;
 use vk;
 
 /// Types that describes the characteristics of a renderpass.
-// TODO: should that take `&self`?
 pub unsafe trait RenderPassLayout {
     /// The list of clear values to use when beginning to draw on this renderpass.
     type ClearValues;
@@ -47,16 +46,16 @@ pub unsafe trait RenderPassLayout {
     ///
     /// The format of the clear value **must** match the format of the attachment. Only attachments
     /// that are loaded with `LoadOp::Clear` must have an entry in the array.
-    fn convert_clear_values(Self::ClearValues) -> Vec<ClearValue>;
+    fn convert_clear_values(&self, Self::ClearValues) -> Vec<ClearValue>;
 
     /// Returns the descriptions of the attachments.
-    fn attachments() -> Vec<AttachmentDescription>;     // TODO: static array?
+    fn attachments(&self) -> Vec<AttachmentDescription>;     // TODO: static array?
 }
 
 pub unsafe trait RenderPassLayoutExt<'a, M: 'a>: RenderPassLayout {
     type AttachmentsList;
 
-    fn ids(&Self::AttachmentsList) -> Vec<u64>;
+    fn ids(&self, &Self::AttachmentsList) -> Vec<u64>;
 }
 
 /// Describes a uniform value that will be used to fill an attachment at the start of the
@@ -105,12 +104,12 @@ macro_rules! renderpass {
                 type ClearValues = [f32; 4];        // FIXME:
 
                 #[inline]
-                fn convert_clear_values(val: Self::ClearValues) -> Vec<$crate::framebuffer::ClearValue> {
+                fn convert_clear_values(&self, val: Self::ClearValues) -> Vec<$crate::framebuffer::ClearValue> {
                     vec![$crate::framebuffer::ClearValue::Float(val)]
                 }
 
                 #[inline]
-                fn attachments() -> Vec<$crate::framebuffer::AttachmentDescription> {
+                fn attachments(&self) -> Vec<$crate::framebuffer::AttachmentDescription> {
                     vec![
                         $(
                             $crate::framebuffer::AttachmentDescription {
@@ -129,12 +128,12 @@ macro_rules! renderpass {
             unsafe impl<'a, M: 'a> $crate::framebuffer::RenderPassLayoutExt<'a, M> for Layout {
                 type AttachmentsList = (&'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M>>);      // FIXME:
 
-                fn ids(l: &Self::AttachmentsList) -> Vec<u64> {
+                fn ids(&self, l: &Self::AttachmentsList) -> Vec<u64> {
                     vec![l.id()]
                 }
             }
 
-            $crate::framebuffer::RenderPass::<Layout>::new($device)
+            $crate::framebuffer::RenderPass::<Layout>::new($device, Layout)
         }
     );
 
@@ -199,14 +198,14 @@ pub struct RenderPass<L> {
     device: Arc<Device>,
     renderpass: vk::RenderPass,
     num_passes: u32,
-    marker: PhantomData<L>,
+    layout: L,
 }
 
 impl<L> RenderPass<L> where L: RenderPassLayout {
-    pub fn new(device: &Arc<Device>) -> Result<Arc<RenderPass<L>>, OomError> {
+    pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
         let vk = device.pointers();
 
-        let attachments = L::attachments().iter().map(|attachment| {
+        let attachments = layout.attachments().iter().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
                 format: attachment.format as u32,
@@ -221,7 +220,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
         }).collect::<Vec<_>>();
 
         // FIXME: totally hacky
-        let color_attachment_references = L::attachments().iter().map(|attachment| {
+        let color_attachment_references = layout.attachments().iter().map(|attachment| {
             vk::AttachmentReference {
                 attachment: 0,
                 layout: vk::IMAGE_LAYOUT_GENERAL,
@@ -266,7 +265,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
-            marker: PhantomData,
+            layout: layout,
         }))
     }
 
@@ -302,6 +301,12 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     /// the other renderpass.
     pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool {
         true        // FIXME: 
+    }
+
+    /// Returns the layout used to create this renderpass.
+    #[inline]
+    pub fn layout(&self) -> &L {
+        &self.layout
     }
 }
 
@@ -364,7 +369,7 @@ impl<L> Framebuffer<L> {
         let device = renderpass.device.clone();
 
         let framebuffer = unsafe {
-            let ids = L::ids(&attachments);
+            let ids = renderpass.layout.ids(&attachments);
 
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -416,6 +421,12 @@ impl<L> Framebuffer<L> {
     #[inline]
     pub fn layers(&self) -> u32 {
         self.dimensions.2
+    }
+
+    /// Returns the renderpass that was used to create this framebuffer.
+    #[inline]
+    pub fn renderpass(&self) -> &Arc<RenderPass<L>> {
+        &self.renderpass
     }
 }
 
