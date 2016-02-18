@@ -453,8 +453,7 @@ impl InnerCommandBuffer {
         };
 
         unsafe {
-            try!(check_errors(vk.QueueSubmit(queue.internal_object(), 1,
-                                             &infos, mem::transmute(0u64) /*vk::NULL_HANDLE*/)));
+            try!(check_errors(vk.QueueSubmit(queue.internal_object(), 1, &infos, 0)));
         }
 
         Ok(())

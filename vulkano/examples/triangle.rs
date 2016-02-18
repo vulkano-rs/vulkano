@@ -138,9 +138,16 @@ fn main() {
     // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
+    // We are going to create a command buffer below. Command buffers need to be allocated
+    // from a *command buffer pool*, so we create the pool.
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
+                                                  .expect("failed to create command buffer pool");
+
     // We are going to draw on the images returned when creating the swapchain. To do so, we must
     // convert them into *image views*. TODO: explain more
     let images = images.into_iter().map(|image| {
+        let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,
+                                     &mut queue.lock().unwrap()).unwrap();
         vulkano::image::ImageView::new(&image).expect("failed to create image view")
     }).collect::<Vec<_>>();
 
@@ -180,11 +187,6 @@ fn main() {
     let framebuffers = images.iter().map(|image| {
         vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), image).unwrap()
     }).collect::<Vec<_>>();
-
-    // We are going to create a command buffer right below. Command buffers need to be allocated
-    // from a *command buffer pool*, so we create the pool.
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
-                                                  .expect("failed to create command buffer pool");
 
     // The final initialization step is to create a command buffer.
     //

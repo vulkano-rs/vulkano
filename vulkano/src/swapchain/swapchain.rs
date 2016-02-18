@@ -8,6 +8,7 @@ use device::Device;
 use device::Queue;
 use formats::FormatMarker;
 use image::Image;
+use image::ImagePrototype;
 use image::Type2d;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
@@ -58,7 +59,7 @@ impl Swapchain {
     pub fn new<F>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                   dimensions: [u32; 2], layers: u32, usage: &ImageUsage,
                   transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                  clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<Image<Type2d, F, SwapchainAllocatedChunk>>>), OomError>
+                  clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
         where F: FormatMarker
     {
         // FIXME: check that the parameters are supported

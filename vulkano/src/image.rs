@@ -19,7 +19,9 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use command_buffer::CommandBufferPool;
 use device::Device;
+use device::Queue;
 use formats::FormatMarker;
 use memory::ChunkProperties;
 use memory::MemorySource;
@@ -82,20 +84,6 @@ pub unsafe trait CanCreateView<Dest>: ImageTypeMarker where Dest: ImageViewTypeM
 unsafe impl<T> CanCreateView<T> for T where T: ImageTypeMarker + ImageViewTypeMarker {}
 pub unsafe trait MultisampleType: TypeMarker {}
 
-/// A storage for pixels or arbitrary data.
-pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
-    device: Arc<Device>,
-    image: vk::Image,
-    memory: M,
-    usage: vk::ImageUsageFlagBits,
-    dimensions: Ty::Dimensions,
-    samples: Ty::NumSamples,
-    mipmaps: u32,
-    needs_destruction: bool,
-    default_layout: Layout,
-    marker: PhantomData<F>,
-}
-
 /// Specifies how many mipmaps must be allocated.
 ///
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
@@ -119,6 +107,20 @@ impl From<u32> for MipmapsCount {
     }
 }
 
+/// A storage for pixels or arbitrary data.
+pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
+    device: Arc<Device>,
+    image: vk::Image,
+    memory: M,
+    usage: vk::ImageUsageFlagBits,
+    dimensions: Ty::Dimensions,
+    samples: Ty::NumSamples,
+    mipmaps: u32,
+    needs_destruction: bool,
+    layout: Layout,
+    marker: PhantomData<F>,
+}
+
 impl<Ty, F, M> Image<Ty, F, M>
     where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatMarker
 {
@@ -132,7 +134,7 @@ impl<Ty, F, M> Image<Ty, F, M>
     ///
     pub fn new<S, Mi>(device: &Arc<Device>, usage: &Usage, memory: S, dimensions: Ty::Dimensions,
                       num_samples: Ty::NumSamples, mipmaps: Mi)
-                      -> Result<Arc<Image<Ty, F, M>>, OomError>
+                      -> Result<ImagePrototype<Ty, F, M>, OomError>
         where S: MemorySource<Chunk = M>, Mi: Into<MipmapsCount>
     {
         let vk = device.pointers();
@@ -213,18 +215,20 @@ impl<Ty, F, M> Image<Ty, F, M>
             }
         }
 
-        Ok(Arc::new(Image {
-            device: device.clone(),
-            image: image,
-            memory: memory,
-            usage: usage,
-            dimensions: dimensions.clone(),
-            samples: num_samples,
-            mipmaps: mipmaps,
-            needs_destruction: true,
-            default_layout: Layout::General,        // FIXME:
-            marker: PhantomData,
-        }))
+        Ok(ImagePrototype {
+            image: Image {
+                device: device.clone(),
+                image: image,
+                memory: memory,
+                usage: usage,
+                dimensions: dimensions.clone(),
+                samples: num_samples,
+                mipmaps: mipmaps,
+                needs_destruction: true,
+                layout: Layout::Undefined,        // TODO:
+                marker: PhantomData,
+            },
+        })
     }
 
     /// Creates an image from a raw handle. The image won't be destroyed.
@@ -232,20 +236,22 @@ impl<Ty, F, M> Image<Ty, F, M>
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw_unowned(device: &Arc<Device>, handle: u64, memory: M, usage: u32,
                                    dimensions: Ty::Dimensions, samples: Ty::NumSamples, mipmaps: u32)
-                                   -> Arc<Image<Ty, F, M>>
+                                   -> ImagePrototype<Ty, F, M>
     {
-        Arc::new(Image {
-            device: device.clone(),
-            image: handle,
-            memory: memory,
-            usage: usage,
-            dimensions: dimensions.clone(),
-            samples: samples,
-            mipmaps: mipmaps,
-            needs_destruction: false,
-            default_layout: Layout::General,        // FIXME:
-            marker: PhantomData,
-        })
+        ImagePrototype{
+            image: Image {
+                device: device.clone(),
+                image: handle,
+                memory: memory,
+                usage: usage,
+                dimensions: dimensions.clone(),
+                samples: samples,
+                mipmaps: mipmaps,
+                needs_destruction: false,
+                layout: Layout::Undefined,
+                marker: PhantomData,
+            },
+        }
     }
 
     /// Returns the dimensions of this image.
@@ -328,7 +334,7 @@ unsafe impl<Ty, F, M> ImageGpuAccess for Image<Ty, F, M>
 {
     #[inline]
     fn default_layout(&self) -> Layout {
-        self.default_layout
+        self.layout
     }
 }
 
@@ -345,6 +351,108 @@ impl<Ty, F, M> Drop for Image<Ty, F, M>
             let vk = self.device.pointers();
             vk.DestroyImage(self.device.internal_object(), self.image, ptr::null());
         }
+    }
+}
+
+pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker {
+    image: Image<Ty, F, M>,
+}
+
+impl<Ty, F, M> ImagePrototype<Ty, F, M>
+    where Ty: ImageTypeMarker
+{
+    /// Transitions the image prototype into a real image by submitting a one-shot command buffer.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if `layout` is `Undefined` or `Preinitialized`.
+    // FIXME: PresentSrc is only allowed for swapchain images
+    pub fn transition(self, layout: Layout, pool: &CommandBufferPool, submit_queue: &mut Queue)
+                      -> Result<Arc<Image<Ty, F, M>>, OomError>     // FIXME: error type
+    {
+        // FIXME: check pool and submit queue correspondance
+
+        assert!(layout != Layout::Undefined);
+        assert!(layout != Layout::Preinitialized);
+
+        let mut image = self.image;
+        let old_layout = image.layout;
+        image.layout = layout;
+
+        let device = image.device.clone();
+        let vk = device.pointers();
+
+        unsafe {
+            let cmd = {
+                let infos = vk::CommandBufferAllocateInfo {
+                    sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                    pNext: ptr::null(),
+                    commandPool: pool.internal_object(),
+                    level: vk::COMMAND_BUFFER_LEVEL_SECONDARY,
+                    commandBufferCount: 1,
+                };
+
+                let mut output = mem::uninitialized();
+                try!(check_errors(vk.AllocateCommandBuffers(device.internal_object(), &infos,
+                                                            &mut output)));
+                output
+            };
+
+            {
+                let infos = vk::CommandBufferBeginInfo {
+                    sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    pNext: ptr::null(),
+                    flags: vk::COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                    pInheritanceInfo: ptr::null(),
+                };
+
+                try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
+            }
+
+            {
+                let barrier = vk::ImageMemoryBarrier {
+                    sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    pNext: ptr::null(),
+                    srcAccessMask: 0,
+                    dstAccessMask: vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    oldLayout: image.layout as u32,
+                    newLayout: layout as u32,
+                    srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                    dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                    image: image.image,
+                    subresourceRange: vk::ImageSubresourceRange {
+                        aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                        baseMipLevel: 0,
+                        levelCount: vk::REMAINING_MIP_LEVELS,
+                        baseArrayLayer: 0,
+                        layerCount: vk::REMAINING_ARRAY_LAYERS,
+                    }
+                };
+
+                vk.CmdPipelineBarrier(cmd, 0, vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0,
+                                      ptr::null(), 0, ptr::null(), 1, &barrier);
+            }
+
+            try!(check_errors(vk.EndCommandBuffer(cmd)));
+
+            {
+                let infos = vk::SubmitInfo {
+                    sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+                    pNext: ptr::null(),
+                    waitSemaphoreCount: 0,
+                    pWaitSemaphores: ptr::null(),
+                    pWaitDstStageMask: ptr::null(),
+                    commandBufferCount: 1,
+                    pCommandBuffers: &cmd,
+                    signalSemaphoreCount: 0,            // TODO:
+                    pSignalSemaphores: ptr::null(),         // TODO:
+                };
+
+                try!(check_errors(vk.QueueSubmit(submit_queue.internal_object(), 1, &infos, 0)));
+            }
+        }
+
+        Ok(Arc::new(image))
     }
 }
 
