@@ -204,6 +204,7 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
 
     #[inline]
     fn write(&'a self, timeout_ns: u64) -> GpuAccess<'a, T> {
+        let vk = self.mem.memory().device().pointers();
         let pointer = self.mem.mapping_pointer() as *mut T;
 
         let mut lock = self.lock.lock().unwrap();
@@ -212,7 +213,20 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
         }
         lock.1 = None;
 
-        // TODO: invalidate
+        // TODO: only invalidate if necessary
+        let range = vk::MappedMemoryRange {
+            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+            pNext: ptr::null(),
+            memory: self.mem.memory().internal_object(),
+            offset: 0,
+            size: vk::WHOLE_SIZE,
+        };
+
+        // TODO: check result?
+        unsafe {
+            vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                            1, &range);
+        }
 
         GpuAccess {
             mem: &self.mem,
@@ -223,6 +237,7 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
 
     #[inline]
     fn try_write(&'a self) -> Option<GpuAccess<'a, T>> {
+        let vk = self.mem.memory().device().pointers();
         let pointer = self.mem.mapping_pointer() as *mut T;
 
         let mut lock = match self.lock.try_lock() {
@@ -239,7 +254,20 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
 
         lock.1 = None;
 
-        // TODO: invalidate
+        // TODO: only invalidate if necessary
+        let range = vk::MappedMemoryRange {
+            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+            pNext: ptr::null(),
+            memory: self.mem.memory().internal_object(),
+            offset: 0,
+            size: vk::WHOLE_SIZE,
+        };
+
+        // TODO: check result?
+        unsafe {
+            vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                            1, &range);
+        }
 
         Some(GpuAccess {
             mem: &self.mem,
