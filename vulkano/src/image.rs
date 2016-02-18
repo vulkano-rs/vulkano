@@ -26,6 +26,8 @@ use formats::FormatMarker;
 use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
+use sync::Resource;
+use sync::SharingMode;
 
 use OomError;
 use VulkanObject;
@@ -33,7 +35,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait ImageGpuAccess {
+pub unsafe trait ImageGpuAccess: Resource {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
     /// command buffer, it is switched from this default layout to something else (if necessary),
     /// then back again to the default.
@@ -121,6 +123,8 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
     // Number of mipmaps in the image.
     mipmaps: u32,
 
+    sharing: SharingMode,
+
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
 
@@ -144,10 +148,10 @@ impl<Ty, F, M> Image<Ty, F, M>
     /// - Panicks if the number of mipmaps is 0.
     /// - Panicks if the number of samples is 0.
     ///
-    pub fn new<S, Mi>(device: &Arc<Device>, usage: &Usage, memory: S, dimensions: Ty::Dimensions,
-                      num_samples: Ty::NumSamples, mipmaps: Mi)
-                      -> Result<ImagePrototype<Ty, F, M>, OomError>
-        where S: MemorySource<Chunk = M>, Mi: Into<MipmapsCount>
+    pub fn new<S, Mi, Sh>(device: &Arc<Device>, usage: &Usage, memory: S, sharing: Sh,
+                          dimensions: Ty::Dimensions, num_samples: Ty::NumSamples, mipmaps: Mi)
+                          -> Result<ImagePrototype<Ty, F, M>, OomError>
+        where S: MemorySource<Chunk = M>, Mi: Into<MipmapsCount>, Sh: Into<SharingMode>
     {
         let vk = device.pointers();
 
@@ -177,7 +181,15 @@ impl<Ty, F, M> Image<Ty, F, M>
             MipmapsCount::One => 1,
         };
 
+        let sharing = sharing.into();
+
         let image = unsafe {
+            let (sh_mode, sh_count, sh_indices) = match sharing {
+                SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
+                                                     ids.as_ptr()),
+            };
+
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -194,9 +206,9 @@ impl<Ty, F, M> Image<Ty, F, M>
                 samples: samples,
                 tiling: vk::IMAGE_TILING_OPTIMAL,           // TODO:
                 usage: usage,
-                sharingMode: vk::SHARING_MODE_EXCLUSIVE,        // TODO:
-                queueFamilyIndexCount: 0,                   // TODO:
-                pQueueFamilyIndices: ptr::null(),                   // TODO:
+                sharingMode: sh_mode,
+                queueFamilyIndexCount: sh_count,
+                pQueueFamilyIndices: sh_indices,
                 initialLayout: vk::IMAGE_LAYOUT_UNDEFINED,      // TODO:
             };
 
@@ -236,6 +248,7 @@ impl<Ty, F, M> Image<Ty, F, M>
                 dimensions: dimensions.clone(),
                 samples: num_samples,
                 mipmaps: mipmaps,
+                sharing: sharing,
                 needs_destruction: true,
                 layout: Layout::Undefined,        // TODO:
                 marker: PhantomData,
@@ -246,8 +259,9 @@ impl<Ty, F, M> Image<Ty, F, M>
     /// Creates an image from a raw handle. The image won't be destroyed.
     ///
     /// This function is for example used at the swapchain's initialization.
-    pub unsafe fn from_raw_unowned(device: &Arc<Device>, handle: u64, memory: M, usage: u32,
-                                   dimensions: Ty::Dimensions, samples: Ty::NumSamples, mipmaps: u32)
+    pub unsafe fn from_raw_unowned(device: &Arc<Device>, handle: u64, memory: M,
+                                   sharing: SharingMode, usage: u32, dimensions: Ty::Dimensions,
+                                   samples: Ty::NumSamples, mipmaps: u32)
                                    -> ImagePrototype<Ty, F, M>
     {
         ImagePrototype{
@@ -259,6 +273,7 @@ impl<Ty, F, M> Image<Ty, F, M>
                 dimensions: dimensions.clone(),
                 samples: samples,
                 mipmaps: mipmaps,
+                sharing: sharing,
                 needs_destruction: false,
                 layout: Layout::Undefined,
                 marker: PhantomData,
@@ -341,6 +356,15 @@ impl<Ty, F, M> Image<Ty, F, M>
     }
 }
 
+unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
+    where Ty: ImageTypeMarker
+{
+    #[inline]
+    fn sharing_mode(&self) -> &SharingMode {
+        &self.sharing
+    }
+}
+
 unsafe impl<Ty, F, M> ImageGpuAccess for Image<Ty, F, M>
     where Ty: ImageTypeMarker
 {
@@ -366,6 +390,9 @@ impl<Ty, F, M> Drop for Image<Ty, F, M>
     }
 }
 
+/// Prototype of an image.
+///
+/// Needs to be transitionned to a proper layout in order to be turned into a regular `Image`.
 pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker {
     image: Image<Ty, F, M>,
 }

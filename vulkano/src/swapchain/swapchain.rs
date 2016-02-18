@@ -19,6 +19,7 @@ use swapchain::Surface;
 use swapchain::SurfaceTransform;
 use sync::Fence;
 use sync::Semaphore;
+use sync::SharingMode;
 
 use check_errors;
 use Error;
@@ -56,11 +57,11 @@ impl Swapchain {
     /// - Panicks if the device and the surface don't belong to the same instance.
     /// - Panicks if `color_attachment` is false in `usage`.
     ///
-    pub fn new<F>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
-                  dimensions: [u32; 2], layers: u32, usage: &ImageUsage,
-                  transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                  clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
-        where F: FormatMarker
+    pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
+                     dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
+                     transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
+                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
+        where F: FormatMarker, S: Into<SharingMode>
     {
         // FIXME: check that the parameters are supported
 
@@ -70,7 +71,15 @@ impl Swapchain {
         assert!(usage.color_attachment);
         let usage = usage.to_usage_bits();
 
+        let sharing = sharing.into();
+
         let swapchain = unsafe {
+            let (sh_mode, sh_count, sh_indices) = match sharing {
+                SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
+                                                     ids.as_ptr()),
+            };
+
             let infos = vk::SwapchainCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
                 pNext: ptr::null(),
@@ -82,9 +91,9 @@ impl Swapchain {
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
                 imageUsage: usage,
-                imageSharingMode: vk::SHARING_MODE_EXCLUSIVE,       // FIXME:
-                queueFamilyIndexCount: 0,       // FIXME:
-                pQueueFamilyIndices: ptr::null(),      // FIXME:
+                imageSharingMode: sh_mode,
+                queueFamilyIndexCount: sh_count,
+                pQueueFamilyIndices: sh_indices,
                 preTransform: transform as u32,
                 compositeAlpha: alpha as u32,
                 presentMode: mode as u32,
@@ -120,7 +129,7 @@ impl Swapchain {
 
         let images = images.into_iter().map(|image| unsafe {
             let mem = SwapchainAllocatedChunk { swapchain: swapchain.clone() };
-            Image::from_raw_unowned(&device, image, mem, usage, dimensions, (), 1)
+            Image::from_raw_unowned(&device, image, mem, sharing.clone(), usage, dimensions, (), 1)
         }).collect::<Vec<_>>();
 
         Ok((swapchain, images))

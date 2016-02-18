@@ -26,6 +26,8 @@ use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
+use sync::Resource;
+use sync::SharingMode;
 
 use OomError;
 use VulkanObject;
@@ -44,32 +46,38 @@ struct Inner<M> {
     buffer: vk::Buffer,
     size: usize,
     usage: vk::BufferUsageFlags,
-    queue_families: Vec<u32>,     // TODO: use smallvec instead
+    sharing: SharingMode,
 }
 
 impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
     /// Creates a new buffer.
-    pub fn new<S>(device: &Arc<Device>, usage: &Usage, memory: S)
-                  -> Result<Arc<Buffer<T, M>>, OomError>
-        where S: MemorySource<Chunk = M>
+    pub fn new<S, Sh>(device: &Arc<Device>, usage: &Usage, memory: S, sharing: Sh)
+                      -> Result<Arc<Buffer<T, M>>, OomError>
+        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
     {
         let vk = device.pointers();
 
         let usage = usage.to_usage_bits();
-        let queue_families = vec![0];       // TODO: let user choose
+        let sharing = sharing.into();
 
         assert!(!memory.is_sparse());       // not implemented
 
         let buffer = unsafe {
+            let (sh_mode, sh_count, sh_indices) = match sharing {
+                SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
+                                                     ids.as_ptr()),
+            };
+
             let infos = vk::BufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,       // TODO: sparse resources binding
                 size: mem::size_of::<T>() as u64,
                 usage: usage,
-                sharingMode: if queue_families.len() >= 2 { vk::SHARING_MODE_EXCLUSIVE } else { vk::SHARING_MODE_CONCURRENT },
-                queueFamilyIndexCount: if queue_families.len() >= 2 { queue_families.len() as u32 } else { 0 },
-                pQueueFamilyIndices: if queue_families.len() >= 2 { queue_families.as_ptr() } else { ptr::null() },
+                sharingMode: sh_mode,
+                queueFamilyIndexCount: sh_count,
+                pQueueFamilyIndices: sh_indices,
             };
 
             let mut output = mem::uninitialized();
@@ -107,7 +115,7 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
                 buffer: buffer,
                 size: mem_reqs.size as usize,
                 usage: usage,
-                queue_families: queue_families,
+                sharing: sharing,
             }
         }))
     }
@@ -194,6 +202,13 @@ impl<T, M> Buffer<[T], M> {
     #[inline]
     pub fn len(&self) -> usize {
         self.size() / mem::size_of::<T>()
+    }
+}
+
+unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> {
+    #[inline]
+    fn sharing_mode(&self) -> &SharingMode {
+        &self.inner.sharing
     }
 }
 
@@ -343,6 +358,13 @@ pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
     inner: &'a Inner<M>,
     offset: usize,
     size: usize,
+}
+
+unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M> {
+    #[inline]
+    fn sharing_mode(&self) -> &SharingMode {
+        &self.inner.sharing
+    }
 }
 
 impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {

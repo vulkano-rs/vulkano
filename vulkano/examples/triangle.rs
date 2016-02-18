@@ -80,7 +80,7 @@ fn main() {
 
         vulkano::swapchain::Swapchain::new(&device, &surface, 3,
                                            vulkano::formats::B8G8R8A8Srgb, dimensions, 1,
-                                           &usage, vulkano::swapchain::SurfaceTransform::Identity,
+                                           &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true).expect("failed to create swapchain")
     };
@@ -101,7 +101,7 @@ fn main() {
     // efficient memory possible.
     let vertex_buffer: Arc<vulkano::buffer::Buffer<[Vertex; 3], _>> =
                                 vulkano::buffer::Buffer::new(&device, &vulkano::buffer::Usage::all(),
-                                                             vulkano::memory::HostVisible)
+                                                             vulkano::memory::HostVisible, &queue)
                                                                 .expect("failed to create buffer");
     struct Vertex { position: [f32; 2] }
     impl_vertex!(Vertex, position);

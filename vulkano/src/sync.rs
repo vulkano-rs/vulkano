@@ -12,14 +12,44 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use device::Device;
+use device::Queue;
 use OomError;
 use Success;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
 use vk;
+
+pub unsafe trait Resource {
+    fn sharing_mode(&self) -> &SharingMode;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SharingMode {
+    Exclusive(u32),
+    Concurrent(Vec<u32>),       // TODO: Vec is too expensive here
+}
+
+impl<'a> From<&'a Arc<Mutex<Queue>>> for SharingMode {
+    #[inline]
+    fn from(queue: &'a Arc<Mutex<Queue>>) -> SharingMode {
+        let queue = queue.lock().unwrap();      // TODO: meh
+        SharingMode::Exclusive(queue.family().id())
+    }
+}
+
+impl<'a> From<&'a [&'a Arc<Mutex<Queue>>]> for SharingMode {
+    #[inline]
+    fn from(queues: &'a [&'a Arc<Mutex<Queue>>]) -> SharingMode {
+        SharingMode::Concurrent(queues.iter().map(|queue| {
+            let queue = queue.lock().unwrap();      // TODO: meh
+            queue.family().id()
+        }).collect())
+    }
+}
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
