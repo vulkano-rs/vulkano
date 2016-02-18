@@ -32,7 +32,9 @@ pub struct {name} {{
 impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
-    pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>) -> {name} {{
+    pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>)
+                -> Result<{name}, ::vulkano::OomError>
+    {{
 
         "#, name = name));
 
@@ -54,9 +56,9 @@ impl {name} {{
         unsafe {{
             let data = [{spirv_data}];
 
-            {name} {{
-                shader: ::vulkano::shader::ShaderModule::new(device, &data).unwrap()    // FIXME: try!()
-            }}
+            Ok({name} {{
+                shader: try!(::vulkano::shader::ShaderModule::new(device, &data))
+            }})
         }}
     }}
 

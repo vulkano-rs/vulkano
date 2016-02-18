@@ -130,9 +130,9 @@ fn main() {
     //
     // Because of some restrictions with the `include!` macro, we need to use a module.
     mod vs { include!{concat!(env!("OUT_DIR"), "/examples-triangle_vs.rs")} }
-    let vs = vs::TriangleShader::load(&device);
+    let vs = vs::TriangleShader::load(&device).expect("failed to create shader module");
     mod fs { include!{concat!(env!("OUT_DIR"), "/examples-triangle_fs.rs")} }
-    let fs = fs::TriangleShader::load(&device);
+    let fs = fs::TriangleShader::load(&device).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
     // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this
