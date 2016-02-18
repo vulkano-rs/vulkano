@@ -45,8 +45,9 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
         return Ok(spirv_output);
     }
 
-    let error = String::from_utf8(output.stdout).expect("output of glsl compiler is not UTF-8");
-    return Err(error);
+    let error1 = String::from_utf8(output.stdout).expect("output of glsl compiler is not UTF-8");
+    let error2 = String::from_utf8(output.stderr).expect("output of glsl compiler is not UTF-8");
+    return Err(error1 + &error2);
 }
 
 /// Type of shader.
