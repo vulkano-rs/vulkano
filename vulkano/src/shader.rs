@@ -29,6 +29,8 @@ impl ShaderModule {
     {
         let vk = device.pointers();
 
+        assert!((spirv.len() % 4) == 0);
+
         let module = {
             let infos = vk::ShaderModuleCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,

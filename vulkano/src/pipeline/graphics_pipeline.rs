@@ -117,7 +117,7 @@ impl<MV> GraphicsPipeline<MV>
                 primitiveRestartEnable: if input_assembly.primitive_restart_enable { vk::TRUE } else { vk::FALSE },
             };
 
-            let vp = vk::Viewport { x: 0.0, y: 0.0, width: 1244.0, height: 699.0, minDepth: 0.0, maxDepth: 0.0 };
+            let vp = vk::Viewport { x: 0.0, y: 0.0, width: 1244.0, height: 699.0, minDepth: 0.0, maxDepth: 1.0 };
             let sc = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: vk::Extent2D { width: 1244, height: 699 } };
             let viewport = vk::PipelineViewportStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -150,6 +150,7 @@ impl<MV> GraphicsPipeline<MV>
             };
 
             assert!(multisample.rasterization_samples >= 1);
+            // FIXME: check that rasterization_samples is equal to what's in the renderpass
             if let Some(s) = multisample.sample_shading { assert!(s >= 0.0 && s <= 1.0); }
             let multisample = vk::PipelineMultisampleStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -158,7 +159,7 @@ impl<MV> GraphicsPipeline<MV>
                 rasterizationSamples: multisample.rasterization_samples,
                 sampleShadingEnable: if multisample.sample_shading.is_some() { vk::TRUE } else { vk::FALSE },
                 minSampleShading: multisample.sample_shading.unwrap_or(1.0),
-                pSampleMask: multisample.sample_mask.as_ptr(),
+                pSampleMask: ptr::null(),   //multisample.sample_mask.as_ptr(),     // FIXME:
                 alphaToCoverageEnable: if multisample.alpha_to_coverage { vk::TRUE } else { vk::FALSE },
                 alphaToOneEnable: if multisample.alpha_to_one { vk::TRUE } else { vk::FALSE },
             };
@@ -169,22 +170,22 @@ impl<MV> GraphicsPipeline<MV>
                 flags: 0,   // reserved
                 depthTestEnable: vk::FALSE,          // FIXME:
                 depthWriteEnable: vk::FALSE,         // FIXME:
-                depthCompareOp: 0,           // FIXME:
+                depthCompareOp: vk::COMPARE_OP_ALWAYS,           // FIXME:
                 depthBoundsTestEnable: vk::FALSE,            // FIXME:
                 stencilTestEnable: vk::FALSE,            // FIXME:
                 front: vk::StencilOpState {
-                    failOp: 0,           // FIXME:
-                    passOp: 0,           // FIXME:
-                    depthFailOp: 0,          // FIXME:
+                    failOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                    passOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                    depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
                     compareOp: 0,            // FIXME:
                     compareMask: 0,          // FIXME:
                     writeMask: 0,            // FIXME:
                     reference: 0,            // FIXME:
                 },
                 back: vk::StencilOpState {
-                    failOp: 0,           // FIXME:
-                    passOp: 0,           // FIXME:
-                    depthFailOp: 0,          // FIXME:
+                    failOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                    passOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                    depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
                     compareOp: 0,            // FIXME:
                     compareMask: 0,          // FIXME:
                     writeMask: 0,            // FIXME:
@@ -259,7 +260,7 @@ impl<MV> GraphicsPipeline<MV>
                 renderPass: render_pass.renderpass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
-                basePipelineIndex: 0,       // TODO:
+                basePipelineIndex: -1,       // TODO:
             };
 
             let mut output = mem::uninitialized();
