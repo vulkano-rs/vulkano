@@ -138,6 +138,7 @@ unsafe impl MemorySource for HostVisible {
         //       fulfill any alignment requirement
         Ok(HostVisibleChunk {
             mem: mem,
+            coherent: mem_ty.is_host_coherent(),
             lock: Mutex::new((None, None)),
         })
     }
@@ -146,6 +147,7 @@ unsafe impl MemorySource for HostVisible {
 /// A chunk allocated from a `HostVisible`.
 pub struct HostVisibleChunk {
     mem: MappedDeviceMemory,
+    coherent: bool,
     lock: Mutex<(Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
 }
 
@@ -213,23 +215,25 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
         }
         lock.1 = None;
 
-        // TODO: only invalidate if necessary
-        let range = vk::MappedMemoryRange {
-            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            pNext: ptr::null(),
-            memory: self.mem.memory().internal_object(),
-            offset: 0,
-            size: vk::WHOLE_SIZE,
-        };
+        if !self.coherent {
+            let range = vk::MappedMemoryRange {
+                sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                pNext: ptr::null(),
+                memory: self.mem.memory().internal_object(),
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            };
 
-        // TODO: check result?
-        unsafe {
-            vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
-                                            1, &range);
+            // TODO: check result?
+            unsafe {
+                vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                                1, &range);
+            }
         }
 
         GpuAccess {
             mem: &self.mem,
+            coherent: self.coherent,
             guard: lock,
             pointer: pointer,
         }
@@ -254,23 +258,25 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
 
         lock.1 = None;
 
-        // TODO: only invalidate if necessary
-        let range = vk::MappedMemoryRange {
-            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            pNext: ptr::null(),
-            memory: self.mem.memory().internal_object(),
-            offset: 0,
-            size: vk::WHOLE_SIZE,
-        };
+        if !self.coherent {
+            let range = vk::MappedMemoryRange {
+                sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                pNext: ptr::null(),
+                memory: self.mem.memory().internal_object(),
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            };
 
-        // TODO: check result?
-        unsafe {
-            vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
-                                            1, &range);
+            // TODO: check result?
+            unsafe {
+                vk.InvalidateMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                                1, &range);
+            }
         }
 
         Some(GpuAccess {
             mem: &self.mem,
+            coherent: self.coherent,
             guard: lock,
             pointer: pointer,
         })
@@ -283,8 +289,9 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
 /// this memory's content or tries to submit a GPU command that uses this memory, it will block.
 pub struct GpuAccess<'a, T: ?Sized + 'a> {
     mem: &'a MappedDeviceMemory,
-    guard: MutexGuard<'a, (Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
     pointer: *mut T,
+    guard: MutexGuard<'a, (Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
+    coherent: bool,
 }
 
 impl<'a, T: ?Sized + 'a> Deref for GpuAccess<'a, T> {
@@ -306,21 +313,22 @@ impl<'a, T: ?Sized + 'a> DerefMut for GpuAccess<'a, T> {
 impl<'a, T: ?Sized + 'a> Drop for GpuAccess<'a, T> {
     #[inline]
     fn drop(&mut self) {
-        // TODO: only flush if necessary
+        if !self.coherent {
+            let vk = self.mem.memory().device().pointers();
 
-        let vk = self.mem.memory().device().pointers();
+            let range = vk::MappedMemoryRange {
+                sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                pNext: ptr::null(),
+                memory: self.mem.memory().internal_object(),
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            };
 
-        let range = vk::MappedMemoryRange {
-            sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            pNext: ptr::null(),
-            memory: self.mem.memory().internal_object(),
-            offset: 0,
-            size: vk::WHOLE_SIZE,
-        };
-
-        // TODO: check result?
-        unsafe {
-            vk.FlushMappedMemoryRanges(self.mem.memory().device().internal_object(), 1, &range);
+            // TODO: check result?
+            unsafe {
+                vk.FlushMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                           1, &range);
+            }
         }
     }
 }
