@@ -9,6 +9,7 @@ use device::Queue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
+use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::MultiVertex;
 
@@ -83,9 +84,9 @@ impl PrimaryCommandBufferBuilder {
     ///
     /// - Type safety is not enforced by the API.
     ///
-    pub unsafe fn fill_buffer<'a, T: 'a, M: 'a>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                                size: usize, data: u32)
-                                                -> PrimaryCommandBufferBuilder
+    pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
+                                             size: usize, data: u32) -> PrimaryCommandBufferBuilder
+        where M: MemorySourceChunk + 'static
     {
         PrimaryCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)
@@ -464,9 +465,10 @@ impl SecondaryComputeCommandBufferBuilder {
     /// # Safety
     ///
     /// - Type safety is not enforced by the API.
-    pub unsafe fn fill_buffer<'a, T: 'a, M: 'a>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                                size: usize, data: u32)
-                                                -> SecondaryComputeCommandBufferBuilder
+    pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
+                                             size: usize, data: u32)
+                                             -> SecondaryComputeCommandBufferBuilder
+        where M: MemorySourceChunk + 'static
     {
         SecondaryComputeCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)

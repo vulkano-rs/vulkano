@@ -21,12 +21,15 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use device::Queue;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
+use sync::Fence;
 use sync::Resource;
+use sync::Semaphore;
 use sync::SharingMode;
 
 use OomError;
@@ -205,10 +208,19 @@ impl<T, M> Buffer<[T], M> {
     }
 }
 
-unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> {
+unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
     #[inline]
     fn sharing_mode(&self) -> &SharingMode {
         &self.inner.sharing
+    }
+
+    #[inline]
+    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                  semaphore: Option<Arc<Semaphore>>)
+                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+    {
+        let out = self.inner.memory.gpu_access(write, 0, self.size(), queue, fence, semaphore);
+        (out, None)
     }
 }
 
@@ -360,10 +372,22 @@ pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
     size: usize,
 }
 
-unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M> {
+unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M>
+    where M: MemorySourceChunk
+{
     #[inline]
     fn sharing_mode(&self) -> &SharingMode {
         &self.inner.sharing
+    }
+
+    #[inline]
+    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                  semaphore: Option<Arc<Semaphore>>)
+                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+    {
+        let out = self.inner.memory.gpu_access(write, self.offset, self.size,
+                                               queue, fence, semaphore);
+        (out, None)
     }
 }
 

@@ -24,7 +24,44 @@ use check_errors;
 use vk;
 
 pub unsafe trait Resource {
+    /// Returns in which queue family or families this resource can be used.
     fn sharing_mode(&self) -> &SharingMode;
+
+    /// Returns true if the `gpu_access` function should be passed a fence.
+    #[inline]
+    fn requires_fence(&self) -> bool {
+        true
+    }
+
+    /// Returns true if the `gpu_access` function should be passed a semaphore.
+    #[inline]
+    fn requires_semaphore(&self) -> bool {
+        true
+    }
+
+    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
+    /// function should block if the memory is currently being accessed by the CPU.
+    ///
+    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
+    /// be written.
+    ///
+    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
+    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
+    /// beforehand. This behavior can be used for example to submit sparse binding commands.
+    ///
+    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
+    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
+    /// returned false, then this value will be `None`.
+    ///
+    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
+    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
+    /// `requires_semaphore` returned false, then this value will be `None`.
+    ///
+    /// The function is allowed to return up to two semaphores which will be waited up by the GPU
+    /// before the work starts.
+    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                  semaphore: Option<Arc<Semaphore>>)
+                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,17 +101,17 @@ pub struct Fence {
 impl Fence {
     /// Builds a new fence.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<Fence> {
+    pub fn new(device: &Arc<Device>) -> Result<Arc<Fence>, OomError> {
         Fence::new_impl(device, false)
     }
 
     /// Builds a new fence already in the "signaled" state.
     #[inline]
-    pub fn signaled(device: &Arc<Device>) -> Arc<Fence> {
+    pub fn signaled(device: &Arc<Device>) -> Result<Arc<Fence>, OomError> {
         Fence::new_impl(device, true)
     }
 
-    fn new_impl(device: &Arc<Device>, signaled: bool) -> Arc<Fence> {
+    fn new_impl(device: &Arc<Device>, signaled: bool) -> Result<Arc<Fence>, OomError> {
         let vk = device.pointers();
 
         let fence = unsafe {
@@ -85,14 +122,14 @@ impl Fence {
             };
 
             let mut output = mem::uninitialized();
-            vk.CreateFence(device.internal_object(), &infos, ptr::null(), &mut output);
+            try!(check_errors(vk.CreateFence(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
-        Arc::new(Fence {
+        Ok(Arc::new(Fence {
             device: device.clone(),
             fence: fence,
-        })
+        }))
     }
 
     /// Returns true if the fence is signaled.
@@ -160,6 +197,15 @@ impl Fence {
     }
 }
 
+impl VulkanObject for Fence {
+    type Object = vk::Fence;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Fence {
+        self.fence
+    }
+}
+
 impl Drop for Fence {
     #[inline]
     fn drop(&mut self) {
@@ -204,6 +250,15 @@ impl Semaphore {
             device: device.clone(),
             semaphore: semaphore,
         }))
+    }
+}
+
+impl VulkanObject for Semaphore {
+    type Object = vk::Semaphore;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Semaphore {
+        self.semaphore
     }
 }
 
@@ -289,6 +344,15 @@ impl Event {
             try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)).map(|_| ()));
             Ok(())
         }
+    }
+}
+
+impl VulkanObject for Event {
+    type Object = vk::Event;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Event {
+        self.event
     }
 }
 

@@ -14,6 +14,9 @@ use framebuffer::RenderPassLayout;
 use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::MultiVertex;
+use sync::Fence;
+use sync::Resource;
+use sync::Semaphore;
 
 use device::Device;
 use OomError;
@@ -29,7 +32,9 @@ pub struct InnerCommandBufferBuilder {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
-    resources: Vec<Arc<MemorySourceChunk>>,
+
+    // List of all resources that are used by this command buffer.
+    resources: Vec<Arc<Resource>>,
 
     // Current pipeline object binded to the graphics bind point.
     graphics_pipeline: Option<vk::Pipeline>,
@@ -102,8 +107,8 @@ impl InnerCommandBufferBuilder {
     /// # Safety
     ///
     /// Care must be taken to respect the rules about secondary command buffers.
-    pub unsafe fn execute_commands<'a, I>(self, iter: I)
-                                      -> InnerCommandBufferBuilder
+    pub unsafe fn execute_commands<'a, I>(mut self, iter: I)
+                                          -> InnerCommandBufferBuilder
         where I: Iterator<Item = &'a InnerCommandBuffer>
     {
         {
@@ -111,7 +116,7 @@ impl InnerCommandBufferBuilder {
 
             for cb in iter {
                 command_buffers.push(cb.cmd);
-                // FIXME: push resources
+                for r in cb.resources.iter() { self.resources.push(r.clone()); }
             }
 
             let vk = self.device.pointers();
@@ -177,8 +182,9 @@ impl InnerCommandBufferBuilder {
     /// - Type safety is not enforced by the API.
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn fill_buffer<'a, T: 'a, M: 'a>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                            size: usize, data: u32) -> InnerCommandBufferBuilder
+    pub unsafe fn fill_buffer<T: 'static, M>(mut self, buffer: &Arc<Buffer<T, M>>, offset: usize,
+                                             size: usize, data: u32) -> InnerCommandBufferBuilder
+        where M: MemorySourceChunk + 'static
     {
         {
             let vk = self.device.pointers();
@@ -189,8 +195,9 @@ impl InnerCommandBufferBuilder {
             assert!(size % 4 == 0);
             assert!(buffer.usage_transfer_dest());
 
+            self.resources.push(buffer.clone());
+
             // FIXME: check that the queue family supports transfers
-            // FIXME: add the buffer to the list of resources
             // FIXME: check queue family of the buffer
 
             vk.CmdFillBuffer(self.cmd.unwrap(), buffer.internal_object(),
@@ -225,6 +232,9 @@ impl InnerCommandBufferBuilder {
                                 -> InnerCommandBufferBuilder
         where V: MultiVertex
     {
+
+        // FIXME: add buffers to the resources
+
         {
             self.bind_gfx_pipeline_state(pipeline, dynamic);
 
@@ -418,7 +428,7 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    resources: Vec<Arc<MemorySourceChunk>>,
+    resources: Vec<Arc<Resource>>,
 }
 
 impl InnerCommandBuffer {
@@ -438,23 +448,70 @@ impl InnerCommandBuffer {
         assert_eq!(queue.device().internal_object(), self.pool.device().internal_object());
         assert_eq!(queue.family().id(), self.pool.queue_family().id());
 
-        // FIXME: call resources access controllers
+        // FIXME: fence shouldn't be discarded, as it could be ignored by resources and
+        //        destroyed while in use
+        let fence = if self.resources.iter().any(|r| r.requires_fence()) {
+            Some(try!(Fence::new(queue.device())))
+        } else {
+            None
+        };
+
+        let mut post_semaphores = Vec::new();
+        let mut post_semaphores_ids = Vec::new();
+        let mut pre_semaphores = Vec::new();
+        let mut pre_semaphores_ids = Vec::new();
+        let mut pre_semaphores_stages = Vec::new();
+
+        // FIXME: pre-semaphores shouldn't be discarded as they could be deleted while in use
+        //        they should be included in a return value instead
+        // FIXME: same for post-semaphores
+
+        for resource in self.resources.iter() {
+            let post_semaphore = if resource.requires_semaphore() {
+                let semaphore = try!(Semaphore::new(queue.device()));
+                post_semaphores.push(semaphore.clone());
+                post_semaphores_ids.push(semaphore.internal_object());
+                Some(semaphore)
+
+            } else {
+                None
+            };
+
+            // FIXME: for the moment `write` is always true ; that shouldn't be the case
+            let (s1, s2) = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+
+            if let Some(s) = s1 {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
+
+            if let Some(s) = s2 {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
+        }
 
         let infos = vk::SubmitInfo {
             sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
             pNext: ptr::null(),
-            waitSemaphoreCount: 0,              // TODO:
-            pWaitSemaphores: ptr::null(),           // TODO:
-            pWaitDstStageMask: ptr::null(),         // TODO:
+            waitSemaphoreCount: pre_semaphores_ids.len() as u32,
+            pWaitSemaphores: pre_semaphores_ids.as_ptr(),
+            pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
             commandBufferCount: 1,
             pCommandBuffers: &self.cmd,
-            signalSemaphoreCount: 0,            // TODO:
-            pSignalSemaphores: ptr::null(),         // TODO:
+            signalSemaphoreCount: post_semaphores_ids.len() as u32,
+            pSignalSemaphores: post_semaphores_ids.as_ptr(),
         };
 
         unsafe {
-            try!(check_errors(vk.QueueSubmit(queue.internal_object(), 1, &infos, 0)));
+            let fence = if let Some(ref fence) = fence { fence.internal_object() } else { 0 };
+            try!(check_errors(vk.QueueSubmit(queue.internal_object(), 1, &infos, fence)));
         }
+
+        // FIXME: the return value shouldn't be () because the command buffer
+        //        could be deleted while in use
 
         Ok(())
     }

@@ -68,6 +68,11 @@ pub struct DeviceLocalChunk {
 
 unsafe impl MemorySourceChunk for DeviceLocalChunk {
     #[inline]
+    fn size(&self) -> usize {
+        self.mem.size()
+    }
+
+    #[inline]
     fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
                   _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
                   -> Option<Arc<Semaphore>>
@@ -145,6 +150,11 @@ pub struct HostVisibleChunk {
 }
 
 unsafe impl MemorySourceChunk for HostVisibleChunk {
+    #[inline]
+    fn size(&self) -> usize {
+        self.mem.memory().size()
+    }
+
     #[inline]
     fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
                   fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)

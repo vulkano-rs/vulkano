@@ -26,7 +26,9 @@ use formats::FormatMarker;
 use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
+use sync::Fence;
 use sync::Resource;
+use sync::Semaphore;
 use sync::SharingMode;
 
 use OomError;
@@ -35,7 +37,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait ImageGpuAccess: Resource {
+pub unsafe trait ImageResource: Resource {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
     /// command buffer, it is switched from this default layout to something else (if necessary),
     /// then back again to the default.
@@ -357,16 +359,26 @@ impl<Ty, F, M> Image<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
-    where Ty: ImageTypeMarker
+    where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
     #[inline]
     fn sharing_mode(&self) -> &SharingMode {
         &self.sharing
     }
+
+    #[inline]
+    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                  semaphore: Option<Arc<Semaphore>>)
+                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+    {
+        let out = self.memory.gpu_access(write, 0, self.memory.size(), queue, fence, semaphore);
+        // FIXME: if the image is still in its initial transition phase, we need to return a second semaphore
+        (out, None)
+    }
 }
 
-unsafe impl<Ty, F, M> ImageGpuAccess for Image<Ty, F, M>
-    where Ty: ImageTypeMarker
+unsafe impl<Ty, F, M> ImageResource for Image<Ty, F, M>
+    where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
     #[inline]
     fn default_layout(&self) -> Layout {

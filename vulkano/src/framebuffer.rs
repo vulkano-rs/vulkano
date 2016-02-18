@@ -27,6 +27,7 @@ use std::sync::Arc;
 use device::Device;
 use formats::Format;
 use formats::FormatMarker;
+use image::ImageResource;
 use image::Layout as ImageLayout;
 
 use OomError;
@@ -358,6 +359,7 @@ pub struct Framebuffer<L> {
     renderpass: Arc<RenderPass<L>>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
+    resources: Vec<Arc<ImageResource>>,
 }
 
 impl<L> Framebuffer<L> {
@@ -394,6 +396,7 @@ impl<L> Framebuffer<L> {
             renderpass: renderpass.clone(),
             framebuffer: framebuffer,
             dimensions: dimensions,
+            resources: vec![],      // FIXME: important
         }))
     }
 
@@ -427,6 +430,12 @@ impl<L> Framebuffer<L> {
     #[inline]
     pub fn renderpass(&self) -> &Arc<RenderPass<L>> {
         &self.renderpass
+    }
+
+    /// Returns all the resources attached to that framebuffer.
+    #[inline]
+    pub fn attachments(&self) -> &[Arc<ImageResource>] {
+        &self.resources
     }
 }
 

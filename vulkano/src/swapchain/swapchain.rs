@@ -255,6 +255,11 @@ unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
     }
 
     #[inline]
+    fn size(&self) -> usize {
+        1
+    }
+
+    #[inline]
     fn requires_fence(&self) -> bool { false }
     #[inline]
     fn requires_semaphore(&self) -> bool { false }
