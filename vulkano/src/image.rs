@@ -114,10 +114,22 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
     memory: M,
     usage: vk::ImageUsageFlagBits,
     dimensions: Ty::Dimensions,
+
+    // Number of samples per pixel.
     samples: Ty::NumSamples,
+
+    // Number of mipmaps in the image.
     mipmaps: u32,
+
+    // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
+
+    // Contains the layout of the image.
+    //
+    // Can only ever get two values. First, "undefined" or "preinitialized". Then after the
+    // transition, contains the default layout of the image.
     layout: Layout,
+
     marker: PhantomData<F>,
 }
 
