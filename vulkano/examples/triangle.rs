@@ -13,10 +13,11 @@ use std::mem;
 use std::ptr;
 
 fn main() {
+    println!("{:?}", vulkano::instance::layers_list().unwrap().iter().map(|l| l.name().to_owned()).collect::<Vec<_>>());
     // The first step of any vulkan program is to create an instance.
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let instance = vulkano::instance::Instance::new(Some(&app), None).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_mem_tracker"]).expect("failed to create instance");
 
     // We then choose which physical device to use.
     //
@@ -61,7 +62,8 @@ fn main() {
     // Since we create one queue, we don't really care about the priority and just pass `0.5`.
     // The list of created queues is returned by the function alongside with the device.
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned())
+                                                        [(queue, 0.5)].iter().cloned(),
+                                                        &["VK_LAYER_LUNARG_mem_tracker"])
                                                                 .expect("failed to create device");
 
     // Since we can request multiple queues, the `queues` variable is a `Vec`. Our actual queue

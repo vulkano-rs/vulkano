@@ -3,6 +3,7 @@
 //! The `Device` is one of the most important objects of Vulkan. Creating a `Device` is required
 //! before you can create buffers, textures, shaders, etc.
 //!
+use std::ffi::CString;
 use std::fmt;
 use std::error;
 use std::mem;
@@ -54,9 +55,11 @@ impl Device {
     /// - Panicks if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
-    pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I)
-                      -> Result<(Arc<Device>, Vec<Arc<Mutex<Queue>>>), DeviceCreationError>
-        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>
+    pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I,
+                         layers: L)
+                         -> Result<(Arc<Device>, Vec<Arc<Mutex<Queue>>>), DeviceCreationError>
+        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
+              L: IntoIterator<Item = &'a &'a str>
     {
         let queue_families = queue_families.into_iter();
 
@@ -66,6 +69,14 @@ impl Device {
 
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: Vec<(u32, u32)> = Vec::with_capacity(queue_families.size_hint().0);
+
+        let layers = layers.into_iter().map(|&layer| {
+            // FIXME: check whether each layer is supported
+            CString::new(layer).unwrap()
+        }).collect::<Vec<_>>();
+        let layers = layers.iter().map(|layer| {
+            layer.as_ptr()
+        }).collect::<Vec<_>>();
 
         // device creation
         let device = unsafe {
@@ -110,8 +121,8 @@ impl Device {
                 flags: 0,   // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
-                enabledLayerCount: 0,           // TODO:
-                ppEnabledLayerNames: ptr::null(),           // TODO:
+                enabledLayerCount: layers.len() as u32,
+                ppEnabledLayerNames: layers.as_ptr(),
                 enabledExtensionCount: 0,           // TODO:
                 ppEnabledExtensionNames: ptr::null(),           // TODO:
                 pEnabledFeatures: &features,
