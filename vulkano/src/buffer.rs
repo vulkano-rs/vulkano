@@ -125,6 +125,12 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
 }
 
 impl<T: ?Sized, M> Buffer<T, M> {
+    /// Returns the device used to create this buffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+
     /// Returns the size of the buffer in bytes.
     #[inline]
     pub fn size(&self) -> usize {

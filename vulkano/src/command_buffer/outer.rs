@@ -93,6 +93,18 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
+    pub fn copy_buffer<T: ?Sized + 'static, Ms, Md>(self, source: &Arc<Buffer<T, Ms>>,
+                                                    destination: &Arc<Buffer<T, Md>>)
+                                                    -> PrimaryCommandBufferBuilder
+        where Ms: MemorySourceChunk + 'static, Md: MemorySourceChunk + 'static
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.copy_buffer(source, destination),
+            }
+        }
+    }
+
     /// Executes secondary compute command buffers within this primary command buffer.
     #[inline]
     pub fn execute_commands<'a, I>(self, iter: I) -> PrimaryCommandBufferBuilder

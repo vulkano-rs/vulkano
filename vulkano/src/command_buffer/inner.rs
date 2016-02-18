@@ -201,23 +201,48 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    /*fn copy_buffer<I>(source: &Arc<Buffer>, destination: &Arc<Buffer>, copies: I)
-                      -> InnerCommandBufferBuilder
-        where I: IntoIter<Item = CopyCommand>
+    /// Copies data between buffers.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the buffers don't belong to the same device.
+    /// - Panicks if one of the buffers wasn't created with the right usage.
+    /// - Panicks if the queue family doesn't support transfer operations.
+    ///
+    /// # Safety
+    ///
+    /// - Type safety is not enforced by the API.
+    /// - Care must be taken to respect the rules about secondary command buffers.
+    ///
+    // TODO: doesn't support slices
+    pub unsafe fn copy_buffer<T: ?Sized + 'static, Ms, Md>(mut self, source: &Arc<Buffer<T, Ms>>,
+                                                           destination: &Arc<Buffer<T, Md>>)
+                                                           -> InnerCommandBufferBuilder
+        where Ms: MemorySourceChunk + 'static, Md: MemorySourceChunk + 'static
     {
-            assert!(self.pool.queue_family().supports_transfers());
-        // TODO: check values
-        let copies = copies.into_iter().map(|command| {
-            vk::BufferCopy {
-                srcOffset: command.source_offset,
-                dstOffset: command.destination_offset,
-                size: command.size,
-            }
-        }).collect::<Vec<_>>();
+        {
+            let vk = self.device.pointers();
 
-        vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(), destination.internal_object(),
-                         copies.len(), copies.as_ptr());
-    }*/
+            assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
+            assert!(self.pool.queue_family().supports_transfers());
+            assert!(source.usage_transfer_src());
+            assert!(destination.usage_transfer_dest());
+
+            let copy = vk::BufferCopy {
+                srcOffset: 0,
+                dstOffset: 0,
+                size: source.size() as u64,
+            };
+
+            vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(),
+                             destination.internal_object(), 1, &copy);
+
+            self.resources.push(source.clone());
+            self.resources.push(destination.clone());
+        }
+
+        self
+    }
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
