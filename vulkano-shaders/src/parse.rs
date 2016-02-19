@@ -100,6 +100,7 @@ pub enum Instruction {
     Constant { result_type_id: u32, result_id: u32, data: Vec<u32> },
     FunctionEnd,
     Variable { result_type_id: u32, result_id: u32, storage_class: StorageClass, initializer: Option<u32> },
+    Decorate { target_id: u32, decoration: Decoration, params: Vec<u32> },
     Label { result_id: u32 },
     Branch { result_id: u32 },
     Kill,
@@ -170,6 +171,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             storage_class: try!(StorageClass::from_num(operands[2])),
             initializer: operands.get(3).map(|&v| v)
         },
+        71 => Instruction::Decorate { target_id: operands[0], decoration: try!(Decoration::from_num(operands[1])), params: operands[2..].to_owned() },
         248 => Instruction::Label { result_id: operands[0] },
         249 => Instruction::Branch { result_id: operands[0] },
         252 => Instruction::Kill,

@@ -92,7 +92,7 @@ impl<MV> GraphicsPipeline<MV>
                 }
             }).collect::<Vec<_>>();
 
-            let attribute_descriptions = vertex_shader.attributes().iter().enumerate().map(|(loc, name)| {
+            let attribute_descriptions = vertex_shader.attributes().iter().map(|&(loc, ref name)| {
                 let (binding, info) = MV::attrib(name).expect("missing attr");       // TODO: error
                 vk::VertexInputAttributeDescription {
                     location: loc as u32,

@@ -52,14 +52,15 @@ impl ShaderModule {
         }))
     }
 
-    pub unsafe fn vertex_shader_entry_point<'a, V>(&'a self, name: &'a CStr)
+    pub unsafe fn vertex_shader_entry_point<'a, V>(&'a self, name: &'a CStr,
+                                                   attributes: Vec<(u32, Cow<'static, str>)>)
                                                    -> VertexShaderEntryPoint<'a, V>
     {
         VertexShaderEntryPoint {
             module: self,
             name: name,
             marker: PhantomData,
-            attributes: vec!["position".into()],        // FIXME: 
+            attributes: attributes,
         }
     }
 
@@ -109,8 +110,7 @@ pub struct VertexShaderEntryPoint<'a, V> {
     module: &'a ShaderModule,
     name: &'a CStr,
     marker: PhantomData<V>,
-
-    attributes: Vec<Cow<'static, str>>,
+    attributes: Vec<(u32, Cow<'static, str>)>,
 }
 
 impl<'a, V> VertexShaderEntryPoint<'a, V> {
@@ -126,7 +126,7 @@ impl<'a, V> VertexShaderEntryPoint<'a, V> {
 
     // TODO: change API
     #[inline]
-    pub fn attributes(&self) -> &Vec<Cow<'static, str>> {
+    pub fn attributes(&self) -> &[(u32, Cow<'static, str>)] {
         &self.attributes
     }
 }

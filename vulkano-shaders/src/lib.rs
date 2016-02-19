@@ -117,9 +117,10 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
         _ => unreachable!()
     };
 
-    let (ty, f_name) = match *execution {
+    let (ty, f_call) = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
             let mut input_types = Vec::new();
+            let mut attributes = Vec::new();
 
             // TODO: sort types by location
 
@@ -131,6 +132,12 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                                     if &result_id == interface =>
                         {
                             input_types.push(type_from_id(doc, result_type_id));
+                            let name = name_from_id(doc, result_id);
+                            let loc = match location_decoration(doc, result_id) {
+                                Some(l) => l,
+                                None => panic!("vertex attribute `{}` is missing a location", name)
+                            };
+                            attributes.push((loc, name));
                         },
                         _ => ()
                     }
@@ -142,21 +149,26 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 if input.is_empty() { input } else { input + "," }
             };
 
+            let attributes = attributes.iter().map(|&(loc, ref name)| {
+                format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
+            }).collect::<Vec<_>>().join(", ");
+
             let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input})>",
                             input = input);
-            (t, "vertex_shader_entry_point")
+            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), vec![{}])", attributes);
+            (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelTessellationControl => {
-            (format!("::vulkano::shader::TessControlShaderEntryPoint"), "")
+            (format!("::vulkano::shader::TessControlShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            (format!("::vulkano::shader::TessEvaluationShaderEntryPoint"), "")
+            (format!("::vulkano::shader::TessEvaluationShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
-            (format!("::vulkano::shader::GeometryShaderEntryPoint"), "")
+            (format!("::vulkano::shader::GeometryShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelFragment => {
@@ -183,11 +195,11 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
             let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output})>",
                             output = output);
-            (t, "fragment_shader_entry_point")
+            (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))"))
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::shader::ComputeShaderEntryPoint"), "compute_shader_entry_point")
+            (format!("::vulkano::shader::ComputeShaderEntryPoint"), format!("compute_shader_entry_point"))
         },
 
         enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
@@ -200,13 +212,13 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
         unsafe {{
             #[allow(dead_code)]
             static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];     // "{ep_name}"
-            self.shader.{f_name}(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))
+            self.shader.{f_call}
         }}
     }}
             "#, ep_name = ep_name, ep_name_lenp1 = ep_name.chars().count() + 1, ty = ty,
                 encoded_ep_name = ep_name.chars().map(|c| (c as u32).to_string())
                                          .collect::<Vec<String>>().join(", "),
-                f_name = f_name)
+                f_call = f_call)
 }
 
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
@@ -286,6 +298,20 @@ fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
         }
     }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
       .unwrap_or("__unnamed".to_owned())
+}
+
+fn location_decoration(doc: &parse::Spirv, searched: u32) -> Option<u32> {
+    doc.instructions.iter().filter_map(|i| {
+        if let &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationLocation, ref params } = i {
+            if target_id == searched {
+                Some(params[0])
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }).next()
 }
 
 fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) -> String {
