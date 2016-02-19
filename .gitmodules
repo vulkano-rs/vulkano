@@ -1,0 +1,3 @@
+[submodule "glsl-to-spirv/glslang"]
+	path = glsl-to-spirv/glslang
+	url = https://github.com/KhronosGroup/glslang

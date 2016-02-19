@@ -6,3 +6,6 @@ build = "build/build.rs"
 
 [dependencies]
 tempdir = "0.3.4"
+
+[build-dependencies]
+cmake = "0.1.13"
