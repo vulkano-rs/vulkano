@@ -25,6 +25,7 @@ use device::Queue;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
+use memory::ChunkRange;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
@@ -235,7 +236,7 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
                   semaphore: Option<Arc<Semaphore>>)
                   -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
     {
-        let out = self.inner.memory.gpu_access(write, 0, self.size(), queue, fence, semaphore);
+        let out = self.inner.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore);
         (out, None)
     }
 }
@@ -401,7 +402,7 @@ unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M>
                   semaphore: Option<Arc<Semaphore>>)
                   -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
     {
-        let out = self.inner.memory.gpu_access(write, self.offset, self.size,
+        let out = self.inner.memory.gpu_access(write, ChunkRange::Range { offset: self.offset, size: self.size },
                                                queue, fence, semaphore);
         (out, None)
     }

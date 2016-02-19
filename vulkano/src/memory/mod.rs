@@ -118,9 +118,6 @@ pub unsafe trait MemorySourceChunk {
     /// Returns the properties of this chunk.
     fn properties(&self) -> ChunkProperties;
 
-    /// Size in bytes of the chunk.
-    fn size(&self) -> usize;
-
     /// Returns true if the `gpu_access` function should be passed a fence.
     #[inline]
     fn requires_fence(&self) -> bool {
@@ -140,7 +137,7 @@ pub unsafe trait MemorySourceChunk {
     /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
     /// be written.
     ///
-    /// `offset` and `size` indicate the part of the chunk that is concerned.
+    /// `range` indicates the part of the chunk that is concerned.
     ///
     /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
     /// If the `gpu_access` function submits something to that queue, it will thus be submitted
@@ -158,7 +155,7 @@ pub unsafe trait MemorySourceChunk {
     /// return a semaphore that must be waited upon by the GPU before the access can start. The
     /// semaphore being returned is usually one that has been previously passed to this function,
     /// but it doesn't need to be the case.
-    fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+    fn gpu_access(&self, write: bool, range: ChunkRange, queue: &mut Queue,
                   fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                   -> Option<Arc<Semaphore>>;
 
@@ -169,6 +166,11 @@ pub unsafe trait MemorySourceChunk {
     /// If this value is true, then the Vulkan implementation must be more conservative about
     /// reordering subpasses in a renderpass.
     fn may_alias(&self) -> bool;
+}
+
+pub enum ChunkRange {
+    All,
+    Range { offset: usize, size: usize }
 }
 
 pub enum ChunkProperties<'a> {

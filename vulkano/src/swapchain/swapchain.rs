@@ -3,6 +3,7 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use device::Device;
 use device::Queue;
@@ -12,6 +13,7 @@ use image::ImagePrototype;
 use image::Type2d;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
+use memory::ChunkRange;
 use memory::MemorySourceChunk;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
@@ -34,6 +36,8 @@ pub struct Swapchain {
     device: Arc<Device>,
     surface: Arc<Surface>,
     swapchain: vk::SwapchainKHR,
+
+    images_semaphores: Mutex<Vec<Option<Arc<Semaphore>>>>,
 }
 
 impl Swapchain {
@@ -111,6 +115,7 @@ impl Swapchain {
             device: device.clone(),
             surface: surface.clone(),
             swapchain: swapchain,
+            images_semaphores: Mutex::new(Vec::new()),
         });
 
         let images = unsafe {
@@ -127,10 +132,17 @@ impl Swapchain {
             images
         };
 
-        let images = images.into_iter().map(|image| unsafe {
-            let mem = SwapchainAllocatedChunk { swapchain: swapchain.clone() };
+        let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
+            let mem = SwapchainAllocatedChunk { swapchain: swapchain.clone(), id: id };
             Image::from_raw_unowned(&device, image, mem, sharing.clone(), usage, dimensions, (), 1)
         }).collect::<Vec<_>>();
+
+        {
+            let mut semaphores = swapchain.images_semaphores.lock().unwrap();
+            for _ in 0 .. images.len() {
+                semaphores.push(None);
+            }
+        }
 
         Ok((swapchain, images))
     }
@@ -146,18 +158,26 @@ impl Swapchain {
         let vk = self.device.pointers();
 
         unsafe {
+            let semaphore = Semaphore::new(&self.device).unwrap();      // TODO: error
+
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
-                                                             self.swapchain, 1000000, 0, 0,     // TODO: timeout
+                                                             self.swapchain, 1000000,
+                                                             semaphore.internal_object(), 0,     // TODO: timeout
                                                              &mut out)));
 
-            match r {
-                Success::Success => Ok(out as usize),
-                Success::Suboptimal => Ok(out as usize),        // TODO: give that info to the user
-                Success::NotReady => Err(AcquireError::Timeout),
-                Success::Timeout => Err(AcquireError::Timeout),
+            let id = match r {
+                Success::Success => out as usize,
+                Success::Suboptimal => out as usize,        // TODO: give that info to the user
+                Success::NotReady => return Err(AcquireError::Timeout),
+                Success::Timeout => return Err(AcquireError::Timeout),
                 s => panic!("unexpected success value: {:?}", s)
-            }
+            };
+
+            let mut images_semaphores = self.images_semaphores.lock().unwrap();
+            images_semaphores[id] = Some(semaphore);
+
+            Ok(id)
         }
     }
 
@@ -170,16 +190,23 @@ impl Swapchain {
     /// swapchain.
     pub fn present(&self, queue: &mut Queue, index: usize) -> Result<(), OomError> {     // FIXME: wrong error
         let vk = self.device.pointers();
-        let index = index as u32;
+
+        let wait_semaphore = {
+            let mut images_semaphores = self.images_semaphores.lock().unwrap();
+            images_semaphores[index].take()
+        };
+
+        // FIXME: the semaphore will be destroyed ; need to return it
 
         unsafe {
             let mut result = mem::uninitialized();
 
+            let index = index as u32;
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 pNext: ptr::null(),
-                waitSemaphoreCount: 0,
-                pWaitSemaphores: ptr::null(),
+                waitSemaphoreCount: if let Some(_) = wait_semaphore { 1 } else { 0 },
+                pWaitSemaphores: if let Some(ref sem) = wait_semaphore { &sem.internal_object() } else { ptr::null() },
                 swapchainCount: 1,
                 pSwapchains: &self.swapchain,
                 pImageIndices: &index,
@@ -243,8 +270,8 @@ impl From<Error> for AcquireError {
 
 /// "Dummy" object used for images that indicates that they were allocated as part of a swapchain.
 pub struct SwapchainAllocatedChunk {
-    // the dummy object is also used to keep ownership of the swapchain
     swapchain: Arc<Swapchain>,
+    id: usize,
 }
 
 // FIXME: needs correct synchronization as well
@@ -255,21 +282,20 @@ unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
     }
 
     #[inline]
-    fn size(&self) -> usize {
-        1
-    }
-
-    #[inline]
     fn requires_fence(&self) -> bool { false }
     #[inline]
-    fn requires_semaphore(&self) -> bool { false }
+    fn requires_semaphore(&self) -> bool { true }
     #[inline]
     fn may_alias(&self) -> bool { false }
 
     #[inline]
-    fn gpu_access(&self, _: bool, _: usize, _: usize, _: &mut Queue, _: Option<Arc<Fence>>,
-                  _: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    fn gpu_access(&self, _: bool, _: ChunkRange, _: &mut Queue, _: Option<Arc<Fence>>,
+                  post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        None
+        assert!(post_semaphore.is_some());
+        // FIXME: must also check that image has been acquired
+        let mut semaphores = self.swapchain.images_semaphores.lock().unwrap();
+        let pre_semaphore = mem::replace(&mut semaphores[self.id], post_semaphore);
+        pre_semaphore
     }
 }

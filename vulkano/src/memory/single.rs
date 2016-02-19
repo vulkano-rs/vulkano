@@ -14,6 +14,7 @@ use memory::MemorySource;
 use memory::MemorySourceChunk;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
+use memory::ChunkRange;
 use sync::Fence;
 use sync::Semaphore;
 
@@ -68,12 +69,7 @@ pub struct DeviceLocalChunk {
 
 unsafe impl MemorySourceChunk for DeviceLocalChunk {
     #[inline]
-    fn size(&self) -> usize {
-        self.mem.size()
-    }
-
-    #[inline]
-    fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
+    fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
                   _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
                   -> Option<Arc<Semaphore>>
     {
@@ -153,12 +149,7 @@ pub struct HostVisibleChunk {
 
 unsafe impl MemorySourceChunk for HostVisibleChunk {
     #[inline]
-    fn size(&self) -> usize {
-        self.mem.memory().size()
-    }
-
-    #[inline]
-    fn gpu_access(&self, _write: bool, _offset: usize, _size: usize, _: &mut Queue,
+    fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
                   fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
                   -> Option<Arc<Semaphore>>
     {

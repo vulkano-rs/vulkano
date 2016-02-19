@@ -24,6 +24,7 @@ use device::Device;
 use device::Queue;
 use formats::FormatMarker;
 use memory::ChunkProperties;
+use memory::ChunkRange;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
@@ -392,7 +393,7 @@ unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
                   semaphore: Option<Arc<Semaphore>>)
                   -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
     {
-        let out = self.memory.gpu_access(write, 0, self.memory.size(), queue, fence, semaphore);
+        let out = self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore);
         // FIXME: if the image is in its initial transition phase, we need to return a second semaphore
         (out, None)
     }
