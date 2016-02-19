@@ -25,15 +25,23 @@ macro_rules! gfx_dev_and_queue {
 
         let instance = instance!();
 
-        let physical = instance::PhysicalDevice::enumerate(&instance)
-                            .next().expect("no device available");
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
 
-        let queue = physical.queue_families().find(|q| q.supports_graphics())
-                                                .expect("couldn't find a graphical queue family");
+        let queue = match physical.queue_families().find(|q| q.supports_graphics()) {
+            Some(q) => q,
+            None => return
+        };
 
-        let (device, queues) = Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(), None)
-                                                                .expect("failed to create device");
+        let (device, queues) = match Device::new(&physical, physical.supported_features(),
+                                                 [(queue, 0.5)].iter().cloned(), None)
+        {
+            Ok(r) => r,
+            Err(_) => return
+        };
+
         (device, queues.into_iter().next().unwrap())
     })
 }
