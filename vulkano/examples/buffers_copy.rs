@@ -16,7 +16,7 @@ fn main() {
 
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned())
+                                                        [(queue, 0.5)].iter().cloned(), &[])
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
