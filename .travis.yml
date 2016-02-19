@@ -7,8 +7,12 @@ rust:
 
 addons:
   apt:
+    sources:
+    - ubuntu-toolchain-r-test
     packages:
+    - gcc-4.8
     - g++-4.8       # required to compile glslang
+    - clang
 
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
