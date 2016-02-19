@@ -12,7 +12,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-///
+/// Contains SPIR-V code with one or more entry points.
 ///
 /// Note that it is advised to wrap around a `ShaderModule` with a struct that is different for
 /// each shader.
@@ -22,8 +22,14 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    // TODO: even if the code has been validated at compile-time, we still need to check for
-    //       capabilities at runtime
+    /// Builds a new shader module from SPIR-V.
+    ///
+    /// # Safety
+    ///
+    /// - The SPIR-V code is not validated.
+    /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
+    ///   this function either.
+    ///
     pub unsafe fn new(device: &Arc<Device>, spirv: &[u8])
                       -> Result<Arc<ShaderModule>, OomError>
     {
