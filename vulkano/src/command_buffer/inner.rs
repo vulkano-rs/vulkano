@@ -11,6 +11,7 @@ use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
+use image::ImageResource;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
@@ -36,6 +37,10 @@ pub struct InnerCommandBufferBuilder {
 
     // List of all resources that are used by this command buffer.
     resources: Vec<Arc<Resource>>,
+
+    // Same as `resources`. Should be merged with `resources` once Rust allows turning a
+    // `Arc<ImageResource>` into an `Arc<Resource>`.
+    image_resources: Vec<Arc<ImageResource>>,
 
     // List of pipelines that are used by this command buffer.
     //
@@ -96,6 +101,7 @@ impl InnerCommandBufferBuilder {
             pool: pool.clone(),
             cmd: Some(cmd),
             resources: Vec::new(),
+            image_resources: Vec::new(),
             pipelines: Vec::new(),
             graphics_pipeline: None,
             compute_pipeline: None,
@@ -313,14 +319,12 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     #[inline]
-    pub unsafe fn begin_renderpass<R, F>(self, renderpass: &Arc<RenderPass<R>>,
+    pub unsafe fn begin_renderpass<R, F>(mut self, renderpass: &Arc<RenderPass<R>>,
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
         where R: RenderPassLayout
     {
-        // FIXME: framebuffer synchronization
-
         assert!(framebuffer.is_compatible_with(renderpass));
 
         let clear_values = clear_values.iter().map(|value| {
@@ -348,11 +352,9 @@ impl InnerCommandBufferBuilder {
 
         }*/
 
-        // TODO: this doesn't work because Rust can't turn a Arc<ImageResource> into a Arc<Resource>
-        //       a work-around must be found
-        /*for attachment in framebuffer.attachments() {
-            self.resources.push(attachment.clone() as Arc<Resource>);
-        }*/
+        for attachment in framebuffer.attachments() {
+            self.image_resources.push(attachment.clone());
+        }
 
         {
             let vk = self.device.pointers();
@@ -426,6 +428,7 @@ impl InnerCommandBufferBuilder {
                 pool: self.pool.clone(),
                 cmd: cmd,
                 resources: mem::replace(&mut self.resources, Vec::new()),
+                image_resources: mem::replace(&mut self.image_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
         }
@@ -452,6 +455,7 @@ pub struct InnerCommandBuffer {
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
     resources: Vec<Arc<Resource>>,
+    image_resources: Vec<Arc<ImageResource>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 
@@ -474,7 +478,9 @@ impl InnerCommandBuffer {
 
         // FIXME: fence shouldn't be discarded, as it could be ignored by resources and
         //        destroyed while in use
-        let fence = if self.resources.iter().any(|r| r.requires_fence()) {
+        let fence = if self.resources.iter().any(|r| r.requires_fence()) ||
+                       self.image_resources.iter().any(|r| r.requires_fence())
+        {
             Some(try!(Fence::new(queue.device())))
         } else {
             None
@@ -490,32 +496,39 @@ impl InnerCommandBuffer {
         //        they should be included in a return value instead
         // FIXME: same for post-semaphores
 
-        for resource in self.resources.iter() {
-            let post_semaphore = if resource.requires_semaphore() {
-                let semaphore = try!(Semaphore::new(queue.device()));
-                post_semaphores.push(semaphore.clone());
-                post_semaphores_ids.push(semaphore.internal_object());
-                Some(semaphore)
+        macro_rules! process {
+            ($iter:expr) => (
+                for resource in $iter {
+                    let post_semaphore = if resource.requires_semaphore() {
+                        let semaphore = try!(Semaphore::new(queue.device()));
+                        post_semaphores.push(semaphore.clone());
+                        post_semaphores_ids.push(semaphore.internal_object());
+                        Some(semaphore)
 
-            } else {
-                None
-            };
+                    } else {
+                        None
+                    };
 
-            // FIXME: for the moment `write` is always true ; that shouldn't be the case
-            let (s1, s2) = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+                    // FIXME: for the moment `write` is always true ; that shouldn't be the case
+                    let (s1, s2) = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
 
-            if let Some(s) = s1 {
-                pre_semaphores_ids.push(s.internal_object());
-                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(s);
-            }
+                    if let Some(s) = s1 {
+                        pre_semaphores_ids.push(s.internal_object());
+                        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                        pre_semaphores.push(s);
+                    }
 
-            if let Some(s) = s2 {
-                pre_semaphores_ids.push(s.internal_object());
-                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(s);
-            }
+                    if let Some(s) = s2 {
+                        pre_semaphores_ids.push(s.internal_object());
+                        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                        pre_semaphores.push(s);
+                    }
+                }
+            );
         }
+
+        process!(self.resources.iter());
+        process!(self.image_resources.iter());
 
         let infos = vk::SubmitInfo {
             sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
