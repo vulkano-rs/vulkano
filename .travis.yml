@@ -28,5 +28,5 @@ after_success:
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo doc --manifest-path vulkano/Cargo.toml &&
         git clone https://github.com/davisp/ghp-import &&
-        ./ghp-import/ghp-import.py vulkano/target/doc &&
+        ./ghp-import/ghp_import.py vulkano/target/doc &&
         git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
