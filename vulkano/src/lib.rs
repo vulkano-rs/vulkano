@@ -170,7 +170,8 @@ enum Success {
 /// panic for error code that arent supposed to happen.
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
-enum Error {
+#[doc(hidden)]      // TODO: this is necessary because of the stupid visibility rules in rustc
+pub enum Error {
     OutOfHostMemory = vk::ERROR_OUT_OF_HOST_MEMORY,
     OutOfDeviceMemory = vk::ERROR_OUT_OF_DEVICE_MEMORY,
     InitializationFailed = vk::ERROR_INITIALIZATION_FAILED,
