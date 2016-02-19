@@ -118,8 +118,8 @@ macro_rules! renderpass {
                                 samples: 1,                         // FIXME:
                                 load: renderpass!(__load_op__ $($attrs),*),
                                 store: $crate::framebuffer::StoreOp::Store,     // FIXME:
-                                initial_layout: $crate::image::Layout::ColorAttachmentOptimal,       // FIXME:
-                                final_layout: $crate::image::Layout::ColorAttachmentOptimal,       // FIXME:
+                                initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
+                                final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                             }
                         )*
                     ]
@@ -228,7 +228,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
         let color_attachment_references = layout.attachments().iter().map(|attachment| {
             vk::AttachmentReference {
                 attachment: 0,
-                layout: vk::IMAGE_LAYOUT_GENERAL,
+                layout: vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             }
         }).collect::<Vec<_>>();
 

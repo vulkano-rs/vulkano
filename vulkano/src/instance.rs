@@ -102,7 +102,7 @@ impl Instance {
             layer.as_ptr()
         }).collect::<Vec<_>>();
 
-        let extensions = ["VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_report"].iter().map(|&ext| {
+        let extensions = ["VK_KHR_surface", "VK_KHR_swapchain", "VK_KHR_win32_surface", "VK_EXT_debug_report"].iter().map(|&ext| {
             // FIXME: check whether each extension is supported
             CString::new(ext).unwrap()
         }).collect::<Vec<_>>();

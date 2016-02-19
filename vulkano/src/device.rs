@@ -78,6 +78,14 @@ impl Device {
             layer.as_ptr()
         }).collect::<Vec<_>>();
 
+        let extensions = ["VK_KHR_swapchain"].iter().map(|&ext| {
+            // FIXME: check whether each extension is supported
+            CString::new(ext).unwrap()
+        }).collect::<Vec<_>>();
+        let extensions = extensions.iter().map(|extension| {
+            extension.as_ptr()
+        }).collect::<Vec<_>>();
+
         // device creation
         let device = unsafe {
             // each element of `queues` is a `(queue_family, priorities)`
@@ -123,8 +131,8 @@ impl Device {
                 pQueueCreateInfos: queues.as_ptr(),
                 enabledLayerCount: layers.len() as u32,
                 ppEnabledLayerNames: layers.as_ptr(),
-                enabledExtensionCount: 0,           // TODO:
-                ppEnabledExtensionNames: ptr::null(),           // TODO:
+                enabledExtensionCount: extensions.len() as u32,
+                ppEnabledExtensionNames: extensions.as_ptr(),
                 pEnabledFeatures: &features,
             };
 
