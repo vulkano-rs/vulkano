@@ -168,6 +168,13 @@ pub unsafe trait Attribute {
     fn format() -> Format;
 }
 
+unsafe impl Attribute for f32 {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Sfloat
+    }
+}
+
 unsafe impl Attribute for [f32; 1] {
     #[inline]
     fn format() -> Format {
