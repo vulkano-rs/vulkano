@@ -1,3 +1,22 @@
+
+
+How does that work?
+
+The shader analyser determines which descriptors are used by each shader and outputs a struct
+that describes this stuff. This struct implements `PipelineLayoutDesc`.
+
+When shaders are grouped together in the pipeline, they are passed through `CompatiblePipeline`
+to be merged into a single pipeline layout struct. If the descriptors of the various shaders
+are incompatible, it is detected at that moment.
+
+The single struct that represents the layout is stored as a template parameter of the pipeline.
+It is also stored in the `PipelineLayout` object (which wraps around vulkan's pipeline layout).
+When you draw, you have to pass a collection of descriptor sets that are compatible with the
+pipeline layout desc of the pipeline.
+
+
+
+
 use std::iter;
 
 use device::Device;
@@ -10,17 +29,80 @@ pub unsafe trait Layout {
     type RawLayout;
 }
 
+
+
+pub unsafe trait PipelineLayoutDesc {
+    type DescriptorSets;
+    type PushConstants;
+}
+
+// example: impl PipelineLayoutDesc for (CustomFrag1, CustomFrag2, CustomFrag3) {}
+
+
+
+pub unsafe trait CompatiblePipeline<T> { type Out; }
+pub unsafe trait CompatibleSet<T> { type Out; }
+
+macro_rules! impl_tuple {
+    (($in_first:ident $out_first:ident) $(, ($in_rest:ident $out_rest:ident))*) => {
+        unsafe impl<$in_first, $out_first $(, $in_rest, $out_rest)*>
+            CompatibleSet<($out_first, $($out_rest,)*)> for ($in_first, $($in_rest,)*)
+                where $in_first: CompatibleDescriptor<$out_first> $(, $in_rest: CompatibleDescriptor<$out_rest>)*
+        {
+            type Out = (
+                <$in_first as CompatibleDescriptor<$out_first>>::Out,
+                $(
+                    <$in_rest as CompatibleDescriptor<$out_rest>>::Out,
+                )*
+            );
+        }
+
+        unsafe impl<$in_first, $out_first $(, $in_rest, $out_rest)*>
+            CompatiblePipeline<($out_first, $($out_rest,)*)> for ($in_first, $($in_rest,)*)
+                where $in_first: CompatibleSet<$out_first> $(, $in_rest: CompatibleSet<$out_rest>)*
+        {
+            type Out = (
+                <$in_first as CompatibleSet<$out_first>>::Out,
+                $(
+                    <$in_rest as CompatibleSet<$out_rest>>::Out,
+                )*
+            );
+        }
+
+        impl_tuple!{$(($in_rest $out_rest)),*}
+    };
+    
+    () => ();
+}
+
+impl_tuple!( (A N), (B O), (C P), (D Q), (E R), (F S), (G T),
+             (H U), (I V), (J W), (K X), (L Y), (M Z) );
+
+/// If a type `A` can be interpreted as a `T`, then `A` will implement `CompatibleDescriptor<T>`.
+trait CompatibleDescriptor<T> { type Out; }
+
+impl CompatibleDescriptor<()> for () { type Out = (); }
+impl<T> CompatibleDescriptor<()> for T where T: Descriptor { type Out = T; }
+impl<T> CompatibleDescriptor<T> for () where T: Descriptor { type Out = T; }
+impl<T> CompatibleDescriptor<T> for T where T: Descriptor { type Out = T; }
+
+
+pub unsafe trait Descriptor {}
+
+
+
+
 /// Represents the layout of the resources and data that can be binded before drawing and that will
 /// be accessible from the shaders.
 ///
 /// The template parameter represents the descriptor sets.
 // TODO: push constants.
-pub struct PipelineLayout<DescriptorSets> {
+pub struct PipelineLayout<P> {
     device: Arc<Device>,
     layout: VkPipelineLayout,
 }
 
-impl<DescriptorSets> PipelineLayout<DescriptorSets> {
+impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
     /// Creates a new `PipelineLayout`.
     pub fn new(device: &Arc<Device>) -> Result<Arc<PipelineLayout<L>>, > {
         let layout = unsafe {
@@ -47,37 +129,14 @@ impl<DescriptorSets> PipelineLayout<DescriptorSets> {
     }
 }
 
-pub trait DescriptorDef {
-    type BindData;
+pub unsafe trait DescriptorSetDef {
+    type Content;
+
+
 }
 
-pub struct StorageImageMarker;
-
-pub struct SamplerMarker;
-
-pub struct SampledImageMarker;
-
-pub struct CombinedImageSamplerMarker;
-
-pub struct UniformTexelBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct StorageTexelBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct UniformBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct StorageBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct DynamicUniformBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct DynamicStorageBufferMarker<T: ?Sized, M>(Buffer<T, M>);
-
-pub struct InputAttachmentMarker;
-
-pub trait DescriptorSetDefinition {
-    type Raw;
-
-    fn into_raw(self) -> Self::Raw;
-}
+// example:
+// impl DescriptorSetDef for MyDescriptorSet { }
 
 pub struct DescriptorSetLayout<D> {
     device: Arc<Device>,
@@ -85,7 +144,7 @@ pub struct DescriptorSetLayout<D> {
     marker: PhantomData<D>,
 }
 
-impl<D> DescriptorSetLayout<D> where D: DescriptorSetDefinition {
+impl<D> DescriptorSetLayout<D> where D: DescriptorSetDef {
     pub fn new(device: &Arc<Device>) -> Result<Arc<DescriptorSetLayout<D>> {
         let vk = device.pointers();
 
