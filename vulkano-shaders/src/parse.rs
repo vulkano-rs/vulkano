@@ -90,6 +90,7 @@ pub enum Instruction {
     TypeInt { result_id: u32, width: u32, signedness: bool },
     TypeFloat { result_id: u32, width: u32 },
     TypeVector { result_id: u32, component_id: u32, count: u32 },
+    TypeMatrix { result_id: u32, column_type_id: u32, column_count: u32 },
     TypeImage { result_id: u32, sampled_type_id: u32, dim: Dim, depth: Option<bool>, arrayed: bool, ms: bool, sampled: Option<bool>, format: ImageFormat, access: Option<AccessQualifier> },
     TypeSampledImage { result_id: u32, image_type_id: u32 },
     TypeArray { result_id: u32, type_id: u32, length_id: u32 },
@@ -101,6 +102,7 @@ pub enum Instruction {
     FunctionEnd,
     Variable { result_type_id: u32, result_id: u32, storage_class: StorageClass, initializer: Option<u32> },
     Decorate { target_id: u32, decoration: Decoration, params: Vec<u32> },
+    MemberDecorate { target_id: u32, member: u32, decoration: Decoration, params: Vec<u32> },
     Label { result_id: u32 },
     Branch { result_id: u32 },
     Kill,
@@ -147,6 +149,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
         21 => Instruction::TypeInt { result_id: operands[0], width: operands[1], signedness: operands[2] != 0 },
         22 => Instruction::TypeFloat { result_id: operands[0], width: operands[1] },
         23 => Instruction::TypeVector { result_id: operands[0], component_id: operands[1], count: operands[2] },
+        24 => Instruction::TypeMatrix { result_id: operands[0], column_type_id: operands[1], column_count: operands[2] },
         25 => Instruction::TypeImage {
                 result_id: operands[0],
                 sampled_type_id: operands[1],
@@ -172,6 +175,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             initializer: operands.get(3).map(|&v| v)
         },
         71 => Instruction::Decorate { target_id: operands[0], decoration: try!(Decoration::from_num(operands[1])), params: operands[2..].to_owned() },
+        72 => Instruction::MemberDecorate { target_id: operands[0], member: operands[1], decoration: try!(Decoration::from_num(operands[2])), params: operands[3..].to_owned() },
         248 => Instruction::Label { result_id: operands[0] },
         249 => Instruction::Branch { result_id: operands[0] },
         252 => Instruction::Kill,

@@ -81,6 +81,9 @@ impl {name} {{
         output.push_str(&format!(r#"
 }}
         "#));
+
+        // descriptor sets
+        output.push_str(&write_descriptor_sets(&doc));
     }
 
     // TODO: remove
@@ -221,6 +224,21 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 f_call = f_call)
 }
 
+fn write_descriptor_sets(doc: &parse::Spirv) -> String {
+    // TODO: not implemented
+
+    for instruction in doc.instructions.iter() {
+        let (target_id, descriptor_set) = match instruction {
+            &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationDescriptorSet, ref params } => {
+                (target_id, params[0])
+            },
+            _ => continue
+        };
+    }
+
+    return "".to_owned();
+}
+
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
     for instruction in doc.instructions.iter() {
         match instruction {
@@ -265,12 +283,7 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
             },
             &parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == searched => {
                 let name = name_from_id(doc, result_id);
-                let members = member_types.iter().enumerate().map(|(offset, &member)| {
-                    let ty = type_from_id(doc, member);
-                    let name = member_name_from_id(doc, result_id, offset as u32);
-                    format!("\t{}: {}", name, ty)
-                }).collect::<Vec<_>>();
-                return format!("struct {} {{\n{}\n}}", name, members.join(",\n"));
+                return name;
             },
             &parse::Instruction::TypeOpaque { result_id, ref name } if result_id == searched => {
                 return "<opaque>".to_owned();
