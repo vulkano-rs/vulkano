@@ -57,11 +57,10 @@ pub unsafe trait Resource {
     /// is intended to be returned later, in a follow-up call to `gpu_access`. If
     /// `requires_semaphore` returned false, then this value will be `None`.
     ///
-    /// The function is allowed to return up to two semaphores which will be waited up by the GPU
-    /// before the work starts.
+    /// The function can return a semaphore which will be waited up by the GPU before the
+    /// work starts.
     fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>)
-                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>);
+                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

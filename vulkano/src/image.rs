@@ -390,12 +390,10 @@ unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
 
     #[inline]
     fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>)
-                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        let out = self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore);
-        // FIXME: if the image is in its initial transition phase, we need to return a second semaphore
-        (out, None)
+        // FIXME: if the image is in its initial transition phase, we need to a semaphore
+        self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
     }
 }
 
@@ -670,8 +668,7 @@ unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
 
     #[inline]
     fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>)
-                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         self.image.gpu_access(write, queue, fence, semaphore)
     }

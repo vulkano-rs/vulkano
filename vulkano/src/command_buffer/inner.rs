@@ -510,15 +510,9 @@ impl InnerCommandBuffer {
                     };
 
                     // FIXME: for the moment `write` is always true ; that shouldn't be the case
-                    let (s1, s2) = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+                    let sem = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
 
-                    if let Some(s) = s1 {
-                        pre_semaphores_ids.push(s.internal_object());
-                        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                        pre_semaphores.push(s);
-                    }
-
-                    if let Some(s) = s2 {
+                    if let Some(s) = sem {
                         pre_semaphores_ids.push(s.internal_object());
                         pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
                         pre_semaphores.push(s);

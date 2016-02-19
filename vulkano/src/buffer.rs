@@ -233,11 +233,9 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
 
     #[inline]
     fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>)
-                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        let out = self.inner.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore);
-        (out, None)
+        self.inner.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
     }
 }
 
@@ -399,12 +397,10 @@ unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M>
 
     #[inline]
     fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>)
-                  -> (Option<Arc<Semaphore>>, Option<Arc<Semaphore>>)
+                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        let out = self.inner.memory.gpu_access(write, ChunkRange::Range { offset: self.offset, size: self.size },
-                                               queue, fence, semaphore);
-        (out, None)
+        self.inner.memory.gpu_access(write, ChunkRange::Range { offset: self.offset, size: self.size },
+                                     queue, fence, semaphore)
     }
 }
 
