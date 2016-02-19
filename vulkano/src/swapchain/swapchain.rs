@@ -45,7 +45,7 @@ impl Swapchain {
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
     /// supported by the implementation. All the parameters that you pass to `Swapchain::new`
-    /// must be supported.
+    /// must be supported. 
     ///
     /// The `clipped` parameter indicates whether the implementation is allowed to discard 
     /// rendering operations that affect regions of the surface which aren't visible. This is

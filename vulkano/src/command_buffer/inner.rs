@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::BufferResource;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
 use device::Queue;
@@ -36,10 +37,10 @@ pub struct InnerCommandBufferBuilder {
     cmd: Option<vk::CommandBuffer>,
 
     // List of all resources that are used by this command buffer.
-    resources: Vec<Arc<Resource>>,
+    buffer_resources: Vec<Arc<BufferResource>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<ImageResource>` into an `Arc<Resource>`.
+    // `Arc<ImageResource>` into an `Arc<BufferResource>`.
     image_resources: Vec<Arc<ImageResource>>,
 
     // List of pipelines that are used by this command buffer.
@@ -100,7 +101,7 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
-            resources: Vec::new(),
+            buffer_resources: Vec::new(),
             image_resources: Vec::new(),
             pipelines: Vec::new(),
             graphics_pipeline: None,
@@ -124,7 +125,8 @@ impl InnerCommandBufferBuilder {
             for cb in iter {
                 command_buffers.push(cb.cmd);
                 for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
-                for r in cb.resources.iter() { self.resources.push(r.clone()); }
+                for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+                for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
             }
 
             let vk = self.device.pointers();
@@ -203,7 +205,7 @@ impl InnerCommandBufferBuilder {
             assert!(size % 4 == 0);
             assert!(buffer.usage_transfer_dest());
 
-            self.resources.push(buffer.clone());
+            self.buffer_resources.push(buffer.clone());
 
             // FIXME: check that the queue family supports transfers
             // FIXME: check queue family of the buffer
@@ -251,8 +253,8 @@ impl InnerCommandBufferBuilder {
             vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(),
                              destination.internal_object(), 1, &copy);
 
-            self.resources.push(source.clone());
-            self.resources.push(destination.clone());
+            self.buffer_resources.push(source.clone());
+            self.buffer_resources.push(destination.clone());
         }
 
         self
@@ -427,7 +429,7 @@ impl InnerCommandBufferBuilder {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
-                resources: mem::replace(&mut self.resources, Vec::new()),
+                buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
                 image_resources: mem::replace(&mut self.image_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
@@ -454,7 +456,7 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    resources: Vec<Arc<Resource>>,
+    buffer_resources: Vec<Arc<BufferResource>>,
     image_resources: Vec<Arc<ImageResource>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
@@ -478,7 +480,7 @@ impl InnerCommandBuffer {
 
         // FIXME: fence shouldn't be discarded, as it could be ignored by resources and
         //        destroyed while in use
-        let fence = if self.resources.iter().any(|r| r.requires_fence()) ||
+        let fence = if self.buffer_resources.iter().any(|r| r.requires_fence()) ||
                        self.image_resources.iter().any(|r| r.requires_fence())
         {
             Some(try!(Fence::new(queue.device())))
@@ -496,33 +498,48 @@ impl InnerCommandBuffer {
         //        they should be included in a return value instead
         // FIXME: same for post-semaphores
 
-        macro_rules! process {
-            ($iter:expr) => (
-                for resource in $iter {
-                    let post_semaphore = if resource.requires_semaphore() {
-                        let semaphore = try!(Semaphore::new(queue.device()));
-                        post_semaphores.push(semaphore.clone());
-                        post_semaphores_ids.push(semaphore.internal_object());
-                        Some(semaphore)
+        for resource in self.buffer_resources.iter() {
+            let post_semaphore = if resource.requires_semaphore() {
+                let semaphore = try!(Semaphore::new(queue.device()));
+                post_semaphores.push(semaphore.clone());
+                post_semaphores_ids.push(semaphore.internal_object());
+                Some(semaphore)
 
-                    } else {
-                        None
-                    };
+            } else {
+                None
+            };
 
-                    // FIXME: for the moment `write` is always true ; that shouldn't be the case
-                    let sem = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+            // FIXME: for the moment `write` is always true ; that shouldn't be the case
+            // FIXME: wrong offset and size
+            let sem = resource.gpu_access(true, 0, 18, queue, fence.clone(), post_semaphore);
 
-                    if let Some(s) = sem {
-                        pre_semaphores_ids.push(s.internal_object());
-                        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                        pre_semaphores.push(s);
-                    }
-                }
-            );
+            if let Some(s) = sem {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
         }
 
-        process!(self.resources.iter());
-        process!(self.image_resources.iter());
+        for resource in self.image_resources.iter() {
+            let post_semaphore = if resource.requires_semaphore() {
+                let semaphore = try!(Semaphore::new(queue.device()));
+                post_semaphores.push(semaphore.clone());
+                post_semaphores_ids.push(semaphore.internal_object());
+                Some(semaphore)
+
+            } else {
+                None
+            };
+
+            // FIXME: for the moment `write` is always true ; that shouldn't be the case
+            let sem = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+
+            if let Some(s) = sem {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
+        }
 
         let infos = vk::SubmitInfo {
             sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,

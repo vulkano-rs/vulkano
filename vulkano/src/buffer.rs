@@ -17,6 +17,7 @@
 //!
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -38,6 +39,32 @@ use VulkanObject;
 use VulkanPointers;
 use check_errors;
 use vk;
+
+pub unsafe trait BufferResource: Resource {
+    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
+    /// function should block if the memory is currently being accessed by the CPU.
+    ///
+    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
+    /// be written.
+    ///
+    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
+    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
+    /// beforehand. This behavior can be used for example to submit sparse binding commands.
+    ///
+    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
+    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
+    /// returned false, then this value will be `None`.
+    ///
+    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
+    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
+    /// `requires_semaphore` returned false, then this value will be `None`.
+    ///
+    /// The function can return a semaphore which will be waited up by the GPU before the
+    /// work starts.
+    fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+                  fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
+                  -> Option<Arc<Semaphore>>;
+}
 
 pub struct Buffer<T: ?Sized, M> {
     marker: PhantomData<T>,
@@ -205,6 +232,17 @@ impl<T: ?Sized, M> Buffer<T, M> {
 
     pub fn write(&self) -> Result<ReadWrite, > {
     }*/
+
+    /// Builds a slice without checking neither the type nor the range.
+    #[inline]
+    pub unsafe fn unchecked_slice<U: ?Sized>(&self, range: Range<usize>) -> BufferSlice<U, M> {
+        BufferSlice {
+            marker: PhantomData,
+            inner: &self.inner,
+            offset: range.start,
+            size: range.end - range.start,
+        }
+    }
 }
 
 impl<T, M> Buffer<[T], M> {
@@ -230,12 +268,16 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
     fn sharing_mode(&self) -> &SharingMode {
         &self.inner.sharing
     }
+}
 
+unsafe impl<T: ?Sized, M> BufferResource for Buffer<T, M> where M: MemorySourceChunk {
     #[inline]
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+                  fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
+                  -> Option<Arc<Semaphore>>
     {
-        self.inner.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
+        self.inner.memory.gpu_access(write, ChunkRange::Range { offset: offset, size: size },
+                                     queue, fence, semaphore)
     }
 }
 
@@ -385,23 +427,6 @@ pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
     inner: &'a Inner<M>,
     offset: usize,
     size: usize,
-}
-
-unsafe impl<'a, T: ?Sized + 'a, M: 'a> Resource for BufferSlice<'a, T, M>
-    where M: MemorySourceChunk
-{
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        &self.inner.sharing
-    }
-
-    #[inline]
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
-    {
-        self.inner.memory.gpu_access(write, ChunkRange::Range { offset: self.offset, size: self.size },
-                                     queue, fence, semaphore)
-    }
 }
 
 impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {

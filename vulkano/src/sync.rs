@@ -39,29 +39,6 @@ pub unsafe trait Resource {
     fn requires_semaphore(&self) -> bool {
         true
     }
-
-    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
-    /// function should block if the memory is currently being accessed by the CPU.
-    ///
-    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
-    /// be written.
-    ///
-    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
-    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
-    /// beforehand. This behavior can be used for example to submit sparse binding commands.
-    ///
-    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
-    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
-    /// returned false, then this value will be `None`.
-    ///
-    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
-    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
-    /// `requires_semaphore` returned false, then this value will be `None`.
-    ///
-    /// The function can return a semaphore which will be waited up by the GPU before the
-    /// work starts.
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
 /// Declares in which queue(s) a resource can be used.
