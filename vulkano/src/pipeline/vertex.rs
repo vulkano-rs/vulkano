@@ -149,7 +149,11 @@ macro_rules! impl_vertex {
                                 member as usize
                             },
 
-                            format: <$crate::formats::R32G32Sfloat as $crate::formats::FormatMarker>::format(),     // FIXME:
+                            format: unsafe {
+                                #[inline] fn f<T: $crate::pipeline::vertex::Attribute>(_: &T) -> $crate::formats::Format { T::format() }
+                                let dummy = 0usize as *const $out;
+                                f(&(&*dummy).$member)
+                            },
                         });
                     }
                 )*
@@ -158,4 +162,36 @@ macro_rules! impl_vertex {
             }
         }
     )
+}
+
+pub unsafe trait Attribute {
+    fn format() -> Format;
+}
+
+unsafe impl Attribute for [f32; 1] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Sfloat
+    }
+}
+
+unsafe impl Attribute for [f32; 2] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32Sfloat
+    }
+}
+
+unsafe impl Attribute for [f32; 3] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32Sfloat
+    }
+}
+
+unsafe impl Attribute for [f32; 4] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32A32Sfloat
+    }
 }
