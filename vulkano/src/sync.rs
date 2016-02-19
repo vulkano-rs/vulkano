@@ -23,6 +23,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+/// Base trait for objects that can be used as resources and must be synchronized.
 pub unsafe trait Resource {
     /// Returns in which queue family or families this resource can be used.
     fn sharing_mode(&self) -> &SharingMode;
@@ -63,9 +64,16 @@ pub unsafe trait Resource {
                   semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
+/// Declares in which queue(s) a resource can be used.
+///
+/// When you create a buffer or an image, you have to tell the Vulkan library in which queue
+/// families it will be used. The vulkano library requires you to tell in which queue famiily
+/// the resource will be used, even for exclusive mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SharingMode {
+    /// The resource is used is only one queue family.
     Exclusive(u32),
+    /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(Vec<u32>),       // TODO: Vec is too expensive here
 }
 
@@ -225,7 +233,6 @@ impl Drop for Fence {
 /// 
 /// It is similar to a fence, except that it is purely on the GPU side. The CPU can't query a
 /// semaphore's status or wait for it to be signaled.
-///
 pub struct Semaphore {
     device: Arc<Device>,
     semaphore: vk::Semaphore,
