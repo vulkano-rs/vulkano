@@ -148,7 +148,7 @@ impl Instance {
                     let message = CStr::from_ptr(message).to_str()
                                                     .expect("debug callback message not utf-8");
                     println!("Debug callback message: {:?}", message);
-                    0       // TODO: what's the meaning of that value
+                    vk::DEBUG_REPORT_ERROR_NONE_EXT
                 }
             }
 
