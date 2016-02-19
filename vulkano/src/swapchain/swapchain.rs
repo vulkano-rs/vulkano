@@ -154,7 +154,7 @@ impl Swapchain {
     ///
     /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
     /// behavior may change).
-    pub fn acquire_next_image(&self) -> Result<usize, AcquireError> {
+    pub fn acquire_next_image(&self, timeout_ns: u64) -> Result<usize, AcquireError> {
         let vk = self.device.pointers();
 
         unsafe {
@@ -162,7 +162,7 @@ impl Swapchain {
 
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
-                                                             self.swapchain, 1000000,
+                                                             self.swapchain, timeout_ns,
                                                              semaphore.internal_object(), 0,     // TODO: timeout
                                                              &mut out)));
 

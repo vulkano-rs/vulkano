@@ -229,7 +229,7 @@ fn main() {
     loop {
         // Before we can draw on the output, we have to *acquire* an image from the swapchain.
         // This operation returns the index of the image that we are allowed to draw upon..
-        let image_num = swapchain.acquire_next_image().unwrap();
+        let image_num = swapchain.acquire_next_image(1000000).unwrap();
 
         // Our queue is wrapped around a `Mutex`, so we have to lock it.
         let mut queue = queue.lock().unwrap();
