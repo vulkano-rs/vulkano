@@ -8,7 +8,7 @@ rust:
 addons:
   apt:
     packages:
-    - g++-4.9       # required to compile glslang
+    - g++-4.8       # required to compile glslang
 
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
