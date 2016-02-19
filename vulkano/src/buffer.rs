@@ -520,3 +520,21 @@ impl<'a, T: 'a, M: 'a> From<BufferSlice<'a, T, M>> for BufferSlice<'a, [T], M> {
 pub struct BufferView<T: ?Sized, M> {
     buffer: Arc<Buffer<T, M>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use buffer::Usage;
+    use buffer::Buffer;
+    use memory::DeviceLocal;
+
+    #[test]
+    fn create() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let vertex_buffer: Arc<Buffer<[i8; 16], _>> =
+                                Buffer::new(&device, &Usage::all(), DeviceLocal, &queue)
+                                                                .expect("failed to create buffer");
+    }
+}

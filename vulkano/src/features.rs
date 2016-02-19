@@ -12,23 +12,23 @@ macro_rules! features {
         ///
         /// ```no_run
         /// # let physical_device: vulkano::instance::PhysicalDevice = unsafe { ::std::mem::uninitialized() };
-        /// const MINIMAL_FEATURES: vulkano::instance::Features = vulkano::instance::Features {
+        /// let minimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     .. vulkano::instance::Features::none()
         /// };
         ///
-        /// const OPTIMAL_FEATURES: vulkano::instance::Features = vulkano::instance::Features {
+        /// let optimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
         ///     .. vulkano::instance::Features::none()
         /// };
         ///
-        /// if !physical_device.supported_features().superset_of(&MINIMAL_FEATURES) {
+        /// if !physical_device.supported_features().superset_of(&minimal_features) {
         ///     panic!("The physical device is not good enough for this application.");
         /// }
         ///
-        /// assert!(OPTIMAL_FEATURES.superset_of(MINIMAL_FEATURES));
-        /// let features_to_request = OPTIMAL_FEATURES.intersection(physical_device.supported_features());
+        /// assert!(optimal_features.superset_of(&minimal_features));
+        /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]

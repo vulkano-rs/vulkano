@@ -886,7 +886,7 @@ mod tests {
 
     #[test]
     fn create_instance() {
-        let _ = instance::Instance::new(None, None);
+        let _ = instance!();
     }
 
     #[test]
@@ -896,9 +896,7 @@ mod tests {
 
     #[test]
     fn queue_family_by_id() {
-        let instance = match instance::Instance::new(None, None) {
-            Ok(i) => i, Err(_) => return
-        };
+        let instance = instance!();
 
         let phys = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,

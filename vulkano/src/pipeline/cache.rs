@@ -131,7 +131,7 @@ mod tests {
     #[test]
     //#[should_panic]
     fn merge_self() {
-        let instance = instance::Instance::new(None, None).unwrap();
+        let instance = instance!();
 
         // let pipeline = PipelineCache::new(&device).unwrap();
         // pipeline.merge(&[&pipeline]).unwrap();

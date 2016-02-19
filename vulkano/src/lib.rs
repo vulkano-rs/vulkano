@@ -41,6 +41,9 @@
 extern crate lazy_static;
 extern crate shared_library;
 
+#[macro_use]
+mod tests;
+
 mod features;
 mod version;
 
