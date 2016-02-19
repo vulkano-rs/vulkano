@@ -236,12 +236,14 @@ impl<T: ?Sized, M> Buffer<T, M> {
     /// Builds a slice without checking neither the type nor the range.
     #[inline]
     pub unsafe fn unchecked_slice<U: ?Sized>(&self, range: Range<usize>) -> BufferSlice<U, M> {
-        BufferSlice {
+        unimplemented!()
+        /*BufferSlice {
             marker: PhantomData,
+
             inner: &self.inner,
             offset: range.start,
             size: range.end - range.start,
-        }
+        }*/
     }
 }
 
@@ -421,15 +423,21 @@ impl Usage {
 ///
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
     marker: PhantomData<T>,
+    resource: Arc<BufferResource>,
     inner: &'a Inner<M>,
     offset: usize,
     size: usize,
 }
 
 impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {
+    /// Returns the buffer that this slice belongs to.
+    pub fn buffer(&self) -> &Arc<BufferResource> {
+        &self.resource
+    }
+
     /// Returns the offset of that slice within the buffer.
     #[inline]
     pub fn offset(&self) -> usize {
@@ -514,11 +522,14 @@ impl<'a, T: ?Sized, M> VulkanObject for BufferSlice<'a, T, M> {
     }
 }
 
-impl<'a, T: ?Sized + 'a, M: 'a> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, M> {
+impl<'a, T: ?Sized + 'static, M: 'static> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, M>
+    where M: MemorySourceChunk
+{
     #[inline]
     fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<'a, T, M> {
         BufferSlice {
             marker: PhantomData,
+            resource: r.clone(),
             inner: &r.inner,
             offset: 0,
             size: r.inner.size,
@@ -531,6 +542,7 @@ impl<'a, T: 'a, M: 'a> From<BufferSlice<'a, T, M>> for BufferSlice<'a, [T], M> {
     fn from(r: BufferSlice<'a, T, M>) -> BufferSlice<'a, [T], M> {
         BufferSlice {
             marker: PhantomData,
+            resource: r.resource,
             inner: r.inner,
             offset: r.offset,
             size: r.size,
