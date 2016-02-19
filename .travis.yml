@@ -5,6 +5,9 @@ rust:
     - nightly
     - stable
 
+install:
+  - export CXX="g++-4.8"
+
 addons:
   apt:
     sources:
