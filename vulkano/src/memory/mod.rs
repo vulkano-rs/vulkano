@@ -50,6 +50,8 @@ use sync::Semaphore;
 use device::Device;
 use device::Queue;
 
+use OomError;
+
 pub use self::device_memory::DeviceMemory;
 pub use self::device_memory::MappedDeviceMemory;
 pub use self::single::DeviceLocal;
@@ -108,9 +110,8 @@ pub unsafe trait MemorySource {
     /// means that the memory type whose ID is 2 can be used.
     ///
     /// The implementation is allowed to return a chunk with a larger size or alignment.
-    // TODO: error type
     fn allocate(self, &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<Self::Chunk, ()>;
+                -> Result<Self::Chunk, OomError>;
 }
 
 /// A chunk of GPU-visible memory.

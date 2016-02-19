@@ -21,6 +21,7 @@ use sync::Semaphore;
 use device::Device;
 use device::Queue;
 
+use OomError;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -46,14 +47,15 @@ unsafe impl MemorySource for DeviceLocal {
 
     #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<DeviceLocalChunk, ()>
+                -> Result<DeviceLocalChunk, OomError>
     {
         let mem_ty = device.physical_device().memory_types()
                            .skip(memory_type_bits.trailing_zeros() as usize).next().unwrap();
-        let mem = try!(DeviceMemory::alloc(device, &mem_ty, size).map_err(|_| ()));
+        let mem = try!(DeviceMemory::alloc(device, &mem_ty, size));
 
         // note: alignment doesn't need to be checked because allocating memory is guaranteed to
         //       fulfill any alignment requirement
+
         Ok(DeviceLocalChunk {
             mem: mem,
             semaphore: Mutex::new(None),
@@ -122,16 +124,17 @@ unsafe impl MemorySource for HostVisible {
 
     #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<HostVisibleChunk, ()>
+                -> Result<HostVisibleChunk, OomError>
     {
         let mem_ty = device.physical_device().memory_types()
                            .filter(|t| (memory_type_bits & (1 << t.id())) != 0)
                            .filter(|t| t.is_host_visible())
                            .next().unwrap();
-        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, size).map_err(|_| ()));
+        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, size));
 
         // note: alignment doesn't need to be checked because allocating memory is guaranteed to
         //       fulfill any alignment requirement
+
         Ok(HostVisibleChunk {
             mem: mem,
             coherent: mem_ty.is_host_coherent(),
