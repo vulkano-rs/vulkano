@@ -1,12 +1,13 @@
 use std::mem;
 
-pub type PFN_vkAllocationFunction = extern fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkReallocationFunction = extern fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkFreeFunction = extern fn(*mut c_void, *mut c_void);
-pub type PFN_vkInternalAllocationNotification = extern fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkInternalFreeNotification = extern fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkAllocationFunction = extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkFreeFunction = extern "system" fn(*mut c_void, *mut c_void);
+pub type PFN_vkInternalAllocationNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkInternalFreeNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkDebugReportCallbackEXT = extern "system" fn(DebugReportFlagsEXT, DebugReportObjectTypeEXT, u64, usize, i32, *const c_char, *const c_char, *mut c_void) -> Bool32;
 
-pub type PFN_vkVoidFunction = extern fn() -> ();
+pub type PFN_vkVoidFunction = extern "system" fn() -> ();
 
 #[repr(C)]
 pub struct ApplicationInfo {
@@ -1400,3 +1401,12 @@ pub struct Win32SurfaceCreateInfoKHR {
     pub hwnd: *mut c_void,
 }
 
+
+#[repr(C)]
+pub struct DebugReportCallbackCreateInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: DebugReportFlagsEXT,
+    pub pfnCallback: PFN_vkDebugReportCallbackEXT,
+    pub pUserData: *mut c_void,
+}

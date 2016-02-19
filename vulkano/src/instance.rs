@@ -32,6 +32,7 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::mem;
+use std::os::raw::{c_void, c_char};
 use std::ptr;
 use std::sync::Arc;
 
@@ -52,6 +53,7 @@ pub use version::Version;
 /// application before everything else.
 pub struct Instance {
     instance: vk::Instance,
+    debug_report: Option<vk::DebugReportCallbackEXT>,
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
@@ -100,7 +102,7 @@ impl Instance {
             layer.as_ptr()
         }).collect::<Vec<_>>();
 
-        let extensions = ["VK_KHR_surface", "VK_KHR_win32_surface"].iter().map(|&ext| {
+        let extensions = ["VK_KHR_surface", "VK_KHR_win32_surface", "VK_EXT_debug_report"].iter().map(|&ext| {
             // FIXME: check whether each extension is supported
             CString::new(ext).unwrap()
         }).collect::<Vec<_>>();
@@ -134,6 +136,35 @@ impl Instance {
         let vk = vk::InstancePointers::load(|name| unsafe {
             mem::transmute(VK_STATIC.GetInstanceProcAddr(instance, name.as_ptr()))
         });
+
+        // Creating the debug report callback.
+        // TODO: should be optional
+        let debug_report = unsafe {
+            extern "system" fn callback(_: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,
+                                        _: u64, _: usize, _: i32, layer_prefix: *const c_char,
+                                        message: *const c_char, _: *mut c_void) -> u32
+            {
+                unsafe {
+                    let message = CStr::from_ptr(message).to_str()
+                                                    .expect("debug callback message not utf-8");
+                    println!("Debug callback message: {:?}", message);
+                    0       // TODO: what's the meaning of that value
+                }
+            }
+
+            let infos = vk::DebugReportCallbackCreateInfoEXT {
+                sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                pfnCallback: callback,
+                pUserData: ptr::null_mut(),
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateDebugReportCallbackEXT(instance, &infos,
+                                                              ptr::null(), &mut output)));
+            output
+        };
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
@@ -194,6 +225,7 @@ impl Instance {
 
         Ok(Arc::new(Instance {
             instance: instance,
+            debug_report: Some(debug_report),
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
@@ -238,6 +270,10 @@ impl Drop for Instance {
     #[inline]
     fn drop(&mut self) {
         unsafe {
+            if let Some(debug_report) = self.debug_report {
+                self.vk.DestroyDebugReportCallbackEXT(self.instance, debug_report, ptr::null());
+            }
+
             self.vk.DestroyInstance(self.instance, ptr::null());
         }
     }
