@@ -86,6 +86,35 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
                       -> Result<Arc<Buffer<T, M>>, OomError>
         where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
     {
+        unsafe {
+            Buffer::raw(device, mem::size_of::<T>(), usage, memory, sharing)
+        }
+    }
+}
+
+impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
+    /// Creates a new buffer with a number of elements.
+    pub fn array<S, Sh>(device: &Arc<Device>, len: usize, usage: &Usage, memory: S, sharing: Sh)
+                        -> Result<Arc<Buffer<[T], M>>, OomError>
+        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
+    {
+        unsafe {
+            Buffer::raw(device, len * mem::size_of::<T>(), usage, memory, sharing)
+        }
+    }
+}
+
+impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
+    /// Creates a new buffer of the given size without checking whether the type is correct.
+    ///
+    /// # Safety
+    ///
+    /// - Type safety is not checked.
+    ///
+    pub unsafe fn raw<S, Sh>(device: &Arc<Device>, size: usize, usage: &Usage, memory: S,
+                             sharing: Sh) -> Result<Arc<Buffer<T, M>>, OomError>
+        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
+    {
         let vk = device.pointers();
 
         let usage = usage.to_usage_bits();
@@ -104,7 +133,7 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
                 sType: vk::STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,       // TODO: sparse resources binding
-                size: mem::size_of::<T>() as u64,
+                size: size as u64,
                 usage: usage,
                 sharingMode: sh_mode,
                 queueFamilyIndexCount: sh_count,
@@ -144,7 +173,7 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
                 device: device.clone(),
                 memory: memory,
                 buffer: buffer,
-                size: mem_reqs.size as usize,
+                size: size as usize,
                 usage: usage,
                 sharing: sharing,
             }
