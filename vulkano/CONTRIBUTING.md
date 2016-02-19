@@ -16,7 +16,7 @@ For each module, the tile is checked if the code inside it is in an "acceptable"
 - [ ] Image
 - [ ] Instance
 - [ ] Lib
-- [ ] Memory
+- [x] Memory
 - [ ] Pipeline
 - [ ] Query
 - [ ] Sampler
