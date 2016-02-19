@@ -100,10 +100,10 @@ fn main() {
     // the CPU and one buffer on the GPU. We then write our data to the buffer on the CPU and
     // ask the GPU to copy it to the real buffer. This way the data is located on the most
     // efficient memory possible.
-    let vertex_buffer: Arc<vulkano::buffer::Buffer<[Vertex; 3], _>> =
-                                vulkano::buffer::Buffer::new(&device, &vulkano::buffer::Usage::all(),
-                                                             vulkano::memory::HostVisible, &queue)
-                                                                .expect("failed to create buffer");
+    let vertex_buffer = vulkano::buffer::Buffer::<[Vertex; 3], _>
+                               ::new(&device, &vulkano::buffer::Usage::all(),
+                                     vulkano::memory::HostVisible, &queue)
+                               .expect("failed to create buffer");
     struct Vertex { position: [f32; 2] }
     impl_vertex!(Vertex, position);
 
