@@ -25,8 +25,9 @@ impl Sampler {
     ///
     /// # Panic
     ///
-    /// Panicks if `max_anisotropy < 1.0`.
-    /// Panicks if `min_lod > max_lod`.
+    /// - Panicks if `max_anisotropy < 1.0`.
+    /// - Panicks if `min_lod > max_lod`.
+    ///
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
@@ -115,4 +116,45 @@ pub enum SamplerAddressMode {
     ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
     ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
     MirrorClampToEdge = vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
+}
+
+#[cfg(test)]
+mod tests {
+    use sampler;
+
+    #[test]
+    fn create() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
+                                      0.0, 2.0).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn min_lod_inferior() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0, 5.0, 2.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn max_anisotropy() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 0.5, 0.0, 2.0);
+    }
 }
