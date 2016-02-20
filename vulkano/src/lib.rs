@@ -49,6 +49,7 @@ mod version;
 
 pub mod buffer;
 pub mod command_buffer;
+pub mod descriptor_set;
 pub mod device;
 pub mod formats;
 pub mod framebuffer;
@@ -96,8 +97,8 @@ lazy_static! {
     };
 }
 
-/// Gives access to the internals of an object.
-trait VulkanObject {
+/// Gives access to the internal identifier of an object.
+pub trait VulkanObject {
     /// The type of the object.
     type Object;
 
@@ -107,14 +108,14 @@ trait VulkanObject {
 
 // TODO: remove eventually
 // https://github.com/rust-lang/rust/issues/29328
-trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
+pub trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
 impl<T> VulkanObjectU64 for T where T: VulkanObject<Object = u64> {
     #[inline]
     fn internal_object(&self) -> u64 { VulkanObject::internal_object(self) }
 }
 // TODO: remove eventually
 // https://github.com/rust-lang/rust/issues/29328
-trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
+pub trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
 impl<T> VulkanObjectUsize for T where T: VulkanObject<Object = usize> {
     #[inline]
     fn internal_object(&self) -> usize { VulkanObject::internal_object(self) }
