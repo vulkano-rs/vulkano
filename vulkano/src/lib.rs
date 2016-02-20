@@ -105,6 +105,21 @@ trait VulkanObject {
     fn internal_object(&self) -> Self::Object;
 }
 
+// TODO: remove eventually
+// https://github.com/rust-lang/rust/issues/29328
+trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
+impl<T> VulkanObjectU64 for T where T: VulkanObject<Object = u64> {
+    #[inline]
+    fn internal_object(&self) -> u64 { VulkanObject::internal_object(self) }
+}
+// TODO: remove eventually
+// https://github.com/rust-lang/rust/issues/29328
+trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
+impl<T> VulkanObjectUsize for T where T: VulkanObject<Object = usize> {
+    #[inline]
+    fn internal_object(&self) -> usize { VulkanObject::internal_object(self) }
+}
+
 /// Gives access to the Vulkan function pointers stored in this object.
 trait VulkanPointers {
     /// The struct that provides access to the function pointers.
