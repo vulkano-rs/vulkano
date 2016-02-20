@@ -23,6 +23,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use buffer::BufferResource;
 use device::Device;
 
 use OomError;
@@ -31,7 +32,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-
+/// Types that describe the layout of a pipeline (descriptor sets and push constants).
 pub unsafe trait PipelineLayoutDesc {
     type DescriptorSets;        // example: (Arc<DescriptorSet<Layout1>>, Arc<DescriptorSet<Layout2>>)   where Layout1 and Layout2 implement DescriptorSetDesc
     type DescriptorSetLayouts;      // example: (Arc<DescriptorSetLayout<Layout1>>, Arc<DescriptorSetLayout<Layout2>>)   where Layout1 and Layout2 implement DescriptorSetDesc
@@ -39,19 +40,37 @@ pub unsafe trait PipelineLayoutDesc {
 
     fn decode_descriptor_set_layouts(&self, Self::DescriptorSetLayouts) -> Vec<Arc<AbstractDescriptorSetLayout>>;
 
+    fn decode_descriptor_sets(&self, Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>>;
+
     // FIXME: implement this correctly
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
 }
 
-/// Description of a descriptor.
-///
-/// A descriptor is a single entry in the list of resources accessible by a shader. This struct
-/// describes it the resource that can be binded to it.
+#[derive(Debug, Copy, Clone, Default)]
+pub struct EmptyPipelineDesc;
+unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
+    type DescriptorSets = ();
+    type DescriptorSetLayouts = ();
+    type PushConstants = ();
+
+    fn decode_descriptor_set_layouts(&self, _: Self::DescriptorSetLayouts) -> Vec<Arc<AbstractDescriptorSetLayout>> { vec![] }
+    fn decode_descriptor_sets(&self, _: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> { vec![] }
+}
+
+/// Types that describe a single descriptor set.
 pub unsafe trait DescriptorSetDesc {
+    type Write;
+
+    type Init;
+
     fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: Cow for better perfs
 
     // FIXME: implement this correctly
     fn is_compatible_with<S>(&self, _: &S) -> bool where S: DescriptorSetDesc { true }
+
+    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;
+
+    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;
 }
 
 pub struct DescriptorDesc {
@@ -194,7 +213,7 @@ pub struct DescriptorSet<S> {
     layout: Arc<DescriptorSetLayout<S>>,
 }
 
-impl<S> DescriptorSet<S> {
+impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     ///
     /// # Panic
     ///
@@ -228,7 +247,61 @@ impl<S> DescriptorSet<S> {
             layout: layout.clone(),
         }))
     }
+
+    pub fn write(&self, write: S::Write) {
+        let vk = self.pool.device.pointers();
+        let write = self.layout.description().decode_write(write);
+
+        // FIXME: store resources in the descriptor set so that they aren't destroyed
+
+        // TODO: the architecture of this function is going to be tricky
+
+        let buffer_descriptors = write.iter().enumerate().map(|(num, write)| {
+            match write.content {
+                DescriptorBind::UniformBuffer(ref buffer) => {
+                    Some(vk::DescriptorBufferInfo {
+                        buffer: buffer.internal_object(),
+                        offset: 0,      // FIXME: allow buffer slices
+                        range: buffer.size() as u64,       // FIXME: allow buffer slices
+                    })
+                },
+            }
+        }).collect::<Vec<_>>();
+
+        let vk_writes = write.iter().enumerate().map(|(num, write)| {
+            vk::WriteDescriptorSet {
+                sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                pNext: ptr::null(),
+                dstSet: self.set,
+                dstBinding: write.binding,
+                dstArrayElement: write.array_element,
+                descriptorCount: 1,
+                descriptorType: vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER,     // FIXME:
+                pImageInfo: ptr::null(),        // FIXME:
+                pBufferInfo: if let Some(ref b) = buffer_descriptors[num] { b } else { ptr::null() },
+                pTexelBufferView: ptr::null(),      // FIXME:
+            }
+        }).collect::<Vec<_>>();
+
+        unsafe {
+            vk.UpdateDescriptorSets(self.pool.device.internal_object(), vk_writes.len() as u32,
+                                    vk_writes.as_ptr(), 0, ptr::null());
+        }
+    }
 }
+
+impl<S> VulkanObject for DescriptorSet<S> {
+    type Object = vk::DescriptorSet;
+
+    #[inline]
+    fn internal_object(&self) -> vk::DescriptorSet {
+        self.set
+    }
+}
+
+/// Trait that is implemented on all `DescriptorSet` objects.
+pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {}
+unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {}
 
 pub struct DescriptorSetLayout<S> {
     layout: vk::DescriptorSetLayout,
@@ -313,9 +386,9 @@ impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
         let vk = device.pointers();
 
         let layouts = description.decode_descriptor_set_layouts(layouts);
-        let layouts_ids = layouts.clone().into_iter().map(|l| {
+        let layouts_ids = layouts.iter().map(|l| {
             // FIXME: check that they belong to the same device
-            ::VulkanObjectU64::internal_object(&*l)
+            ::VulkanObjectU64::internal_object(&**l)
         }).collect::<Vec<_>>();
 
         let layout = unsafe {
@@ -341,6 +414,11 @@ impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
             description: description,
             layouts: layouts,
         }))
+    }
+
+    #[inline]
+    pub fn description(&self) -> &P {
+        &self.description
     }
 }
 
@@ -391,4 +469,17 @@ impl DescriptorPool {
             device: device.clone(),
         }))
     }
+}
+
+// FIXME: shoud allow multiple array binds at once
+pub struct DescriptorWrite {
+    pub binding: u32,
+    pub array_element: u32,
+    pub content: DescriptorBind,
+}
+
+// FIXME: incomplete
+#[derive(Clone)]        // TODO: Debug
+pub enum DescriptorBind {
+    UniformBuffer(Arc<BufferResource>),
 }

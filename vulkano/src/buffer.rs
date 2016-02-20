@@ -40,7 +40,10 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait BufferResource: Resource {
+pub unsafe trait BufferResource: Resource + ::VulkanObjectU64 {
+    /// Returns the size of the buffer in bytes.
+    fn size(&self) -> usize;
+
     /// Instructs the resource that it is going to be used by the GPU soon in the future. The
     /// function should block if the memory is currently being accessed by the CPU.
     ///
@@ -302,6 +305,11 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
 }
 
 unsafe impl<T: ?Sized, M> BufferResource for Buffer<T, M> where M: MemorySourceChunk {
+    #[inline]
+    fn size(&self) -> usize {
+        self.inner.size
+    }
+
     #[inline]
     fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
                   fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)

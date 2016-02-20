@@ -242,6 +242,10 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
 pub struct Set1;
 
 unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set1 {
+    type Write = ::std::sync::Arc<::vulkano::buffer::BufferResource>;
+
+    type Init = ::std::sync::Arc<::vulkano::buffer::BufferResource>;
+
     fn descriptors(&self) -> Vec<::vulkano::descriptor_set::DescriptorDesc> {
         vec![
             ::vulkano::descriptor_set::DescriptorDesc {
@@ -251,6 +255,21 @@ unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set1 {
                 stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),
             }
         ]
+    }
+
+    fn decode_write(&self, write: Self::Write) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {
+        vec![
+            ::vulkano::descriptor_set::DescriptorWrite {
+                binding: 0,
+                array_element: 0,
+                content: ::vulkano::descriptor_set::DescriptorBind::UniformBuffer(write),
+            }
+        ]
+    }
+
+    #[inline]
+    fn decode_init(&self, write: Self::Init) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {
+        self.decode_write(write)
     }
 }
 
@@ -267,6 +286,14 @@ unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {
     {
         vec![
             layouts
+        ]
+    }
+
+    fn decode_descriptor_sets(&self, sets: Self::DescriptorSets)
+        -> Vec<::std::sync::Arc<::vulkano::descriptor_set::AbstractDescriptorSet>>
+    {
+        vec![
+            sets
         ]
     }
 }

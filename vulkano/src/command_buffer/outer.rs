@@ -5,6 +5,7 @@ use buffer::BufferSlice;
 use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
+use descriptor_set::PipelineLayoutDesc;
 use device::Queue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
@@ -198,12 +199,13 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
     pub fn draw<V, L>(self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                      vertices: V, dynamic: &DynamicState) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex + 'static, L: 'static
+                      vertices: V, dynamic: &DynamicState, sets: L::DescriptorSets)
+                      -> PrimaryCommandBufferBuilderInlineDraw
+        where V: MultiVertex + 'static, L: PipelineLayoutDesc + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
-                inner: self.inner.draw(pipeline, vertices, dynamic),
+                inner: self.inner.draw(pipeline, vertices, dynamic, sets),
                 num_subpasses: self.num_subpasses,
                 current_subpass: self.current_subpass,
             }

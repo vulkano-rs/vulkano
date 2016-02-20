@@ -7,6 +7,7 @@ use buffer::BufferSlice;
 use buffer::BufferResource;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
+use descriptor_set::PipelineLayoutDesc;
 use device::Queue;
 use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
@@ -263,14 +264,15 @@ impl InnerCommandBufferBuilder {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
     pub unsafe fn draw<V: 'static, L: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                                   vertices: V, dynamic: &DynamicState) -> InnerCommandBufferBuilder
-        where V: MultiVertex
+                                               vertices: V, dynamic: &DynamicState,
+                                               sets: L::DescriptorSets) -> InnerCommandBufferBuilder
+        where V: MultiVertex, L: PipelineLayoutDesc
     {
 
         // FIXME: add buffers to the resources
 
         {
-            self.bind_gfx_pipeline_state(pipeline, dynamic);
+            self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
 
             let vk = self.device.pointers();
 
@@ -285,28 +287,40 @@ impl InnerCommandBufferBuilder {
     }
 
     fn bind_gfx_pipeline_state<V: 'static, L: 'static>(&mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                                           dynamic: &DynamicState)
+                                                       dynamic: &DynamicState, sets: L::DescriptorSets)
+        where V: MultiVertex, L: PipelineLayoutDesc
     {
-        let vk = self.device.pointers();
+        unsafe {
+            let vk = self.device.pointers();
 
-        if self.graphics_pipeline != Some(pipeline.internal_object()) {
-            unsafe {
+            if self.graphics_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
                                    pipeline.internal_object());
+                self.pipelines.push(pipeline.clone());
+                self.graphics_pipeline = Some(pipeline.internal_object());
             }
-            self.pipelines.push(pipeline.clone());
-            self.graphics_pipeline = Some(pipeline.internal_object());
-        }
 
-        if let Some(line_width) = dynamic.line_width {
-            assert!(pipeline.has_dynamic_line_width());
-            // TODO: check limits
-            if self.dynamic_state.line_width != Some(line_width) {
-                unsafe { vk.CmdSetLineWidth(self.cmd.unwrap(), line_width) };
-                self.dynamic_state.line_width = Some(line_width);
+            if let Some(line_width) = dynamic.line_width {
+                assert!(pipeline.has_dynamic_line_width());
+                // TODO: check limits
+                if self.dynamic_state.line_width != Some(line_width) {
+                    vk.CmdSetLineWidth(self.cmd.unwrap(), line_width);
+                    self.dynamic_state.line_width = Some(line_width);
+                }
+            } else {
+                assert!(!pipeline.has_dynamic_line_width());
             }
-        } else {
-            assert!(!pipeline.has_dynamic_line_width());
+
+            // FIXME: keep these alive
+            let descriptor_sets = pipeline.layout().description().decode_descriptor_sets(sets);
+            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
+
+            // TODO: shouldn't rebind everything every time
+            if !descriptor_sets.is_empty() {
+                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
+                                         pipeline.layout().internal_object(), 0, descriptor_sets.len() as u32,
+                                         descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
+            }
         }
     }
 

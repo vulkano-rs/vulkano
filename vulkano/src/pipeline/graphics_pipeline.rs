@@ -296,6 +296,12 @@ impl<MV, L> GraphicsPipeline<MV, L>
             marker: PhantomData,
         }))
     }
+
+    /// Returns the pipeline layout used in the constructor.
+    #[inline]
+    pub fn layout(&self) -> &Arc<PipelineLayout<L>> {
+        &self.layout
+    }
 }
 
 impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {

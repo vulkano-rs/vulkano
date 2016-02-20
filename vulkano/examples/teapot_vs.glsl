@@ -5,7 +5,7 @@
 
 layout(location = 0) in vec2 position;
 
-uniform Data {
+layout(set = 0, binding = 0) uniform Data {
     mat4 worldview;
 } uniforms;
 

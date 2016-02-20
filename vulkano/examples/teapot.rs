@@ -18,7 +18,7 @@ fn main() {
 
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_draw_state"]).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &[]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -33,7 +33,7 @@ fn main() {
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
                                                         [(queue, 0.5)].iter().cloned(),
-                                                        &["VK_LAYER_LUNARG_draw_state"])
+                                                        &[])
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
@@ -64,6 +64,20 @@ fn main() {
         mapping[0].position = [-0.5, -0.25];
         mapping[1].position = [0.0, 0.5];
         mapping[2].position = [0.25, -0.1];
+    }
+
+    let uniform_buffer = vulkano::buffer::Buffer::<[[f32; 4]; 4], _>
+                               ::new(&device, &vulkano::buffer::Usage::all(),
+                                     vulkano::memory::HostVisible, &queue)
+                               .expect("failed to create buffer");
+    {
+        let mut mapping = uniform_buffer.try_write().unwrap();
+        *mapping = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
+        ];
     }
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_vs.rs")} }
@@ -137,11 +151,12 @@ fn main() {
     }).collect::<Vec<_>>();
 
 
+    set.write(uniform_buffer.clone());
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none())
+            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
