@@ -1,9 +1,10 @@
 use std::mem;
 use std::sync::Arc;
 
-use VulkanObject;
 use buffer::Buffer;
+use buffer::BufferResource;
 use formats::Format;
+use memory::MemorySourceChunk;
 use vk;
 
 #[derive(Copy, Clone, Debug)]
@@ -34,11 +35,12 @@ pub unsafe trait MultiVertex {
 
     fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate);
 
-    // TODO: hacky
-    fn ids(&self) -> Vec<u64>;
+    fn buffers(&self) -> Vec<Arc<BufferResource>>;
 }
 
-unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>> where T: Vertex {
+unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
+    where T: 'static + Vertex, M: 'static + MemorySourceChunk
+{
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
         T::attrib(name).map(|attr| (0, attr))
@@ -55,12 +57,15 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>> where T: Vertex {
         (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
     }
 
-    fn ids(&self) -> Vec<u64> {
-        vec![self.internal_object()]
+    #[inline]
+    fn buffers(&self) -> Vec<Arc<BufferResource>> {
+        vec![self.clone()]
     }
 }
 
-unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>> where T: Vertex {
+unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
+    where T: 'static + Vertex, M: 'static + MemorySourceChunk
+{
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
         T::attrib(name).map(|attr| (0, attr))
@@ -77,14 +82,17 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>> where T: Vertex {
         (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
     }
 
-    fn ids(&self) -> Vec<u64> {
-        vec![self.internal_object()]
+    #[inline]
+    fn buffers(&self) -> Vec<Arc<BufferResource>> {
+        vec![self.clone()]
     }
 }
 
 macro_rules! impl_mv {
     ($t1:ident, $t2:ty) => (
-        unsafe impl<$t1, M> MultiVertex for Arc<Buffer<$t2, M>> where T: Vertex {
+        unsafe impl<$t1, M> MultiVertex for Arc<Buffer<$t2, M>>
+            where T: 'static + Vertex, M: 'static + MemorySourceChunk
+        {
             #[inline]
             fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
                 T::attrib(name).map(|attr| (0, attr))
@@ -101,8 +109,8 @@ macro_rules! impl_mv {
                 (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
             }
 
-            fn ids(&self) -> Vec<u64> {
-                vec![self.internal_object()]
+            fn buffers(&self) -> Vec<Arc<BufferResource>> {
+                vec![self.clone()]
             }
         }
     );

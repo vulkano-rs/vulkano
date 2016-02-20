@@ -276,8 +276,9 @@ impl InnerCommandBufferBuilder {
 
             let vk = self.device.pointers();
 
-            let ids = vertices.ids();
-            let offsets = (0 .. ids.len()).map(|_| 0).collect::<Vec<_>>();
+            let buffers = vertices.buffers();
+            let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
+            let ids = buffers.iter().map(|b| b.internal_object()).collect::<Vec<_>>();
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
             vk.CmdDraw(self.cmd.unwrap(), 3, 1, 0, 0);  // FIXME: params

@@ -250,33 +250,6 @@ impl<T: ?Sized, M> Buffer<T, M> {
     pub fn usage_indirect_buffer(&self) -> bool {
         (self.inner.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
-
-    /*pub fn try_read(&self) -> Option<Read> {
-
-    }
-
-    pub fn read(&self, timeout_ns: u64) -> Result<Read, > {
-        
-    }
-
-    pub fn try_write(&self) -> Option<ReadWrite> {
-    }
-
-    pub fn write(&self) -> Result<ReadWrite, > {
-    }*/
-
-    /// Builds a slice without checking neither the type nor the range.
-    #[inline]
-    pub unsafe fn unchecked_slice<U: ?Sized>(&self, range: Range<usize>) -> BufferSlice<U, M> {
-        unimplemented!()
-        /*BufferSlice {
-            marker: PhantomData,
-
-            inner: &self.inner,
-            offset: range.start,
-            size: range.end - range.start,
-        }*/
-    }
 }
 
 impl<T, M> Buffer<[T], M> {
