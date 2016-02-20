@@ -376,9 +376,11 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
             }
         }).collect::<Vec<_>>();
 
-        unsafe {
-            vk.UpdateDescriptorSets(self.pool.device.internal_object(), vk_writes.len() as u32,
-                                    vk_writes.as_ptr(), 0, ptr::null());
+        if !vk_writes.is_empty() {
+            unsafe {
+                vk.UpdateDescriptorSets(self.pool.device.internal_object(), vk_writes.len() as u32,
+                                        vk_writes.as_ptr(), 0, ptr::null());
+            }
         }
     }
 }

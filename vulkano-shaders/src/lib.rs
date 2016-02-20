@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::Error as IoError;
 use std::io::Read;
 
@@ -227,78 +228,204 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // TODO: not implemented
 
+    // finding all the descriptors
+    let mut descriptors = Vec::new();
+    struct Descriptor {
+        name: String,
+        desc_ty: String,
+        bind_ty: String,
+        bind: String,
+        set: u32,
+        binding: u32,
+    }
+
+    // looping to find all the elements that have the `DescriptorSet` decoration
     for instruction in doc.instructions.iter() {
-        let (target_id, descriptor_set) = match instruction {
+        let (variable_id, descriptor_set) = match instruction {
             &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationDescriptorSet, ref params } => {
                 (target_id, params[0])
             },
             _ => continue
         };
+
+        // find which type is pointed to by this variable
+        let pointed_ty = pointer_variable_ty(doc, variable_id);
+        // name of the variable
+        let name = name_from_id(doc, variable_id);
+
+        // find the binding point of this descriptor
+        let binding = doc.instructions.iter().filter_map(|i| {
+            match i {
+                &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationBinding, ref params } if target_id == variable_id => {
+                    Some(params[0])
+                },
+                _ => None,      // TODO: other types
+            }
+        }).next().expect("a uniform is missing a binding");
+
+        // find informations about the kind of binding for this descriptor
+        let (desc_ty, bind_ty, bind) = doc.instructions.iter().filter_map(|i| {
+            match i {
+                &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
+                    Some((
+                        "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
+                        "::vulkano::buffer::BufferResource",
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"
+                    ))
+                },
+                _ => None,      // TODO: other types
+            }
+        }).next().unwrap();
+
+        descriptors.push(Descriptor {
+            name: name,
+            desc_ty: desc_ty.to_owned(),
+            bind_ty: bind_ty.to_owned(),
+            bind: bind.to_owned(),
+            set: descriptor_set,
+            binding: binding,
+        });
     }
 
-    return r#"
+    let sets_list = descriptors.iter().map(|d| d.set).collect::<HashSet<u32>>();
 
+    let mut output = String::new();
+
+    // iterate once per set that is defined somewhere
+    for set in sets_list.iter() {
+        let write_ty = descriptors.iter().filter(|d| d.set == *set)
+                                  .map(|d| format!("::std::sync::Arc<{}>", d.bind_ty))
+                                  .collect::<Vec<_>>();
+
+        let writes = descriptors.iter().enumerate().filter(|&(_, d)| d.set == *set)
+                                .map(|(entry, d)| {
+                                    let entry = if write_ty.len() == 1 {
+                                        "".to_owned()
+                                    } else {
+                                        format!(".{}", entry)
+                                    };
+
+                                    format!("::vulkano::descriptor_set::DescriptorWrite {{
+                                                 binding: {binding},
+                                                 array_element: 0,
+                                                 content: {bind}(write{entry}),
+                                             }}", binding = d.binding, bind = d.bind,
+                                                  entry = entry)
+                                })
+                                .collect::<Vec<_>>();
+
+        let descr = descriptors.iter().enumerate().filter(|&(_, d)| d.set == *set)
+                               .map(|(entry, d)| {
+                                   format!("::vulkano::descriptor_set::DescriptorDesc {{
+                                                binding: {binding},
+                                                ty: {desc_ty},
+                                                array_count: 1,
+                                                stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),        // TODO:
+                                            }}", binding = d.binding, desc_ty = d.desc_ty)
+                               })
+                               .collect::<Vec<_>>();
+
+        output.push_str(&format!(r#"
 #[derive(Default)]
-pub struct Set1;
+pub struct Set{set};
 
-unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set1 {
-    type Write = ::std::sync::Arc<::vulkano::buffer::BufferResource>;
+unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set{set} {{
+    type Write = {write_ty};
 
-    type Init = ::std::sync::Arc<::vulkano::buffer::BufferResource>;
+    type Init = {write_ty};
 
-    fn descriptors(&self) -> Vec<::vulkano::descriptor_set::DescriptorDesc> {
+    fn descriptors(&self) -> Vec<::vulkano::descriptor_set::DescriptorDesc> {{
         vec![
-            ::vulkano::descriptor_set::DescriptorDesc {
-                binding: 0,
-                ty: ::vulkano::descriptor_set::DescriptorType::UniformBuffer,
-                array_count: 1,
-                stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),
-            }
+            {descr}
         ]
-    }
+    }}
 
-    fn decode_write(&self, write: Self::Write) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {
+    fn decode_write(&self, write: Self::Write) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
         vec![
-            ::vulkano::descriptor_set::DescriptorWrite {
-                binding: 0,
-                array_element: 0,
-                content: ::vulkano::descriptor_set::DescriptorBind::UniformBuffer(write),
-            }
+            {writes}
         ]
-    }
+    }}
 
     #[inline]
-    fn decode_init(&self, write: Self::Init) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {
-        self.decode_write(write)
-    }
-}
+    fn decode_init(&self, init: Self::Init) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
+        self.decode_write(init)
+    }}
+}}
 
+"#, set = set, write_ty = write_ty.join(","), writes = writes.join(","), descr = descr.join(",")));
+    }
+
+    let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);
+
+    let sets_defs = (0 .. max_set).map(|num| {
+        if sets_list.contains(&num) {
+            format!("::std::sync::Arc<::vulkano::descriptor_set::DescriptorSet<Set{}>>", num)
+        } else {
+            "()".to_owned()
+        }
+    }).collect::<Vec<_>>();
+
+    let sets = (0 .. max_set).map(|num| {
+        if sets_list.contains(&num) {
+            if sets_defs.len() == 1 {
+                format!("sets")
+            } else {
+                format!("sets.{}", num)
+            }
+        } else {
+            "()".to_owned()     // FIXME: wrong
+        }
+    }).collect::<Vec<_>>();
+
+    let layouts_defs = (0 .. max_set).map(|num| {
+        if sets_list.contains(&num) {
+            format!("::std::sync::Arc<::vulkano::descriptor_set::DescriptorSetLayout<Set{}>>", num)
+        } else {
+            "()".to_owned()
+        }
+    }).collect::<Vec<_>>();
+
+    let layouts = (0 .. max_set).map(|num| {
+        if sets_list.contains(&num) {
+            if layouts_defs.len() == 1 {
+                format!("layouts")
+            } else {
+                format!("layouts.{}", num)
+            }
+        } else {
+            "()".to_owned()     // FIXME: wrong
+        }
+    }).collect::<Vec<_>>();
+
+    output.push_str(&format!(r#"
 #[derive(Default)]
 pub struct Layout;
 
-unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {
-    type DescriptorSets = ::std::sync::Arc<::vulkano::descriptor_set::DescriptorSet<Set1>>;
-    type DescriptorSetLayouts = ::std::sync::Arc<::vulkano::descriptor_set::DescriptorSetLayout<Set1>>;
+unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {{
+    type DescriptorSets = ({sets_defs});
+    type DescriptorSetLayouts = ({layouts_defs});
     type PushConstants = ();
 
     fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
         -> Vec<::std::sync::Arc<::vulkano::descriptor_set::AbstractDescriptorSetLayout>>
-    {
+    {{
         vec![
-            layouts
+            {layouts}
         ]
-    }
+    }}
 
     fn decode_descriptor_sets(&self, sets: Self::DescriptorSets)
         -> Vec<::std::sync::Arc<::vulkano::descriptor_set::AbstractDescriptorSet>>
-    {
+    {{
         vec![
-            sets
+            {sets}
         ]
-    }
-}
+    }}
+}}
+"#, sets_defs = sets_defs.join(","), layouts_defs = layouts_defs.join(","),
+    layouts = layouts.join(","), sets = sets.join(",")));
 
-"#.to_owned();
+    output
 }
 
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
@@ -373,6 +500,28 @@ fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
         }
     }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
       .unwrap_or("__unnamed".to_owned())
+}
+
+/// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
+/// type.
+fn pointer_variable_ty(doc: &parse::Spirv, variable: u32) -> u32 {
+    let var_ty = doc.instructions.iter().filter_map(|i| {
+        match i {
+            &parse::Instruction::Variable { result_type_id, result_id, .. } if result_id == variable => {
+                Some(result_type_id)
+            },
+            _ => None
+        }
+    }).next().unwrap();
+
+    doc.instructions.iter().filter_map(|i| {
+        match i {
+            &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == var_ty => {
+                Some(type_id)
+            },
+            _ => None
+        }
+    }).next().unwrap()
 }
 
 fn location_decoration(doc: &parse::Spirv, searched: u32) -> Option<u32> {
