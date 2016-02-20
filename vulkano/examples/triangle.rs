@@ -162,7 +162,7 @@ fn main() {
         }
     }.unwrap();
 
-    let pipeline: Arc<vulkano::pipeline::GraphicsPipeline<Arc<vulkano::buffer::Buffer<[Vertex; 3], _>>, _>> = {
+    let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
             topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,

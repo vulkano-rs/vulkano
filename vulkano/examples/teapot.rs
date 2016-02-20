@@ -6,7 +6,6 @@ extern crate winapi;
 #[macro_use]
 extern crate vulkano;
 
-use std::sync::Arc;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
@@ -113,7 +112,7 @@ fn main() {
     };
 
 
-    let pipeline: Arc<vulkano::pipeline::GraphicsPipeline<Arc<vulkano::buffer::Buffer<[Vertex; 3], _>>, _>> = {
+    let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
             topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,
