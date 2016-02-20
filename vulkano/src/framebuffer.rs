@@ -218,6 +218,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
         let vk = device.pointers();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let attachments = layout.attachments().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
@@ -233,6 +234,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
         }).collect::<Vec<_>>();
 
         // FIXME: totally hacky
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let color_attachment_references = layout.attachments().map(|attachment| {
             vk::AttachmentReference {
                 attachment: 0,
@@ -240,6 +242,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             }
         }).collect::<Vec<_>>();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let passes = (0 .. 1).map(|_| {
             vk::SubpassDescription {
                 flags: 0,   // reserved
