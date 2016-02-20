@@ -71,9 +71,9 @@ pub struct DeviceLocalChunk {
 
 unsafe impl MemorySourceChunk for DeviceLocalChunk {
     #[inline]
-    fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
-                  _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                  -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
+                         _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
+                         -> Option<Arc<Semaphore>>
     {
         assert!(semaphore.is_some());
 
@@ -152,9 +152,9 @@ pub struct HostVisibleChunk {
 
 unsafe impl MemorySourceChunk for HostVisibleChunk {
     #[inline]
-    fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
-                  fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                  -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &mut Queue,
+                         fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
+                         -> Option<Arc<Semaphore>>
     {
         assert!(fence.is_some());
         assert!(semaphore.is_some());

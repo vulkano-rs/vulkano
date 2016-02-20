@@ -302,8 +302,8 @@ unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
     fn may_alias(&self) -> bool { false }
 
     #[inline]
-    fn gpu_access(&self, _: bool, _: ChunkRange, _: &mut Queue, _: Option<Arc<Fence>>,
-                  post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, _: bool, _: ChunkRange, _: &mut Queue, _: Option<Arc<Fence>>,
+                         post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         assert!(post_semaphore.is_some());
         // FIXME: must also check that image has been acquired

@@ -525,7 +525,9 @@ impl InnerCommandBuffer {
 
             // FIXME: for the moment `write` is always true ; that shouldn't be the case
             // FIXME: wrong offset and size
-            let sem = resource.gpu_access(true, 0, 18, queue, fence.clone(), post_semaphore);
+            let sem = unsafe {
+                resource.gpu_access(true, 0, 18, queue, fence.clone(), post_semaphore)
+            };
 
             if let Some(s) = sem {
                 pre_semaphores_ids.push(s.internal_object());
@@ -546,7 +548,9 @@ impl InnerCommandBuffer {
             };
 
             // FIXME: for the moment `write` is always true ; that shouldn't be the case
-            let sem = resource.gpu_access(true, queue, fence.clone(), post_semaphore);
+            let sem = unsafe {
+                resource.gpu_access(true, queue, fence.clone(), post_semaphore)
+            };
 
             if let Some(s) = sem {
                 pre_semaphores_ids.push(s.internal_object());

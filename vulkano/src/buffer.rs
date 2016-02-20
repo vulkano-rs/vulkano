@@ -64,9 +64,9 @@ pub unsafe trait BufferResource: Resource + ::VulkanObjectU64 {
     ///
     /// The function can return a semaphore which will be waited up by the GPU before the
     /// work starts.
-    fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
-                  fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
-                  -> Option<Arc<Semaphore>>;
+    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+                         fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
+                         -> Option<Arc<Semaphore>>;
 }
 
 pub struct Buffer<T: ?Sized, M> {
@@ -311,9 +311,9 @@ unsafe impl<T: ?Sized, M> BufferResource for Buffer<T, M> where M: MemorySourceC
     }
 
     #[inline]
-    fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
-                  fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
-                  -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+                         fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
+                         -> Option<Arc<Semaphore>>
     {
         self.inner.memory.gpu_access(write, ChunkRange::Range { offset: offset, size: size },
                                      queue, fence, semaphore)

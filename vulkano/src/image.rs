@@ -64,8 +64,8 @@ pub unsafe trait ImageResource: Resource {
     ///
     /// The function can return a semaphore which will be waited up by the GPU before the
     /// work starts.
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -421,8 +421,8 @@ unsafe impl<Ty, F, M> ImageResource for Image<Ty, F, M>
     }
 
     #[inline]
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         // FIXME: if the image is in its initial transition phase, we need to a semaphore
         self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
@@ -699,8 +699,8 @@ unsafe impl<Ty, F, M> ImageResource for ImageView<Ty, F, M>
     }
 
     #[inline]
-    fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
-                  semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         self.image.gpu_access(write, queue, fence, semaphore)
     }
