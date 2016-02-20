@@ -16,6 +16,9 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     // now parsing the document
     let doc = try!(parse::parse_spirv(&data));
 
+    // TODO: remove
+    println!("{:#?}", doc);
+
     let mut output = String::new();
 
     {
@@ -86,9 +89,6 @@ impl {name} {{
         // descriptor sets
         output.push_str(&write_descriptor_sets(&doc));
     }
-
-    // TODO: remove
-    println!("{:#?}", doc);
 
     Ok(output)
 }
@@ -261,7 +261,7 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 },
                 _ => None,      // TODO: other types
             }
-        }).next().expect("a uniform is missing a binding");
+        }).next().expect("A uniform is missing a binding");
 
         // find informations about the kind of binding for this descriptor
         let (desc_ty, bind_ty, bind) = doc.instructions.iter().filter_map(|i| {
@@ -273,9 +273,28 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"
                     ))
                 },
+                &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
+                                                 sampled, ref format, ref access, .. }
+                                        if result_id == pointed_ty && sampled == Some(true) =>
+                {
+                    Some((
+                        "::vulkano::descriptor_set::DescriptorType::SampledImage",
+                        "::vulkano::image::ImageResource",
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
+                    ))
+                },
+                &parse::Instruction::TypeSampledImage { result_id, image_type_id }
+                                                                    if result_id == pointed_ty =>
+                {
+                    Some((
+                        "::vulkano::descriptor_set::DescriptorType::SampledImage",
+                        "::vulkano::image::ImageResource",
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
+                    ))
+                },
                 _ => None,      // TODO: other types
             }
-        }).next().unwrap();
+        }).next().expect(&format!("Couldn't find relevant type for uniform `{}` (maybe unimplemented)", name));
 
         descriptors.push(Descriptor {
             name: name,
