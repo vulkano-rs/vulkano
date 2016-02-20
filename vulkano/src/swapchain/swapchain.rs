@@ -67,6 +67,19 @@ impl Swapchain {
                      clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
         where F: FormatMarker, S: Into<SharingMode>
     {
+        Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
+                             sharing, transform, alpha, mode, clipped)
+    }
+
+    // TODO:
+    //pub fn recreate() { ... }
+
+    fn new_inner<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
+                       dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
+                       transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
+                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
+        where F: FormatMarker, S: Into<SharingMode>
+    {
         // FIXME: check that the parameters are supported
 
         // FIXME: check that the device and the surface belong to the same instance
