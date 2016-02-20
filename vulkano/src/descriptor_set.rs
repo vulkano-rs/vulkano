@@ -1,20 +1,37 @@
+//! Collection of resources accessed by the pipeline.
+//!
+//! The resources accessed by the pipeline must be accessed through what is called a *descriptor*.
+//! Descriptors are grouped in what is called *descriptor sets*. Descriptor sets are also grouped
+//! in what is called a *pipeline layout*.
+//!
+//! # Pipeline initialization
+//!
+//! In order to build a pipeline object (a `GraphicsPipeline` or a `ComputePipeline`), you have to
+//! pass a pointer to a `PipelineLayout<T>` struct. This struct is a wrapper around a Vulkan struct
+//! that contains all the data about the descriptor sets and descriptors that will be available
+//! in the pipeline. The `T` parameter must implement the `PipelineLayoutDesc` trait and describes
+//! the descriptor sets and descriptors on vulkano's side.
+//!
+//! To build a `PipelineLayout`, you need to pass a collection of `DescriptorSetLayout` structs.
+//! A `DescriptorSetLayout<T>` if the equivalent of `PipelineLayout` but for a single descriptor
+//! set. The `T` parameter must implement the `DescriptorSetDesc` trait.
+//!
+//! # Binding resources
 //! 
+//! In parallel of the pipeline initialization, you have to create a `DescriptorSet<T>`. This
+//! struct contains the list of actual resources that will be binded when the pipeline is executed.
+//! To build a `DescriptorSet<T>`, you need to pass a `DescriptorSetLayout<T>`. The `T` parameter
+//! must implement `DescriptorSetDesc` as if the same for both the descriptor set and its layout.
+//!
+//! TODO: describe descriptor set writes
+//!
+//! # Shader analyser
 //! 
-//! How does that work?
-//! 
-//! The shader analyser determines which descriptors are used by each shader and outputs a struct
-//! that describes this stuff. This struct implements `PipelineLayoutDesc`.
-//! 
-//! When shaders are grouped together in the pipeline, they are passed through `CompatiblePipeline`
-//! to be merged into a single pipeline layout struct. If the descriptors of the various shaders
-//! are incompatible, it is detected at that moment.
-//! 
-//! The single struct that represents the layout is stored as a template parameter of the pipeline.
-//! It is also stored in the `PipelineLayout` object (which wraps around vulkan's pipeline layout).
-//! When you draw, you have to pass a collection of descriptor sets that are compatible with the
-//! pipeline layout desc of the pipeline.
-//! 
-//! 
+//! While you can manually implement the `PipelineLayoutDesc` and `DescriptorSetDesc` traits on
+//! your own types, it is encouraged to use the `vulkano-shaders` crate instead. This crate will
+//! automatically parse your SPIR-V code and generate structs that implement these traits and
+//! describe the pipeline layout to vulkano.
+
 
 // FIXME: all destructors are missing
 
@@ -34,18 +51,32 @@ use vk;
 
 /// Types that describe the layout of a pipeline (descriptor sets and push constants).
 pub unsafe trait PipelineLayoutDesc {
-    type DescriptorSets;        // example: (Arc<DescriptorSet<Layout1>>, Arc<DescriptorSet<Layout2>>)   where Layout1 and Layout2 implement DescriptorSetDesc
-    type DescriptorSetLayouts;      // example: (Arc<DescriptorSetLayout<Layout1>>, Arc<DescriptorSetLayout<Layout2>>)   where Layout1 and Layout2 implement DescriptorSetDesc
+    /// Represents a collection of `DescriptorSet` structs. A parameter of this type must be
+    /// passed when you add a draw command to a command buffer that uses this layout.
+    type DescriptorSets;
+
+    /// Represents a collection of `DescriptorSetLayout` structs. A parameter of this type must
+    /// be passed when creating a `PipelineLayout` struct.
+    type DescriptorSetLayouts;
+
+    /// Not yet implemented. Useless for now.
     type PushConstants;
 
-    fn decode_descriptor_set_layouts(&self, Self::DescriptorSetLayouts) -> Vec<Arc<AbstractDescriptorSetLayout>>;
-
+    /// Turns the `DescriptorSets` associated type into something vulkano can understand.
     fn decode_descriptor_sets(&self, Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>>;
+
+    /// Turns the `DescriptorSetLayouts` associated type into something vulkano can understand.
+    fn decode_descriptor_set_layouts(&self, Self::DescriptorSetLayouts)
+                                     -> Vec<Arc<AbstractDescriptorSetLayout>>;
 
     // FIXME: implement this correctly
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
 }
 
+/// Dummy implementation of `PipelineLayoutDesc` that describes an empty pipeline.
+///
+/// The descriptors, descriptor sets and push constants are all `()`. You have to pass `()` when
+/// drawing when you use a `EmptyPipelineDesc`.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct EmptyPipelineDesc;
 unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
@@ -53,33 +84,65 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
     type DescriptorSetLayouts = ();
     type PushConstants = ();
 
-    fn decode_descriptor_set_layouts(&self, _: Self::DescriptorSetLayouts) -> Vec<Arc<AbstractDescriptorSetLayout>> { vec![] }
-    fn decode_descriptor_sets(&self, _: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> { vec![] }
+    #[inline]
+    fn decode_descriptor_set_layouts(&self, _: Self::DescriptorSetLayouts)
+                                     -> Vec<Arc<AbstractDescriptorSetLayout>> { vec![] }
+    #[inline]
+    fn decode_descriptor_sets(&self, _: Self::DescriptorSets)
+                              -> Vec<Arc<AbstractDescriptorSet>> { vec![] }
 }
 
 /// Types that describe a single descriptor set.
 pub unsafe trait DescriptorSetDesc {
+    /// Represents a modification of a descriptor set. A parameter of this type must be passed
+    /// when you modify a descriptor set.
     type Write;
 
+    /// 
     type Init;
 
+    /// Returns the list of descriptors contained in this set.
     fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: Cow for better perfs
+
+    /// Turns the `Write` associated type into something vulkano can understand.
+    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;
+
+    /// Turns the `Init` associated type into something vulkano can understand.
+    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;
 
     // FIXME: implement this correctly
     fn is_compatible_with<S>(&self, _: &S) -> bool where S: DescriptorSetDesc { true }
-
-    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;
-
-    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;
 }
 
-pub struct DescriptorDesc {
+// FIXME: shoud allow multiple array binds at once
+pub struct DescriptorWrite {
     pub binding: u32,
+    pub array_element: u32,
+    pub content: DescriptorBind,
+}
+
+// FIXME: incomplete
+#[derive(Clone)]        // TODO: Debug
+pub enum DescriptorBind {
+    UniformBuffer(Arc<BufferResource>),
+}
+
+/// Describes a single descriptor.
+pub struct DescriptorDesc {
+    /// Offset of the binding within the descriptor.
+    pub binding: u32,
+
+    /// What kind of resource can later be bind to this descriptor.
     pub ty: DescriptorType,
-    pub count: u32,
+
+    /// How many array elements this descriptor is made of.
+    pub array_count: u32,
+
+    /// Which shader stages are going to access this descriptor.
     pub stages: ShaderStages,
 }
 
+/// Describes what kind of resource may later be bind to a descriptor.
 // FIXME: add immutable sampler when relevant
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
@@ -106,6 +169,7 @@ impl DescriptorType {
     }
 }
 
+/// Describes which shader stages have access to a descriptor.
 pub struct ShaderStages {
     pub vertex: bool,
     pub tessellation_control: bool,
@@ -143,6 +207,7 @@ impl ShaderStages {
     }
 }
 
+#[doc(hidden)]
 impl Into<vk::ShaderStageFlags> for ShaderStages {
     #[inline]
     fn into(self) -> vk::ShaderStageFlags {
@@ -207,6 +272,7 @@ impl<T> CompatibleDescriptor<T> for T where T: Descriptor { type Out = T; }
 
 pub unsafe trait Descriptor {}*/
 
+/// An actual descriptor set with the resources that are binded to it.
 pub struct DescriptorSet<S> {
     set: vk::DescriptorSet,
     pool: Arc<DescriptorPool>,
@@ -248,9 +314,20 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         }))
     }
 
+    /// Modifies a descriptor set.
+    ///
+    /// The parameter depends on your implementation of `DescriptorSetDesc`.
+    ///
+    /// This function trusts the implementation of `DescriptorSetDesc` when it comes to making sure
+    /// that the correct resource type is written to the correct descriptor.
     pub fn write(&self, write: S::Write) {
-        let vk = self.pool.device.pointers();
         let write = self.layout.description().decode_write(write);
+        unsafe { self.unchecked_write(write); }
+    }
+
+    /// Modifies a descriptor set without checking that the writes are correct.
+    pub unsafe fn unchecked_write(&self, write: Vec<DescriptorWrite>) {
+        let vk = self.pool.device.pointers();
 
         // FIXME: store resources in the descriptor set so that they aren't destroyed
 
@@ -299,10 +376,11 @@ impl<S> VulkanObject for DescriptorSet<S> {
     }
 }
 
-/// Trait that is implemented on all `DescriptorSet` objects.
+/// Implemented on all `DescriptorSet` objects. Hides the template parameters.
 pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {}
 unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {}
 
+/// Describes the layout of all descriptors within a descriptor set.
 pub struct DescriptorSetLayout<S> {
     layout: vk::DescriptorSetLayout,
     device: Arc<Device>,
@@ -319,7 +397,7 @@ impl<S> DescriptorSetLayout<S> where S: DescriptorSetDesc {
             vk::DescriptorSetLayoutBinding {
                 binding: desc.binding,
                 descriptorType: desc.ty.vk_enum(),
-                descriptorCount: desc.count,
+                descriptorCount: desc.array_count,
                 stageFlags: desc.stages.into(),
                 pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
             }
@@ -362,14 +440,11 @@ impl<S> VulkanObject for DescriptorSetLayout<S> {
     }
 }
 
-/// Trait that is implemented on all `DescriptorSetLayout` objects.
+/// Implemented on all `DescriptorSetLayout` objects. Hides the template parameters.
 pub unsafe trait AbstractDescriptorSetLayout: ::VulkanObjectU64 {}
 unsafe impl<S> AbstractDescriptorSetLayout for DescriptorSetLayout<S> {}
 
-/// Represents the layout of all the resources and data that can be binded before drawing and
-/// that will be accessible from the shaders.
-///
-/// The template parameter represents the descriptor sets.
+/// A collection of `DescriptorSetLayout` structs.
 // TODO: push constants.
 pub struct PipelineLayout<P> {
     device: Arc<Device>,
@@ -431,6 +506,7 @@ impl<P> VulkanObject for PipelineLayout<P> {
     }
 }
 
+/// Pool from which descriptor sets are allocated from.
 pub struct DescriptorPool {
     pool: vk::DescriptorPool,
     device: Arc<Device>,
@@ -469,17 +545,4 @@ impl DescriptorPool {
             device: device.clone(),
         }))
     }
-}
-
-// FIXME: shoud allow multiple array binds at once
-pub struct DescriptorWrite {
-    pub binding: u32,
-    pub array_element: u32,
-    pub content: DescriptorBind,
-}
-
-// FIXME: incomplete
-#[derive(Clone)]        // TODO: Debug
-pub enum DescriptorBind {
-    UniformBuffer(Arc<BufferResource>),
 }

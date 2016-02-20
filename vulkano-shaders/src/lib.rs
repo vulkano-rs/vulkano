@@ -251,7 +251,7 @@ unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set1 {
             ::vulkano::descriptor_set::DescriptorDesc {
                 binding: 0,
                 ty: ::vulkano::descriptor_set::DescriptorType::UniformBuffer,
-                count: 1,
+                array_count: 1,
                 stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),
             }
         ]
