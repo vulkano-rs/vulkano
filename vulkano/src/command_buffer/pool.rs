@@ -71,7 +71,7 @@ impl CommandBufferPool {
     }
 }
 
-impl VulkanObject for CommandBufferPool {
+unsafe impl VulkanObject for CommandBufferPool {
     type Object = vk::CommandPool;
 
     #[inline]

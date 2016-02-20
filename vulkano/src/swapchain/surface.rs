@@ -236,7 +236,7 @@ impl Surface {
     }
 }
 
-impl VulkanObject for Surface {
+unsafe impl VulkanObject for Surface {
     type Object = vk::SurfaceKHR;
 
     #[inline]

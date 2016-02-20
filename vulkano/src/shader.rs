@@ -93,7 +93,7 @@ impl ShaderModule {
     }
 }
 
-impl VulkanObject for ShaderModule {
+unsafe impl VulkanObject for ShaderModule {
     type Object = vk::ShaderModule;
 
     #[inline]

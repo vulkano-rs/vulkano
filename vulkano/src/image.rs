@@ -382,7 +382,7 @@ impl<Ty, F, M> Image<Ty, F, M>
     }
 }
 
-impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
+unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
     where Ty: ImageTypeMarker
 {
     type Object = vk::Image;

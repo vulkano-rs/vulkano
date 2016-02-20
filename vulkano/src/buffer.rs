@@ -388,7 +388,7 @@ unsafe impl<'a, T: ?Sized, M> CpuWriteAccessible<'a, T> for Buffer<T, M>
     }
 }
 
-impl<T: ?Sized, M> VulkanObject for Buffer<T, M> {
+unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> {
     type Object = vk::Buffer;
 
     #[inline]
@@ -550,7 +550,7 @@ impl<'a, T: 'a, M: 'a> BufferSlice<'a, [T], M> {
     }
 }
 
-impl<'a, T: ?Sized, M> VulkanObject for BufferSlice<'a, T, M> {
+unsafe impl<'a, T: ?Sized, M> VulkanObject for BufferSlice<'a, T, M> {
     type Object = vk::Buffer;
 
     #[inline]

@@ -105,7 +105,7 @@ impl DeviceMemory {
     }
 }
 
-impl VulkanObject for DeviceMemory {
+unsafe impl VulkanObject for DeviceMemory {
     type Object = vk::DeviceMemory;
 
     #[inline]

@@ -248,7 +248,7 @@ impl fmt::Debug for Instance {
     }
 }
 
-impl VulkanObject for Instance {
+unsafe impl VulkanObject for Instance {
     type Object = vk::Instance;
 
     #[inline]
@@ -552,7 +552,7 @@ impl PhysicalDevice {
     }
 }
 
-impl VulkanObject for PhysicalDevice {
+unsafe impl VulkanObject for PhysicalDevice {
     type Object = vk::PhysicalDevice;
 
     #[inline]

@@ -204,7 +204,7 @@ impl fmt::Debug for Device {
     }
 }
 
-impl VulkanObject for Device {
+unsafe impl VulkanObject for Device {
     type Object = vk::Device;
 
     #[inline]
@@ -305,7 +305,7 @@ impl Queue {
     }
 }
 
-impl VulkanObject for Queue {
+unsafe impl VulkanObject for Queue {
     type Object = vk::Queue;
 
     #[inline]

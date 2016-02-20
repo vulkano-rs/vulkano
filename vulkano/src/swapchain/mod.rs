@@ -212,7 +212,7 @@ impl Display {
     }
 }
 
-impl VulkanObject for Display {
+unsafe impl VulkanObject for Display {
     type Object = vk::DisplayKHR;
 
     #[inline]

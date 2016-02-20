@@ -383,7 +383,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     }
 }
 
-impl<S> VulkanObject for DescriptorSet<S> {
+unsafe impl<S> VulkanObject for DescriptorSet<S> {
     type Object = vk::DescriptorSet;
 
     #[inline]
@@ -447,7 +447,7 @@ impl<S> DescriptorSetLayout<S> where S: DescriptorSetDesc {
     }
 }
 
-impl<S> VulkanObject for DescriptorSetLayout<S> {
+unsafe impl<S> VulkanObject for DescriptorSetLayout<S> {
     type Object = vk::DescriptorSetLayout;
 
     #[inline]
@@ -513,7 +513,7 @@ impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
     }
 }
 
-impl<P> VulkanObject for PipelineLayout<P> {
+unsafe impl<P> VulkanObject for PipelineLayout<P> {
     type Object = vk::PipelineLayout;
 
     #[inline]

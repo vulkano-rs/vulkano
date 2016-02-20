@@ -105,7 +105,7 @@ impl PipelineCache {
     }
 }
 
-impl VulkanObject for PipelineCache {
+unsafe impl VulkanObject for PipelineCache {
     type Object = vk::PipelineCache;
 
     #[inline]

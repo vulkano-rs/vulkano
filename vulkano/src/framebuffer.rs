@@ -315,7 +315,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     }
 }
 
-impl<L> VulkanObject for RenderPass<L> {
+unsafe impl<L> VulkanObject for RenderPass<L> {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -443,7 +443,7 @@ impl<L> Framebuffer<L> {
     }
 }
 
-impl<L> VulkanObject for Framebuffer<L> {
+unsafe impl<L> VulkanObject for Framebuffer<L> {
     type Object = vk::Framebuffer;
 
     #[inline]

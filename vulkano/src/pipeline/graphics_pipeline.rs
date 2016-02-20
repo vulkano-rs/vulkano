@@ -315,7 +315,7 @@ impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {
 impl<MultiVertex, Layout> GenericPipeline for GraphicsPipeline<MultiVertex, Layout> {
 }
 
-impl<MultiVertex, Layout> VulkanObject for GraphicsPipeline<MultiVertex, Layout> {
+unsafe impl<MultiVertex, Layout> VulkanObject for GraphicsPipeline<MultiVertex, Layout> {
     type Object = vk::Pipeline;
 
     #[inline]

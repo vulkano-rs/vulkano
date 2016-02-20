@@ -187,7 +187,7 @@ impl Fence {
     }
 }
 
-impl VulkanObject for Fence {
+unsafe impl VulkanObject for Fence {
     type Object = vk::Fence;
 
     #[inline]
@@ -242,7 +242,7 @@ impl Semaphore {
     }
 }
 
-impl VulkanObject for Semaphore {
+unsafe impl VulkanObject for Semaphore {
     type Object = vk::Semaphore;
 
     #[inline]
@@ -336,7 +336,7 @@ impl Event {
     }
 }
 
-impl VulkanObject for Event {
+unsafe impl VulkanObject for Event {
     type Object = vk::Event;
 
     #[inline]

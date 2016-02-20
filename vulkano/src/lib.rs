@@ -98,7 +98,7 @@ lazy_static! {
 }
 
 /// Gives access to the internal identifier of an object.
-pub trait VulkanObject {
+pub unsafe trait VulkanObject {
     /// The type of the object.
     type Object;
 
@@ -108,15 +108,15 @@ pub trait VulkanObject {
 
 // TODO: remove eventually
 // https://github.com/rust-lang/rust/issues/29328
-pub trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
-impl<T> VulkanObjectU64 for T where T: VulkanObject<Object = u64> {
+pub unsafe trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
+unsafe impl<T> VulkanObjectU64 for T where T: VulkanObject<Object = u64> {
     #[inline]
     fn internal_object(&self) -> u64 { VulkanObject::internal_object(self) }
 }
 // TODO: remove eventually
 // https://github.com/rust-lang/rust/issues/29328
-pub trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
-impl<T> VulkanObjectUsize for T where T: VulkanObject<Object = usize> {
+pub unsafe trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
+unsafe impl<T> VulkanObjectUsize for T where T: VulkanObject<Object = usize> {
     #[inline]
     fn internal_object(&self) -> usize { VulkanObject::internal_object(self) }
 }
