@@ -42,8 +42,8 @@ pub struct GraphicsPipeline<MultiVertex, Layout> {
     marker: PhantomData<(MultiVertex,)>
 }
 
-impl<MV, L> GraphicsPipeline<MV, L>
-    where MV: MultiVertex, L: PipelineLayoutDesc
+impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
+    where MV: MultiVertex
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -54,12 +54,13 @@ impl<MV, L> GraphicsPipeline<MV, L>
     /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
     ///
     // TODO: check all the device's limits
-    pub fn new<V, F, R>(device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<V, L>,
-                        input_assembly: &InputAssembly, viewport: &ViewportsState,
-                        raster: &Rasterization, multisample: &Multisample, blend: &Blend,
-                        fragment_shader: &FragmentShaderEntryPoint<F>,
-                        layout: &Arc<PipelineLayout<L>>, render_pass: &Subpass<R>)
-                        -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
+    pub fn new<Vi, Fo, R>
+              (device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
+               input_assembly: &InputAssembly, viewport: &ViewportsState,
+               raster: &Rasterization, multisample: &Multisample, blend: &Blend,
+               fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
+               layout: &Arc<PipelineLayout<(Vl, Fl)>>, render_pass: &Subpass<R>)
+               -> Result<Arc<GraphicsPipeline<MV, (Vl, Fl)>>, OomError>
     {
         let vk = device.pointers();
 
@@ -296,7 +297,11 @@ impl<MV, L> GraphicsPipeline<MV, L>
             marker: PhantomData,
         }))
     }
+}
 
+impl<MV, L> GraphicsPipeline<MV, L>
+    where MV: MultiVertex, L: PipelineLayoutDesc
+{
     /// Returns the pipeline layout used in the constructor.
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout<L>> {

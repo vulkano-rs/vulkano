@@ -82,8 +82,8 @@ impl ShaderModule {
     /// - Calling this function also determines the template parameters associated to the
     ///   `EntryPoint` struct. Therefore care must be taken that the values there are correct.
     ///
-    pub unsafe fn fragment_shader_entry_point<'a, F>(&'a self, name: &'a CStr)
-                                                    -> FragmentShaderEntryPoint<'a, F>
+    pub unsafe fn fragment_shader_entry_point<'a, F, L>(&'a self, name: &'a CStr)
+                                                        -> FragmentShaderEntryPoint<'a, F, L>
     {
         FragmentShaderEntryPoint {
             module: self,
@@ -143,13 +143,13 @@ pub struct ComputeShaderEntryPoint<'a, D, S, P> {
     marker: PhantomData<(D, S, P)>
 }
 
-pub struct FragmentShaderEntryPoint<'a, F> {
+pub struct FragmentShaderEntryPoint<'a, F, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    marker: PhantomData<F>
+    marker: PhantomData<(F, L)>,
 }
 
-impl<'a, F> FragmentShaderEntryPoint<'a, F> {
+impl<'a, F, L> FragmentShaderEntryPoint<'a, F, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module

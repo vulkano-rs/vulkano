@@ -106,7 +106,7 @@ fn main() {
 
     let (pipeline_layout, set) = {
         let layout1 = vulkano::descriptor_set::DescriptorSetLayout::new(&device, Default::default()).unwrap();
-        let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), layout1.clone()).unwrap();
+        let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), (layout1.clone(), ())).unwrap();
         let set1 = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &layout1, uniform_buffer.clone() as std::sync::Arc<_>).unwrap();
         (pipeline_layout, set1)
     };
@@ -152,7 +152,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), set.clone())
+            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

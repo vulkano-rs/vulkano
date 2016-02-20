@@ -73,6 +73,33 @@ pub unsafe trait PipelineLayoutDesc {
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
 }
 
+// FIXME: should merge the two and check for collisions instead of making them cohabit
+unsafe impl<A, B> PipelineLayoutDesc for (A, B)
+    where A: PipelineLayoutDesc, B: PipelineLayoutDesc
+{
+    type DescriptorSets = (A::DescriptorSets, B::DescriptorSets);
+    type DescriptorSetLayouts = (A::DescriptorSetLayouts, B::DescriptorSetLayouts);
+    type PushConstants = (A::PushConstants, B::PushConstants);
+
+    #[inline]
+    fn decode_descriptor_sets(&self, s: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
+        let mut a = self.0.decode_descriptor_sets(s.0);
+        let b = self.1.decode_descriptor_sets(s.1);
+        a.extend_from_slice(&b);
+        a
+    }
+
+    #[inline]
+    fn decode_descriptor_set_layouts(&self, s: Self::DescriptorSetLayouts)
+                                     -> Vec<Arc<AbstractDescriptorSetLayout>>
+    {
+        let mut a = self.0.decode_descriptor_set_layouts(s.0);
+        let b = self.1.decode_descriptor_set_layouts(s.1);
+        a.extend_from_slice(&b);
+        a
+    }
+}
+
 /// Dummy implementation of `PipelineLayoutDesc` that describes an empty pipeline.
 ///
 /// The descriptors, descriptor sets and push constants are all `()`. You have to pass `()` when

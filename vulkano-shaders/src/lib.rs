@@ -157,7 +157,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
             }).collect::<Vec<_>>().join(", ");
 
-            let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input}), Layout>", // FIXME:
+            let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input}), Layout>",
                             input = input);
             let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), vec![{}])", attributes);
             (t, f)
@@ -197,7 +197,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 if output.is_empty() { output } else { output + "," }
             };
 
-            let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output})>",
+            let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output}), Layout>",
                             output = output);
             (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))"))
         },
