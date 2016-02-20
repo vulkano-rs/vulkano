@@ -16,6 +16,9 @@
 //! 
 //! 
 
+// FIXME: all destructors are missing
+
+
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -91,6 +94,34 @@ pub struct ShaderStages {
     pub geometry: bool,
     pub fragment: bool,
     pub compute: bool,
+}
+
+impl ShaderStages {
+    /// Creates a `ShaderStages` struct will all graphics stages set to `true`.
+    #[inline]
+    pub fn all_graphics() -> ShaderStages {
+        ShaderStages {
+            vertex: true,
+            tessellation_control: true,
+            tessellation_evaluation: true,
+            geometry: true,
+            fragment: true,
+            compute: false,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct will the compute stage set to `true`.
+    #[inline]
+    pub fn compute() -> ShaderStages {
+        ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: true,
+        }
+    }
 }
 
 impl Into<vk::ShaderStageFlags> for ShaderStages {
@@ -313,8 +344,51 @@ impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
     }
 }
 
+impl<P> VulkanObject for PipelineLayout<P> {
+    type Object = vk::PipelineLayout;
+
+    #[inline]
+    fn internal_object(&self) -> vk::PipelineLayout {
+        self.layout
+    }
+}
 
 pub struct DescriptorPool {
     pool: vk::DescriptorPool,
     device: Arc<Device>,
+}
+
+impl DescriptorPool {
+    pub fn new(device: &Arc<Device>) -> Result<Arc<DescriptorPool>, OomError> {
+        let vk = device.pointers();
+
+        // FIXME: arbitrary
+        let pool_sizes = vec![
+            vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                descriptorCount: 10,
+            }
+        ];
+
+        let pool = unsafe {
+            let infos = vk::DescriptorPoolCreateInfo {
+                sType: vk::STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // TODO:
+                maxSets: 100,       // TODO: let user choose
+                poolSizeCount: pool_sizes.len() as u32,
+                pPoolSizes: pool_sizes.as_ptr(),
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateDescriptorPool(device.internal_object(), &infos,
+                                                      ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(DescriptorPool {
+            pool: pool,
+            device: device.clone(),
+        }))
+    }
 }

@@ -156,7 +156,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
             }).collect::<Vec<_>>().join(", ");
 
-            let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input})>",
+            let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input}), Layout>", // FIXME:
                             input = input);
             let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), vec![{}])", attributes);
             (t, f)
@@ -236,7 +236,42 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         };
     }
 
-    return "".to_owned();
+    return r#"
+
+#[derive(Default)]
+pub struct Set1;
+
+unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set1 {
+    fn descriptors(&self) -> Vec<::vulkano::descriptor_set::DescriptorDesc> {
+        vec![
+            ::vulkano::descriptor_set::DescriptorDesc {
+                binding: 0,
+                ty: ::vulkano::descriptor_set::DescriptorType::UniformBuffer,
+                count: 1,
+                stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),
+            }
+        ]
+    }
+}
+
+#[derive(Default)]
+pub struct Layout;
+
+unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {
+    type DescriptorSets = ::std::sync::Arc<::vulkano::descriptor_set::DescriptorSet<Set1>>;
+    type DescriptorSetLayouts = ::std::sync::Arc<::vulkano::descriptor_set::DescriptorSetLayout<Set1>>;
+    type PushConstants = ();
+
+    fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
+        -> Vec<::std::sync::Arc<::vulkano::descriptor_set::AbstractDescriptorSetLayout>>
+    {
+        vec![
+            layouts
+        ]
+    }
+}
+
+"#.to_owned();
 }
 
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {

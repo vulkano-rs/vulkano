@@ -4,6 +4,8 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use descriptor_set::PipelineLayout;
+use descriptor_set::PipelineLayoutDesc;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;
@@ -26,9 +28,10 @@ use pipeline::viewport::ViewportsState;
 ///
 /// The template parameter contains the descriptor set to use with this pipeline, and the
 /// renderpass layout.
-pub struct GraphicsPipeline<MultiVertex> {
+pub struct GraphicsPipeline<MultiVertex, Layout> {
     device: Arc<Device>,
     pipeline: vk::Pipeline,
+    layout: Arc<PipelineLayout<Layout>>,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -39,8 +42,8 @@ pub struct GraphicsPipeline<MultiVertex> {
     marker: PhantomData<(MultiVertex,)>
 }
 
-impl<MV> GraphicsPipeline<MV>
-    where MV: MultiVertex
+impl<MV, L> GraphicsPipeline<MV, L>
+    where MV: MultiVertex, L: PipelineLayoutDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -51,11 +54,12 @@ impl<MV> GraphicsPipeline<MV>
     /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
     ///
     // TODO: check all the device's limits
-    pub fn new<V, F, R>(device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<V>,
+    pub fn new<V, F, R>(device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<V, L>,
                         input_assembly: &InputAssembly, viewport: &ViewportsState,
                         raster: &Rasterization, multisample: &Multisample, blend: &Blend,
-                        fragment_shader: &FragmentShaderEntryPoint<F>, render_pass: &Subpass<R>)
-                        -> Result<Arc<GraphicsPipeline<MV>>, OomError>
+                        fragment_shader: &FragmentShaderEntryPoint<F>,
+                        layout: &Arc<PipelineLayout<L>>, render_pass: &Subpass<R>)
+                        -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
     {
         let vk = device.pointers();
 
@@ -250,23 +254,6 @@ impl<MV> GraphicsPipeline<MV>
                 pDynamicStates: dynamic_states.as_ptr(),
             };
 
-            // FIXME: hack with leaking pipeline layout
-            let layout = {
-                let infos = vk::PipelineLayoutCreateInfo {
-                    sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                    pNext: ptr::null(),
-                    flags: 0,
-                    setLayoutCount: 0,
-                    pSetLayouts: ptr::null(),
-                    pushConstantRangeCount: 0,
-                    pPushConstantRanges: ptr::null(),
-                };
-                let mut out = mem::uninitialized();
-                try!(check_errors(vk.CreatePipelineLayout(device.internal_object(), &infos, 
-                                                          ptr::null(), &mut out)));
-                out
-            };
-
             let infos = vk::GraphicsPipelineCreateInfo {
                 sType: vk::STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -282,7 +269,7 @@ impl<MV> GraphicsPipeline<MV>
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
-                layout: layout,      // FIXME:
+                layout: layout.internal_object(),
                 renderPass: render_pass.renderpass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -298,6 +285,7 @@ impl<MV> GraphicsPipeline<MV>
         Ok(Arc::new(GraphicsPipeline {
             device: device.clone(),
             pipeline: pipeline,
+            layout: layout.clone(),
 
             dynamic_line_width: raster.line_width.is_none(),
             dynamic_viewport: viewport.dynamic_viewports(),
@@ -310,7 +298,7 @@ impl<MV> GraphicsPipeline<MV>
     }
 }
 
-impl<MultiVertex> GraphicsPipeline<MultiVertex> {
+impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {
     /// Returns true if the line width used by this pipeline is dynamic.
     #[inline]
     pub fn has_dynamic_line_width(&self) -> bool {
@@ -318,10 +306,10 @@ impl<MultiVertex> GraphicsPipeline<MultiVertex> {
     }
 }
 
-impl<MultiVertex> GenericPipeline for GraphicsPipeline<MultiVertex> {
+impl<MultiVertex, Layout> GenericPipeline for GraphicsPipeline<MultiVertex, Layout> {
 }
 
-impl<MultiVertex> VulkanObject for GraphicsPipeline<MultiVertex> {
+impl<MultiVertex, Layout> VulkanObject for GraphicsPipeline<MultiVertex, Layout> {
     type Object = vk::Pipeline;
 
     #[inline]
@@ -330,7 +318,7 @@ impl<MultiVertex> VulkanObject for GraphicsPipeline<MultiVertex> {
     }
 }
 
-impl<MultiVertex> Drop for GraphicsPipeline<MultiVertex> {
+impl<MultiVertex, Layout> Drop for GraphicsPipeline<MultiVertex, Layout> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

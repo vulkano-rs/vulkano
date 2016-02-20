@@ -262,7 +262,7 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V>>,
+    pub unsafe fn draw<V: 'static, L: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
                                    vertices: V, dynamic: &DynamicState) -> InnerCommandBufferBuilder
         where V: MultiVertex
     {
@@ -284,7 +284,7 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    fn bind_gfx_pipeline_state<V: 'static>(&mut self, pipeline: &Arc<GraphicsPipeline<V>>,
+    fn bind_gfx_pipeline_state<V: 'static, L: 'static>(&mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
                                            dynamic: &DynamicState)
     {
         let vk = self.device.pointers();

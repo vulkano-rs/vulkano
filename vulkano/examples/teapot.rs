@@ -87,7 +87,19 @@ fn main() {
         }
     }.unwrap();
 
-    let pipeline: Arc<vulkano::pipeline::GraphicsPipeline<Arc<vulkano::buffer::Buffer<[Vertex; 3], _>>>> = {
+
+
+    let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
+
+    let (pipeline_layout, set) = {
+        let layout1 = vulkano::descriptor_set::DescriptorSetLayout::new(&device, Default::default()).unwrap();
+        let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), layout1.clone()).unwrap();
+        let set1 = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &layout1).unwrap();
+        (pipeline_layout, set1)
+    };
+
+
+    let pipeline: Arc<vulkano::pipeline::GraphicsPipeline<Arc<vulkano::buffer::Buffer<[Vertex; 3], _>>, _>> = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
             topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleList,
             primitive_restart_enable: false,
@@ -116,12 +128,15 @@ fn main() {
 
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &renderpass.subpass(0).unwrap()).unwrap()
+                                                 &pipeline_layout, &renderpass.subpass(0).unwrap())
+                                                 .unwrap()
     };
 
     let framebuffers = images.iter().map(|image| {
         vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), image).unwrap()
     }).collect::<Vec<_>>();
+
+
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()

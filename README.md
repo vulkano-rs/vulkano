@@ -1,5 +1,7 @@
 # Vulkano
 
+*Warning: this library breaks every five minutes for the moment.*
+
 ## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.html)
 
 This repository contains three libraries:

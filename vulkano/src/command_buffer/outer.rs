@@ -197,9 +197,9 @@ pub struct PrimaryCommandBufferBuilderInlineDraw {
 impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V>(self, pipeline: &Arc<GraphicsPipeline<V>>,
-                   vertices: V, dynamic: &DynamicState) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex + 'static
+    pub fn draw<V, L>(self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+                      vertices: V, dynamic: &DynamicState) -> PrimaryCommandBufferBuilderInlineDraw
+        where V: MultiVertex + 'static, L: 'static
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
