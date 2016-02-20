@@ -67,9 +67,9 @@ fn main() {
     }
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_vs.rs")} }
-    let vs = vs::TriangleShader::load(&device).expect("failed to create shader module");
+    let vs = vs::TeapotShader::load(&device).expect("failed to create shader module");
     mod fs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_fs.rs")} }
-    let fs = fs::TriangleShader::load(&device).expect("failed to create shader module");
+    let fs = fs::TeapotShader::load(&device).expect("failed to create shader module");
 
     let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
                                                   .expect("failed to create command buffer pool");
