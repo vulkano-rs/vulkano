@@ -285,8 +285,24 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     ///
     /// - Panicks if the pool and the layout were not created from the same `Device`.
     ///
-    pub fn new(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>)
+    pub fn new(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>, init: S::Init)
                -> Result<Arc<DescriptorSet<S>>, OomError>
+    {
+        unsafe {
+            let set = try!(DescriptorSet::uninitialized(pool, layout));
+            set.unchecked_write(layout.description().decode_init(init));
+            Ok(set)
+        }
+    }
+
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the pool and the layout were not created from the same `Device`.
+    ///
+    // FIXME: this has to check whether there's still enough room in the pool
+    pub unsafe fn uninitialized(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>)
+                                -> Result<Arc<DescriptorSet<S>>, OomError>
     {
         assert_eq!(&*pool.device as *const Device, &*layout.device as *const Device);
 

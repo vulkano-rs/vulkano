@@ -107,10 +107,9 @@ fn main() {
     let (pipeline_layout, set) = {
         let layout1 = vulkano::descriptor_set::DescriptorSetLayout::new(&device, Default::default()).unwrap();
         let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), layout1.clone()).unwrap();
-        let set1 = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &layout1).unwrap();
+        let set1 = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &layout1, uniform_buffer.clone() as std::sync::Arc<_>).unwrap();
         (pipeline_layout, set1)
     };
-
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
@@ -149,8 +148,6 @@ fn main() {
         vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), image).unwrap()
     }).collect::<Vec<_>>();
 
-
-    set.write(uniform_buffer.clone());
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
