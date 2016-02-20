@@ -168,6 +168,7 @@ impl Fence {
     {
         let mut device = None;
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let fences: Vec<vk::Fence> = iter.into_iter().map(|fence| {
             match &mut device {
                 dev @ &mut None => *dev = Some(fence.device.clone()),

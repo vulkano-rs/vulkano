@@ -70,6 +70,7 @@ impl Device {
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: Vec<(u32, u32)> = Vec::with_capacity(queue_families.size_hint().0);
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layers = layers.into_iter().map(|&layer| {
             // FIXME: check whether each layer is supported
             CString::new(layer).unwrap()
@@ -78,6 +79,7 @@ impl Device {
             layer.as_ptr()
         }).collect::<Vec<_>>();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let extensions = ["VK_KHR_swapchain"].iter().map(|&ext| {
             // FIXME: check whether each extension is supported
             CString::new(ext).unwrap()
@@ -110,6 +112,7 @@ impl Device {
             }
 
             // turning `queues` into an array of `vkDeviceQueueCreateInfo` suitable for Vulkan
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let queues = queues.iter().map(|&(queue_id, ref priorities)| {
                 vk::DeviceQueueCreateInfo {
                     sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,

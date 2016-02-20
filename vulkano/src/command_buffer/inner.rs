@@ -121,6 +121,7 @@ impl InnerCommandBufferBuilder {
         where I: Iterator<Item = &'a InnerCommandBuffer>
     {
         {
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let mut command_buffers = Vec::with_capacity(iter.size_hint().0);
 
             for cb in iter {
@@ -277,8 +278,9 @@ impl InnerCommandBufferBuilder {
             let vk = self.device.pointers();
 
             let buffers = vertices.buffers();
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
-            let ids = buffers.iter().map(|b| b.internal_object()).collect::<Vec<_>>();
+            let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
             vk.CmdDraw(self.cmd.unwrap(), 3, 1, 0, 0);  // FIXME: params
@@ -314,13 +316,15 @@ impl InnerCommandBufferBuilder {
 
             // FIXME: keep these alive
             let descriptor_sets = pipeline.layout().description().decode_descriptor_sets(sets);
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.is_empty() {
                 vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
-                                         pipeline.layout().internal_object(), 0, descriptor_sets.len() as u32,
-                                         descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
+                                         pipeline.layout().internal_object(), 0,
+                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
+                                         0, ptr::null());   // FIXME: dynamic offsets
             }
         }
     }
@@ -344,6 +348,7 @@ impl InnerCommandBufferBuilder {
     {
         assert!(framebuffer.is_compatible_with(renderpass));
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = clear_values.iter().map(|value| {
             match *value {
                 ClearValue::None => vk::ClearValue::color({

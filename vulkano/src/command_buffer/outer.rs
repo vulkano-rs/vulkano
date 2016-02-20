@@ -136,7 +136,9 @@ impl PrimaryCommandBufferBuilder {
     {
         // FIXME: check for compatibility
 
-        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values);
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values)
+                                      .collect::<Vec<_>>();
 
         unsafe {
             let inner = self.inner.begin_renderpass(renderpass, framebuffer, false, &clear_values);
@@ -167,7 +169,9 @@ impl PrimaryCommandBufferBuilder {
     {
         // FIXME: check for compatibility
 
-        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values);
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values)
+                                      .collect::<Vec<_>>();
 
         unsafe {
             let inner = self.inner.begin_renderpass(renderpass, framebuffer, true, &clear_values);

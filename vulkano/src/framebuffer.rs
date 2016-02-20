@@ -41,16 +41,22 @@ pub unsafe trait RenderPassLayout {
     /// The list of clear values to use when beginning to draw on this renderpass.
     type ClearValues;
 
+    /// Iterator that produces one clear value per attachment.
+    type ClearValuesIter: Iterator<Item = ClearValue>;
+
+    /// Iterator that produces attachments.
+    type AttachmentsIter: Iterator<Item = AttachmentDescription>;
+
     /// Decodes a `ClearValues` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned array must be the same as the number of
     /// attachments.
     ///
     /// The format of the clear value **must** match the format of the attachment. Only attachments
     /// that are loaded with `LoadOp::Clear` must have an entry in the array.
-    fn convert_clear_values(&self, Self::ClearValues) -> Vec<ClearValue>;
+    fn convert_clear_values(&self, Self::ClearValues) -> Self::ClearValuesIter;
 
     /// Returns the descriptions of the attachments.
-    fn attachments(&self) -> Vec<AttachmentDescription>;     // TODO: static array?
+    fn attachments(&self) -> Self::AttachmentsIter;
 }
 
 pub unsafe trait RenderPassLayoutExt<'a, M: 'a>: RenderPassLayout {
@@ -103,14 +109,16 @@ macro_rules! renderpass {
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
                 type ClearValues = [f32; 4];        // FIXME:
+                type ClearValuesIter = std::option::IntoIter<$crate::framebuffer::ClearValue>;
+                type AttachmentsIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
 
                 #[inline]
-                fn convert_clear_values(&self, val: Self::ClearValues) -> Vec<$crate::framebuffer::ClearValue> {
-                    vec![$crate::framebuffer::ClearValue::Float(val)]
+                fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
+                    Some($crate::framebuffer::ClearValue::Float(val)).into_iter()
                 }
 
                 #[inline]
-                fn attachments(&self) -> Vec<$crate::framebuffer::AttachmentDescription> {
+                fn attachments(&self) -> Self::AttachmentsIter {
                     vec![
                         $(
                             $crate::framebuffer::AttachmentDescription {
@@ -122,7 +130,7 @@ macro_rules! renderpass {
                                 final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                             }
                         )*
-                    ]
+                    ].into_iter()
                 }
             }
 
@@ -210,7 +218,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
         let vk = device.pointers();
 
-        let attachments = layout.attachments().iter().map(|attachment| {
+        let attachments = layout.attachments().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
                 format: attachment.format as u32,
@@ -225,7 +233,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
         }).collect::<Vec<_>>();
 
         // FIXME: totally hacky
-        let color_attachment_references = layout.attachments().iter().map(|attachment| {
+        let color_attachment_references = layout.attachments().map(|attachment| {
             vk::AttachmentReference {
                 attachment: 0,
                 layout: vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

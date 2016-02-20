@@ -65,7 +65,9 @@ impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
         let vk = device.pointers();
 
         let pipeline = unsafe {
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let mut dynamic_states: Vec<vk::DynamicState> = Vec::new();
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let mut stages = Vec::with_capacity(5);
 
             stages.push(vk::PipelineShaderStageCreateInfo {
@@ -88,6 +90,7 @@ impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
                 pSpecializationInfo: ptr::null(),       // TODO:
             });
 
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let binding_descriptions = (0 .. MV::num_buffers()).map(|num| {
                 let (stride, rate) = MV::buffer_info(num);
                 vk::VertexInputBindingDescription {
@@ -97,6 +100,7 @@ impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
                 }
             }).collect::<Vec<_>>();
 
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let attribute_descriptions = vertex_shader.attributes().iter().map(|&(loc, ref name)| {
                 let (binding, info) = MV::attrib(name).expect("missing attr");       // TODO: error
                 vk::VertexInputAttributeDescription {

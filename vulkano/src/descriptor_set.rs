@@ -376,6 +376,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
         // TODO: the architecture of this function is going to be tricky
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let buffer_descriptors = write.iter().enumerate().map(|(num, write)| {
             match write.content {
                 DescriptorBind::UniformBuffer(ref buffer) => {
@@ -388,6 +389,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
             }
         }).collect::<Vec<_>>();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let vk_writes = write.iter().enumerate().map(|(num, write)| {
             vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -438,6 +440,7 @@ impl<S> DescriptorSetLayout<S> where S: DescriptorSetDesc {
     {
         let vk = device.pointers();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let bindings = description.descriptors().into_iter().map(|desc| {
             vk::DescriptorSetLayoutBinding {
                 binding: desc.binding,
@@ -506,6 +509,7 @@ impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
         let vk = device.pointers();
 
         let layouts = description.decode_descriptor_set_layouts(layouts);
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layouts_ids = layouts.iter().map(|l| {
             // FIXME: check that they belong to the same device
             ::VulkanObjectU64::internal_object(&**l)

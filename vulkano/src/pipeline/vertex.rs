@@ -1,4 +1,5 @@
 use std::mem;
+use std::option::IntoIter;
 use std::sync::Arc;
 
 use buffer::Buffer;
@@ -28,6 +29,8 @@ pub struct VertexAttribute {
 
 /// Trait for types that contain the layout of a collection of vertex buffers.
 pub unsafe trait MultiVertex {
+    type BuffersIter: ExactSizeIterator<Item = Arc<BufferResource>>;
+
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)>;
 
     /// Returns the number of buffers in this collection.
@@ -35,12 +38,14 @@ pub unsafe trait MultiVertex {
 
     fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate);
 
-    fn buffers(&self) -> Vec<Arc<BufferResource>>;
+    fn buffers(&self) -> Self::BuffersIter;
 }
 
 unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
     where T: 'static + Vertex, M: 'static + MemorySourceChunk
 {
+    type BuffersIter = IntoIter<Arc<BufferResource>>;
+
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
         T::attrib(name).map(|attr| (0, attr))
@@ -58,14 +63,16 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
     }
 
     #[inline]
-    fn buffers(&self) -> Vec<Arc<BufferResource>> {
-        vec![self.clone()]
+    fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+        Some(self.clone() as Arc<_>).into_iter()
     }
 }
 
 unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
     where T: 'static + Vertex, M: 'static + MemorySourceChunk
 {
+    type BuffersIter = IntoIter<Arc<BufferResource>>;
+
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
         T::attrib(name).map(|attr| (0, attr))
@@ -83,8 +90,8 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
     }
 
     #[inline]
-    fn buffers(&self) -> Vec<Arc<BufferResource>> {
-        vec![self.clone()]
+    fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+        Some(self.clone() as Arc<_>).into_iter()
     }
 }
 
@@ -93,6 +100,8 @@ macro_rules! impl_mv {
         unsafe impl<$t1, M> MultiVertex for Arc<Buffer<$t2, M>>
             where T: 'static + Vertex, M: 'static + MemorySourceChunk
         {
+            type BuffersIter = IntoIter<Arc<BufferResource>>;
+
             #[inline]
             fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
                 T::attrib(name).map(|attr| (0, attr))
@@ -109,8 +118,9 @@ macro_rules! impl_mv {
                 (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
             }
 
-            fn buffers(&self) -> Vec<Arc<BufferResource>> {
-                vec![self.clone()]
+            #[inline]
+            fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+                Some(self.clone() as Arc<_>).into_iter()
             }
         }
     );

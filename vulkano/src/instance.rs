@@ -94,6 +94,7 @@ impl Instance {
             None
         };
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layers = layers.into_iter().map(|&layer| {
             // FIXME: check whether each layer is supported
             CString::new(layer).unwrap()
@@ -102,6 +103,7 @@ impl Instance {
             layer.as_ptr()
         }).collect::<Vec<_>>();
 
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let extensions = ["VK_KHR_surface", "VK_KHR_swapchain", "VK_KHR_win32_surface", "VK_EXT_debug_report"].iter().map(|&ext| {
             // FIXME: check whether each extension is supported
             CString::new(ext).unwrap()
