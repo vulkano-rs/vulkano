@@ -54,6 +54,15 @@ fn main() {
     };
 
 
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
+                                                  .expect("failed to create command buffer pool");
+
+
+    let depth_buffer = vulkano::image::Image::<vulkano::image::Type2d, vulkano::formats::D16Unorm, _>::new(&device, &vulkano::image::Usage::all(),
+                                                  vulkano::memory::DeviceLocal, &queue,
+                                                  images[0].dimensions(), (), 1).unwrap();
+    let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &mut queue.lock().unwrap());
+
     let vertex_buffer = vulkano::buffer::Buffer::<[teapot::Vertex], _>
                                ::array(&device, teapot::VERTICES.len(),
                                        &vulkano::buffer::Usage::all(),
@@ -95,8 +104,8 @@ fn main() {
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
-    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[1] as f32 / d[0] as f32 }, 0.01, 100.0);
-    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(-2.0, 0.0, 0.4), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
+    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
+    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.2, 0.2, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::Buffer::<([[f32; 4]; 4], [[f32; 4]; 4]), _>
@@ -113,9 +122,6 @@ fn main() {
     let vs = vs::TeapotShader::load(&device).expect("failed to create shader module");
     mod fs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_fs.rs")} }
     let fs = fs::TeapotShader::load(&device).expect("failed to create shader module");
-
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
-                                                  .expect("failed to create command buffer pool");
 
     let images = images.into_iter().map(|image| {
         let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,
