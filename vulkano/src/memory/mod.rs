@@ -196,7 +196,7 @@ pub unsafe trait Content {
     fn is_size_suitable(usize) -> bool;
 }
 
-unsafe impl<T> Content for T where T: Copy {
+unsafe impl<T> Content for T {
     #[inline]
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut T> {
         if size != mem::size_of::<T>() {
@@ -212,7 +212,7 @@ unsafe impl<T> Content for T where T: Copy {
     }
 }
 
-unsafe impl<T> Content for [T] where T: Copy {
+unsafe impl<T> Content for [T] {
     #[inline]
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut [T]> {
         if size % mem::size_of::<T>() != 0 {
