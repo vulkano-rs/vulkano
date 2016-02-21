@@ -1,0 +1,13 @@
+# Troubles encountered with Rust during the making of this library
+
+- [No way to create dynamic-sized arrays on the stack](https://github.com/rust-lang/rfcs/issues/618). A lot of Vulkan functions require
+  passing an array of small elements (small structs or integers). Building such an array with a `Vec` can be expensive, especially
+  when most of the time the array only contains a single element.
+
+- No way to create a `*mut T` pointer from a `*mut c_void()` and a size when `T` is unsized. This had to be implemented in a custom
+  trait.
+
+- [Can't cast an `ImageResource` into a `Resource` even though the former depends on the latter](https://github.com/rust-lang/rust/issues/5665).
+
+- https://github.com/rust-lang/rust/issues/29328
+
