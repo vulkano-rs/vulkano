@@ -44,9 +44,6 @@ pub unsafe trait RenderPassLayout {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
-    /// Iterator that produces attachments.
-    type AttachmentsIter: Iterator<Item = AttachmentDescription>;
-
     /// Decodes a `ClearValues` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned array must be the same as the number of
     /// attachments.
@@ -55,14 +52,58 @@ pub unsafe trait RenderPassLayout {
     /// that are loaded with `LoadOp::Clear` must have an entry in the array.
     fn convert_clear_values(&self, Self::ClearValues) -> Self::ClearValuesIter;
 
+    /// Iterator that produces attachments.
+    type AttachmentsIter: ExactSizeIterator<Item = AttachmentDescription>;
+
     /// Returns the descriptions of the attachments.
     fn attachments(&self) -> Self::AttachmentsIter;
+
+    /// Iterator that produces passes.
+    type PassesIter: ExactSizeIterator<Item = PassDescription>;
+
+    /// Returns the descriptions of the passes.
+    fn passes(&self) -> Self::PassesIter;
+
+    /// Iterator that produces pass dependencies.
+    type PassDependenciesIter: ExactSizeIterator<Item = PassDependencyDescription>;
+
+    /// Returns the descriptions of the dependencies between passes.
+    fn pass_dependencies(&self) -> Self::PassDependenciesIter;
 }
 
 pub unsafe trait RenderPassLayoutExt<'a, M: 'a>: RenderPassLayout {
     type AttachmentsList;
 
     fn ids(&self, &Self::AttachmentsList) -> (Vec<Arc<ImageResource>>, Vec<u64>);
+}
+
+/// Trait implemented on renderpass layouts to check whether they are compatible
+/// with another layout.
+///
+/// The trait is automatically implemented for all type that implement `RenderPassLayout`.
+// TODO: once specialization lands, this trait can be specialized for pairs that are known to
+//       always be compatible
+// TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
+pub unsafe trait CompatibleLayout<Other>: RenderPassLayout where Other: RenderPassLayout {
+    /// Returns `true` if this layout is compatible with the other layout, as defined in the
+    /// `Render Pass Compatibility` section of the Vulkan specs.
+    fn is_compatible_with(&self, other: &Other) -> bool;
+}
+
+unsafe impl<A, B> CompatibleLayout<B> for A
+    where A: RenderPassLayout, B: RenderPassLayout
+{
+    fn is_compatible_with(&self, other: &B) -> bool {
+        for (atch1, atch2) in self.attachments().zip(other.attachments()) {
+            if !atch1.is_compatible_with(&atch2) {
+                return false;
+            }
+        }
+
+        return true;
+
+        // FIXME: finish
+    }
 }
 
 /// Describes a uniform value that will be used to fill an attachment at the start of the
@@ -94,6 +135,41 @@ pub struct AttachmentDescription {
 
     pub initial_layout: ImageLayout,
     pub final_layout: ImageLayout,
+}
+
+impl AttachmentDescription {
+    /// Returns true if this attachment is compatible with another attachment, as defined in the
+    /// `Render Pass Compatibility` section of the Vulkan specs.
+    #[inline]
+    pub fn is_compatible_with(&self, other: &AttachmentDescription) -> bool {
+        self.format == other.format && self.samples == other.samples
+    }
+}
+
+pub struct PassDescription {
+    /// Indices of attachments to use as color attachments.
+    pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+    pub depth_stencil: Option<(usize, ImageLayout)>,
+    /// Indices of attachments to use as input attachments.
+    pub input_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+    /// If not empty, each color attachment will be resolved into each corresponding entry of
+    /// this list.
+    ///
+    /// If this value is not empty, it **must** be the same length as `color_attachments`.
+    pub resolve_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+    /// Indices of attachments that will be preserved during this pass.
+    pub preserve_attachments: Vec<usize>,      // TODO: Vec is slow
+}
+
+// FIXME: finish
+pub struct PassDependencyDescription {
+    pub source_subpass: usize,
+    pub destination_subpass: usize,
+    /*VkPipelineStageFlags    srcStageMask;
+    VkPipelineStageFlags    dstStageMask;
+    VkAccessFlags           srcAccessMask;
+    VkAccessFlags           dstAccessMask;*/
+    pub by_region: bool,
 }
 
 /// Builds a `RenderPass` object.
@@ -218,6 +294,8 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
         let vk = device.pointers();
 
+        // TODO: check the validity of the renderpass layout with debug_assert!
+
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let attachments = layout.attachments().map(|attachment| {
             vk::AttachmentDescription {
@@ -233,28 +311,91 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             }
         }).collect::<Vec<_>>();
 
-        // FIXME: totally hacky
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let color_attachment_references = layout.attachments().map(|attachment| {
-            vk::AttachmentReference {
-                attachment: 0,
-                layout: vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            }
+        let attachment_references = layout.passes().flat_map(|pass| {
+            debug_assert!(pass.resolve_attachments.is_empty() ||
+                          pass.resolve_attachments.len() == pass.color_attachments.len());
+            let resolve = pass.resolve_attachments.into_iter().map(|(offset, img_la)| {
+                debug_assert!(offset < layout.attachments().len());
+                vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
+            });
+
+            let color = pass.color_attachments.into_iter().map(|(offset, img_la)| {
+                debug_assert!(offset < layout.attachments().len());
+                vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
+            });
+
+            let input = pass.input_attachments.into_iter().map(|(offset, img_la)| {
+                debug_assert!(offset < layout.attachments().len());
+                vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
+            });
+
+            let depthstencil = if let Some((offset, img_la)) = pass.depth_stencil {
+                Some(vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, })
+            } else {
+                None
+            }.into_iter();
+
+            color.chain(input).chain(resolve).chain(depthstencil)
         }).collect::<Vec<_>>();
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let passes = (0 .. 1).map(|_| {
-            vk::SubpassDescription {
-                flags: 0,   // reserved
-                pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                inputAttachmentCount: 0,        // FIXME:
-                pInputAttachments: ptr::null(),     // FIXME:
-                colorAttachmentCount: color_attachment_references.len() as u32,     // FIXME:
-                pColorAttachments: color_attachment_references.as_ptr(),        // FIXME:
-                pResolveAttachments: ptr::null(),       // FIXME:
-                pDepthStencilAttachment: ptr::null(),       // FIXME:
-                preserveAttachmentCount: 0,     // FIXME:
-                pPreserveAttachments: ptr::null(),      // FIXME:
+        let preserve_attachments_references = layout.passes().flat_map(|pass| {
+            pass.preserve_attachments.into_iter().map(|offset| offset as u32)
+        }).collect::<Vec<_>>();
+
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let mut ref_index = 0usize;
+        let mut preserve_ref_index = 0usize;
+        let passes = layout.passes().map(|pass| {
+            unsafe {
+                let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.color_attachments.len();
+                let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.input_attachments.len();
+                let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.resolve_attachments.len();
+                let depth_stencil = if pass.depth_stencil.is_some() {
+                    let a = attachment_references.as_ptr().offset(ref_index as isize);
+                    ref_index += 1;
+                    a
+                } else {
+                    ptr::null()
+                };
+
+                let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
+                preserve_ref_index += pass.preserve_attachments.len();
+
+                vk::SubpassDescription {
+                    flags: 0,   // reserved
+                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
+                    inputAttachmentCount: pass.input_attachments.len() as u32,
+                    pInputAttachments: input_attachments,
+                    colorAttachmentCount: pass.input_attachments.len() as u32,
+                    pColorAttachments: color_attachments,
+                    pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
+                    pDepthStencilAttachment: ptr::null(),       // FIXME:
+                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
+                    pPreserveAttachments: preserve_attachments,
+                }
+            }
+        }).collect::<Vec<_>>();
+        debug_assert!(ref_index == attachment_references.len());
+        debug_assert!(preserve_ref_index == preserve_attachments_references.len());
+
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let dependencies = layout.pass_dependencies().map(|dependency| {
+            debug_assert!(dependency.source_subpass < layout.passes().len());
+            debug_assert!(dependency.destination_subpass < layout.passes().len());
+
+            vk::SubpassDependency {
+                srcSubpass: dependency.source_subpass as u32,
+                dstSubpass: dependency.destination_subpass as u32,
+                srcStageMask: vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,      // FIXME:
+                dstStageMask: vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,      // FIXME:
+                srcAccessMask: vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,       // FIXME:
+                dstAccessMask: vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,       // FIXME:
+                dependencyFlags: if dependency.by_region { vk::DEPENDENCY_BY_REGION_BIT } else { 0 },
             }
         }).collect::<Vec<_>>();
 
@@ -267,8 +408,8 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
                 pAttachments: attachments.as_ptr(),
                 subpassCount: passes.len() as u32,
                 pSubpasses: passes.as_ptr(),
-                dependencyCount: 0,             // FIXME:
-                pDependencies: ptr::null(),     // FIXME:
+                dependencyCount: dependencies.len() as u32,
+                pDependencies: dependencies.as_ptr(),
             };
 
             let mut output = mem::uninitialized();
@@ -315,8 +456,11 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     ///
     /// This means that framebuffers created with this renderpass can also be used alongside with
     /// the other renderpass.
-    pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool {
-        true        // FIXME: 
+    #[inline]
+    pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool
+        where R2: RenderPassLayout
+    {
+        self.layout.is_compatible_with(&other.layout)
     }
 
     /// Returns the layout used to create this renderpass.

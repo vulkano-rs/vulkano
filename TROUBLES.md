@@ -9,5 +9,8 @@
 
 - [Can't cast an `ImageResource` into a `Resource` even though the former depends on the latter](https://github.com/rust-lang/rust/issues/5665).
 
+- This library was designed with specialization in mind. There are several `is_compatible` trait methods that perform deep comparisons between
+  layouts. With specialization available, these methods could be specialized as `true` for layouts that are known to always be compatible.
+
 - https://github.com/rust-lang/rust/issues/29328
 
