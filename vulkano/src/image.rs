@@ -453,8 +453,34 @@ pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker {
 }
 
 impl<Ty, F, M> ImagePrototype<Ty, F, M>
-    where Ty: ImageTypeMarker
+    where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatMarker
 {
+    /// Returns the dimensions of this image.
+    #[inline]
+    pub fn dimensions(&self) -> Ty::Dimensions {
+        self.image.dimensions()
+    }
+
+    /// Returns the number of array layers of this image.
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        self.image.array_layers()
+    }
+
+    /// Returns the number of mipmap levels of this image.
+    #[inline]
+    pub fn mipmap_levels(&self) -> u32 {
+        self.image.mipmap_levels()
+    }
+
+    /// Returns the number of samples of each pixel of this image.
+    ///
+    /// Returns `1` if the image is not multisampled.
+    #[inline]
+    pub fn num_samples(&self) -> u32 {
+        self.image.num_samples()
+    }
+
     /// Transitions the image prototype into a real image by submitting a one-shot command buffer.
     ///
     /// # Panic

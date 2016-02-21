@@ -2,6 +2,7 @@ extern crate kernel32;
 extern crate gdi32;
 extern crate user32;
 extern crate winapi;
+extern crate cgmath;
 
 #[macro_use]
 extern crate vulkano;
@@ -34,8 +35,7 @@ fn main() {
                                                 .expect("couldn't find a graphical queue family");
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(),
-                                                        &[])
+                                                        [(queue, 0.5)].iter().cloned(), &[])
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
@@ -80,18 +80,17 @@ fn main() {
         }
     }
 
+    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[1] as f32 / d[0] as f32 }, 0.01, 100.0);
+    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(-2.0, 0.0, 0.4), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0 /* FIXME */, 0.0));
+    let scale = cgmath::Matrix4::from_scale(0.01);
+
     let uniform_buffer = vulkano::buffer::Buffer::<[[f32; 4]; 4], _>
                                ::new(&device, &vulkano::buffer::Usage::all(),
                                      vulkano::memory::HostVisible, &queue)
                                .expect("failed to create buffer");
     {
         let mut mapping = uniform_buffer.try_write().unwrap();
-        *mapping = [
-            [0.01, 0.0, 0.0, 0.0],
-            [0.0, 0.01, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0]
-        ];
+        *mapping = (proj * view * scale).into();
     }
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_vs.rs")} }
