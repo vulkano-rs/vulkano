@@ -190,7 +190,7 @@ fn main() {
         };
 
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
-                                                 &raster, &ms, &blend, &fs.main_entry_point(), &vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), ()).unwrap(),
+                                                 &raster, &ms, &blend, &fs.main_entry_point(), &vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), ((), ())).unwrap(),
                                                  &renderpass.subpass(0).unwrap()).unwrap()
     };
 
@@ -215,7 +215,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), ())
+            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), ((), ()))
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
