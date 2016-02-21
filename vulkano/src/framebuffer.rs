@@ -187,6 +187,8 @@ macro_rules! renderpass {
                 type ClearValues = [f32; 4];        // FIXME:
                 type ClearValuesIter = std::option::IntoIter<$crate::framebuffer::ClearValue>;
                 type AttachmentsIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
+                type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
+                type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
@@ -207,6 +209,24 @@ macro_rules! renderpass {
                             }
                         )*
                     ].into_iter()
+                }
+
+                #[inline]
+                fn passes(&self) -> Self::PassesIter {
+                    Some(
+                        $crate::framebuffer::PassDescription {
+                            color_attachments: vec![(0, $crate::image::Layout::ColorAttachmentOptimal)],
+                            depth_stencil: None,
+                            input_attachments: vec![],
+                            resolve_attachments: vec![],
+                            preserve_attachments: vec![],
+                        }
+                    ).into_iter()
+                }
+
+                #[inline]
+                fn pass_dependencies(&self) -> Self::PassDependenciesIter {
+                    None.into_iter()
                 }
             }
 
@@ -371,10 +391,10 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
                     pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
                     inputAttachmentCount: pass.input_attachments.len() as u32,
                     pInputAttachments: input_attachments,
-                    colorAttachmentCount: pass.input_attachments.len() as u32,
+                    colorAttachmentCount: pass.color_attachments.len() as u32,
                     pColorAttachments: color_attachments,
                     pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
-                    pDepthStencilAttachment: ptr::null(),       // FIXME:
+                    pDepthStencilAttachment: depth_stencil,
                     preserveAttachmentCount: pass.preserve_attachments.len() as u32,
                     pPreserveAttachments: preserve_attachments,
                 }
