@@ -1,6 +1,7 @@
 use std::mem;
-use std::option::IntoIter;
+use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
+use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
 use buffer::BufferResource;
@@ -44,7 +45,7 @@ pub unsafe trait MultiVertex {
 unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
     where T: 'static + Vertex, M: 'static + MemorySourceChunk
 {
-    type BuffersIter = IntoIter<Arc<BufferResource>>;
+    type BuffersIter = OptionIntoIter<Arc<BufferResource>>;
 
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
@@ -63,7 +64,7 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
     }
 
     #[inline]
-    fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+    fn buffers(&self) -> OptionIntoIter<Arc<BufferResource>> {
         Some(self.clone() as Arc<_>).into_iter()
     }
 }
@@ -71,7 +72,7 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
 unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
     where T: 'static + Vertex, M: 'static + MemorySourceChunk
 {
-    type BuffersIter = IntoIter<Arc<BufferResource>>;
+    type BuffersIter = OptionIntoIter<Arc<BufferResource>>;
 
     #[inline]
     fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
@@ -90,7 +91,7 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
     }
 
     #[inline]
-    fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+    fn buffers(&self) -> OptionIntoIter<Arc<BufferResource>> {
         Some(self.clone() as Arc<_>).into_iter()
     }
 }
@@ -100,7 +101,7 @@ macro_rules! impl_mv {
         unsafe impl<$t1, M> MultiVertex for Arc<Buffer<$t2, M>>
             where T: 'static + Vertex, M: 'static + MemorySourceChunk
         {
-            type BuffersIter = IntoIter<Arc<BufferResource>>;
+            type BuffersIter = OptionIntoIter<Arc<BufferResource>>;
 
             #[inline]
             fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
@@ -119,7 +120,7 @@ macro_rules! impl_mv {
             }
 
             #[inline]
-            fn buffers(&self) -> IntoIter<Arc<BufferResource>> {
+            fn buffers(&self) -> OptionIntoIter<Arc<BufferResource>> {
                 Some(self.clone() as Arc<_>).into_iter()
             }
         }
@@ -150,6 +151,46 @@ impl_mv!(T, [T; 512]);
 impl_mv!(T, [T; 1024]);
 impl_mv!(T, [T; 2048]);
 impl_mv!(T, [T; 4096]);
+
+
+unsafe impl<A, B, Ma, Mb> MultiVertex for (Arc<Buffer<[A], Ma>>, Arc<Buffer<[B], Mb>>)
+    where A: 'static + Vertex, B: 'static + Vertex, Ma: 'static + MemorySourceChunk,
+          Mb: 'static + MemorySourceChunk
+{
+    type BuffersIter = VecIntoIter<Arc<BufferResource>>;
+
+    #[inline]
+    fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
+        if let Some(attr) = A::attrib(name) {
+            Some((0, attr))
+        } else if let Some(attr) = B::attrib(name) {
+            Some((1, attr))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn num_buffers() -> u32 {
+        2
+    }
+
+    #[inline]
+    fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate) {
+        if buffer_id == 0 {
+            (mem::size_of::<A>() as u32, VertexInputRate::Vertex)
+        } else if buffer_id == 1 {
+            (mem::size_of::<B>() as u32, VertexInputRate::Vertex)
+        } else {
+            panic!()
+        }
+    }
+
+    #[inline]
+    fn buffers(&self) -> VecIntoIter<Arc<BufferResource>> {
+        vec![self.0.clone() as Arc<_>, self.1.clone() as Arc<_>].into_iter()
+    }
+}
 
 
 #[macro_export]

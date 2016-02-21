@@ -67,6 +67,19 @@ fn main() {
         }
     }
 
+    let normals_buffer = vulkano::buffer::Buffer::<[teapot::Normal], _>
+                               ::array(&device, teapot::NORMALS.len(),
+                                       &vulkano::buffer::Usage::all(),
+                                       vulkano::memory::HostVisible, &queue)
+                                       .expect("failed to create buffer");
+
+    {
+        let mut mapping = normals_buffer.try_write().unwrap();
+        for (o, i) in mapping.iter_mut().zip(teapot::NORMALS.iter()) {
+            *o = *i;
+        }
+    }
+
     let index_buffer = vulkano::buffer::Buffer::<[u16], _>
                                ::array(&device, teapot::INDICES.len(),
                                        &vulkano::buffer::Usage::all(),
@@ -86,13 +99,14 @@ fn main() {
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(-2.0, 0.0, 0.4), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
-    let uniform_buffer = vulkano::buffer::Buffer::<[[f32; 4]; 4], _>
+    let uniform_buffer = vulkano::buffer::Buffer::<([[f32; 4]; 4], [[f32; 4]; 4]), _>
                                ::new(&device, &vulkano::buffer::Usage::all(),
                                      vulkano::memory::HostVisible, &queue)
                                .expect("failed to create buffer");
     {
         let mut mapping = uniform_buffer.try_write().unwrap();
-        *mapping = (proj * view * scale).into();
+        mapping.0 = (view * scale).into();
+        mapping.1 = proj.into();
     }
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_vs.rs")} }
@@ -168,7 +182,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw_indexed(&pipeline, vertex_buffer.clone(), &index_buffer, &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
+            .draw_indexed(&pipeline, (vertex_buffer.clone(), normals_buffer.clone()), &index_buffer, &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
