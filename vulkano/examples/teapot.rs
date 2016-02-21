@@ -80,8 +80,10 @@ fn main() {
         }
     }
 
+    // note: this teapot was meant for OpenGL where the origin is at the lower left
+    //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
     let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[1] as f32 / d[0] as f32 }, 0.01, 100.0);
-    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(-2.0, 0.0, 0.4), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0 /* FIXME */, 0.0));
+    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(-2.0, 0.0, 0.4), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::Buffer::<[[f32; 4]; 4], _>
