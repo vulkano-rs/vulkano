@@ -3,6 +3,7 @@ extern crate cmake;
 use std::env;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build/glslangValidator.exe");
@@ -13,8 +14,10 @@ fn main() {
     let path = if target.contains("windows") {
         // TODO: check the hash of the file to make sure that it is not altered
         Path::new("build/glslangValidator.exe").to_owned()
+
     } else {
-        // TODO: automatically initialize the submodule if it wasn't done
+        let status = Command::new("git").arg("submodule").arg("update").arg("--init").status().unwrap();
+        if !status.success() { panic!("error while executing `git submodule init`") }
         cmake::build("glslang");
         Path::new(&env::var("OUT_DIR").unwrap()).join("bin").join("glslangValidator")
     };
