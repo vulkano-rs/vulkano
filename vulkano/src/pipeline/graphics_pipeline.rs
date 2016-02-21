@@ -203,9 +203,9 @@ impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
                 sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                depthTestEnable: vk::FALSE,          // FIXME:
-                depthWriteEnable: vk::FALSE,         // FIXME:
-                depthCompareOp: vk::COMPARE_OP_ALWAYS,           // FIXME:
+                depthTestEnable: vk::TRUE,          // FIXME:
+                depthWriteEnable: vk::TRUE,         // FIXME:
+                depthCompareOp: vk::COMPARE_OP_LESS,           // FIXME:
                 depthBoundsTestEnable: vk::FALSE,            // FIXME:
                 stencilTestEnable: vk::FALSE,            // FIXME:
                 front: vk::StencilOpState {

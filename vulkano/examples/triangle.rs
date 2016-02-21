@@ -155,7 +155,7 @@ fn main() {
     // The next step is to create a *renderpass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    let renderpass = renderpass!{
+    let renderpass = single_pass_renderpass!{
         device: &device,
         attachments: {
             color [Clear]

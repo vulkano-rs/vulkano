@@ -61,7 +61,8 @@ fn main() {
     let depth_buffer = vulkano::image::Image::<vulkano::image::Type2d, vulkano::formats::D16Unorm, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
                                                   images[0].dimensions(), (), 1).unwrap();
-    let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &mut queue.lock().unwrap());
+    let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &mut queue.lock().unwrap()).unwrap();
+    let depth_buffer = vulkano::image::ImageView::new(&depth_buffer).expect("failed to create image view");
 
     let vertex_buffer = vulkano::buffer::Buffer::<[teapot::Vertex], _>
                                ::array(&device, teapot::VERTICES.len(),
@@ -105,7 +106,7 @@ fn main() {
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
     let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
-    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.2, 0.2, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
+    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::Buffer::<([[f32; 4]; 4], [[f32; 4]; 4]), _>
@@ -129,7 +130,7 @@ fn main() {
         vulkano::image::ImageView::new(&image).expect("failed to create image view")
     }).collect::<Vec<_>>();
 
-    let renderpass = renderpass!{
+    let renderpass = single_pass_renderpass!{
         device: &device,
         attachments: {
             color [Clear]
@@ -181,13 +182,13 @@ fn main() {
     };
 
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), image).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image, &depth_buffer)).unwrap()
     }).collect::<Vec<_>>();
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
-            .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
+            .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0], 1.0))
             .draw_indexed(&pipeline, (vertex_buffer.clone(), normals_buffer.clone()), &index_buffer, &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
             .draw_end()
             .build().unwrap()

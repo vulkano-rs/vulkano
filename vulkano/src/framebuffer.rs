@@ -13,7 +13,8 @@
 //!
 //! # Creating a RenderPass
 //! 
-//! Creating a `RenderPass` in the vulkano library is best done with the `renderpass!` macro.
+//! Creating a `RenderPass` in the vulkano library is best done with the
+//! `single_pass_renderpass!` macro.
 //!
 //! This macro creates an inaccessible struct which implements the `RenderPassLayout` trait. This
 //! trait tells vulkano what the characteristics of the renderpass are, and is also used to
@@ -71,7 +72,7 @@ pub unsafe trait RenderPassLayout {
     fn pass_dependencies(&self) -> Self::PassDependenciesIter;
 }
 
-pub unsafe trait RenderPassLayoutExt<'a, M: 'a>: RenderPassLayout {
+pub unsafe trait RenderPassLayoutExt<'a, M1: 'a, M2: 'a>: RenderPassLayout {
     type AttachmentsList;
 
     fn ids(&self, &Self::AttachmentsList) -> (Vec<Arc<ImageResource>>, Vec<u64>);
@@ -174,7 +175,7 @@ pub struct PassDependencyDescription {
 
 /// Builds a `RenderPass` object.
 #[macro_export]
-macro_rules! renderpass {
+macro_rules! single_pass_renderpass {
     (
         device: $device:expr,
         attachments: { $($atch_name:ident [$($attrs:ident),*]),+ }
@@ -184,15 +185,18 @@ macro_rules! renderpass {
 
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = [f32; 4];        // FIXME:
-                type ClearValuesIter = std::option::IntoIter<$crate::framebuffer::ClearValue>;
+                type ClearValues = ([f32; 4], f32);        // FIXME:
+                type ClearValuesIter = std::vec::IntoIter<$crate::framebuffer::ClearValue>;
                 type AttachmentsIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
                 type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
-                    Some($crate::framebuffer::ClearValue::Float(val)).into_iter()
+                    vec![
+                        $crate::framebuffer::ClearValue::Float(val.0),
+                        $crate::framebuffer::ClearValue::Depth(val.1)
+                    ].into_iter()
                 }
 
                 #[inline]
@@ -202,12 +206,21 @@ macro_rules! renderpass {
                             $crate::framebuffer::AttachmentDescription {
                                 format: $crate::formats::Format::B8G8R8A8Srgb,       // FIXME:
                                 samples: 1,                         // FIXME:
-                                load: renderpass!(__load_op__ $($attrs),*),
+                                load: single_pass_renderpass!(__load_op__ $($attrs),*),
                                 store: $crate::framebuffer::StoreOp::Store,     // FIXME:
                                 initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                                 final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
-                            }
+                            },
                         )*
+
+                        $crate::framebuffer::AttachmentDescription {
+                            format: $crate::formats::Format::D16Unorm,       // FIXME:
+                            samples: 1,                         // FIXME:
+                            load: $crate::framebuffer::LoadOp::Clear,      // FIXME:
+                            store: $crate::framebuffer::StoreOp::Store,     // FIXME:
+                            initial_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
+                            final_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
+                        },
                     ].into_iter()
                 }
 
@@ -216,7 +229,7 @@ macro_rules! renderpass {
                     Some(
                         $crate::framebuffer::PassDescription {
                             color_attachments: vec![(0, $crate::image::Layout::ColorAttachmentOptimal)],
-                            depth_stencil: None,
+                            depth_stencil: Some((1, $crate::image::Layout::DepthStencilAttachmentOptimal)),
                             input_attachments: vec![],
                             resolve_attachments: vec![],
                             preserve_attachments: vec![],
@@ -230,14 +243,18 @@ macro_rules! renderpass {
                 }
             }
 
-            unsafe impl<'a, M> $crate::framebuffer::RenderPassLayoutExt<'a, M> for Layout
-                where M: $crate::memory::MemorySourceChunk + 'static
+            unsafe impl<'a, M1, M2> $crate::framebuffer::RenderPassLayoutExt<'a, M1, M2> for Layout
+                where M1: $crate::memory::MemorySourceChunk + 'static,
+                      M2: $crate::memory::MemorySourceChunk + 'static
             {
-                type AttachmentsList = &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M>>;      // FIXME:
+                type AttachmentsList = (
+                    &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M1>>,
+                    &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::D16Unorm, M2>>
+                );      // FIXME:
 
                 fn ids(&self, l: &Self::AttachmentsList) -> (Vec<Arc<$crate::image::ImageResource>>, Vec<u64>) {
-                    let a = vec![(**l).clone() as Arc<$crate::image::ImageResource>];
-                    let b = vec![l.id()];
+                    let a = vec![l.0.clone() as Arc<$crate::image::ImageResource>, l.1.clone() as Arc<$crate::image::ImageResource>];
+                    let b = vec![l.0.id(), l.1.id()];
                     (a, b)
                 }
             }
@@ -542,9 +559,9 @@ pub struct Framebuffer<L> {
 }
 
 impl<L> Framebuffer<L> {
-    pub fn new<'a, M>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
+    pub fn new<'a, M1, M2>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
                       attachments: L::AttachmentsList) -> Result<Arc<Framebuffer<L>>, OomError>
-        where L: RenderPassLayoutExt<'a, M>
+        where L: RenderPassLayoutExt<'a, M1, M2>
     {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
