@@ -17,6 +17,7 @@ use image::ImageResource;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
+use pipeline::input_assembly::Index;
 use pipeline::vertex::MultiVertex;
 use sync::Fence;
 use sync::Resource;
@@ -264,10 +265,10 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V: 'static, L: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                                               vertices: V, dynamic: &DynamicState,
-                                               sets: L::DescriptorSets) -> InnerCommandBufferBuilder
-        where V: MultiVertex, L: PipelineLayoutDesc
+    pub unsafe fn draw<V, L>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+                             vertices: V, dynamic: &DynamicState,
+                             sets: L::DescriptorSets) -> InnerCommandBufferBuilder
+        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc
     {
 
         // FIXME: add buffers to the resources
@@ -284,6 +285,39 @@ impl InnerCommandBufferBuilder {
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
             vk.CmdDraw(self.cmd.unwrap(), 3, 1, 0, 0);  // FIXME: params
+        }
+
+        self
+    }
+
+    /// Calls `vkCmdDrawIndexed`.
+    // FIXME: push constants
+    pub unsafe fn draw_indexed<'a, V, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+                                                 vertices: V, indices: Ib, dynamic: &DynamicState,
+                                                 sets: L::DescriptorSets) -> InnerCommandBufferBuilder
+        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc,
+              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static
+    {
+
+        // FIXME: add buffers to the resources
+
+        {
+            self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
+
+            let vk = self.device.pointers();
+
+            let indices = indices.into();
+
+            let buffers = vertices.buffers();
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+            let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
+            let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+
+            vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
+                                  indices.offset() as u64, I::ty() as u32);
+            vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
+                                    offsets.as_ptr());
+            vk.CmdDrawIndexed(self.cmd.unwrap(), indices.len() as u32, 1, 0, 0, 0);  // FIXME: params
         }
 
         self

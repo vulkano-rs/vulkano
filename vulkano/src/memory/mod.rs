@@ -42,6 +42,9 @@
 //!  - The `sparseResidencyAliased` feature is a superset of `sparseResidency` and allows you to
 //!    bind the same memory chunk to multiple different resources at once.
 //!
+use std::mem;
+use std::os::raw::c_void;
+use std::slice;
 use std::sync::Arc;
 
 use sync::Fence;
@@ -182,4 +185,47 @@ pub enum ChunkProperties<'a> {
     },
 
     Sparse,     // TODO: unimplemented
+}
+
+/// Trait for types of data that can be mapped.
+pub unsafe trait Content {
+    /// Builds a pointer to this type from a raw pointer.
+    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut Self>;
+
+    /// Returns true if the size is suitable to store a type like this.
+    fn is_size_suitable(usize) -> bool;
+}
+
+unsafe impl<T> Content for T where T: Copy {
+    #[inline]
+    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut T> {
+        if size != mem::size_of::<T>() {
+            return None;
+        }
+
+        Some(ptr as *mut T)
+    }
+
+    #[inline]
+    fn is_size_suitable(size: usize) -> bool {
+        size == mem::size_of::<T>()
+    }
+}
+
+unsafe impl<T> Content for [T] where T: Copy {
+    #[inline]
+    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut [T]> {
+        if size % mem::size_of::<T>() != 0 {
+            return None;
+        }
+
+        let ptr = ptr as *mut T;
+        let size = size / mem::size_of::<T>();
+        Some(unsafe { slice::from_raw_parts_mut(&mut *ptr, size) as *mut [T] })
+    }
+
+    #[inline]
+    fn is_size_suitable(size: usize) -> bool {
+        size % mem::size_of::<T>() == 0
+    }
 }

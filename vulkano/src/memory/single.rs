@@ -8,6 +8,7 @@ use std::sync::MutexGuard;
 use std::sync::TryLockError;
 
 use memory::ChunkProperties;
+use memory::Content;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::MemorySource;
@@ -181,7 +182,9 @@ unsafe impl MemorySourceChunk for HostVisibleChunk {
     }
 }
 
-unsafe impl<'a, T: 'a> CpuAccessible<'a, T> for HostVisibleChunk {       // TODO: ?Sized
+unsafe impl<'a, T: ?Sized + 'a> CpuAccessible<'a, T> for HostVisibleChunk
+    where T: Content
+{
     type Read = GpuAccess<'a, T>;
 
     #[inline]
@@ -195,13 +198,15 @@ unsafe impl<'a, T: 'a> CpuAccessible<'a, T> for HostVisibleChunk {       // TODO
     }
 }
 
-unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       // TODO: ?Sized
+unsafe impl<'a, T: ?Sized + 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk
+    where T: Content
+{
     type Write = GpuAccess<'a, T>;
 
     #[inline]
     fn write(&'a self, timeout_ns: u64) -> GpuAccess<'a, T> {
         let vk = self.mem.memory().device().pointers();
-        let pointer = self.mem.mapping_pointer() as *mut T;
+        let pointer = T::ref_from_ptr(self.mem.mapping_pointer(), self.mem.memory().size()).unwrap();       // TODO: error
 
         let mut lock = self.lock.lock().unwrap();
         if let Some(ref fence) = lock.1 {
@@ -236,7 +241,7 @@ unsafe impl<'a, T: 'a> CpuWriteAccessible<'a, T> for HostVisibleChunk {       //
     #[inline]
     fn try_write(&'a self) -> Option<GpuAccess<'a, T>> {
         let vk = self.mem.memory().device().pointers();
-        let pointer = self.mem.mapping_pointer() as *mut T;
+        let pointer = T::ref_from_ptr(self.mem.mapping_pointer(), self.mem.memory().size()).unwrap();       // TODO: error
 
         let mut lock = match self.lock.try_lock() {
             Ok(l) => l,

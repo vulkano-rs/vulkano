@@ -12,6 +12,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
 use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
+use pipeline::input_assembly::Index;
 use pipeline::vertex::MultiVertex;
 
 use OomError;
@@ -210,6 +211,22 @@ impl PrimaryCommandBufferBuilderInlineDraw {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
+                num_subpasses: self.num_subpasses,
+                current_subpass: self.current_subpass,
+            }
+        }
+    }
+
+    /// Calls `vkCmdDrawIndexed`.
+    pub fn draw_indexed<'a, V, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+                                              vertices: V, indices: Ib, dynamic: &DynamicState,
+                                              sets: L::DescriptorSets) -> PrimaryCommandBufferBuilderInlineDraw
+        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc,
+              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static
+    {
+        unsafe {
+            PrimaryCommandBufferBuilderInlineDraw {
+                inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
                 num_subpasses: self.num_subpasses,
                 current_subpass: self.current_subpass,
             }

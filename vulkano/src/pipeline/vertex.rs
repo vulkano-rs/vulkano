@@ -220,3 +220,31 @@ unsafe impl Attribute for [f32; 4] {
         Format::R32G32B32A32Sfloat
     }
 }
+
+unsafe impl Attribute for (f32,) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Sfloat
+    }
+}
+
+unsafe impl Attribute for (f32, f32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32Sfloat
+    }
+}
+
+unsafe impl Attribute for (f32, f32, f32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32Sfloat
+    }
+}
+
+unsafe impl Attribute for (f32, f32, f32, f32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32A32Sfloat
+    }
+}

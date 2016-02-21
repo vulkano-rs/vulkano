@@ -6,6 +6,9 @@ extern crate winapi;
 #[macro_use]
 extern crate vulkano;
 
+#[path = "support/teapot.rs"]
+mod teapot;
+
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
@@ -51,18 +54,30 @@ fn main() {
     };
 
 
-    let vertex_buffer = vulkano::buffer::Buffer::<[Vertex; 3], _>
-                               ::new(&device, &vulkano::buffer::Usage::all(),
-                                     vulkano::memory::HostVisible, &queue)
-                               .expect("failed to create buffer");
-    struct Vertex { position: [f32; 2] }
-    impl_vertex!(Vertex, position);
+    let vertex_buffer = vulkano::buffer::Buffer::<[teapot::Vertex], _>
+                               ::array(&device, teapot::VERTICES.len(),
+                                       &vulkano::buffer::Usage::all(),
+                                       vulkano::memory::HostVisible, &queue)
+                                       .expect("failed to create buffer");
 
     {
         let mut mapping = vertex_buffer.try_write().unwrap();
-        mapping[0].position = [-0.5, -0.25];
-        mapping[1].position = [0.0, 0.5];
-        mapping[2].position = [0.25, -0.1];
+        for (o, i) in mapping.iter_mut().zip(teapot::VERTICES.iter()) {
+            *o = *i;
+        }
+    }
+
+    let index_buffer = vulkano::buffer::Buffer::<[u16], _>
+                               ::array(&device, teapot::INDICES.len(),
+                                       &vulkano::buffer::Usage::all(),
+                                       vulkano::memory::HostVisible, &queue)
+                                       .expect("failed to create buffer");
+
+    {
+        let mut mapping = index_buffer.try_write().unwrap();
+        for (o, i) in mapping.iter_mut().zip(teapot::INDICES.iter()) {
+            *o = *i;
+        }
     }
 
     let uniform_buffer = vulkano::buffer::Buffer::<[[f32; 4]; 4], _>
@@ -72,8 +87,8 @@ fn main() {
     {
         let mut mapping = uniform_buffer.try_write().unwrap();
         *mapping = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0, 0.0],
+            [0.01, 0.0, 0.0, 0.0],
+            [0.0, 0.01, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0]
         ];
@@ -152,7 +167,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
+            .draw_indexed(&pipeline, vertex_buffer.clone(), &index_buffer, &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
