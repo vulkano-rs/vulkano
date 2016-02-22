@@ -462,6 +462,9 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let passes = layout.passes().map(|pass| {
             unsafe {
+                assert!(pass.color_attachments.len() as u32 <=
+                        device.physical_device().limits().max_color_attachments());
+
                 let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
                 ref_index += pass.color_attachments.len();
                 let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
