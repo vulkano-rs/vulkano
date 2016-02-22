@@ -345,7 +345,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
         let vk = pool.device().pointers();
 
-        let set = unsafe {
+        let set = {
             let infos = vk::DescriptorSetAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                 pNext: ptr::null(),
@@ -416,10 +416,8 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         }).collect::<Vec<_>>();
 
         if !vk_writes.is_empty() {
-            unsafe {
-                vk.UpdateDescriptorSets(self.pool.device().internal_object(),
-                                        vk_writes.len() as u32, vk_writes.as_ptr(), 0, ptr::null());
-            }
+            vk.UpdateDescriptorSets(self.pool.device().internal_object(),
+                                    vk_writes.len() as u32, vk_writes.as_ptr(), 0, ptr::null());
         }
     }
 }

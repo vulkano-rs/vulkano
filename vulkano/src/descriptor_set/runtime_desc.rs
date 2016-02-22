@@ -1,9 +1,5 @@
-use std::mem;
-use std::option::IntoIter as OptionIntoIter;
-use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferResource;
 use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::AbstractDescriptorSetLayout;
 use descriptor_set::DescriptorBind;
@@ -11,13 +7,6 @@ use descriptor_set::DescriptorDesc;
 use descriptor_set::DescriptorSetDesc;
 use descriptor_set::DescriptorWrite;
 use descriptor_set::PipelineLayoutDesc;
-use device::Device;
-
-use OomError;
-use VulkanObject;
-use VulkanPointers;
-use check_errors;
-use vk;
 
 /// FIXME: it should be unsafe to create this struct
 pub struct RuntimeDesc;

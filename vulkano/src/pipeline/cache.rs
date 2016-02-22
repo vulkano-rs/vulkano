@@ -39,7 +39,7 @@ impl PipelineCache {
     {
         let vk = device.pointers();
 
-        let cache = unsafe {
+        let cache = {
             let infos = vk::PipelineCacheCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -126,8 +126,6 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
-    use instance;
-
     #[test]
     //#[should_panic]
     fn merge_self() {

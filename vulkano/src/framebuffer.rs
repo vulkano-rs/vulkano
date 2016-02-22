@@ -20,7 +20,6 @@
 //! trait tells vulkano what the characteristics of the renderpass are, and is also used to
 //! determine the types of the various parameters later on.
 //!
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;

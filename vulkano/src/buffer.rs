@@ -17,7 +17,6 @@
 //!
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -125,7 +124,7 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
 
         assert!(!memory.is_sparse());       // not implemented
 
-        let buffer = unsafe {
+        let buffer = {
             let (sh_mode, sh_count, sh_indices) = match sharing {
                 SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
                 SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
@@ -149,7 +148,7 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
             output
         };
 
-        let mem_reqs: vk::MemoryRequirements = unsafe {
+        let mem_reqs: vk::MemoryRequirements = {
             let mut output = mem::uninitialized();
             vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
             output
@@ -159,15 +158,13 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
                                      mem_reqs.memoryTypeBits)
                            .expect("failed to allocate");     // TODO: use try!() instead
 
-        unsafe {
-            match memory.properties() {
-                ChunkProperties::Regular { memory, offset, .. } => {
-                    try!(check_errors(vk.BindBufferMemory(device.internal_object(), buffer,
-                                                          memory.internal_object(),
-                                                          offset as vk::DeviceSize)));
-                },
-                _ => unimplemented!()
-            }
+        match memory.properties() {
+            ChunkProperties::Regular { memory, offset, .. } => {
+                try!(check_errors(vk.BindBufferMemory(device.internal_object(), buffer,
+                                                      memory.internal_object(),
+                                                      offset as vk::DeviceSize)));
+            },
+            _ => unimplemented!()
         }
 
         Ok(Arc::new(Buffer {
@@ -571,7 +568,6 @@ pub struct BufferView<T: ?Sized, M> {
 #[cfg(test)]
 mod tests {
     use std::mem;
-    use std::sync::Arc;
 
     use buffer::Usage;
     use buffer::Buffer;

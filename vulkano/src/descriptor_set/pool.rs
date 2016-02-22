@@ -1,9 +1,7 @@
 use std::mem;
-use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferResource;
 use device::Device;
 
 use OomError;

@@ -220,7 +220,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<'a, V, L, Pl, I, Ib, IbM>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
         where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
