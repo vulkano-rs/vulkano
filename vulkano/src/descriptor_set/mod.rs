@@ -32,10 +32,6 @@
 //! automatically parse your SPIR-V code and generate structs that implement these traits and
 //! describe the pipeline layout to vulkano.
 
-
-// FIXME: all destructors are missing
-
-
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
@@ -437,6 +433,18 @@ unsafe impl<S> VulkanObject for DescriptorSet<S> {
     }
 }
 
+impl<S> Drop for DescriptorSet<S> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.pool.device().pointers();
+            vk.FreeDescriptorSets(self.pool.device().internal_object(),
+                                  self.pool.internal_object(), 1, &self.set);
+        }
+    }
+}
+
+
 /// Implemented on all `DescriptorSet` objects. Hides the template parameters.
 pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {}
 unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {}
@@ -499,6 +507,16 @@ unsafe impl<S> VulkanObject for DescriptorSetLayout<S> {
     #[inline]
     fn internal_object(&self) -> vk::DescriptorSetLayout {
         self.layout
+    }
+}
+
+impl<S> Drop for DescriptorSetLayout<S> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
+        }
     }
 }
 
@@ -566,6 +584,16 @@ unsafe impl<P> VulkanObject for PipelineLayout<P> {
     #[inline]
     fn internal_object(&self) -> vk::PipelineLayout {
         self.layout
+    }
+}
+
+impl<P> Drop for PipelineLayout<P> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
+        }
     }
 }
 

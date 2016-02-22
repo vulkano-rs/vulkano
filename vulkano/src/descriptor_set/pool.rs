@@ -67,4 +67,12 @@ unsafe impl VulkanObject for DescriptorPool {
     }
 }
 
-
+impl Drop for DescriptorPool {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyDescriptorPool(self.device.internal_object(), self.pool, ptr::null());
+        }
+    }
+}
