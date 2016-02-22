@@ -140,13 +140,25 @@ fn main() {
 
 
     let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
+    let descriptor_set_layout = {
+        let desc = vulkano::descriptor_set::RuntimeDescriptorSetDesc {
+            descriptors: vec![
+                vulkano::descriptor_set::DescriptorDesc {
+                    binding: 0,
+                    ty: vulkano::descriptor_set::DescriptorType::UniformBuffer,
+                    array_count: 1,
+                    stages: vulkano::descriptor_set::ShaderStages::all_graphics(),
+                }
+            ]
+        };
 
-    let (pipeline_layout, set) = {
-        let layout1 = vulkano::descriptor_set::DescriptorSetLayout::new(&device, Default::default()).unwrap();
-        let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), (layout1.clone(), ())).unwrap();
-        let set1 = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &layout1, uniform_buffer.clone() as std::sync::Arc<_>).unwrap();
-        (pipeline_layout, set1)
+        vulkano::descriptor_set::DescriptorSetLayout::new(&device, desc).unwrap()
     };
+
+    let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
+    let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
+                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::UniformBuffer(uniform_buffer.clone()))]).unwrap();
+
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
@@ -189,7 +201,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0], 1.0))
-            .draw_indexed(&pipeline, (vertex_buffer.clone(), normals_buffer.clone()), &index_buffer, &vulkano::command_buffer::DynamicState::none(), (set.clone(), ()))
+            .draw_indexed(&pipeline, (vertex_buffer.clone(), normals_buffer.clone()), &index_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

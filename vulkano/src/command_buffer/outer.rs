@@ -6,6 +6,7 @@ use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
 use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
@@ -203,10 +204,11 @@ pub struct PrimaryCommandBufferBuilderInlineDraw {
 impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V, L>(self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                      vertices: V, dynamic: &DynamicState, sets: L::DescriptorSets)
-                      -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex + 'static, L: PipelineLayoutDesc + 'static
+    pub fn draw<V, L, Pl>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+                          vertices: V, dynamic: &DynamicState, sets: L)
+                          -> PrimaryCommandBufferBuilderInlineDraw
+        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+              L: DescriptorSetsCollection + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
@@ -218,11 +220,12 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+    pub fn draw_indexed<'a, V, L, Pl, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
-                                              sets: L::DescriptorSets) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static
+                                              sets: L) -> PrimaryCommandBufferBuilderInlineDraw
+        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static,
+              L: DescriptorSetsCollection + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {

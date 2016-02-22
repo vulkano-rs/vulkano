@@ -42,8 +42,8 @@ pub struct GraphicsPipeline<MultiVertex, Layout> {
     marker: PhantomData<(MultiVertex,)>
 }
 
-impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
-    where MV: MultiVertex
+impl<MV, L> GraphicsPipeline<MV, L>
+    where MV: MultiVertex, L: PipelineLayoutDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -54,15 +54,17 @@ impl<MV, Vl, Fl> GraphicsPipeline<MV, (Vl, Fl)>
     /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
     ///
     // TODO: check all the device's limits
-    pub fn new<Vi, Fo, R>
+    pub fn new<Vi, Fo, R, Vl, Fl>
               (device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
-               layout: &Arc<PipelineLayout<(Vl, Fl)>>, render_pass: &Subpass<R>)
-               -> Result<Arc<GraphicsPipeline<MV, (Vl, Fl)>>, OomError>
+               layout: &Arc<PipelineLayout<L>>, render_pass: &Subpass<R>)
+               -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
     {
         let vk = device.pointers();
+
+        // FIXME: check layout compatibility
 
         let pipeline = unsafe {
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)

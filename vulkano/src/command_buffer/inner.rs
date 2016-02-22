@@ -8,6 +8,7 @@ use buffer::BufferResource;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
 use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
@@ -265,10 +266,11 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V, L>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+    pub unsafe fn draw<V, Pl, L>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                              vertices: V, dynamic: &DynamicState,
-                             sets: L::DescriptorSets) -> InnerCommandBufferBuilder
-        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc
+                             sets: L) -> InnerCommandBufferBuilder
+        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc
     {
 
         // FIXME: add buffers to the resources
@@ -292,10 +294,11 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
+    pub unsafe fn draw_indexed<'a, V, Pl, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                                  vertices: V, indices: Ib, dynamic: &DynamicState,
-                                                 sets: L::DescriptorSets) -> InnerCommandBufferBuilder
-        where V: 'static + MultiVertex, L: 'static + PipelineLayoutDesc,
+                                                 sets: L) -> InnerCommandBufferBuilder
+        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc,
               Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static
     {
 
@@ -323,12 +326,15 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    fn bind_gfx_pipeline_state<V: 'static, L: 'static>(&mut self, pipeline: &Arc<GraphicsPipeline<V, L>>,
-                                                       dynamic: &DynamicState, sets: L::DescriptorSets)
-        where V: MultiVertex, L: PipelineLayoutDesc
+    fn bind_gfx_pipeline_state<V, Pl, L>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+                                         dynamic: &DynamicState, sets: L)
+        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc
     {
         unsafe {
             let vk = self.device.pointers();
+
+            assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.graphics_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
@@ -349,7 +355,8 @@ impl InnerCommandBufferBuilder {
             }
 
             // FIXME: keep these alive
-            let descriptor_sets = pipeline.layout().description().decode_descriptor_sets(sets);
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+            let descriptor_sets = sets.list().collect::<Vec<_>>();
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
 

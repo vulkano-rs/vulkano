@@ -19,7 +19,7 @@
 //! # Binding resources
 //! 
 //! In parallel of the pipeline initialization, you have to create a `DescriptorSet<T>`. This
-//! struct contains the list of actual resources that will be binded when the pipeline is executed.
+//! struct contains the list of actual resources that will be bound when the pipeline is executed.
 //! To build a `DescriptorSet<T>`, you need to pass a `DescriptorSetLayout<T>`. The `T` parameter
 //! must implement `DescriptorSetDesc` as if the same for both the descriptor set and its layout.
 //!
@@ -37,6 +37,7 @@
 
 
 use std::mem;
+use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
@@ -63,42 +64,134 @@ pub unsafe trait PipelineLayoutDesc {
     type PushConstants;
 
     /// Turns the `DescriptorSets` associated type into something vulkano can understand.
-    fn decode_descriptor_sets(&self, Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>>;
+    fn decode_descriptor_sets(&self, Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>>;  // TODO: vec is slow
 
     /// Turns the `DescriptorSetLayouts` associated type into something vulkano can understand.
     fn decode_descriptor_set_layouts(&self, Self::DescriptorSetLayouts)
-                                     -> Vec<Arc<AbstractDescriptorSetLayout>>;
+                                     -> Vec<Arc<AbstractDescriptorSetLayout>>;  // TODO: vec is slow
 
     // FIXME: implement this correctly
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
 }
 
-// FIXME: should merge the two and check for collisions instead of making them cohabit
-unsafe impl<A, B> PipelineLayoutDesc for (A, B)
-    where A: PipelineLayoutDesc, B: PipelineLayoutDesc
-{
-    type DescriptorSets = (A::DescriptorSets, B::DescriptorSets);
-    type DescriptorSetLayouts = (A::DescriptorSetLayouts, B::DescriptorSetLayouts);
-    type PushConstants = (A::PushConstants, B::PushConstants);
+/// FIXME: it should be unsafe to create this struct
+pub struct RuntimeDesc;
+
+unsafe impl PipelineLayoutDesc for RuntimeDesc {
+    type DescriptorSets = Vec<Arc<AbstractDescriptorSet>>;
+    type DescriptorSetLayouts = Vec<Arc<AbstractDescriptorSetLayout>>;
+    type PushConstants = ();
 
     #[inline]
-    fn decode_descriptor_sets(&self, s: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
-        let mut a = self.0.decode_descriptor_sets(s.0);
-        let b = self.1.decode_descriptor_sets(s.1);
-        a.extend_from_slice(&b);
-        a
+    fn decode_descriptor_sets(&self, sets: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
+        sets
     }
 
     #[inline]
-    fn decode_descriptor_set_layouts(&self, s: Self::DescriptorSetLayouts)
+    fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
                                      -> Vec<Arc<AbstractDescriptorSetLayout>>
     {
-        let mut a = self.0.decode_descriptor_set_layouts(s.0);
-        let b = self.1.decode_descriptor_set_layouts(s.1);
-        a.extend_from_slice(&b);
-        a
+        layouts
     }
 }
+
+/*
+#[macro_export]
+macro_rules! pipeline_layout {
+    (sets: {$($set_name:ident: { $($name:ident : ),* }),*}) => {
+        mod layout {
+            use std::sync::Arc;
+            use $crate::descriptor_set::DescriptorType;
+            use $crate::descriptor_set::DescriptorDesc;
+            use $crate::descriptor_set::DescriptorSetDesc;
+            use $crate::descriptor_set::DescriptorWrite;
+            use $crate::descriptor_set::DescriptorBind;
+            use $crate::descriptor_set::PipelineLayout;
+            use $crate::descriptor_set::PipelineLayoutDesc;
+            use $crate::descriptor_set::ShaderStages;
+            use $crate::buffer::BufferResource;
+
+            $(
+                pub struct $set_name;
+                unsafe impl DescriptorSetDesc for $set_name {
+                    type Write = (      // FIXME: variable number of elems
+                        Arc<BufferResource>     // FIXME: strong typing
+                    );
+
+                    type Init = Self::Write;
+
+                    #[inline]
+                    fn descriptors(&self) -> Vec<DescriptorDesc> {
+                        let mut binding = 0;
+                        let mut result = Vec::new();        // TODO: with_capacity
+
+                        //$(
+                            result.push(DescriptorDesc {
+                                binding: binding,
+                                ty: DescriptorType::UniformBuffer,      // FIXME:
+                                array_count: 1,     // FIXME:
+                                stages: ShaderStages::all_graphics(),       // FIXME:
+                            });
+
+                            binding += 1;
+                        //)*        // FIXME: variable number of elems
+
+                        let _ = binding;    // removes a warning
+
+                        result
+                    }
+
+                    fn decode_write(&self, data: Self::Write) -> Vec<DescriptorWrite> {
+                        let mut binding = 0;
+                        let mut result = Vec::new();        // TODO: with_capacity
+
+                        let $($name),* = data;
+
+                        $(
+                            result.push(DescriptorWrite {
+                                binding: binding,
+                                array_element: 0,       // FIXME:
+                                content: DescriptorBind::UniformBuffer($name),
+                            });
+
+                            binding += 1;
+                        )*
+
+                        result
+                    }
+
+                    #[inline]
+                    fn decode_init(&self, data: Self::Init) -> Vec<DescriptorWrite> {
+                        self.decode_write(data)
+                    }
+                }
+            )*
+
+            pub struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                type DescriptorSets = ($(Arc<DescriptorSet<$set_name>>),*);
+                type DescriptorSetLayouts = ($(Arc<DescriptorSetLayout<$set_name>>),*);
+                type PushConstants = ();
+
+                #[inline]
+                fn decode_descriptor_sets(&self, sets: Self::DescriptorSets)
+                                          -> Vec<Arc<AbstractDescriptorSet>>
+                {
+                    let $($set_name),* = sets;
+                    vec![$($set_name as Arc<_>),*]
+                }
+
+                #[inline]
+                fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
+                                                 -> Vec<Arc<AbstractDescriptorSetLayout>>
+                {
+                    let $($set_name),* = layouts;
+                    vec![$($set_name as Arc<_>),*]
+                }
+            }
+        }
+    }
+}*/
 
 /// Dummy implementation of `PipelineLayoutDesc` that describes an empty pipeline.
 ///
@@ -119,6 +212,26 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
                               -> Vec<Arc<AbstractDescriptorSet>> { vec![] }
 }
 
+unsafe impl<A, B> PipelineLayoutDesc for (Arc<DescriptorSet<A>>, Arc<DescriptorSet<B>>)
+    where A: 'static + DescriptorSetDesc, B: 'static + DescriptorSetDesc
+{
+    type DescriptorSets = (Arc<DescriptorSet<A>>, Arc<DescriptorSet<B>>);
+    type DescriptorSetLayouts = (Arc<DescriptorSetLayout<A>>, Arc<DescriptorSetLayout<B>>);
+    type PushConstants = ();
+
+    #[inline]
+    fn decode_descriptor_sets(&self, sets: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
+        vec![sets.0, sets.1]
+    }
+
+    #[inline]
+    fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
+                                     -> Vec<Arc<AbstractDescriptorSetLayout>>
+    {
+        vec![layouts.0, layouts.1]
+    }
+}
+
 /// Types that describe a single descriptor set.
 pub unsafe trait DescriptorSetDesc {
     /// Represents a modification of a descriptor set. A parameter of this type must be passed
@@ -129,13 +242,13 @@ pub unsafe trait DescriptorSetDesc {
     type Init;
 
     /// Returns the list of descriptors contained in this set.
-    fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: Cow for better perfs
+    fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: better perfs
 
     /// Turns the `Write` associated type into something vulkano can understand.
-    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;
+    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;        // TODO: better perfs
 
     /// Turns the `Init` associated type into something vulkano can understand.
-    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;
+    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;      // TODO: better perfs
 
     // FIXME: implement this correctly
     fn is_compatible_with<S>(&self, _: &S) -> bool where S: DescriptorSetDesc { true }
@@ -155,6 +268,7 @@ pub enum DescriptorBind {
 }
 
 /// Describes a single descriptor.
+#[derive(Debug, Copy, Clone)]
 pub struct DescriptorDesc {
     /// Offset of the binding within the descriptor.
     pub binding: u32,
@@ -169,7 +283,7 @@ pub struct DescriptorDesc {
     pub stages: ShaderStages,
 }
 
-/// Describes what kind of resource may later be bind to a descriptor.
+/// Describes what kind of resource may later be bound to a descriptor.
 // FIXME: add immutable sampler when relevant
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
@@ -197,6 +311,7 @@ impl DescriptorType {
 }
 
 /// Describes which shader stages have access to a descriptor.
+#[derive(Debug, Copy, Clone)]
 pub struct ShaderStages {
     pub vertex: bool,
     pub tessellation_control: bool,
@@ -249,55 +364,37 @@ impl Into<vk::ShaderStageFlags> for ShaderStages {
     }
 }
 
-/*
-pub unsafe trait CompatiblePipeline<T> { type Out: PipelineLayoutDesc; }
-pub unsafe trait CompatibleSet<T> { type Out: DescriptorSetDesc; }
-
-macro_rules! impl_tuple {
-    (($in_first:ident $out_first:ident) $(, ($in_rest:ident $out_rest:ident))*) => {
-        unsafe impl<$in_first, $out_first $(, $in_rest, $out_rest)*>
-            CompatibleSet<($out_first, $($out_rest,)*)> for ($in_first, $($in_rest,)*)
-                where $in_first: CompatibleDescriptor<$out_first> $(, $in_rest: CompatibleDescriptor<$out_rest>)*
-        {
-            type Out = (
-                <$in_first as CompatibleDescriptor<$out_first>>::Out,
-                $(
-                    <$in_rest as CompatibleDescriptor<$out_rest>>::Out,
-                )*
-            );
-        }
-
-        unsafe impl<$in_first, $out_first $(, $in_rest, $out_rest)*>
-            CompatiblePipeline<($out_first, $($out_rest,)*)> for ($in_first, $($in_rest,)*)
-                where $in_first: CompatibleSet<$out_first> $(, $in_rest: CompatibleSet<$out_rest>)*
-        {
-            type Out = (
-                <$in_first as CompatibleSet<$out_first>>::Out,
-                $(
-                    <$in_rest as CompatibleSet<$out_rest>>::Out,
-                )*
-            );
-        }
-
-        impl_tuple!{$(($in_rest $out_rest)),*}
-    };
-    
-    () => ();
+/// FIXME: should be unsafe to create this struct
+pub struct RuntimeDescriptorSetDesc {
+    pub descriptors: Vec<DescriptorDesc>,
 }
 
-impl_tuple!( (A N), (B O), (C P), (D Q), (E R), (F S), (G T),
-             (H U), (I V), (J W), (K X), (L Y), (M Z) );
+unsafe impl DescriptorSetDesc for RuntimeDescriptorSetDesc {
+    type Write = Vec<(u32, DescriptorBind)>;
 
-/// If a type `A` can be interpreted as a `T`, then `A` will implement `CompatibleDescriptor<T>`.
-trait CompatibleDescriptor<T> { type Out; }
+    type Init = Vec<(u32, DescriptorBind)>;
 
-impl CompatibleDescriptor<()> for () { type Out = (); }
-impl<T> CompatibleDescriptor<()> for T where T: Descriptor { type Out = T; }
-impl<T> CompatibleDescriptor<T> for () where T: Descriptor { type Out = T; }
-impl<T> CompatibleDescriptor<T> for T where T: Descriptor { type Out = T; }
+    fn descriptors(&self) -> Vec<DescriptorDesc> {
+        self.descriptors.clone()
+    }
 
+    fn decode_write(&self, data: Self::Write) -> Vec<DescriptorWrite> {
+        data.into_iter().map(|(binding, bind)| {
+            // TODO: check correctness?
 
-pub unsafe trait Descriptor {}*/
+            DescriptorWrite {
+                binding: binding,
+                array_element: 0,       // FIXME:
+                content: bind,
+            }
+        }).collect()
+    }
+
+    fn decode_init(&self, data: Self::Init) -> Vec<DescriptorWrite> {
+        self.decode_write(data)
+    }
+}
+
 
 /// An actual descriptor set with the resources that are binded to it.
 pub struct DescriptorSet<S> {
@@ -593,5 +690,30 @@ impl DescriptorPool {
             pool: pool,
             device: device.clone(),
         }))
+    }
+}
+
+pub unsafe trait DescriptorSetsCollection {
+    type Iter: ExactSizeIterator<Item = Arc<AbstractDescriptorSet>>;
+
+    fn list(&self) -> Self::Iter;
+
+    fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool;
+}
+
+unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
+    where T: 'static + DescriptorSetDesc
+{
+    type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
+
+    #[inline]
+    fn list(&self) -> Self::Iter {
+        Some(self.clone() as Arc<_>).into_iter()
+    }
+
+    #[inline]
+    fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool {
+        // FIXME:
+        true
     }
 }
