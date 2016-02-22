@@ -14,3 +14,4 @@
 
 - https://github.com/rust-lang/rust/issues/29328
 
+- HKTs would make for a nicer API.

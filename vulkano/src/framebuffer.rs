@@ -54,10 +54,10 @@ pub unsafe trait RenderPassLayout {
     fn convert_clear_values(&self, Self::ClearValues) -> Self::ClearValuesIter;
 
     /// Iterator that produces attachments.
-    type AttachmentsIter: ExactSizeIterator<Item = AttachmentDescription>;
+    type AttachmentsDescIter: ExactSizeIterator<Item = AttachmentDescription>;
 
     /// Returns the descriptions of the attachments.
-    fn attachments(&self) -> Self::AttachmentsIter;
+    fn attachments(&self) -> Self::AttachmentsDescIter;
 
     /// Iterator that produces passes.
     type PassesIter: ExactSizeIterator<Item = PassDescription>;
@@ -70,12 +70,19 @@ pub unsafe trait RenderPassLayout {
 
     /// Returns the descriptions of the dependencies between passes.
     fn pass_dependencies(&self) -> Self::PassDependenciesIter;
-}
 
-pub unsafe trait RenderPassLayoutExt<'a, M1: 'a, M2: 'a>: RenderPassLayout {
+    /// List of images that will be binded to attachments.
+    ///
+    /// A parameter of this type must be passed when creating a `Framebuffer`.
+    // TODO: should use HKTs so that attachments list can get passed references to the attachments
     type AttachmentsList;
 
-    fn ids(&self, &Self::AttachmentsList) -> (Vec<Arc<ImageResource>>, Vec<u64>);
+    /// A decoded `AttachmentsList`.
+    // TODO: should be ImageViewResource or something like that, so that images can't get passed
+    type AttachmentsIter: ExactSizeIterator<Item = Arc<ImageResource>>;
+
+    /// Decodes a `AttachmentsList` into a list of attachments.
+    fn convert_attachments_list(&self, Self::AttachmentsList) -> Self::AttachmentsIter;
 }
 
 /// Trait implemented on renderpass layouts to check whether they are compatible
@@ -236,9 +243,16 @@ macro_rules! single_pass_renderpass {
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
                 type ClearValues = ([f32; 4], f32);        // FIXME:
                 type ClearValuesIter = std::vec::IntoIter<$crate::framebuffer::ClearValue>;
-                type AttachmentsIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
+                type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
                 type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
+                type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::ImageResource>>;
+
+                // FIXME: should be stronger-typed
+                type AttachmentsList = (
+                    Arc<$crate::image::ImageResource>,
+                    Arc<$crate::image::ImageResource>
+                );      // FIXME:
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
@@ -249,7 +263,7 @@ macro_rules! single_pass_renderpass {
                 }
 
                 #[inline]
-                fn attachments(&self) -> Self::AttachmentsIter {
+                fn attachments(&self) -> Self::AttachmentsDescIter {
                     vec![
                         $(
                             $crate::framebuffer::AttachmentDescription {
@@ -290,21 +304,10 @@ macro_rules! single_pass_renderpass {
                 fn pass_dependencies(&self) -> Self::PassDependenciesIter {
                     None.into_iter()
                 }
-            }
 
-            unsafe impl<'a, M1, M2> $crate::framebuffer::RenderPassLayoutExt<'a, M1, M2> for Layout
-                where M1: $crate::memory::MemorySourceChunk + 'static,
-                      M2: $crate::memory::MemorySourceChunk + 'static
-            {
-                type AttachmentsList = (
-                    &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::B8G8R8A8Srgb, M1>>,
-                    &'a Arc<$crate::image::ImageView<$crate::image::Type2d, $crate::formats::D16Unorm, M2>>
-                );      // FIXME:
-
-                fn ids(&self, l: &Self::AttachmentsList) -> (Vec<Arc<$crate::image::ImageResource>>, Vec<u64>) {
-                    let a = vec![l.0.clone() as Arc<$crate::image::ImageResource>, l.1.clone() as Arc<$crate::image::ImageResource>];
-                    let b = vec![l.0.id(), l.1.id()];
-                    (a, b)
+                #[inline]
+                fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
+                    vec![l.0.clone(), l.1.clone()].into_iter()
                 }
             }
 
@@ -654,14 +657,19 @@ impl<L> Framebuffer<L> {
     /// - Additionally, some methods in the `RenderPassLayout` implementation may panic if you
     ///   pass invalid attachments.
     ///
-    pub fn new<'a, M1, M2>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
-                      attachments: L::AttachmentsList) -> Result<Arc<Framebuffer<L>>, OomError>
-        where L: RenderPassLayoutExt<'a, M1, M2>
+    pub fn new<'a>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
+                   attachments: L::AttachmentsList) -> Result<Arc<Framebuffer<L>>, OomError>
+        where L: RenderPassLayout
     {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
 
-        let (resources, ids) = renderpass.layout.ids(&attachments);
+        let attachments = renderpass.layout.convert_attachments_list(attachments).collect::<Vec<_>>();
+
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let ids = attachments.iter().map(|a| {
+            a.internal_object()
+        }).collect::<Vec<_>>();
 
         let framebuffer = unsafe {
             let infos = vk::FramebufferCreateInfo {
@@ -687,7 +695,7 @@ impl<L> Framebuffer<L> {
             renderpass: renderpass.clone(),
             framebuffer: framebuffer,
             dimensions: dimensions,
-            resources: resources,
+            resources: attachments,
         }))
     }
 

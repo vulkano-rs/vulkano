@@ -38,7 +38,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait ImageResource: Resource {
+pub unsafe trait ImageResource: Resource + ::VulkanObjectU64 {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
     /// command buffer, it is switched from this default layout to something else (if necessary),
     /// then back again to the default.
@@ -695,6 +695,17 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     // TODO: hack, remove
     #[doc(hidden)]
     pub fn id(&self) -> u64 { self.view }
+}
+
+unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
+    where Ty: ImageTypeMarker
+{
+    type Object = vk::ImageView;
+
+    #[inline]
+    fn internal_object(&self) -> vk::ImageView {
+        self.view
+    }
 }
 
 unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>

@@ -182,7 +182,7 @@ fn main() {
     };
 
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image, &depth_buffer)).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image.clone() as std::sync::Arc<_>, depth_buffer.clone() as std::sync::Arc<_>)).unwrap()
     }).collect::<Vec<_>>();
 
 
