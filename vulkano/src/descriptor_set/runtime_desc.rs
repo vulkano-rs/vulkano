@@ -29,10 +29,7 @@ unsafe impl PipelineLayoutDesc for RuntimeDesc {
     }
 }
 
-/// Dummy implementation of `PipelineLayoutDesc` that describes an empty pipeline.
-///
-/// The descriptors, descriptor sets and push constants are all `()`. You have to pass `()` when
-/// drawing when you use a `EmptyPipelineDesc`.
+/// Implementation of `PipelineLayoutDesc` that describes an empty pipeline.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct EmptyPipelineDesc;
 unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {

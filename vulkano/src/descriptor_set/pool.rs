@@ -11,12 +11,17 @@ use check_errors;
 use vk;
 
 /// Pool from which descriptor sets are allocated from.
+///
+/// A pool has a maximum number of descriptor sets and a maximum number of descriptors (one value
+/// per descriptor type) it can allocate.
 pub struct DescriptorPool {
     pool: vk::DescriptorPool,
     device: Arc<Device>,
 }
 
 impl DescriptorPool {
+    /// Initializes a new pool.
+    // FIXME: capacity of the pool
     pub fn new(device: &Arc<Device>) -> Result<Arc<DescriptorPool>, OomError> {
         let vk = device.pointers();
 
@@ -50,6 +55,7 @@ impl DescriptorPool {
         }))
     }
 
+    /// Returns the device this pool was created from.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
@@ -72,5 +78,23 @@ impl Drop for DescriptorPool {
             let vk = self.device.pointers();
             vk.DestroyDescriptorPool(self.device.internal_object(), self.pool, ptr::null());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use descriptor_set::DescriptorPool;
+
+    #[test]
+    fn create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = DescriptorPool::new(&device).unwrap();
+    }
+
+    #[test]
+    fn device() {
+        let (device, _) = gfx_dev_and_queue!();
+        let pool = DescriptorPool::new(&device).unwrap();
+        assert_eq!(&**pool.device() as *const _, &*device as *const _);
     }
 }

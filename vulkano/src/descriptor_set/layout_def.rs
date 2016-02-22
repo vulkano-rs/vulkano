@@ -36,7 +36,8 @@ pub unsafe trait DescriptorSetDesc {
     /// when you modify a descriptor set.
     type Write;
 
-    /// 
+    /// Contains the list of attachments that must be passed at the initialization of a
+    /// descriptor set object.
     type Init;
 
     /// Returns the list of descriptors contained in this set.
@@ -113,11 +114,17 @@ impl DescriptorType {
 /// Describes which shader stages have access to a descriptor.
 #[derive(Debug, Copy, Clone)]
 pub struct ShaderStages {
+    /// `True` means that the descriptor will be used by the vertex shader.
     pub vertex: bool,
+    /// `True` means that the descriptor will be used by the tessellation control shader.
     pub tessellation_control: bool,
+    /// `True` means that the descriptor will be used by the tessellation evaluation shader.
     pub tessellation_evaluation: bool,
+    /// `True` means that the descriptor will be used by the geometry shader.
     pub geometry: bool,
+    /// `True` means that the descriptor will be used by the fragment shader.
     pub fragment: bool,
+    /// `True` means that the descriptor will be used by the compute shader.
     pub compute: bool,
 }
 
@@ -163,4 +170,3 @@ impl Into<vk::ShaderStageFlags> for ShaderStages {
         result
     }
 }
-

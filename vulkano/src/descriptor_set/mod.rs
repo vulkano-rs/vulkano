@@ -57,9 +57,12 @@ mod pool;
 mod runtime_desc;
 mod vk_objects;
 
+/// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
+    /// An iterator that produces the list of descriptor set objects contained in this collection.
     type Iter: ExactSizeIterator<Item = Arc<AbstractDescriptorSet>>;
 
+    /// Returns the list of descriptor set objects of this collection.
     fn list(&self) -> Self::Iter;
 
     fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool;
