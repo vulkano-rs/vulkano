@@ -570,6 +570,7 @@ pub struct BufferView<T: ?Sized, M> {
 
 #[cfg(test)]
 mod tests {
+    use std::mem;
     use std::sync::Arc;
 
     use buffer::Usage;
@@ -580,8 +581,16 @@ mod tests {
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let vertex_buffer: Arc<Buffer<[i8; 16], _>> =
-                                Buffer::new(&device, &Usage::all(), DeviceLocal, &queue)
-                                                                .expect("failed to create buffer");
+        let _ = Buffer::<[i8; 16], _>::new(&device, &Usage::all(), DeviceLocal, &queue).unwrap();
+    }
+
+    #[test]
+    fn array_len() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let b = Buffer::<[i16], _>::array(&device, 12, &Usage::all(),
+                                          DeviceLocal, &queue).unwrap();
+        assert_eq!(b.len(), 12);
+        assert_eq!(b.size(), 12 * mem::size_of::<i16>());
     }
 }
