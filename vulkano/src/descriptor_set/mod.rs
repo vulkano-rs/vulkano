@@ -50,6 +50,14 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub use self::pool::DescriptorPool;
+pub use self::runtime_desc::RuntimeDesc;
+pub use self::runtime_desc::EmptyPipelineDesc;
+pub use self::runtime_desc::RuntimeDescriptorSetDesc;
+
+mod pool;
+mod runtime_desc;
+
 /// Types that describe the layout of a pipeline (descriptor sets and push constants).
 pub unsafe trait PipelineLayoutDesc {
     /// Represents a collection of `DescriptorSet` structs. A parameter of this type must be
@@ -72,27 +80,6 @@ pub unsafe trait PipelineLayoutDesc {
 
     // FIXME: implement this correctly
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
-}
-
-/// FIXME: it should be unsafe to create this struct
-pub struct RuntimeDesc;
-
-unsafe impl PipelineLayoutDesc for RuntimeDesc {
-    type DescriptorSets = Vec<Arc<AbstractDescriptorSet>>;
-    type DescriptorSetLayouts = Vec<Arc<AbstractDescriptorSetLayout>>;
-    type PushConstants = ();
-
-    #[inline]
-    fn decode_descriptor_sets(&self, sets: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
-        sets
-    }
-
-    #[inline]
-    fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
-                                     -> Vec<Arc<AbstractDescriptorSetLayout>>
-    {
-        layouts
-    }
 }
 
 /*
@@ -192,45 +179,6 @@ macro_rules! pipeline_layout {
         }
     }
 }*/
-
-/// Dummy implementation of `PipelineLayoutDesc` that describes an empty pipeline.
-///
-/// The descriptors, descriptor sets and push constants are all `()`. You have to pass `()` when
-/// drawing when you use a `EmptyPipelineDesc`.
-#[derive(Debug, Copy, Clone, Default)]
-pub struct EmptyPipelineDesc;
-unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
-    type DescriptorSets = ();
-    type DescriptorSetLayouts = ();
-    type PushConstants = ();
-
-    #[inline]
-    fn decode_descriptor_set_layouts(&self, _: Self::DescriptorSetLayouts)
-                                     -> Vec<Arc<AbstractDescriptorSetLayout>> { vec![] }
-    #[inline]
-    fn decode_descriptor_sets(&self, _: Self::DescriptorSets)
-                              -> Vec<Arc<AbstractDescriptorSet>> { vec![] }
-}
-
-unsafe impl<A, B> PipelineLayoutDesc for (Arc<DescriptorSet<A>>, Arc<DescriptorSet<B>>)
-    where A: 'static + DescriptorSetDesc, B: 'static + DescriptorSetDesc
-{
-    type DescriptorSets = (Arc<DescriptorSet<A>>, Arc<DescriptorSet<B>>);
-    type DescriptorSetLayouts = (Arc<DescriptorSetLayout<A>>, Arc<DescriptorSetLayout<B>>);
-    type PushConstants = ();
-
-    #[inline]
-    fn decode_descriptor_sets(&self, sets: Self::DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
-        vec![sets.0, sets.1]
-    }
-
-    #[inline]
-    fn decode_descriptor_set_layouts(&self, layouts: Self::DescriptorSetLayouts)
-                                     -> Vec<Arc<AbstractDescriptorSetLayout>>
-    {
-        vec![layouts.0, layouts.1]
-    }
-}
 
 /// Types that describe a single descriptor set.
 pub unsafe trait DescriptorSetDesc {
@@ -364,37 +312,6 @@ impl Into<vk::ShaderStageFlags> for ShaderStages {
     }
 }
 
-/// FIXME: should be unsafe to create this struct
-pub struct RuntimeDescriptorSetDesc {
-    pub descriptors: Vec<DescriptorDesc>,
-}
-
-unsafe impl DescriptorSetDesc for RuntimeDescriptorSetDesc {
-    type Write = Vec<(u32, DescriptorBind)>;
-
-    type Init = Vec<(u32, DescriptorBind)>;
-
-    fn descriptors(&self) -> Vec<DescriptorDesc> {
-        self.descriptors.clone()
-    }
-
-    fn decode_write(&self, data: Self::Write) -> Vec<DescriptorWrite> {
-        data.into_iter().map(|(binding, bind)| {
-            // TODO: check correctness?
-
-            DescriptorWrite {
-                binding: binding,
-                array_element: 0,       // FIXME:
-                content: bind,
-            }
-        }).collect()
-    }
-
-    fn decode_init(&self, data: Self::Init) -> Vec<DescriptorWrite> {
-        self.decode_write(data)
-    }
-}
-
 
 /// An actual descriptor set with the resources that are binded to it.
 pub struct DescriptorSet<S> {
@@ -428,21 +345,21 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     pub unsafe fn uninitialized(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>)
                                 -> Result<Arc<DescriptorSet<S>>, OomError>
     {
-        assert_eq!(&*pool.device as *const Device, &*layout.device as *const Device);
+        assert_eq!(&**pool.device() as *const Device, &*layout.device as *const Device);
 
-        let vk = pool.device.pointers();
+        let vk = pool.device().pointers();
 
         let set = unsafe {
             let infos = vk::DescriptorSetAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                 pNext: ptr::null(),
-                descriptorPool: pool.pool,
+                descriptorPool: pool.internal_object(),
                 descriptorSetCount: 1,
                 pSetLayouts: &layout.layout,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.AllocateDescriptorSets(pool.device.internal_object(), &infos,
+            try!(check_errors(vk.AllocateDescriptorSets(pool.device().internal_object(), &infos,
                                                         &mut output)));
             output
         };
@@ -467,7 +384,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
     /// Modifies a descriptor set without checking that the writes are correct.
     pub unsafe fn unchecked_write(&self, write: Vec<DescriptorWrite>) {
-        let vk = self.pool.device.pointers();
+        let vk = self.pool.device().pointers();
 
         // FIXME: store resources in the descriptor set so that they aren't destroyed
 
@@ -504,8 +421,8 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
         if !vk_writes.is_empty() {
             unsafe {
-                vk.UpdateDescriptorSets(self.pool.device.internal_object(), vk_writes.len() as u32,
-                                        vk_writes.as_ptr(), 0, ptr::null());
+                vk.UpdateDescriptorSets(self.pool.device().internal_object(),
+                                        vk_writes.len() as u32, vk_writes.as_ptr(), 0, ptr::null());
             }
         }
     }
@@ -652,46 +569,6 @@ unsafe impl<P> VulkanObject for PipelineLayout<P> {
     }
 }
 
-/// Pool from which descriptor sets are allocated from.
-pub struct DescriptorPool {
-    pool: vk::DescriptorPool,
-    device: Arc<Device>,
-}
-
-impl DescriptorPool {
-    pub fn new(device: &Arc<Device>) -> Result<Arc<DescriptorPool>, OomError> {
-        let vk = device.pointers();
-
-        // FIXME: arbitrary
-        let pool_sizes = vec![
-            vk::DescriptorPoolSize {
-                ty: vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                descriptorCount: 10,
-            }
-        ];
-
-        let pool = unsafe {
-            let infos = vk::DescriptorPoolCreateInfo {
-                sType: vk::STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // TODO:
-                maxSets: 100,       // TODO: let user choose
-                poolSizeCount: pool_sizes.len() as u32,
-                pPoolSizes: pool_sizes.as_ptr(),
-            };
-
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDescriptorPool(device.internal_object(), &infos,
-                                                      ptr::null(), &mut output)));
-            output
-        };
-
-        Ok(Arc::new(DescriptorPool {
-            pool: pool,
-            device: device.clone(),
-        }))
-    }
-}
 
 pub unsafe trait DescriptorSetsCollection {
     type Iter: ExactSizeIterator<Item = Arc<AbstractDescriptorSet>>;
