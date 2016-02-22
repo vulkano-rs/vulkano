@@ -378,7 +378,7 @@ impl InnerCommandBufferBuilder {
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
-        where R: RenderPassLayout
+        where R: RenderPassLayout, F: RenderPassLayout
     {
         assert!(framebuffer.is_compatible_with(renderpass));
 

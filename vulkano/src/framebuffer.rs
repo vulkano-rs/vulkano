@@ -160,6 +160,27 @@ impl AttachmentDescription {
 }
 
 /// Describes one of the passes of a renderpass.
+///
+/// # Restrictions
+///
+/// All these restrictions are checked when the `RenderPass` object is created.
+///
+/// - The number of color attachments must be less than the limit of the physical device.
+/// - All the attachments in `color_attachments` and `depth_stencil` must have the same
+///   samples count.
+/// - If any attachment is used as both an input attachment and a color or
+///   depth/stencil attachment, then each use must use the same layout.
+/// - Elements of `preserve_attachments` must not be used in any of the other members.
+/// - If `resolve_attachments` is not empty, then all the resolve attachments must be attachments
+///   with 1 sample and all the color attachments must have more than 1 sample.
+/// - If `resolve_attachments` is not empty, all the resolve attachments must have the same format
+///   as the color attachments.
+/// - If the first use of an attachment in this renderpass is as an input attachment and the
+///   attachment is not also used as a color or depth/stencil attachment in the same subpass,
+///   then the loading operation must not be `Clear`.
+///
+// TODO: add tests for all these restrictions
+// TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
 pub struct PassDescription {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
@@ -356,6 +377,17 @@ pub struct RenderPass<L> {
 }
 
 impl<L> RenderPass<L> where L: RenderPassLayout {
+    /// Builds a new renderpass.
+    ///
+    /// This function calls the methods of the `RenderPassLayout` implementation and builds the
+    /// corresponding Vulkan object.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the layout described by the `RenderPassLayout` implementation is invalid.
+    ///   See the documentation of the various methods and structs related to `RenderPassLayout`
+    ///   for more details.
+    ///
     pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
         let vk = device.pointers();
 
@@ -376,6 +408,12 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             }
         }).collect::<Vec<_>>();
 
+        // We need to pass pointers to vkAttachmentReference structs when creating the renderpass.
+        // Therefore we need to allocate them in advance.
+        //
+        // This block allocates, for each pass, in order, all color attachment references, then all
+        // input attachment references, then all resolve attachment references, then the depth
+        // stencil attachment reference.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let attachment_references = layout.passes().flat_map(|pass| {
             debug_assert!(pass.resolve_attachments.is_empty() ||
@@ -404,14 +442,21 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             color.chain(input).chain(resolve).chain(depthstencil)
         }).collect::<Vec<_>>();
 
+        // Same as `attachment_references` but only for the preserve attachments.
+        // This is separate because attachment references are u32s and not `vkAttachmentReference`
+        // structs.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let preserve_attachments_references = layout.passes().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<Vec<_>>();
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        // Now iterating over passes.
+        // `ref_index` and `preserve_ref_index` are increased during the loop and point to the
+        // next element to use in respectively `attachment_references` and
+        // `preserve_attachments_references`.
         let mut ref_index = 0usize;
         let mut preserve_ref_index = 0usize;
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let passes = layout.passes().map(|pass| {
             unsafe {
                 let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
@@ -445,6 +490,8 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
                 }
             }
         }).collect::<Vec<_>>();
+
+        // If these assertions fails, there's a serious bug in the code above ^.
         debug_assert!(ref_index == attachment_references.len());
         debug_assert!(preserve_ref_index == preserve_attachments_references.len());
 
@@ -578,6 +625,14 @@ impl<'a, L: 'a> Subpass<'a, L> {
     }
 }
 
+/// Contains the list of images attached to a renderpass.
+///
+/// This is a structure that you must pass when you start recording draw commands in a
+/// command buffer.
+///
+/// A framebuffer can be used alongside with any other renderpass object as long as it is
+/// compatible with the renderpass that his framebuffer was created with. You can determine whether
+/// two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct Framebuffer<L> {
     device: Arc<Device>,
     renderpass: Arc<RenderPass<L>>,
@@ -587,6 +642,18 @@ pub struct Framebuffer<L> {
 }
 
 impl<L> Framebuffer<L> {
+    /// Builds a new framebuffer.
+    ///
+    /// The `attachments` parameter depends on which struct is used as a template parameter
+    /// for the renderpass.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if one of the attachments has a different sample count than what the renderpass
+    ///   describes.
+    /// - Additionally, some methods in the `RenderPassLayout` implementation may panic if you
+    ///   pass invalid attachments.
+    ///
     pub fn new<'a, M1, M2>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
                       attachments: L::AttachmentsList) -> Result<Arc<Framebuffer<L>>, OomError>
         where L: RenderPassLayoutExt<'a, M1, M2>
@@ -626,10 +693,12 @@ impl<L> Framebuffer<L> {
 
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
-    pub fn is_compatible_with<R>(&self, renderpass: &Arc<RenderPass<R>>) -> bool {
-        true        // FIXME:
-        //(&*self.renderpass as *const RenderPass<L> as usize == &**renderpass as *const _ as usize)
-            //|| self.renderpass.is_compatible_with(renderpass)
+    pub fn is_compatible_with<R>(&self, renderpass: &Arc<RenderPass<R>>) -> bool
+        where R: RenderPassLayout, L: RenderPassLayout
+    {
+        (&*self.renderpass as *const RenderPass<L> as usize ==
+         &**renderpass as *const RenderPass<R> as usize) ||
+            self.renderpass.is_compatible_with(renderpass)
     }
 
     /// Returns the width of the framebuffer in pixels.
