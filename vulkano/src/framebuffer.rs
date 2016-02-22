@@ -128,13 +128,25 @@ pub enum ClearValue {
     DepthStencil((f32, u32)),
 }
 
+/// Describes an attachment that will be used in a renderpass.
 pub struct AttachmentDescription {
+    /// Format of the image that is going to be binded.
     pub format: Format,
+    /// Number of samples of the image that is going to be binded.
     pub samples: u32,
+
+    /// What the implementation should do with that attachment at the start of the renderpass.
     pub load: LoadOp,
+    /// What the implementation should do with that attachment at the end of the renderpass.
     pub store: StoreOp,
 
+    /// Layout that the image is going to be in at the start of the renderpass.
+    ///
+    /// The vulkano library will automatically switch to the correct layout if necessary, but it
+    /// is more optimal to set this to the correct value.
     pub initial_layout: ImageLayout,
+
+    /// Layout that the image will be transitionned to at the end of the renderpass.
     pub final_layout: ImageLayout,
 }
 
@@ -147,29 +159,45 @@ impl AttachmentDescription {
     }
 }
 
+/// Describes one of the passes of a renderpass.
 pub struct PassDescription {
-    /// Indices of attachments to use as color attachments.
+    /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+
+    /// Index and layout of the attachment to use as depth-stencil attachment.
     pub depth_stencil: Option<(usize, ImageLayout)>,
-    /// Indices of attachments to use as input attachments.
+
+    /// Indices and layouts of attachments to use as input attachments.
     pub input_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+
     /// If not empty, each color attachment will be resolved into each corresponding entry of
     /// this list.
     ///
     /// If this value is not empty, it **must** be the same length as `color_attachments`.
     pub resolve_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
+
     /// Indices of attachments that will be preserved during this pass.
     pub preserve_attachments: Vec<usize>,      // TODO: Vec is slow
 }
 
+/// Describes a dependency between two passes of a renderpass.
+///
+/// The implementation is allowed to change the order of the passes within a renderpass, unless
+/// you specify that there exists a dependency between two passes (ie. the result of one will be
+/// used as the input of another one).
 // FIXME: finish
 pub struct PassDependencyDescription {
+    /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
+
+    /// Index of the subpass that reads the data that `source_subpass` wrote.
     pub destination_subpass: usize,
+
     /*VkPipelineStageFlags    srcStageMask;
     VkPipelineStageFlags    dstStageMask;
     VkAccessFlags           srcAccessMask;
     VkAccessFlags           dstAccessMask;*/
+
     pub by_region: bool,
 }
 
