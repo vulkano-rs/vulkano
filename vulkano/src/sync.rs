@@ -355,3 +355,48 @@ impl Drop for Event {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sync::Fence;
+    use sync::Semaphore;
+
+    #[test]
+    fn fence_create() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let fence = Fence::new(&device).unwrap();
+        assert!(!fence.ready().unwrap());
+    }
+
+    #[test]
+    fn fence_create_signaled() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let fence = Fence::signaled(&device).unwrap();
+        assert!(fence.ready().unwrap());
+    }
+
+    #[test]
+    fn fence_signaled_wait() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let fence = Fence::signaled(&device).unwrap();
+        fence.wait(10).unwrap();
+    }
+
+    #[test]
+    fn fence_reset() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let fence = Fence::signaled(&device).unwrap();
+        fence.reset();
+        assert!(!fence.ready().unwrap());
+    }
+
+    #[test]
+    fn semaphore_create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = Semaphore::new(&device).unwrap();
+    }
+}
