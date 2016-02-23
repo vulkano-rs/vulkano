@@ -110,8 +110,6 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         let ref mut self_resources_image_views = self.resources_image_views;
         let self_set = self.set;
 
-        // FIXME: store resources in the descriptor set so that they aren't destroyed
-
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let buffer_descriptors = write.iter().filter_map(|write| {
             match write.content {
