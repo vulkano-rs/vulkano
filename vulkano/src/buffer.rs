@@ -66,6 +66,25 @@ pub unsafe trait BufferResource: Resource + ::VulkanObjectU64 {
     unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
                          fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                          -> Option<Arc<Semaphore>>;
+
+    /// True if the buffer can be used as a source for buffer transfers.
+    fn usage_transfer_src(&self) -> bool;
+    /// True if the buffer can be used as a destination for buffer transfers.
+    fn usage_transfer_dest(&self) -> bool;
+    /// True if the buffer can be used as
+    fn usage_uniform_texel_buffer(&self) -> bool;
+    /// True if the buffer can be used as
+    fn usage_storage_texel_buffer(&self) -> bool;
+    /// True if the buffer can be used as
+    fn usage_uniform_buffer(&self) -> bool;
+    /// True if the buffer can be used as
+    fn usage_storage_buffer(&self) -> bool;
+    /// True if the buffer can be used as a source for index data.
+    fn usage_index_buffer(&self) -> bool;
+    /// True if the buffer can be used as a source for vertex data.
+    fn usage_vertex_buffer(&self) -> bool;
+    /// True if the buffer can be used as an indirect buffer.
+    fn usage_indirect_buffer(&self) -> bool;
 }
 
 pub struct Buffer<T: ?Sized, M> {
@@ -193,60 +212,6 @@ impl<T: ?Sized, M> Buffer<T, M> {
     pub fn size(&self) -> usize {
         self.inner.size
     }
-
-    /// True if the buffer can be used as a source for buffer transfers.
-    #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a destination for buffer transfers.
-    #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_uniform_texel_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_storage_texel_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_uniform_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_storage_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a source for index data.
-    #[inline]
-    pub fn usage_index_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_INDEX_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a source for vertex data.
-    #[inline]
-    pub fn usage_vertex_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as an indirect buffer.
-    #[inline]
-    pub fn usage_indirect_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
-    }
 }
 
 impl<T, M> Buffer<[T], M> {
@@ -287,6 +252,51 @@ unsafe impl<T: ?Sized, M> BufferResource for Buffer<T, M> where M: MemorySourceC
     {
         self.inner.memory.gpu_access(write, ChunkRange::Range { offset: offset, size: size },
                                      queue, fence, semaphore)
+    }
+
+    #[inline]
+    fn usage_transfer_src(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_transfer_dest(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_uniform_texel_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_storage_texel_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_uniform_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_storage_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_index_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_INDEX_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_vertex_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_indirect_buffer(&self) -> bool {
+        (self.inner.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
 }
 

@@ -73,6 +73,23 @@ pub unsafe trait ImageViewResource: Resource + ::VulkanObjectU64 {
 
     unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+
+    /// True if the image can be used as a source for transfers.
+    fn usage_transfer_src(&self) -> bool;
+    /// True if the image can be used as a destination for transfers.
+    fn usage_transfer_dest(&self) -> bool;
+    /// True if the image can be sampled from a shader.
+    fn usage_sampled(&self) -> bool;
+    /// True if the image can be used for image loads/stores in shaders.
+    fn usage_storage(&self) -> bool;
+    /// True if the image can be used as a color attachment in a framebuffer.
+    fn usage_color_attachment(&self) -> bool;
+    /// True if the image can be used as a depth and/or stencil attachment in a framebuffer.
+    fn usage_depth_stencil_attachment(&self) -> bool;
+    /// True if the image can be used as a transient attachment in a framebuffer.
+    fn usage_transient_attachment(&self) -> bool;
+    /// True if the image can be used as an input attachment in a framebuffer.
+    fn usage_input_attachment(&self) -> bool;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -338,54 +355,6 @@ impl<Ty, F, M> Image<Ty, F, M>
     #[inline]
     pub fn num_samples(&self) -> u32 {
         Ty::num_samples(self.samples)
-    }
-
-    /// True if the image can be used as a source for transfers.
-    #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    /// True if the image can be used as a destination for transfers.
-    #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    /// True if the image can be sampled from a shader.
-    #[inline]
-    pub fn usage_sampled(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
-    }
-
-    /// True if the image can be used for image loads/stores in shaders.
-    #[inline]
-    pub fn usage_storage(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
-    }
-
-    /// True if the image can be used as a color attachment in a framebuffer.
-    #[inline]
-    pub fn usage_color_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
-    }
-
-    /// True if the image can be used as a depth and/or stencil attachment in a framebuffer.
-    #[inline]
-    pub fn usage_depth_stencil_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
-    }
-
-    /// True if the image can be used as a transient attachment in a framebuffer.
-    #[inline]
-    pub fn usage_transient_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
-    }
-
-    /// True if the image can be used as an input attachment in a framebuffer.
-    #[inline]
-    pub fn usage_input_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
     }
 }
 
@@ -760,6 +729,46 @@ unsafe impl<Ty, F, M> ImageViewResource for ImageView<Ty, F, M>
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         self.image.gpu_access(write, queue, fence, semaphore)
+    }
+
+    #[inline]
+    fn usage_transfer_src(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_transfer_dest(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_sampled(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_storage(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_color_attachment(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_transient_attachment(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    fn usage_input_attachment(&self) -> bool {
+        (self.image.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
     }
 }
 

@@ -280,6 +280,7 @@ impl InnerCommandBufferBuilder {
 
             let vk = self.device.pointers();
 
+            assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
             let buffers = vertices.buffers();
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
@@ -311,10 +312,14 @@ impl InnerCommandBufferBuilder {
 
             let indices = indices.into();
 
+            assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
             let buffers = vertices.buffers();
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
             let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+
+
+            assert!(indices.buffer().usage_index_buffer());
 
             vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
                                   indices.offset() as u64, I::ty() as u32);

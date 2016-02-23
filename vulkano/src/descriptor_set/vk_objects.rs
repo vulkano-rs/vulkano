@@ -116,9 +116,18 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         let buffer_descriptors = write.iter().filter_map(|write| {
             match write.content {
                 DescriptorBind::UniformBuffer(ref buffer) |
+                DescriptorBind::DynamicUniformBuffer(ref buffer) => {
+                    assert!(buffer.usage_uniform_buffer());
+                    self_resources_buffers.push(buffer.clone());
+                    Some(vk::DescriptorBufferInfo {
+                        buffer: buffer.internal_object(),
+                        offset: 0,      // FIXME: allow buffer slices
+                        range: buffer.size() as u64,       // FIXME: allow buffer slices
+                    })
+                },
                 DescriptorBind::StorageBuffer(ref buffer) |
-                DescriptorBind::DynamicUniformBuffer(ref buffer) |
                 DescriptorBind::DynamicStorageBuffer(ref buffer) => {
+                    assert!(buffer.usage_storage_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
                         buffer: buffer.internal_object(),
@@ -142,6 +151,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                     })
                 },
                 DescriptorBind::CombinedImageSampler(ref sampler, ref image, layout) => {
+                    assert!(image.usage_sampled());
                     self_resources_samplers.push(sampler.clone());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
@@ -150,9 +160,26 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                         imageLayout: layout as u32,
                     })
                 },
-                DescriptorBind::StorageImage(ref image, layout) |
-                DescriptorBind::SampledImage(ref image, layout) |
+                DescriptorBind::StorageImage(ref image, layout) => {
+                    assert!(image.usage_storage());
+                    self_resources_image_views.push(image.clone());
+                    Some(vk::DescriptorImageInfo {
+                        sampler: 0,
+                        imageView: image.internal_object(),
+                        imageLayout: layout as u32,
+                    })
+                },
+                DescriptorBind::SampledImage(ref image, layout) => {
+                    assert!(image.usage_sampled());
+                    self_resources_image_views.push(image.clone());
+                    Some(vk::DescriptorImageInfo {
+                        sampler: 0,
+                        imageView: image.internal_object(),
+                        imageLayout: layout as u32,
+                    })
+                },
                 DescriptorBind::InputAttachment(ref image, layout) => {
+                    assert!(image.usage_input_attachment());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
