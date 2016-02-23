@@ -68,6 +68,13 @@ pub unsafe trait ImageResource: Resource + ::VulkanObjectU64 {
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
+pub unsafe trait ImageViewResource: Resource + ::VulkanObjectU64 {
+    fn default_layout(&self) -> Layout;
+
+    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Layout {
@@ -740,7 +747,7 @@ unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
     }
 }
 
-unsafe impl<Ty, F, M> ImageResource for ImageView<Ty, F, M>
+unsafe impl<Ty, F, M> ImageViewResource for ImageView<Ty, F, M>
     where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
     #[inline]

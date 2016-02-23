@@ -14,7 +14,7 @@ use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
-use image::ImageResource;
+use image::ImageViewResource;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
@@ -43,8 +43,8 @@ pub struct InnerCommandBufferBuilder {
     buffer_resources: Vec<Arc<BufferResource>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<ImageResource>` into an `Arc<BufferResource>`.
-    image_resources: Vec<Arc<ImageResource>>,
+    // `Arc<ImageViewResource>` into an `Arc<BufferResource>`.
+    image_resources: Vec<Arc<ImageViewResource>>,
 
     // List of pipelines that are used by this command buffer.
     //
@@ -518,7 +518,7 @@ pub struct InnerCommandBuffer {
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
     buffer_resources: Vec<Arc<BufferResource>>,
-    image_resources: Vec<Arc<ImageResource>>,
+    image_resources: Vec<Arc<ImageViewResource>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 
