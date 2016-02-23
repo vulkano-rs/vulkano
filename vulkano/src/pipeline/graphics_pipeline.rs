@@ -19,6 +19,7 @@ use pipeline::GenericPipeline;
 use pipeline::blend::Blend;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::multisample::Multisample;
+use pipeline::raster::DepthBiasControl;
 use pipeline::raster::Rasterization;
 use pipeline::vertex::MultiVertex;
 use pipeline::vertex::Vertex;
@@ -36,6 +37,7 @@ pub struct GraphicsPipeline<MultiVertex, Layout> {
     dynamic_line_width: bool,
     dynamic_viewport: bool,
     dynamic_scissor: bool,
+    dynamic_depth_bias: bool,
 
     num_viewports: u32,
 
@@ -175,6 +177,20 @@ impl<MV, L> GraphicsPipeline<MV, L>
                 dynamic_states.push(vk::DYNAMIC_STATE_LINE_WIDTH);
             }
 
+            let (db_enable, db_const, db_clamp, db_slope) = match raster.depth_bias {
+                DepthBiasControl::Dynamic => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
+                    (vk::TRUE, 0.0, 0.0, 0.0)
+                },
+                DepthBiasControl::Disabled => {
+                    (vk::FALSE, 0.0, 0.0, 0.0)
+                },
+                DepthBiasControl::Static(bias) => {
+                    // TODO: check the depthBiasClamp feature if clamp != 0.0
+                    (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
+                },
+            };
+
             let rasterization = vk::PipelineRasterizationStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -184,10 +200,10 @@ impl<MV, L> GraphicsPipeline<MV, L>
                 polygonMode: raster.polygon_mode as u32,
                 cullMode: raster.cull_mode as u32,
                 frontFace: raster.front_face as u32,
-                depthBiasEnable: if raster.depthBiasEnable { vk::TRUE } else { vk::FALSE },
-                depthBiasConstantFactor: raster.depthBiasConstantFactor,
-                depthBiasClamp: raster.depthBiasClamp,
-                depthBiasSlopeFactor: raster.depthBiasSlopeFactor,
+                depthBiasEnable: db_enable,
+                depthBiasConstantFactor: db_const,
+                depthBiasClamp: db_clamp,
+                depthBiasSlopeFactor: db_slope,
                 lineWidth: raster.line_width.unwrap_or(1.0),
             };
 
@@ -302,6 +318,7 @@ impl<MV, L> GraphicsPipeline<MV, L>
             dynamic_line_width: raster.line_width.is_none(),
             dynamic_viewport: viewport.dynamic_viewports(),
             dynamic_scissor: viewport.dynamic_scissors(),
+            dynamic_depth_bias: raster.depth_bias.is_dynamic(),
 
             num_viewports: viewport.num_viewports(),
 

@@ -32,11 +32,7 @@ pub struct Rasterization {
     /// need to be set when you build the command buffer.
     pub line_width: Option<f32>,
 
-    // TODO: clean this
-    pub depthBiasEnable: bool,
-    pub depthBiasConstantFactor: f32,
-    pub depthBiasClamp: f32,
-    pub depthBiasSlopeFactor: f32,
+    pub depth_bias: DepthBiasControl,
 }
 
 impl Default for Rasterization {
@@ -49,13 +45,34 @@ impl Default for Rasterization {
             cull_mode: Default::default(),
             front_face: Default::default(),
             line_width: Some(1.0),
-
-            depthBiasEnable: false,
-            depthBiasConstantFactor: 0.0,
-            depthBiasClamp: 0.0,
-            depthBiasSlopeFactor: 0.0,
+            depth_bias: DepthBiasControl::Disabled,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum DepthBiasControl {
+    Disabled,
+    Dynamic,
+    Static(DepthBias),
+}
+
+impl DepthBiasControl {
+    #[inline]
+    pub fn is_dynamic(&self) -> bool {
+        match *self {
+            DepthBiasControl::Dynamic => true,
+            _ => false
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct DepthBias {
+    pub constant_factor: f32,
+    /// Requires the `depth_bias_clamp` feature to be enabled.
+    pub clamp: f32,
+    pub slope_factor: f32,
 }
 
 /// Specifies the culling mode.
