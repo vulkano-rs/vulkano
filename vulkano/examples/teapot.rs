@@ -1,8 +1,8 @@
-extern crate kernel32;
-extern crate gdi32;
-extern crate user32;
-extern crate winapi;
 extern crate cgmath;
+extern crate winit;
+
+#[cfg(windows)]
+use winit::os::windows::WindowExt;
 
 #[macro_use]
 extern crate vulkano;
@@ -27,8 +27,8 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let window = unsafe { create_window() };
-    let surface = unsafe { vulkano::swapchain::Surface::from_hwnd(&instance, kernel32::GetModuleHandleW(ptr::null()), window).unwrap() };
+    let window = winit::WindowBuilder::new().build().unwrap();
+    let surface = unsafe { vulkano::swapchain::Surface::from_hwnd(&instance, ptr::null() as *const () /* FIXME */, window.get_hwnd()).unwrap() };
 
     let queue = physical.queue_families().find(|q| q.supports_graphics() &&
                                                    surface.is_supported(q).unwrap_or(false))
@@ -213,65 +213,11 @@ fn main() {
         swapchain.present(&mut queue, image_num).unwrap();
         drop(queue);
 
-        unsafe {
-            let mut msg = mem::uninitialized();
-            if user32::GetMessageW(&mut msg, ptr::null_mut(), 0, 0) == 0 {
-                break;
+        for ev in window.poll_events() {
+            match ev {
+                winit::Event::Closed => break,
+                _ => ()
             }
-
-            user32::TranslateMessage(&msg);
-            user32::DispatchMessageW(&msg);
         }
     }
-}
-
-
-
-
-
-unsafe fn create_window() -> winapi::HWND {
-    let class_name = register_window_class();
-
-    let title: Vec<u16> = vec![b'V' as u16, b'u' as u16, b'l' as u16, b'k' as u16,
-                               b'a' as u16, b'n' as u16, 0];
-
-    user32::CreateWindowExW(winapi::WS_EX_APPWINDOW | winapi::WS_EX_WINDOWEDGE, class_name.as_ptr(),
-                            title.as_ptr() as winapi::LPCWSTR,
-                            winapi::WS_OVERLAPPEDWINDOW | winapi::WS_CLIPSIBLINGS |
-                            winapi::WS_VISIBLE,
-                            winapi::CW_USEDEFAULT, winapi::CW_USEDEFAULT,
-                            winapi::CW_USEDEFAULT, winapi::CW_USEDEFAULT,
-                            ptr::null_mut(), ptr::null_mut(),
-                            kernel32::GetModuleHandleW(ptr::null()),
-                            ptr::null_mut())
-}
-
-unsafe fn register_window_class() -> Vec<u16> {
-    let class_name: Vec<u16> = OsStr::new("Window Class").encode_wide().chain(Some(0).into_iter())
-                                                         .collect::<Vec<u16>>();
-
-    let class = winapi::WNDCLASSEXW {
-        cbSize: mem::size_of::<winapi::WNDCLASSEXW>() as winapi::UINT,
-        style: winapi::CS_HREDRAW | winapi::CS_VREDRAW | winapi::CS_OWNDC,
-        lpfnWndProc: Some(callback),
-        cbClsExtra: 0,
-        cbWndExtra: 0,
-        hInstance: kernel32::GetModuleHandleW(ptr::null()),
-        hIcon: ptr::null_mut(),
-        hCursor: ptr::null_mut(),
-        hbrBackground: ptr::null_mut(),
-        lpszMenuName: ptr::null(),
-        lpszClassName: class_name.as_ptr(),
-        hIconSm: ptr::null_mut(),
-    };
-
-    user32::RegisterClassExW(&class);
-    class_name
-}
-
-unsafe extern "system" fn callback(window: winapi::HWND, msg: winapi::UINT,
-                                   wparam: winapi::WPARAM, lparam: winapi::LPARAM)
-                                   -> winapi::LRESULT
-{
-    user32::DefWindowProcW(window, msg, wparam, lparam)
 }
