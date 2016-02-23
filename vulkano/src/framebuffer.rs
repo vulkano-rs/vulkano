@@ -32,7 +32,7 @@ use std::sync::Arc;
 use device::Device;
 use formats::Format;
 use formats::FormatMarker;
-use image::ImageViewResource;
+use image::AbstractImageView;
 use image::Layout as ImageLayout;
 
 use Error;
@@ -83,8 +83,8 @@ pub unsafe trait RenderPassLayout {
     type AttachmentsList;
 
     /// A decoded `AttachmentsList`.
-    // TODO: should be ImageViewResource or something like that, so that images can't get passed
-    type AttachmentsIter: ExactSizeIterator<Item = Arc<ImageViewResource>>;
+    // TODO: should be AbstractImageView or something like that, so that images can't get passed
+    type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
     /// Decodes a `AttachmentsList` into a list of attachments.
     fn convert_attachments_list(&self, Self::AttachmentsList) -> Self::AttachmentsIter;
@@ -275,7 +275,7 @@ unsafe impl RenderPassLayout for EmptySinglePassLayout {
     }
 
     type AttachmentsList = ();
-    type AttachmentsIter = EmptyIter<Arc<ImageViewResource>>;
+    type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
 
     #[inline]
     fn convert_attachments_list(&self, _: Self::AttachmentsList) -> Self::AttachmentsIter {
@@ -302,12 +302,12 @@ macro_rules! single_pass_renderpass {
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
                 type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
-                type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::ImageViewResource>>;
+                type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
                 // FIXME: should be stronger-typed
                 type AttachmentsList = (
-                    Arc<$crate::image::ImageViewResource>,
-                    Arc<$crate::image::ImageViewResource>
+                    Arc<$crate::image::AbstractImageView>,
+                    Arc<$crate::image::AbstractImageView>
                 );      // FIXME:
 
                 #[inline]
@@ -726,7 +726,7 @@ pub struct Framebuffer<L> {
     renderpass: Arc<RenderPass<L>>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
-    resources: Vec<Arc<ImageViewResource>>,
+    resources: Vec<Arc<AbstractImageView>>,
 }
 
 impl<L> Framebuffer<L> {
@@ -832,7 +832,7 @@ impl<L> Framebuffer<L> {
 
     /// Returns all the resources attached to that framebuffer.
     #[inline]
-    pub fn attachments(&self) -> &[Arc<ImageViewResource>] {
+    pub fn attachments(&self) -> &[Arc<AbstractImageView>] {
         &self.resources
     }
 }

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use buffer::BufferResource;
+use buffer::AbstractBuffer;
 use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::AbstractDescriptorSetLayout;
-use image::ImageViewResource;
+use image::AbstractImageView;
 use image::Layout as ImageLayout;
 use sampler::Sampler;
 
@@ -66,17 +66,17 @@ pub struct DescriptorWrite {
 // FIXME: incomplete
 #[derive(Clone)]        // TODO: Debug
 pub enum DescriptorBind {
-    StorageImage(Arc<ImageViewResource>, ImageLayout),
+    StorageImage(Arc<AbstractImageView>, ImageLayout),
     Sampler(Arc<Sampler>),
-    SampledImage(Arc<ImageViewResource>, ImageLayout),
-    CombinedImageSampler(Arc<Sampler>, Arc<ImageViewResource>, ImageLayout),
-    //UniformTexelBuffer(Arc<BufferResource>),      // FIXME: requires buffer views
-    //StorageTexelBuffer(Arc<BufferResource>),      // FIXME: requires buffer views
-    UniformBuffer(Arc<BufferResource>),
-    StorageBuffer(Arc<BufferResource>),
-    DynamicUniformBuffer(Arc<BufferResource>),
-    DynamicStorageBuffer(Arc<BufferResource>),
-    InputAttachment(Arc<ImageViewResource>, ImageLayout),
+    SampledImage(Arc<AbstractImageView>, ImageLayout),
+    CombinedImageSampler(Arc<Sampler>, Arc<AbstractImageView>, ImageLayout),
+    //UniformTexelBuffer(Arc<AbstractBuffer>),      // FIXME: requires buffer views
+    //StorageTexelBuffer(Arc<AbstractBuffer>),      // FIXME: requires buffer views
+    UniformBuffer(Arc<AbstractBuffer>),
+    StorageBuffer(Arc<AbstractBuffer>),
+    DynamicUniformBuffer(Arc<AbstractBuffer>),
+    DynamicStorageBuffer(Arc<AbstractBuffer>),
+    InputAttachment(Arc<AbstractImageView>, ImageLayout),
 }
 
 impl DescriptorBind {

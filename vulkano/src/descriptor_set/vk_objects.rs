@@ -2,14 +2,14 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferResource;
+use buffer::AbstractBuffer;
 use descriptor_set::layout_def::PipelineLayoutDesc;
 use descriptor_set::layout_def::DescriptorSetDesc;
 use descriptor_set::layout_def::DescriptorWrite;
 use descriptor_set::layout_def::DescriptorBind;
 use descriptor_set::pool::DescriptorPool;
 use device::Device;
-use image::ImageViewResource;
+use image::AbstractImageView;
 use sampler::Sampler;
 
 use OomError;
@@ -27,8 +27,8 @@ pub struct DescriptorSet<S> {
     // Here we store the resources used by the descriptor set.
     // TODO: for the moment even when a resource is overwritten it stays in these lists
     resources_samplers: Vec<Arc<Sampler>>,
-    resources_image_views: Vec<Arc<ImageViewResource>>,
-    resources_buffers: Vec<Arc<BufferResource>>,
+    resources_image_views: Vec<Arc<AbstractImageView>>,
+    resources_buffers: Vec<Arc<AbstractBuffer>>,
 }
 
 impl<S> DescriptorSet<S> where S: DescriptorSetDesc {

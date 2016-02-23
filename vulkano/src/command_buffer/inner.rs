@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
-use buffer::BufferResource;
+use buffer::AbstractBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
 use descriptor_set::PipelineLayoutDesc;
@@ -14,7 +14,7 @@ use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
-use image::ImageViewResource;
+use image::AbstractImageView;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
@@ -40,11 +40,11 @@ pub struct InnerCommandBufferBuilder {
     cmd: Option<vk::CommandBuffer>,
 
     // List of all resources that are used by this command buffer.
-    buffer_resources: Vec<Arc<BufferResource>>,
+    buffer_resources: Vec<Arc<AbstractBuffer>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<ImageViewResource>` into an `Arc<BufferResource>`.
-    image_resources: Vec<Arc<ImageViewResource>>,
+    // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
+    image_resources: Vec<Arc<AbstractImageView>>,
 
     // List of pipelines that are used by this command buffer.
     //
@@ -263,6 +263,32 @@ impl InnerCommandBufferBuilder {
 
         self
     }
+
+    /*pub unsafe fn copy_buffer_to_image<'a, S, Sm>(mut self, source: S, )
+        where S: Into<BufferSlice<'a, [], Sm>
+    {
+        {
+            let vk = self.device.pointers();
+
+            let source = source.into();
+            self.buffer_resources.push(source.buffer().clone());
+
+            let region = vk::BufferImageCopy {
+                bufferOffset: source.offset() as vk::DeviceSize,
+                bufferRowLength: ,
+                bufferImageHeight: ,
+                imageSubresource: ,
+                imageOffset: ,
+                imageExtent: ,
+            };
+
+            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.internal_object(), ,
+                                    vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
+                                    1, &region);
+        }
+
+        self
+    }*/
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
@@ -522,8 +548,8 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    buffer_resources: Vec<Arc<BufferResource>>,
-    image_resources: Vec<Arc<ImageViewResource>>,
+    buffer_resources: Vec<Arc<AbstractBuffer>>,
+    image_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 

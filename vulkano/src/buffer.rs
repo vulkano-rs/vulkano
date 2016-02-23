@@ -39,7 +39,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait BufferResource: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 
@@ -239,7 +239,7 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
     }
 }
 
-unsafe impl<T: ?Sized, M> BufferResource for Buffer<T, M> where M: MemorySourceChunk {
+unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySourceChunk {
     #[inline]
     fn size(&self) -> usize {
         self.inner.size
@@ -443,7 +443,7 @@ impl Usage {
 #[derive(Clone)]
 pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
     marker: PhantomData<T>,
-    resource: Arc<BufferResource>,
+    resource: Arc<AbstractBuffer>,
     inner: &'a Inner<M>,
     offset: usize,
     size: usize,
@@ -451,7 +451,7 @@ pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
 
 impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {
     /// Returns the buffer that this slice belongs to.
-    pub fn buffer(&self) -> &Arc<BufferResource> {
+    pub fn buffer(&self) -> &Arc<AbstractBuffer> {
         &self.resource
     }
 

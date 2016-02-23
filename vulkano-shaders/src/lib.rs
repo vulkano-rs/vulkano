@@ -269,7 +269,7 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
-                        "::vulkano::buffer::BufferResource",
+                        "::vulkano::buffer::AbstractBuffer",
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"
                     ))
                 },
@@ -279,7 +279,7 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
-                        "::vulkano::image::ImageResource",
+                        "::vulkano::image::AbstractImageView",
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
                     ))
                 },
@@ -288,7 +288,7 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
-                        "::vulkano::image::ImageResource",
+                        "::vulkano::image::AbstractImageView",
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
                     ))
                 },

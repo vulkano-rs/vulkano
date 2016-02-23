@@ -99,13 +99,13 @@ macro_rules! pipeline_layout {
             use $crate::descriptor_set::PipelineLayout;
             use $crate::descriptor_set::PipelineLayoutDesc;
             use $crate::descriptor_set::ShaderStages;
-            use $crate::buffer::BufferResource;
+            use $crate::buffer::AbstractBuffer;
 
             $(
                 pub struct $set_name;
                 unsafe impl DescriptorSetDesc for $set_name {
                     type Write = (      // FIXME: variable number of elems
-                        Arc<BufferResource>     // FIXME: strong typing
+                        Arc<AbstractBuffer>     // FIXME: strong typing
                     );
 
                     type Init = Self::Write;

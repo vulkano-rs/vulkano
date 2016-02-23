@@ -38,7 +38,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait ImageResource: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
     /// command buffer, it is switched from this default layout to something else (if necessary),
     /// then back again to the default.
@@ -68,7 +68,7 @@ pub unsafe trait ImageResource: Resource + ::VulkanObjectU64 {
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
-pub unsafe trait ImageViewResource: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
     fn default_layout(&self) -> Layout;
 
     unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
@@ -388,7 +388,7 @@ unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
     }
 }
 
-unsafe impl<Ty, F, M> ImageResource for Image<Ty, F, M>
+unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
     where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
     #[inline]
@@ -716,7 +716,7 @@ unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
     }
 }
 
-unsafe impl<Ty, F, M> ImageViewResource for ImageView<Ty, F, M>
+unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
     where Ty: ImageTypeMarker, M: MemorySourceChunk
 {
     #[inline]
