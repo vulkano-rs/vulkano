@@ -22,3 +22,7 @@
 
 - Visibility rules mean that you can't write `struct Error; pub mod foo { pub struct Foo; impl From<Error> for Foo { ... } }`. Rustc complains
   that `Error` is private an exported in `Foo`'s signature, even though that's in the author's opinion a totally legitimate usage.
+
+- This repository contains the `vulkano-shaders` library, which generates Rust code that uses the `vulkano` library. If the API of `vulkano` gets
+  a breaking change, there is no way to enforce or to check the fact that the user uses a correct combination of versions for `vulkano-shaders`
+  and `vulkano`.
