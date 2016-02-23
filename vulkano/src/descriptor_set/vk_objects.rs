@@ -33,8 +33,8 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                -> Result<Arc<DescriptorSet<S>>, OomError>
     {
         unsafe {
-            let set = try!(DescriptorSet::uninitialized(pool, layout));
-            set.unchecked_write(layout.description().decode_init(init));
+            let mut set = try!(DescriptorSet::uninitialized(pool, layout));
+            Arc::get_mut(&mut set).unwrap().unchecked_write(layout.description().decode_init(init));
             Ok(set)
         }
     }
@@ -80,13 +80,13 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     ///
     /// This function trusts the implementation of `DescriptorSetDesc` when it comes to making sure
     /// that the correct resource type is written to the correct descriptor.
-    pub fn write(&self, write: S::Write) {
+    pub fn write(&mut self, write: S::Write) {
         let write = self.layout.description().decode_write(write);
         unsafe { self.unchecked_write(write); }
     }
 
     /// Modifies a descriptor set without checking that the writes are correct.
-    pub unsafe fn unchecked_write(&self, write: Vec<DescriptorWrite>) {
+    pub unsafe fn unchecked_write(&mut self, write: Vec<DescriptorWrite>) {
         let vk = self.pool.device().pointers();
 
         // FIXME: store resources in the descriptor set so that they aren't destroyed
