@@ -29,13 +29,23 @@ pub struct PipelineCache {
 }
 
 impl PipelineCache {
-    /// Builds a new pipeline cache.
+    /// Builds a new pipeline cache from existing data.
     ///
-    /// You can pass optional data to initialize the cache with. If you don't pass any data, the
-    /// cache will be empty.
+    /// The data must have been previously obtained with `get_data`.
     // TODO: is that unsafe? is it safe to pass garbage data?
-    pub unsafe fn new(device: &Arc<Device>, initial_data: Option<&[u8]>)
-                      -> Result<Arc<PipelineCache>, OomError>
+    pub unsafe fn with_data(device: &Arc<Device>, initial_data: &[u8])
+                            -> Result<Arc<PipelineCache>, OomError>
+    {
+        PipelineCache::new_impl(device, Some(initial_data))
+    }
+
+    /// Builds a new empty pipeline cache.
+    pub fn empty(device: &Arc<Device>) -> Result<Arc<PipelineCache>, OomError> {
+        unsafe { PipelineCache::new_impl(device, None) }
+    }
+
+    unsafe fn new_impl(device: &Arc<Device>, initial_data: Option<&[u8]>)
+                       -> Result<Arc<PipelineCache>, OomError>
     {
         let vk = device.pointers();
 
@@ -126,12 +136,13 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    //#[should_panic]
-    fn merge_self() {
-        let instance = instance!();
+    use pipeline::cache::PipelineCache;
 
-        // let pipeline = PipelineCache::new(&device).unwrap();
-        // pipeline.merge(&[&pipeline]).unwrap();
+    #[test]
+    #[should_panic]
+    fn merge_self_forbidden() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let pipeline = PipelineCache::empty(&device).unwrap();
+        pipeline.merge(&[&pipeline]).unwrap();
     }
 }
