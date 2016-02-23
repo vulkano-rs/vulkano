@@ -9,6 +9,8 @@ use descriptor_set::layout_def::DescriptorWrite;
 use descriptor_set::layout_def::DescriptorBind;
 use descriptor_set::pool::DescriptorPool;
 use device::Device;
+use image::ImageViewResource;
+use sampler::Sampler;
 
 use OomError;
 use VulkanObject;
@@ -21,6 +23,12 @@ pub struct DescriptorSet<S> {
     set: vk::DescriptorSet,
     pool: Arc<DescriptorPool>,
     layout: Arc<DescriptorSetLayout<S>>,
+
+    // Here we store the resources used by the descriptor set.
+    // TODO: for the moment even when a resource is overwritten it stays in these lists
+    resources_samplers: Vec<Arc<Sampler>>,
+    resources_image_views: Vec<Arc<ImageViewResource>>,
+    resources_buffers: Vec<Arc<BufferResource>>,
 }
 
 impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
@@ -71,6 +79,10 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
             set: set,
             pool: pool.clone(),
             layout: layout.clone(),
+
+            resources_samplers: Vec::new(),
+            resources_image_views: Vec::new(),
+            resources_buffers: Vec::new(),
         }))
     }
 
@@ -89,6 +101,15 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
     pub unsafe fn unchecked_write(&mut self, write: Vec<DescriptorWrite>) {
         let vk = self.pool.device().pointers();
 
+        // TODO: how do we remove the existing resources that are overwritten?
+
+        // This function uses multiple closures which all borrow `self`. In order to satisfy the
+        // borrow checker, we extract references to the members here.
+        let ref mut self_resources_buffers = self.resources_buffers;
+        let ref mut self_resources_samplers = self.resources_samplers;
+        let ref mut self_resources_image_views = self.resources_image_views;
+        let self_set = self.set;
+
         // FIXME: store resources in the descriptor set so that they aren't destroyed
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
@@ -98,6 +119,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                 DescriptorBind::StorageBuffer(ref buffer) |
                 DescriptorBind::DynamicUniformBuffer(ref buffer) |
                 DescriptorBind::DynamicStorageBuffer(ref buffer) => {
+                    self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
                         buffer: buffer.internal_object(),
                         offset: 0,      // FIXME: allow buffer slices
@@ -112,6 +134,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         let image_descriptors = write.iter().filter_map(|write| {
             match write.content {
                 DescriptorBind::Sampler(ref sampler) => {
+                    self_resources_samplers.push(sampler.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: sampler.internal_object(),
                         imageView: 0,
@@ -119,6 +142,8 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                     })
                 },
                 DescriptorBind::CombinedImageSampler(ref sampler, ref image, layout) => {
+                    self_resources_samplers.push(sampler.clone());
+                    self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: sampler.internal_object(),
                         imageView: image.internal_object(),
@@ -128,6 +153,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                 DescriptorBind::StorageImage(ref image, layout) |
                 DescriptorBind::SampledImage(ref image, layout) |
                 DescriptorBind::InputAttachment(ref image, layout) => {
+                    self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
                         imageView: image.internal_object(),
@@ -165,7 +191,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
             vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),
-                dstSet: self.set,
+                dstSet: self_set,
                 dstBinding: write.binding,
                 dstArrayElement: write.array_element,
                 descriptorCount: 1,
