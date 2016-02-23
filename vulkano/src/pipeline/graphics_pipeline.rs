@@ -52,6 +52,7 @@ impl<MV, L> GraphicsPipeline<MV, L>
     /// - Panicks if primitive restart is enabled and the topology doesn't support this feature.
     /// - Panicks if the `rasterization_samples` parameter of `multisample` is not >= 1.
     /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
+    /// - Panicks if the line width is different from 1.0 and the `wide_lines` feature is not enabled.
     ///
     // TODO: check all the device's limits
     pub fn new<Vi, Fo, R, Vl, Fl>
@@ -166,7 +167,11 @@ impl<MV, L> GraphicsPipeline<MV, L>
                 pScissors: vp_sc.as_ptr(),
             };
 
-            if raster.line_width.is_none() {
+            if let Some(line_width) = raster.line_width {
+                if line_width != 1.0 {
+                    assert!(device.enabled_features().wide_lines);
+                }
+            } else {
                 dynamic_states.push(vk::DYNAMIC_STATE_LINE_WIDTH);
             }
 
