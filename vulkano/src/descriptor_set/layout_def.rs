@@ -3,6 +3,9 @@ use std::sync::Arc;
 use buffer::BufferResource;
 use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::AbstractDescriptorSetLayout;
+use image::ImageResource;
+use image::Layout as ImageLayout;
+use sampler::Sampler;
 
 use vk;
 
@@ -63,7 +66,37 @@ pub struct DescriptorWrite {
 // FIXME: incomplete
 #[derive(Clone)]        // TODO: Debug
 pub enum DescriptorBind {
+    StorageImage(Arc<ImageResource>, ImageLayout),  // FIXME: ImageViewResource instead of ImageResource
+    Sampler(Arc<Sampler>),
+    SampledImage(Arc<ImageResource>, ImageLayout),  // FIXME: ImageViewResource instead of ImageResource
+    CombinedImageSampler(Arc<Sampler>, Arc<ImageResource>, ImageLayout),    // FIXME: ImageViewResource instead of ImageResource
+    //UniformTexelBuffer(Arc<BufferResource>),      // FIXME: requires buffer views
+    //StorageTexelBuffer(Arc<BufferResource>),      // FIXME: requires buffer views
     UniformBuffer(Arc<BufferResource>),
+    StorageBuffer(Arc<BufferResource>),
+    DynamicUniformBuffer(Arc<BufferResource>),
+    DynamicStorageBuffer(Arc<BufferResource>),
+    InputAttachment(Arc<ImageResource>, ImageLayout),   // FIXME: ImageViewResource instead of ImageResource
+}
+
+impl DescriptorBind {
+    /// Returns the type corresponding to this bind.
+    #[inline]
+    pub fn ty(&self) -> DescriptorType {
+        match *self {
+            DescriptorBind::Sampler(_) => DescriptorType::Sampler,
+            DescriptorBind::CombinedImageSampler(_, _, _) => DescriptorType::CombinedImageSampler,
+            DescriptorBind::SampledImage(_, _) => DescriptorType::SampledImage,
+            DescriptorBind::StorageImage(_, _) => DescriptorType::StorageImage,
+            //DescriptorBind::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
+            //DescriptorBind::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
+            DescriptorBind::UniformBuffer(_) => DescriptorType::UniformBuffer,
+            DescriptorBind::StorageBuffer(_) => DescriptorType::StorageBuffer,
+            DescriptorBind::DynamicUniformBuffer(_) => DescriptorType::UniformBufferDynamic,
+            DescriptorBind::DynamicStorageBuffer(_) => DescriptorType::StorageBufferDynamic,
+            DescriptorBind::InputAttachment(_, _) => DescriptorType::InputAttachment,
+        }
+    }
 }
 
 /// Describes a single descriptor.

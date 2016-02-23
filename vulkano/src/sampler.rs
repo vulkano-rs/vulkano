@@ -73,6 +73,15 @@ impl Sampler {
     }
 }
 
+unsafe impl VulkanObject for Sampler {
+    type Object = vk::Sampler;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Sampler {
+        self.sampler
+    }
+}
+
 impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {

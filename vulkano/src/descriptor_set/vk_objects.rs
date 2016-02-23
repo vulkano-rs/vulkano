@@ -91,23 +91,77 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
         // FIXME: store resources in the descriptor set so that they aren't destroyed
 
-        // TODO: the architecture of this function is going to be tricky
-
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let buffer_descriptors = write.iter().enumerate().map(|(num, write)| {
+        let buffer_descriptors = write.iter().filter_map(|write| {
             match write.content {
-                DescriptorBind::UniformBuffer(ref buffer) => {
+                DescriptorBind::UniformBuffer(ref buffer) |
+                DescriptorBind::StorageBuffer(ref buffer) |
+                DescriptorBind::DynamicUniformBuffer(ref buffer) |
+                DescriptorBind::DynamicStorageBuffer(ref buffer) => {
                     Some(vk::DescriptorBufferInfo {
                         buffer: buffer.internal_object(),
                         offset: 0,      // FIXME: allow buffer slices
                         range: buffer.size() as u64,       // FIXME: allow buffer slices
                     })
                 },
+                _ => None
             }
         }).collect::<Vec<_>>();
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let vk_writes = write.iter().enumerate().map(|(num, write)| {
+        let image_descriptors = write.iter().filter_map(|write| {
+            match write.content {
+                DescriptorBind::Sampler(ref sampler) => {
+                    Some(vk::DescriptorImageInfo {
+                        sampler: sampler.internal_object(),
+                        imageView: 0,
+                        imageLayout: 0,
+                    })
+                },
+                DescriptorBind::CombinedImageSampler(ref sampler, ref image, layout) => {
+                    Some(vk::DescriptorImageInfo {
+                        sampler: sampler.internal_object(),
+                        imageView: image.internal_object(),
+                        imageLayout: layout as u32,
+                    })
+                },
+                DescriptorBind::StorageImage(ref image, layout) |
+                DescriptorBind::SampledImage(ref image, layout) |
+                DescriptorBind::InputAttachment(ref image, layout) => {
+                    Some(vk::DescriptorImageInfo {
+                        sampler: 0,
+                        imageView: image.internal_object(),
+                        imageLayout: layout as u32,
+                    })
+                },
+                _ => None
+            }
+        }).collect::<Vec<_>>();
+
+
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let mut next_buffer_desc = 0;
+        let mut next_image_desc = 0;
+
+        let vk_writes = write.iter().map(|write| {
+            let (buffer_info, image_info) = match write.content {
+                DescriptorBind::Sampler(_) | DescriptorBind::CombinedImageSampler(_, _ ,_) |
+                DescriptorBind::SampledImage(_, _) | DescriptorBind::StorageImage(_, _) |
+                DescriptorBind::InputAttachment(_, _) => {
+                    let img = image_descriptors.as_ptr().offset(next_image_desc as isize);
+                    next_image_desc += 1;
+                    (ptr::null(), img)
+                },
+                //DescriptorBind::UniformTexelBuffer(_) | DescriptorBind::StorageTexelBuffer(_) =>
+                DescriptorBind::UniformBuffer(_) | DescriptorBind::StorageBuffer(_) |
+                DescriptorBind::DynamicUniformBuffer(_) |
+                DescriptorBind::DynamicStorageBuffer(_) => {
+                    let buf = buffer_descriptors.as_ptr().offset(next_buffer_desc as isize);
+                    next_buffer_desc += 1;
+                    (buf, ptr::null())
+                },
+            };
+
             vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),
@@ -115,12 +169,15 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                 dstBinding: write.binding,
                 dstArrayElement: write.array_element,
                 descriptorCount: 1,
-                descriptorType: vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER,     // FIXME:
-                pImageInfo: ptr::null(),        // FIXME:
-                pBufferInfo: if let Some(ref b) = buffer_descriptors[num] { b } else { ptr::null() },
-                pTexelBufferView: ptr::null(),      // FIXME:
+                descriptorType: write.content.ty() as u32,
+                pImageInfo: image_info,
+                pBufferInfo: buffer_info,
+                pTexelBufferView: ptr::null(),      // TODO:
             }
         }).collect::<Vec<_>>();
+
+        debug_assert_eq!(next_buffer_desc, buffer_descriptors.len());
+        debug_assert_eq!(next_image_desc, image_descriptors.len());
 
         if !vk_writes.is_empty() {
             vk.UpdateDescriptorSets(self.pool.device().internal_object(),
