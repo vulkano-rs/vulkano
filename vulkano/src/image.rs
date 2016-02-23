@@ -646,9 +646,15 @@ impl Usage {
 pub struct ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     image: Arc<Image<Ty, F, M>>,
     view: vk::ImageView,
+    /// The view was created with identity swizzling.
+    identity_swizzle: bool,
 }
 
 impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
+    /// Creates a new view from an image.
+    ///
+    /// Note that you must create the view with identity swizzling if you want to use this view
+    /// as a framebuffer attachment.
     pub fn new(image: &Arc<Image<Ty, F, M>>) -> Result<Arc<ImageView<Ty, F, M>>, OomError>
         where F: FormatMarker
     {
@@ -681,6 +687,7 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
         Ok(Arc::new(ImageView {
             image: image.clone(),
             view: view,
+            identity_swizzle: true,     // FIXME:
         }))
     }
 
@@ -688,6 +695,12 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     #[inline]
     pub fn image(&self) -> &Arc<Image<Ty, F, M>> {
         &self.image
+    }
+
+    /// Returns true if the swizzling of this image view is identity.
+    #[inline]
+    pub fn is_identity_swizzled(&self) -> bool {
+        self.identity_swizzle
     }
 }
 

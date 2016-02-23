@@ -20,7 +20,12 @@
 //! trait tells vulkano what the characteristics of the renderpass are, and is also used to
 //! determine the types of the various parameters later on.
 //!
+use std::error;
+use std::fmt;
+use std::iter;
+use std::iter::Empty as EmptyIter;
 use std::mem;
+use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
@@ -30,6 +35,7 @@ use formats::FormatMarker;
 use image::ImageResource;
 use image::Layout as ImageLayout;
 
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -228,6 +234,57 @@ pub struct PassDependencyDescription {
     pub by_region: bool,
 }
 
+/// Implementation of `RenderPassLayout` with no attachment at all and a single pass.
+#[derive(Debug, Copy, Clone)]
+pub struct EmptySinglePassLayout;
+
+unsafe impl RenderPassLayout for EmptySinglePassLayout {
+    type ClearValues = ();
+    type ClearValuesIter = EmptyIter<ClearValue>;
+
+    #[inline]
+    fn convert_clear_values(&self, _: Self::ClearValues) -> Self::ClearValuesIter {
+        iter::empty()
+    }
+
+    type AttachmentsDescIter = EmptyIter<AttachmentDescription>;
+
+    #[inline]
+    fn attachments(&self) -> Self::AttachmentsDescIter {
+        iter::empty()
+    }
+
+    type PassesIter = OptionIntoIter<PassDescription>;
+
+    #[inline]
+    fn passes(&self) -> Self::PassesIter {
+        Some(PassDescription {
+            color_attachments: vec![],
+            depth_stencil: None,
+            input_attachments: vec![],
+            resolve_attachments: vec![],
+            preserve_attachments: vec![],
+        }).into_iter()
+    }
+
+    type PassDependenciesIter = EmptyIter<PassDependencyDescription>;
+
+    #[inline]
+    fn pass_dependencies(&self) -> Self::PassDependenciesIter {
+        iter::empty()
+    }
+
+    type AttachmentsList = ();
+    type AttachmentsIter = EmptyIter<Arc<ImageResource>>;
+
+    #[inline]
+    fn convert_attachments_list(&self, _: Self::AttachmentsList) -> Self::AttachmentsIter {
+        iter::empty()
+    }
+}
+
+
+
 /// Builds a `RenderPass` object.
 #[macro_export]
 macro_rules! single_pass_renderpass {
@@ -403,8 +460,8 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
                 samples: attachment.samples,
                 loadOp: attachment.load as u32,
                 storeOp: attachment.store as u32,
-                stencilLoadOp: 0,       // FIXME:
-                stencilStoreOp: 0,      // FIXME:,
+                stencilLoadOp: attachment.load as u32,       // TODO: allow user to choose
+                stencilStoreOp: attachment.store as u32,      // TODO: allow user to choose
                 initialLayout: attachment.initial_layout as u32,
                 finalLayout: attachment.final_layout as u32,
             }
@@ -496,6 +553,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             }
         }).collect::<Vec<_>>();
 
+        assert!(!passes.is_empty());
         // If these assertions fails, there's a serious bug in the code above ^.
         debug_assert!(ref_index == attachment_references.len());
         debug_assert!(preserve_ref_index == preserve_attachments_references.len());
@@ -542,7 +600,19 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
             layout: layout,
         }))
     }
+}
 
+impl RenderPass<EmptySinglePassLayout> {
+    /// Builds a `RenderPass` with no attachment and a single pass.
+    #[inline]
+    pub fn empty_single_pass(device: &Arc<Device>)
+                             -> Result<Arc<RenderPass<EmptySinglePassLayout>>, OomError>
+    {
+        RenderPass::new(device, EmptySinglePassLayout)
+    }
+}
+
+impl<L> RenderPass<L> where L: RenderPassLayout {
     /// Returns the device that was used to create this renderpass.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -628,6 +698,19 @@ impl<'a, L: 'a> Subpass<'a, L> {
     pub fn index(&self) -> u32 {
         self.subpass_id
     }
+
+    /// Returns true if the subpass has any color or depth/stencil attachment.
+    #[inline]
+    pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
+        unimplemented!()
+    }
+
+    /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
+    /// if there is no such attachment in this subpass.
+    #[inline]
+    pub fn num_samples(&self) -> Option<u32> {
+        unimplemented!()
+    }
 }
 
 /// Contains the list of images attached to a renderpass.
@@ -660,7 +743,8 @@ impl<L> Framebuffer<L> {
     ///   pass invalid attachments.
     ///
     pub fn new<'a>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
-                   attachments: L::AttachmentsList) -> Result<Arc<Framebuffer<L>>, OomError>
+                   attachments: L::AttachmentsList)
+                   -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: RenderPassLayout
     {
         let vk = renderpass.device.pointers();
@@ -668,8 +752,19 @@ impl<L> Framebuffer<L> {
 
         let attachments = renderpass.layout.convert_attachments_list(attachments).collect::<Vec<_>>();
 
+        // checking the dimensions against the limits
+        {
+            let limits = renderpass.device().physical_device().limits();
+            let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
+                          limits.max_framebuffer_layers()];
+            if dimensions.0 > limits[0] || dimensions.1 > limits[1] || dimensions.2 > limits[2] {
+                return Err(FramebufferCreationError::DimensionsTooLarge);
+            }
+        }
+
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let ids = attachments.iter().map(|a| {
+            //assert!(a.is_identity_swizzled());
             a.internal_object()
         }).collect::<Vec<_>>();
 
@@ -757,6 +852,77 @@ impl<L> Drop for Framebuffer<L> {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyFramebuffer(self.device.internal_object(), self.framebuffer, ptr::null());
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FramebufferCreationError {
+    OomError(OomError),
+    DimensionsTooLarge,
+}
+
+impl From<OomError> for FramebufferCreationError {
+    #[inline]
+    fn from(err: OomError) -> FramebufferCreationError {
+        FramebufferCreationError::OomError(err)
+    }
+}
+
+impl error::Error for FramebufferCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            FramebufferCreationError::OomError(_) => "no memory available",
+            FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
+                                                             are too large",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            FramebufferCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for FramebufferCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for FramebufferCreationError {
+    #[inline]
+    fn from(err: Error) -> FramebufferCreationError {
+        FramebufferCreationError::from(OomError::from(err))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use framebuffer::Framebuffer;
+    use framebuffer::RenderPass;
+    use framebuffer::FramebufferCreationError;
+
+    #[test]
+    fn empty_renderpass_create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = RenderPass::empty_single_pass(&device).unwrap();
+    }
+
+    #[test]
+    fn framebuffer_too_large() {
+        let (device, _) = gfx_dev_and_queue!();
+        let renderpass = RenderPass::empty_single_pass(&device).unwrap();
+
+        match Framebuffer::new(&renderpass, (0xffffffff, 0xffffffff, 0xffffffff), ()) {
+            Err(FramebufferCreationError::DimensionsTooLarge) => (),
+            _ => panic!()
         }
     }
 }
