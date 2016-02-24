@@ -39,6 +39,59 @@
 //!   it is read. The fourth channel (usually used for alpha), if present, is not concerned by the
 //!   conversion.
 //!
+//! # Choosing a format
+//! 
+//! The following formats are guaranteed to be supported for everything that is related to
+//! texturing (ie. blitting source and sampling them linearly). You should choose one of these
+//! formats if you have an image that you are going to sample from:
+//! 
+//! // TODO: use vulkano enums
+//! - B4G4R4A4_UNORM_PACK16
+//! - R5G6B5_UNORM_PACK16
+//! - A1R5G5B5_UNORM_PACK16
+//! - R8_UNORM
+//! - R8_SNORM
+//! - R8G8_UNORM
+//! - R8G8_SNORM
+//! - R8G8B8A8_UNORM
+//! - R8G8B8A8_SNORM
+//! - R8G8B8A8_SRGB
+//! - B8G8R8A8_UNORM
+//! - B8G8R8A8_SRGB
+//! - A8B8G8R8_UNORM_PACK32
+//! - A8B8G8R8_SNORM_PACK32
+//! - A8B8G8R8_SRGB_PACK32
+//! - A2B10G10R10_UNORM_PACK32
+//! - R16_SFLOAT
+//! - R16G16_SFLOAT
+//! - R16G16B16A16_SFLOAT
+//! - B10G11R11_UFLOAT_PACK32
+//! - E5B9G9R9_UFLOAT_PACK32
+//!
+//! The following formats are guaranteed to be supported for everything that is related to
+//! intermediate render targets (ie. blitting destination, color attachment and sampling linearly):
+//!
+//! // TODO: use vulkano enums
+//! - R5G6B5_UNORM_PACK16
+//! - A1R5G5B5_UNORM_PACK16
+//! - R8_UNORM
+//! - R8G8_UNORM
+//! - R8G8B8A8_UNORM
+//! - R8G8B8A8_SRGB
+//! - B8G8R8A8_UNORM
+//! - B8G8R8A8_SRGB
+//! - A8B8G8R8_UNORM_PACK32
+//! - A8B8G8R8_SRGB_PACK32
+//! - A2B10G10R10_UNORM_PACK32
+//! - R16_SFLOAT
+//! - R16G16_SFLOAT
+//! - R16G16B16A16_SFLOAT
+//!
+//! For depth images, only `D16Unorm` is guaranteed to be supported. For depth-stencil images,
+//! it is guaranteed that either `D24Unorm_S8Uint` or `D32Sfloat_S8Uint` are supported.
+//!
+//! // TODO: storage formats
+//!
 use std::vec::IntoIter as VecIntoIter;
 use vk;
 
