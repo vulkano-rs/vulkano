@@ -110,14 +110,9 @@ macro_rules! formats {
         )+
     );
 
-    (__inner_impl__ $name:ident float=$num:tt) => {
+    (__inner_impl__ $name:ident float=$num:expr) => {
         unsafe impl FormatMarker for $name {
-            type ClearValue = [f32; 4];
-
-            #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Float(value)
-            }
+            type ClearValue = [f32; $num];
 
             #[inline]
             fn format(&self) -> Format {
@@ -128,14 +123,9 @@ macro_rules! formats {
         unsafe impl FloatOrCompressedFormatMarker for $name {}
     };
 
-    (__inner_impl__ $name:ident uint=$num:tt) => {
+    (__inner_impl__ $name:ident uint=$num:expr) => {
         unsafe impl FormatMarker for $name {
-            type ClearValue = [u32; 4];
-
-            #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Uint(value)
-            }
+            type ClearValue = [u32; $num];
 
             #[inline]
             fn format(&self) -> Format {
@@ -146,14 +136,9 @@ macro_rules! formats {
         unsafe impl UintFormatMarker for $name {}
     };
 
-    (__inner_impl__ $name:ident sint=$num:tt) => {
+    (__inner_impl__ $name:ident sint=$num:expr) => {
         unsafe impl FormatMarker for $name {
-            type ClearValue = [i32; 4];
-
-            #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Int(value)
-            }
+            type ClearValue = [i32; $num];
 
             #[inline]
             fn format(&self) -> Format {
@@ -169,11 +154,6 @@ macro_rules! formats {
             type ClearValue = f32;
 
             #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Depth(value)
-            }
-
-            #[inline]
             fn format(&self) -> Format {
                 Format::$name
             }
@@ -185,11 +165,6 @@ macro_rules! formats {
     (__inner_impl__ $name:ident stencil) => {
         unsafe impl FormatMarker for $name {
             type ClearValue = u32;      // FIXME: shouldn't stencil be i32?
-
-            #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Stencil(value)
-            }
 
             #[inline]
             fn format(&self) -> Format {
@@ -205,11 +180,6 @@ macro_rules! formats {
             type ClearValue = (f32, u32);       // FIXME: shouldn't stencil be i32?
 
             #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::DepthStencil(value)
-            }
-
-            #[inline]
             fn format(&self) -> Format {
                 Format::$name
             }
@@ -221,11 +191,6 @@ macro_rules! formats {
     (__inner_impl__ $name:ident compressed) => {
         unsafe impl FormatMarker for $name {
             type ClearValue = [f32; 4];
-
-            #[inline]
-            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
-                ClearValue::Float(value)
-            }
 
             #[inline]
             fn format(&self) -> Format {
@@ -435,9 +400,7 @@ formats! {
 }
 
 pub unsafe trait FormatMarker {
-    type ClearValue;
-
-    fn decode_clear_value(&self, Self::ClearValue) -> ClearValue;
+    type ClearValue: Into<ClearValue>;
 
     fn format(&self) -> Format;
 }
@@ -449,7 +412,7 @@ pub unsafe trait DepthFormatMarker: FormatMarker {}
 pub unsafe trait StencilFormatMarker: FormatMarker {}
 pub unsafe trait DepthStencilFormatMarker: FormatMarker {}
 pub unsafe trait CompressedFormatMarker: FormatMarker {}
-pub unsafe trait FloatOrCompressedFormatMarker {}
+pub unsafe trait FloatOrCompressedFormatMarker: FormatMarker {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum FormatTy {
@@ -480,4 +443,109 @@ pub enum ClearValue {
     Stencil(u32),
     /// Value for depth and stencil attachments.
     DepthStencil((f32, u32)),
+}
+
+impl From<[f32; 1]> for ClearValue {
+    #[inline]
+    fn from(val: [f32; 1]) -> ClearValue {
+        ClearValue::Float([val[0], 0.0, 0.0, 1.0])
+    }
+}
+
+impl From<[f32; 2]> for ClearValue {
+    #[inline]
+    fn from(val: [f32; 2]) -> ClearValue {
+        ClearValue::Float([val[0], val[1], 0.0, 1.0])
+    }
+}
+
+impl From<[f32; 3]> for ClearValue {
+    #[inline]
+    fn from(val: [f32; 3]) -> ClearValue {
+        ClearValue::Float([val[0], val[1], val[2], 1.0])
+    }
+}
+
+impl From<[f32; 4]> for ClearValue {
+    #[inline]
+    fn from(val: [f32; 4]) -> ClearValue {
+        ClearValue::Float(val)
+    }
+}
+
+impl From<[u32; 1]> for ClearValue {
+    #[inline]
+    fn from(val: [u32; 1]) -> ClearValue {
+        ClearValue::Uint([val[0], 0, 0, 0])     // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[u32; 2]> for ClearValue {
+    #[inline]
+    fn from(val: [u32; 2]) -> ClearValue {
+        ClearValue::Uint([val[0], val[1], 0, 0])        // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[u32; 3]> for ClearValue {
+    #[inline]
+    fn from(val: [u32; 3]) -> ClearValue {
+        ClearValue::Uint([val[0], val[1], val[2], 0])       // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[u32; 4]> for ClearValue {
+    #[inline]
+    fn from(val: [u32; 4]) -> ClearValue {
+        ClearValue::Uint(val)
+    }
+}
+
+impl From<[i32; 1]> for ClearValue {
+    #[inline]
+    fn from(val: [i32; 1]) -> ClearValue {
+        ClearValue::Int([val[0], 0, 0, 0])      // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[i32; 2]> for ClearValue {
+    #[inline]
+    fn from(val: [i32; 2]) -> ClearValue {
+        ClearValue::Int([val[0], val[1], 0, 0])     // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[i32; 3]> for ClearValue {
+    #[inline]
+    fn from(val: [i32; 3]) -> ClearValue {
+        ClearValue::Int([val[0], val[1], val[2], 0])        // TODO: is alpha value 0 correct?
+    }
+}
+
+impl From<[i32; 4]> for ClearValue {
+    #[inline]
+    fn from(val: [i32; 4]) -> ClearValue {
+        ClearValue::Int(val)
+    }
+}
+
+impl From<f32> for ClearValue {
+    #[inline]
+    fn from(val: f32) -> ClearValue {
+        ClearValue::Depth(val)
+    }
+}
+
+impl From<u32> for ClearValue {
+    #[inline]
+    fn from(val: u32) -> ClearValue {
+        ClearValue::Stencil(val)
+    }
+}
+
+impl From<(f32, u32)> for ClearValue {
+    #[inline]
+    fn from(val: (f32, u32)) -> ClearValue {
+        ClearValue::DepthStencil(val)
+    }
 }

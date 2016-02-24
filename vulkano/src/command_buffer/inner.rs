@@ -267,11 +267,15 @@ impl InnerCommandBufferBuilder {
     }
 
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
-                                                  color: [f32; 4] /* FIXME: */)
-                                                  -> InnerCommandBufferBuilder
+                                                  color: F::ClearValue) -> InnerCommandBufferBuilder
         where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
     {
-        let color = vk::ClearColorValue::float32(color);
+        let color = match color.into() {
+            ClearValue::Float(data) => vk::ClearColorValue::float32(data),
+            ClearValue::Int(data) => vk::ClearColorValue::int32(data),
+            ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
+            _ => unreachable!()   // FloatOrCompressedFormatMarker has been improperly implemented
+        };
 
         let range = vk::ImageSubresourceRange {
             aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,

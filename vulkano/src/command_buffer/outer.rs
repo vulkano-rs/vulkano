@@ -111,8 +111,7 @@ impl PrimaryCommandBufferBuilder {
     }
 
     pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
-                                           color: [f32; 4] /* FIXME: */)
-                                           -> PrimaryCommandBufferBuilder
+                                           color: F::ClearValue) -> PrimaryCommandBufferBuilder
         where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
     {
         unsafe {
