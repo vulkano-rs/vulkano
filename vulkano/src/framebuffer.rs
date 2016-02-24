@@ -270,14 +270,22 @@ unsafe impl RenderPassLayout for EmptySinglePassLayout {
 macro_rules! single_pass_renderpass {
     (
         device: $device:expr,
-        attachments: { $($atch_name:ident [$($attrs:ident),*]),+ }
+        attachments: {
+            $(
+                $atch_name:ident: {
+                    load: $load:ident,
+                    store: $store:ident,
+                    format: $format:ident,
+                }
+            ),*
+        }
     ) => (
         {
             use std::sync::Arc;
 
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = [f32; 4];        // FIXME:
+                type ClearValues = ($(<$crate::formats::$format as $crate::formats::FormatMarker>::ClearValue,)*);
                 type ClearValuesIter = std::vec::IntoIter<$crate::formats::ClearValue>;
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
@@ -291,10 +299,7 @@ macro_rules! single_pass_renderpass {
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
-                    vec![
-                        $crate::formats::ClearValue::Float(val)
-                        //$crate::framebuffer::ClearValue::Depth(val.1)
-                    ].into_iter()
+                    $crate::formats::ClearValuesTuple::iter(val)
                 }
 
                 #[inline]
@@ -302,23 +307,14 @@ macro_rules! single_pass_renderpass {
                     vec![
                         $(
                             $crate::framebuffer::AttachmentDescription {
-                                format: $crate::formats::Format::B8G8R8A8Srgb,       // FIXME:
+                                format: $crate::formats::FormatMarker::format(&$crate::formats::$format),      // FIXME: only works with markers
                                 samples: 1,                         // FIXME:
-                                load: single_pass_renderpass!(__load_op__ $($attrs),*),
-                                store: $crate::framebuffer::StoreOp::Store,     // FIXME:
+                                load: $crate::framebuffer::LoadOp::$load,
+                                store: $crate::framebuffer::StoreOp::$store,
                                 initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                                 final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                             },
                         )*
-
-                        /*$crate::framebuffer::AttachmentDescription {
-                            format: $crate::formats::Format::D16Unorm,       // FIXME:
-                            samples: 1,                         // FIXME:
-                            load: $crate::framebuffer::LoadOp::Clear,      // FIXME:
-                            store: $crate::framebuffer::StoreOp::Store,     // FIXME:
-                            initial_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
-                            final_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
-                        },*/
                     ].into_iter()
                 }
 
@@ -348,20 +344,6 @@ macro_rules! single_pass_renderpass {
 
             $crate::framebuffer::RenderPass::<Layout>::new($device, Layout)
         }
-    );
-
-    // Gets the load operation to use for an attachment from the list of attributes.
-    (__load_op__ LoadDontCare $($attrs:ident),*) => (
-        $crate::framebuffer::LoadOp::DontCare
-    );
-    (__load_op__ Clear $($attrs:ident),*) => (
-        $crate::framebuffer::LoadOp::Clear
-    );
-    (__load_op__ $first:ident $($attrs:ident),*) => (
-        renderpass!(__load_op__ $($attrs),*)
-    );
-    (__load_op__) => (
-        $crate::framebuffer::LoadOp::Load
     );
 }
 

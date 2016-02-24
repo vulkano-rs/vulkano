@@ -58,9 +58,9 @@ fn main() {
                                                   .expect("failed to create command buffer pool");
 
 
-    let depth_buffer = vulkano::image::Image::<vulkano::image::Type2d, vulkano::formats::D16Unorm, _>::new(&device, &vulkano::image::Usage::all(),
+    let depth_buffer = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
-                                                  images[0].dimensions(), (), 1).unwrap();
+                                                  vulkano::formats::D16Unorm, images[0].dimensions(), (), 1).unwrap();
     let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &mut queue.lock().unwrap()).unwrap();
     let depth_buffer = vulkano::image::ImageView::new(&depth_buffer).expect("failed to create image view");
 
@@ -133,11 +133,18 @@ fn main() {
     let renderpass = single_pass_renderpass!{
         device: &device,
         attachments: {
-            color [Clear]
+            color: {
+                load: Clear,
+                store: Store,
+                format: B8G8R8A8Srgb,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: D16Unorm,
+            }
         }
     }.unwrap();
-
-
 
     let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
     let descriptor_set_layout = {

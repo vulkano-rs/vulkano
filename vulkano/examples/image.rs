@@ -87,10 +87,13 @@ fn main() {
     let renderpass = single_pass_renderpass!{
         device: &device,
         attachments: {
-            color [Clear]
+            color: {
+                load: Clear,
+                store: Store,
+                format: B8G8R8A8Srgb,
+            }
         }
     }.unwrap();
-
 
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
@@ -173,7 +176,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
-            .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
+            .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
             .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()

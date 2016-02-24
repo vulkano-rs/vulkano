@@ -39,6 +39,7 @@
 //!   it is read. The fourth channel (usually used for alpha), if present, is not concerned by the
 //!   conversion.
 //!
+use std::vec::IntoIter as VecIntoIter;
 use vk;
 
 // TODO: add enumerations for color, depth, stencil and depthstencil formats
@@ -549,3 +550,42 @@ impl From<(f32, u32)> for ClearValue {
         ClearValue::DepthStencil(val)
     }
 }
+
+pub unsafe trait ClearValuesTuple {
+    type Iter: Iterator<Item = ClearValue>;
+    fn iter(self) -> Self::Iter;
+}
+
+macro_rules! impl_clear_values_tuple {
+    ($first:ident $($others:ident)+) => (
+        #[allow(non_snake_case)]
+        unsafe impl<$first $(, $others)*> ClearValuesTuple for ($first, $($others,)+)
+            where $first: Into<ClearValue> $(, $others: Into<ClearValue>)*
+        {
+            type Iter = VecIntoIter<ClearValue>;
+            #[inline]
+            fn iter(self) -> VecIntoIter<ClearValue> {
+                let ($first, $($others,)+) = self;
+                vec![
+                    $first.into() $(, $others.into())+
+                ].into_iter()
+            }
+        }
+
+        impl_clear_values_tuple!($($others)*);
+    );
+
+    ($first:ident) => (
+        unsafe impl<$first> ClearValuesTuple for ($first,)
+            where $first: Into<ClearValue>
+        {
+            type Iter = VecIntoIter<ClearValue>;
+            #[inline]
+            fn iter(self) -> VecIntoIter<ClearValue> {
+                vec![self.0.into()].into_iter()
+            }
+        }
+    );
+}
+
+impl_clear_values_tuple!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
