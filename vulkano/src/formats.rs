@@ -41,6 +41,8 @@
 //!
 use vk;
 
+// TODO: add enumerations for color, depth, stencil and depthstencil formats
+
 /// Some data whose type must be known by the library.
 ///
 /// This trait is unsafe to implement because bad things will happen if `ty()` returns a wrong
@@ -59,7 +61,7 @@ unsafe impl Data for u8 {
 }
 
 macro_rules! formats {
-    ($($name:ident => $vk:ident [$f_ty:ident],)+) => (
+    ($($name:ident => $vk:ident [$($f_ty:tt)*],)+) => (
         /// An enumeration of all the possible formats.
         #[derive(Copy, Clone, Debug, PartialEq, Eq)]
         #[repr(u32)]
@@ -92,7 +94,7 @@ macro_rules! formats {
             pub fn ty(&self) -> FormatTy {
                 match *self {
                     $(
-                        Format::$name => formats!(__inner_ty__ $name $f_ty),
+                        Format::$name => formats!(__inner_ty__ $name $($f_ty)*),
                     )+
                 }
             }
@@ -104,34 +106,140 @@ macro_rules! formats {
             #[allow(non_camel_case_types)]
             pub struct $name;
 
-            unsafe impl FormatMarker for $name {
-                #[inline]
-                fn format() -> Format {
-                    Format::$name
-                }
-            }
-
-            formats!(__inner_impl__ $name $f_ty);
+            formats!(__inner_impl__ $name $($f_ty)*);
         )+
     );
 
-    (__inner_impl__ $name:ident float) => {
+    (__inner_impl__ $name:ident float=$num:tt) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = [f32; 4];
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Float(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
         unsafe impl FloatFormatMarker for $name {}
         unsafe impl FloatOrCompressedFormatMarker for $name {}
     };
-    (__inner_impl__ $name:ident uint) => { unsafe impl UintFormatMarker for $name {} };
-    (__inner_impl__ $name:ident sint) => { unsafe impl SintFormatMarker for $name {} };
-    (__inner_impl__ $name:ident depth) => { unsafe impl DepthFormatMarker for $name {} };
-    (__inner_impl__ $name:ident stencil) => { unsafe impl StencilFormatMarker for $name {} };
-    (__inner_impl__ $name:ident depthstencil) => { unsafe impl DepthStencilFormatMarker for $name {} };
+
+    (__inner_impl__ $name:ident uint=$num:tt) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = [u32; 4];
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Uint(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
+        unsafe impl UintFormatMarker for $name {}
+    };
+
+    (__inner_impl__ $name:ident sint=$num:tt) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = [i32; 4];
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Int(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
+        unsafe impl SintFormatMarker for $name {}
+    };
+
+    (__inner_impl__ $name:ident depth) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = f32;
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Depth(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
+        unsafe impl DepthFormatMarker for $name {}
+    };
+
+    (__inner_impl__ $name:ident stencil) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = u32;      // FIXME: shouldn't stencil be i32?
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Stencil(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
+        unsafe impl StencilFormatMarker for $name {}
+    };
+
+    (__inner_impl__ $name:ident depthstencil) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = (f32, u32);       // FIXME: shouldn't stencil be i32?
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::DepthStencil(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
+        unsafe impl DepthStencilFormatMarker for $name {}
+    };
+
     (__inner_impl__ $name:ident compressed) => {
+        unsafe impl FormatMarker for $name {
+            type ClearValue = [f32; 4];
+
+            #[inline]
+            fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+                ClearValue::Float(value)
+            }
+
+            #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+        }
+
         unsafe impl CompressedFormatMarker for $name {}
         unsafe impl FloatOrCompressedFormatMarker for $name {}
     };
 
-    (__inner_ty__ $name:ident float) => { FormatTy::Float };
-    (__inner_ty__ $name:ident uint) => { FormatTy::Uint };
-    (__inner_ty__ $name:ident sint) => { FormatTy::Sint };
+    (__inner_ty__ $name:ident float=$num:tt) => { FormatTy::Float };
+    (__inner_ty__ $name:ident uint=$num:tt) => { FormatTy::Uint };
+    (__inner_ty__ $name:ident sint=$num:tt) => { FormatTy::Sint };
     (__inner_ty__ $name:ident depth) => { FormatTy::Depth };
     (__inner_ty__ $name:ident stencil) => { FormatTy::Stencil };
     (__inner_ty__ $name:ident depthstencil) => { FormatTy::DepthStencil };
@@ -139,130 +247,130 @@ macro_rules! formats {
 }
 
 formats! {
-    Undefined => FORMAT_UNDEFINED [float],      // FIXME: what to do with this one?
-    R4G4UnormPack8 => FORMAT_R4G4_UNORM_PACK8 [float],
-    R4G4B4A4UnormPack16 => FORMAT_R4G4B4A4_UNORM_PACK16 [float],
-    B4G4R4A4UnormPack16 => FORMAT_B4G4R4A4_UNORM_PACK16 [float],
-    R5G6B5UnormPack16 => FORMAT_R5G6B5_UNORM_PACK16 [float],
-    B5G6R5UnormPack16 => FORMAT_B5G6R5_UNORM_PACK16 [float],
-    R5G5B5A1UnormPack16 => FORMAT_R5G5B5A1_UNORM_PACK16 [float],
-    B5G5R5A1UnormPack16 => FORMAT_B5G5R5A1_UNORM_PACK16 [float],
-    A1R5G5B5UnormPack16 => FORMAT_A1R5G5B5_UNORM_PACK16 [float],
-    R8Unorm => FORMAT_R8_UNORM [float],
-    R8Snorm => FORMAT_R8_SNORM [float],
-    R8Uscaled => FORMAT_R8_USCALED [float],
-    R8Sscaled => FORMAT_R8_SSCALED [float],
-    R8Uint => FORMAT_R8_UINT [uint],
-    R8Sint => FORMAT_R8_SINT [sint],
-    R8Srgb => FORMAT_R8_SRGB [float],
-    R8G8Unorm => FORMAT_R8G8_UNORM [float],
-    R8G8Snorm => FORMAT_R8G8_SNORM [float],
-    R8G8Uscaled => FORMAT_R8G8_USCALED [float],
-    R8G8Sscaled => FORMAT_R8G8_SSCALED [float],
-    R8G8Uint => FORMAT_R8G8_UINT [uint],
-    R8G8Sint => FORMAT_R8G8_SINT [sint],
-    R8G8Srgb => FORMAT_R8G8_SRGB [float],
-    R8G8B8Unorm => FORMAT_R8G8B8_UNORM [float],
-    R8G8B8Snorm => FORMAT_R8G8B8_SNORM [float],
-    R8G8B8Uscaled => FORMAT_R8G8B8_USCALED [float],
-    R8G8B8Sscaled => FORMAT_R8G8B8_SSCALED [float],
-    R8G8B8Uint => FORMAT_R8G8B8_UINT [uint],
-    R8G8B8Sint => FORMAT_R8G8B8_SINT [sint],
-    R8G8B8Srgb => FORMAT_R8G8B8_SRGB [float],
-    B8G8R8Unorm => FORMAT_B8G8R8_UNORM [float],
-    B8G8R8Snorm => FORMAT_B8G8R8_SNORM [float],
-    B8G8R8Uscaled => FORMAT_B8G8R8_USCALED [float],
-    B8G8R8Sscaled => FORMAT_B8G8R8_SSCALED [float],
-    B8G8R8Uint => FORMAT_B8G8R8_UINT [uint],
-    B8G8R8Sint => FORMAT_B8G8R8_SINT [sint],
-    B8G8R8Srgb => FORMAT_B8G8R8_SRGB [float],
-    R8G8B8A8Unorm => FORMAT_R8G8B8A8_UNORM [float],
-    R8G8B8A8Snorm => FORMAT_R8G8B8A8_SNORM [float],
-    R8G8B8A8Uscaled => FORMAT_R8G8B8A8_USCALED [float],
-    R8G8B8A8Sscaled => FORMAT_R8G8B8A8_SSCALED [float],
-    R8G8B8A8Uint => FORMAT_R8G8B8A8_UINT [uint],
-    R8G8B8A8Sint => FORMAT_R8G8B8A8_SINT [sint],
-    R8G8B8A8Srgb => FORMAT_R8G8B8A8_SRGB [float],
-    B8G8R8A8Unorm => FORMAT_B8G8R8A8_UNORM [float],
-    B8G8R8A8Snorm => FORMAT_B8G8R8A8_SNORM [float],
-    B8G8R8A8Uscaled => FORMAT_B8G8R8A8_USCALED [float],
-    B8G8R8A8Sscaled => FORMAT_B8G8R8A8_SSCALED [float],
-    B8G8R8A8Uint => FORMAT_B8G8R8A8_UINT [uint],
-    B8G8R8A8Sint => FORMAT_B8G8R8A8_SINT [sint],
-    B8G8R8A8Srgb => FORMAT_B8G8R8A8_SRGB [float],
-    A8B8G8R8UnormPack32 => FORMAT_A8B8G8R8_UNORM_PACK32 [float],
-    A8B8G8R8SnormPack32 => FORMAT_A8B8G8R8_SNORM_PACK32 [float],
-    A8B8G8R8UscaledPack32 => FORMAT_A8B8G8R8_USCALED_PACK32 [float],
-    A8B8G8R8SscaledPack32 => FORMAT_A8B8G8R8_SSCALED_PACK32 [float],
-    A8B8G8R8UintPack32 => FORMAT_A8B8G8R8_UINT_PACK32 [uint],
-    A8B8G8R8SintPack32 => FORMAT_A8B8G8R8_SINT_PACK32 [sint],
-    A8B8G8R8SrgbPack32 => FORMAT_A8B8G8R8_SRGB_PACK32 [float],
-    A2R10G10B10UnormPack32 => FORMAT_A2R10G10B10_UNORM_PACK32 [float],
-    A2R10G10B10SnormPack32 => FORMAT_A2R10G10B10_SNORM_PACK32 [float],
-    A2R10G10B10UscaledPack32 => FORMAT_A2R10G10B10_USCALED_PACK32 [float],
-    A2R10G10B10SscaledPack32 => FORMAT_A2R10G10B10_SSCALED_PACK32 [float],
-    A2R10G10B10UintPack32 => FORMAT_A2R10G10B10_UINT_PACK32 [uint],
-    A2R10G10B10SintPack32 => FORMAT_A2R10G10B10_SINT_PACK32 [sint],
-    A2B10G10R10UnormPack32 => FORMAT_A2B10G10R10_UNORM_PACK32 [float],
-    A2B10G10R10SnormPack32 => FORMAT_A2B10G10R10_SNORM_PACK32 [float],
-    A2B10G10R10UscaledPack32 => FORMAT_A2B10G10R10_USCALED_PACK32 [float],
-    A2B10G10R10SscaledPack32 => FORMAT_A2B10G10R10_SSCALED_PACK32 [float],
-    A2B10G10R10UintPack32 => FORMAT_A2B10G10R10_UINT_PACK32 [uint],
-    A2B10G10R10SintPack32 => FORMAT_A2B10G10R10_SINT_PACK32 [sint],
-    R16Unorm => FORMAT_R16_UNORM [float],
-    R16Snorm => FORMAT_R16_SNORM [float],
-    R16Uscaled => FORMAT_R16_USCALED [float],
-    R16Sscaled => FORMAT_R16_SSCALED [float],
-    R16Uint => FORMAT_R16_UINT [uint],
-    R16Sint => FORMAT_R16_SINT [sint],
-    R16Sfloat => FORMAT_R16_SFLOAT [float],
-    R16G16Unorm => FORMAT_R16G16_UNORM [float],
-    R16G16Snorm => FORMAT_R16G16_SNORM [float],
-    R16G16Uscaled => FORMAT_R16G16_USCALED [float],
-    R16G16Sscaled => FORMAT_R16G16_SSCALED [float],
-    R16G16Uint => FORMAT_R16G16_UINT [uint],
-    R16G16Sint => FORMAT_R16G16_SINT [sint],
-    R16G16Sfloat => FORMAT_R16G16_SFLOAT [float],
-    R16G16B16Unorm => FORMAT_R16G16B16_UNORM [float],
-    R16G16B16Snorm => FORMAT_R16G16B16_SNORM [float],
-    R16G16B16Uscaled => FORMAT_R16G16B16_USCALED [float],
-    R16G16B16Sscaled => FORMAT_R16G16B16_SSCALED [float],
-    R16G16B16Uint => FORMAT_R16G16B16_UINT [uint],
-    R16G16B16Sint => FORMAT_R16G16B16_SINT [sint],
-    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [float],
-    R16G16B16A16Unorm => FORMAT_R16G16B16A16_UNORM [float],
-    R16G16B16A16Snorm => FORMAT_R16G16B16A16_SNORM [float],
-    R16G16B16A16Uscaled => FORMAT_R16G16B16A16_USCALED [float],
-    R16G16B16A16Sscaled => FORMAT_R16G16B16A16_SSCALED [float],
-    R16G16B16A16Uint => FORMAT_R16G16B16A16_UINT [uint],
-    R16G16B16A16Sint => FORMAT_R16G16B16A16_SINT [sint],
-    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [float],
-    R32Uint => FORMAT_R32_UINT [uint],
-    R32Sint => FORMAT_R32_SINT [sint],
-    R32Sfloat => FORMAT_R32_SFLOAT [float],
-    R32G32Uint => FORMAT_R32G32_UINT [uint],
-    R32G32Sint => FORMAT_R32G32_SINT [sint],
-    R32G32Sfloat => FORMAT_R32G32_SFLOAT [float],
-    R32G32B32Uint => FORMAT_R32G32B32_UINT [uint],
-    R32G32B32Sint => FORMAT_R32G32B32_SINT [sint],
-    R32G32B32Sfloat => FORMAT_R32G32B32_SFLOAT [float],
-    R32G32B32A32Uint => FORMAT_R32G32B32A32_UINT [uint],
-    R32G32B32A32Sint => FORMAT_R32G32B32A32_SINT [sint],
-    R32G32B32A32Sfloat => FORMAT_R32G32B32A32_SFLOAT [float],
-    R64Uint => FORMAT_R64_UINT [uint],
-    R64Sint => FORMAT_R64_SINT [sint],
-    R64Sfloat => FORMAT_R64_SFLOAT [float],
-    R64G64Uint => FORMAT_R64G64_UINT [uint],
-    R64G64Sint => FORMAT_R64G64_SINT [sint],
-    R64G64Sfloat => FORMAT_R64G64_SFLOAT [float],
-    R64G64B64Uint => FORMAT_R64G64B64_UINT [uint],
-    R64G64B64Sint => FORMAT_R64G64B64_SINT [sint],
-    R64G64B64Sfloat => FORMAT_R64G64B64_SFLOAT [float],
-    R64G64B64A64Uint => FORMAT_R64G64B64A64_UINT [uint],
-    R64G64B64A64Sint => FORMAT_R64G64B64A64_SINT [sint],
-    R64G64B64A64Sfloat => FORMAT_R64G64B64A64_SFLOAT [float],
-    B10G11R11UfloatPack32 => FORMAT_B10G11R11_UFLOAT_PACK32 [float],
-    E5B9G9R9UfloatPack32 => FORMAT_E5B9G9R9_UFLOAT_PACK32 [float],
+    //Undefined => FORMAT_UNDEFINED [float],      // FIXME: what to do with this one?
+    R4G4UnormPack8 => FORMAT_R4G4_UNORM_PACK8 [float=2],
+    R4G4B4A4UnormPack16 => FORMAT_R4G4B4A4_UNORM_PACK16 [float=4],
+    B4G4R4A4UnormPack16 => FORMAT_B4G4R4A4_UNORM_PACK16 [float=4],
+    R5G6B5UnormPack16 => FORMAT_R5G6B5_UNORM_PACK16 [float=3],
+    B5G6R5UnormPack16 => FORMAT_B5G6R5_UNORM_PACK16 [float=3],
+    R5G5B5A1UnormPack16 => FORMAT_R5G5B5A1_UNORM_PACK16 [float=4],
+    B5G5R5A1UnormPack16 => FORMAT_B5G5R5A1_UNORM_PACK16 [float=4],
+    A1R5G5B5UnormPack16 => FORMAT_A1R5G5B5_UNORM_PACK16 [float=4],
+    R8Unorm => FORMAT_R8_UNORM [float=1],
+    R8Snorm => FORMAT_R8_SNORM [float=1],
+    R8Uscaled => FORMAT_R8_USCALED [float=1],
+    R8Sscaled => FORMAT_R8_SSCALED [float=1],
+    R8Uint => FORMAT_R8_UINT [uint=1],
+    R8Sint => FORMAT_R8_SINT [sint=1],
+    R8Srgb => FORMAT_R8_SRGB [float=1],
+    R8G8Unorm => FORMAT_R8G8_UNORM [float=2],
+    R8G8Snorm => FORMAT_R8G8_SNORM [float=2],
+    R8G8Uscaled => FORMAT_R8G8_USCALED [float=2],
+    R8G8Sscaled => FORMAT_R8G8_SSCALED [float=2],
+    R8G8Uint => FORMAT_R8G8_UINT [uint=2],
+    R8G8Sint => FORMAT_R8G8_SINT [sint=2],
+    R8G8Srgb => FORMAT_R8G8_SRGB [float=2],
+    R8G8B8Unorm => FORMAT_R8G8B8_UNORM [float=3],
+    R8G8B8Snorm => FORMAT_R8G8B8_SNORM [float=3],
+    R8G8B8Uscaled => FORMAT_R8G8B8_USCALED [float=3],
+    R8G8B8Sscaled => FORMAT_R8G8B8_SSCALED [float=3],
+    R8G8B8Uint => FORMAT_R8G8B8_UINT [uint=3],
+    R8G8B8Sint => FORMAT_R8G8B8_SINT [sint=3],
+    R8G8B8Srgb => FORMAT_R8G8B8_SRGB [float=3],
+    B8G8R8Unorm => FORMAT_B8G8R8_UNORM [float=3],
+    B8G8R8Snorm => FORMAT_B8G8R8_SNORM [float=3],
+    B8G8R8Uscaled => FORMAT_B8G8R8_USCALED [float=3],
+    B8G8R8Sscaled => FORMAT_B8G8R8_SSCALED [float=3],
+    B8G8R8Uint => FORMAT_B8G8R8_UINT [uint=3],
+    B8G8R8Sint => FORMAT_B8G8R8_SINT [sint=3],
+    B8G8R8Srgb => FORMAT_B8G8R8_SRGB [float=3],
+    R8G8B8A8Unorm => FORMAT_R8G8B8A8_UNORM [float=4],
+    R8G8B8A8Snorm => FORMAT_R8G8B8A8_SNORM [float=4],
+    R8G8B8A8Uscaled => FORMAT_R8G8B8A8_USCALED [float=4],
+    R8G8B8A8Sscaled => FORMAT_R8G8B8A8_SSCALED [float=4],
+    R8G8B8A8Uint => FORMAT_R8G8B8A8_UINT [uint=4],
+    R8G8B8A8Sint => FORMAT_R8G8B8A8_SINT [sint=4],
+    R8G8B8A8Srgb => FORMAT_R8G8B8A8_SRGB [float=4],
+    B8G8R8A8Unorm => FORMAT_B8G8R8A8_UNORM [float=4],
+    B8G8R8A8Snorm => FORMAT_B8G8R8A8_SNORM [float=4],
+    B8G8R8A8Uscaled => FORMAT_B8G8R8A8_USCALED [float=4],
+    B8G8R8A8Sscaled => FORMAT_B8G8R8A8_SSCALED [float=4],
+    B8G8R8A8Uint => FORMAT_B8G8R8A8_UINT [uint=4],
+    B8G8R8A8Sint => FORMAT_B8G8R8A8_SINT [sint=4],
+    B8G8R8A8Srgb => FORMAT_B8G8R8A8_SRGB [float=4],
+    A8B8G8R8UnormPack32 => FORMAT_A8B8G8R8_UNORM_PACK32 [float=4],
+    A8B8G8R8SnormPack32 => FORMAT_A8B8G8R8_SNORM_PACK32 [float=4],
+    A8B8G8R8UscaledPack32 => FORMAT_A8B8G8R8_USCALED_PACK32 [float=4],
+    A8B8G8R8SscaledPack32 => FORMAT_A8B8G8R8_SSCALED_PACK32 [float=4],
+    A8B8G8R8UintPack32 => FORMAT_A8B8G8R8_UINT_PACK32 [uint=4],
+    A8B8G8R8SintPack32 => FORMAT_A8B8G8R8_SINT_PACK32 [sint=4],
+    A8B8G8R8SrgbPack32 => FORMAT_A8B8G8R8_SRGB_PACK32 [float=4],
+    A2R10G10B10UnormPack32 => FORMAT_A2R10G10B10_UNORM_PACK32 [float=4],
+    A2R10G10B10SnormPack32 => FORMAT_A2R10G10B10_SNORM_PACK32 [float=4],
+    A2R10G10B10UscaledPack32 => FORMAT_A2R10G10B10_USCALED_PACK32 [float=4],
+    A2R10G10B10SscaledPack32 => FORMAT_A2R10G10B10_SSCALED_PACK32 [float=4],
+    A2R10G10B10UintPack32 => FORMAT_A2R10G10B10_UINT_PACK32 [uint=4],
+    A2R10G10B10SintPack32 => FORMAT_A2R10G10B10_SINT_PACK32 [sint=4],
+    A2B10G10R10UnormPack32 => FORMAT_A2B10G10R10_UNORM_PACK32 [float=4],
+    A2B10G10R10SnormPack32 => FORMAT_A2B10G10R10_SNORM_PACK32 [float=4],
+    A2B10G10R10UscaledPack32 => FORMAT_A2B10G10R10_USCALED_PACK32 [float=4],
+    A2B10G10R10SscaledPack32 => FORMAT_A2B10G10R10_SSCALED_PACK32 [float=4],
+    A2B10G10R10UintPack32 => FORMAT_A2B10G10R10_UINT_PACK32 [uint=4],
+    A2B10G10R10SintPack32 => FORMAT_A2B10G10R10_SINT_PACK32 [sint=4],
+    R16Unorm => FORMAT_R16_UNORM [float=1],
+    R16Snorm => FORMAT_R16_SNORM [float=1],
+    R16Uscaled => FORMAT_R16_USCALED [float=1],
+    R16Sscaled => FORMAT_R16_SSCALED [float=1],
+    R16Uint => FORMAT_R16_UINT [uint=1],
+    R16Sint => FORMAT_R16_SINT [sint=1],
+    R16Sfloat => FORMAT_R16_SFLOAT [float=1],
+    R16G16Unorm => FORMAT_R16G16_UNORM [float=2],
+    R16G16Snorm => FORMAT_R16G16_SNORM [float=2],
+    R16G16Uscaled => FORMAT_R16G16_USCALED [float=2],
+    R16G16Sscaled => FORMAT_R16G16_SSCALED [float=2],
+    R16G16Uint => FORMAT_R16G16_UINT [uint=2],
+    R16G16Sint => FORMAT_R16G16_SINT [sint=2],
+    R16G16Sfloat => FORMAT_R16G16_SFLOAT [float=2],
+    R16G16B16Unorm => FORMAT_R16G16B16_UNORM [float=3],
+    R16G16B16Snorm => FORMAT_R16G16B16_SNORM [float=3],
+    R16G16B16Uscaled => FORMAT_R16G16B16_USCALED [float=3],
+    R16G16B16Sscaled => FORMAT_R16G16B16_SSCALED [float=3],
+    R16G16B16Uint => FORMAT_R16G16B16_UINT [uint=3],
+    R16G16B16Sint => FORMAT_R16G16B16_SINT [sint=3],
+    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [float=3],
+    R16G16B16A16Unorm => FORMAT_R16G16B16A16_UNORM [float=4],
+    R16G16B16A16Snorm => FORMAT_R16G16B16A16_SNORM [float=4],
+    R16G16B16A16Uscaled => FORMAT_R16G16B16A16_USCALED [float=4],
+    R16G16B16A16Sscaled => FORMAT_R16G16B16A16_SSCALED [float=4],
+    R16G16B16A16Uint => FORMAT_R16G16B16A16_UINT [uint=4],
+    R16G16B16A16Sint => FORMAT_R16G16B16A16_SINT [sint=4],
+    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [float=4],
+    R32Uint => FORMAT_R32_UINT [uint=1],
+    R32Sint => FORMAT_R32_SINT [sint=1],
+    R32Sfloat => FORMAT_R32_SFLOAT [float=1],
+    R32G32Uint => FORMAT_R32G32_UINT [uint=2],
+    R32G32Sint => FORMAT_R32G32_SINT [sint=2],
+    R32G32Sfloat => FORMAT_R32G32_SFLOAT [float=2],
+    R32G32B32Uint => FORMAT_R32G32B32_UINT [uint=3],
+    R32G32B32Sint => FORMAT_R32G32B32_SINT [sint=3],
+    R32G32B32Sfloat => FORMAT_R32G32B32_SFLOAT [float=3],
+    R32G32B32A32Uint => FORMAT_R32G32B32A32_UINT [uint=4],
+    R32G32B32A32Sint => FORMAT_R32G32B32A32_SINT [sint=4],
+    R32G32B32A32Sfloat => FORMAT_R32G32B32A32_SFLOAT [float=4],
+    R64Uint => FORMAT_R64_UINT [uint=1],
+    R64Sint => FORMAT_R64_SINT [sint=1],
+    R64Sfloat => FORMAT_R64_SFLOAT [float=1],
+    R64G64Uint => FORMAT_R64G64_UINT [uint=2],
+    R64G64Sint => FORMAT_R64G64_SINT [sint=2],
+    R64G64Sfloat => FORMAT_R64G64_SFLOAT [float=2],
+    R64G64B64Uint => FORMAT_R64G64B64_UINT [uint=3],
+    R64G64B64Sint => FORMAT_R64G64B64_SINT [sint=3],
+    R64G64B64Sfloat => FORMAT_R64G64B64_SFLOAT [float=3],
+    R64G64B64A64Uint => FORMAT_R64G64B64A64_UINT [uint=4],
+    R64G64B64A64Sint => FORMAT_R64G64B64A64_SINT [sint=4],
+    R64G64B64A64Sfloat => FORMAT_R64G64B64A64_SFLOAT [float=4],
+    B10G11R11UfloatPack32 => FORMAT_B10G11R11_UFLOAT_PACK32 [float=3],
+    E5B9G9R9UfloatPack32 => FORMAT_E5B9G9R9_UFLOAT_PACK32 [float=3],
     D16Unorm => FORMAT_D16_UNORM [depth],
     X8_D24UnormPack32 => FORMAT_X8_D24_UNORM_PACK32 [depth],
     D32Sfloat => FORMAT_D32_SFLOAT [depth],
@@ -327,7 +435,11 @@ formats! {
 }
 
 pub unsafe trait FormatMarker {
-    fn format() -> Format;
+    type ClearValue;
+
+    fn decode_clear_value(&self, Self::ClearValue) -> ClearValue;
+
+    fn format(&self) -> Format;
 }
 
 pub unsafe trait FloatFormatMarker: FormatMarker {}
@@ -348,4 +460,24 @@ pub enum FormatTy {
     Stencil,
     DepthStencil,
     Compressed,
+}
+
+/// Describes a uniform value that will be used to fill an image.
+// TODO: should have the same layout as `vk::ClearValue` for performances
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum ClearValue {
+    /// Entry for attachments that aren't cleared.
+    None,
+    /// Value for floating-point attachments, including `Unorm`, `Snorm`, `Sfloat`.
+    Float([f32; 4]),
+    /// Value for integer attachments, including `Int`.
+    Int([i32; 4]),
+    /// Value for unsigned integer attachments, including `Uint`.
+    Uint([u32; 4]),
+    /// Value for depth attachments.
+    Depth(f32),
+    /// Value for stencil attachments.
+    Stencil(u32),
+    /// Value for depth and stencil attachments.
+    DepthStencil((f32, u32)),
 }

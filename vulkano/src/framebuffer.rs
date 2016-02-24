@@ -30,6 +30,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use formats::ClearValue;
 use formats::Format;
 use formats::FormatMarker;
 use image::AbstractImageView;
@@ -117,27 +118,6 @@ unsafe impl<A, B> CompatibleLayout<B> for A
 
         // FIXME: finish
     }
-}
-
-/// Describes a uniform value that will be used to fill an attachment at the start of the
-/// renderpass.
-// TODO: should have the same layout as `vk::ClearValue` for performances
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum ClearValue {
-    /// Entry for attachments that aren't cleared.
-    None,
-    /// Value for floating-point attachments, including `Unorm`, `Snorm`, `Sfloat`.
-    Float([f32; 4]),
-    /// Value for integer attachments, including `Int`.
-    Int([i32; 4]),
-    /// Value for unsigned integer attachments, including `Uint`.
-    Uint([u32; 4]),
-    /// Value for depth attachments.
-    Depth(f32),
-    /// Value for stencil attachments.
-    Stencil(u32),
-    /// Value for depth and stencil attachments.
-    DepthStencil((f32, u32)),
 }
 
 /// Describes an attachment that will be used in a renderpass.
@@ -298,7 +278,7 @@ macro_rules! single_pass_renderpass {
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
                 type ClearValues = [f32; 4];        // FIXME:
-                type ClearValuesIter = std::vec::IntoIter<$crate::framebuffer::ClearValue>;
+                type ClearValuesIter = std::vec::IntoIter<$crate::formats::ClearValue>;
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
                 type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
@@ -312,7 +292,7 @@ macro_rules! single_pass_renderpass {
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
                     vec![
-                        $crate::framebuffer::ClearValue::Float(val)
+                        $crate::formats::ClearValue::Float(val)
                         //$crate::framebuffer::ClearValue::Depth(val.1)
                     ].into_iter()
                 }

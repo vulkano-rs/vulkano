@@ -65,7 +65,7 @@ impl Swapchain {
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
-        where F: FormatMarker, S: Into<SharingMode>
+        where F: FormatMarker + Clone, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
                              sharing, transform, alpha, mode, clipped)
@@ -78,7 +78,7 @@ impl Swapchain {
                        dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                        clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
-        where F: FormatMarker, S: Into<SharingMode>
+        where F: FormatMarker + Clone, S: Into<SharingMode>
     {
         // FIXME: check that the parameters are supported
 
@@ -103,7 +103,7 @@ impl Swapchain {
                 flags: 0,   // reserved
                 surface: surface.internal_object(),
                 minImageCount: num_images,
-                imageFormat: F::format() as u32,
+                imageFormat: format.format() as u32,
                 imageColorSpace: vk::COLORSPACE_SRGB_NONLINEAR_KHR,     // only available value
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
@@ -147,7 +147,8 @@ impl Swapchain {
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
             let mem = SwapchainAllocatedChunk { swapchain: swapchain.clone(), id: id };
-            Image::from_raw_unowned(&device, image, mem, sharing.clone(), usage, dimensions, (), 1)
+            Image::from_raw_unowned(&device, image, mem, sharing.clone(), usage, format.clone(),
+                                    dimensions, (), 1)
         }).collect::<Vec<_>>();
 
         {

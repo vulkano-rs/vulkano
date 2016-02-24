@@ -92,9 +92,9 @@ fn main() {
     }.unwrap();
 
 
-    let texture = vulkano::image::Image::<vulkano::image::Type2d, vulkano::formats::R8G8B8A8Unorm, _>::new(&device, &vulkano::image::Usage::all(),
+    let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
-                                                  images[0].dimensions(), (), 1).unwrap();
+                                                  vulkano::formats::R8G8B8A8Unorm, images[0].dimensions(), (), 1).unwrap();
     let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &mut queue.lock().unwrap()).unwrap();
     let texture_view = vulkano::image::ImageView::new(&texture).expect("failed to create image view");
 

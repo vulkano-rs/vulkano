@@ -14,7 +14,6 @@
 //! The `M` parameter describes where the image's memory was allocated from. It is similar to
 //! buffers.
 //!
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -165,6 +164,7 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
     image: vk::Image,
     memory: M,
     usage: vk::ImageUsageFlagBits,
+    format: F,
     dimensions: Ty::Dimensions,
 
     // Number of samples per pixel.
@@ -183,8 +183,6 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
     // Can only ever get two values. First, "undefined" or "preinitialized". Then after the
     // transition, contains the default layout of the image.
     layout: Layout,
-
-    marker: PhantomData<F>,
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
@@ -199,7 +197,7 @@ impl<Ty, F, M> Image<Ty, F, M>
     /// - Panicks if the number of samples is 0.
     ///
     pub fn new<S, Mi, Sh>(device: &Arc<Device>, usage: &Usage, memory: S, sharing: Sh,
-                          dimensions: Ty::Dimensions, num_samples: Ty::NumSamples, mipmaps: Mi)
+                          format: F, dimensions: Ty::Dimensions, num_samples: Ty::NumSamples, mipmaps: Mi)
                           -> Result<ImagePrototype<Ty, F, M>, OomError>
         where S: MemorySource<Chunk = M>, Mi: Into<MipmapsCount>, Sh: Into<SharingMode>
     {
@@ -245,7 +243,7 @@ impl<Ty, F, M> Image<Ty, F, M>
                 pNext: ptr::null(),
                 flags: 0,                               // TODO:
                 imageType: Ty::ty() as u32,
-                format: F::format() as u32,
+                format: format.format() as u32,
                 extent: {
                     let dims = Ty::extent(dimensions);
                     assert!(dims[0] >= 1); assert!(dims[1] >= 1); assert!(dims[2] >= 1);
@@ -295,13 +293,13 @@ impl<Ty, F, M> Image<Ty, F, M>
                 image: image,
                 memory: memory,
                 usage: usage,
+                format: format,
                 dimensions: dimensions.clone(),
                 samples: num_samples,
                 mipmaps: mipmaps,
                 sharing: sharing,
                 needs_destruction: true,
                 layout: Layout::Undefined,        // TODO:
-                marker: PhantomData,
             },
         })
     }
@@ -310,8 +308,9 @@ impl<Ty, F, M> Image<Ty, F, M>
     ///
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw_unowned(device: &Arc<Device>, handle: u64, memory: M,
-                                   sharing: SharingMode, usage: u32, dimensions: Ty::Dimensions,
-                                   samples: Ty::NumSamples, mipmaps: u32)
+                                   sharing: SharingMode, usage: u32, format: F,
+                                   dimensions: Ty::Dimensions, samples: Ty::NumSamples,
+                                   mipmaps: u32)
                                    -> ImagePrototype<Ty, F, M>
     {
         ImagePrototype{
@@ -320,13 +319,13 @@ impl<Ty, F, M> Image<Ty, F, M>
                 image: handle,
                 memory: memory,
                 usage: usage,
+                format: format,
                 dimensions: dimensions.clone(),
                 samples: samples,
                 mipmaps: mipmaps,
                 sharing: sharing,
                 needs_destruction: false,
                 layout: Layout::Undefined,
-                marker: PhantomData,
             },
         }
     }
@@ -643,7 +642,7 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
                 flags: 0,   // reserved
                 image: image.image,
                 viewType: vk::IMAGE_VIEW_TYPE_2D,     // FIXME:
-                format: F::format() as u32,
+                format: image.format.format() as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
                     aspectMask: 1,          // FIXME:
