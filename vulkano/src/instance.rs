@@ -170,7 +170,7 @@ impl Instance {
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
-            let mut num = mem::uninitialized();
+            let mut num = 0;
             try!(check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut())));
 
             let mut devices = Vec::with_capacity(num as usize);
@@ -192,7 +192,7 @@ impl Instance {
                 };
 
                 let queue_families = unsafe {
-                    let mut num = mem::uninitialized();
+                    let mut num = 0;
                     vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
 
                     let mut families = Vec::with_capacity(num as usize);
@@ -343,7 +343,7 @@ impl From<Error> for InstanceCreationError {
 /// Queries the list of layers that are available when creating an instance.
 pub fn layers_list() -> Result<Vec<LayerProperties>, OomError> {
     unsafe {
-        let mut num = mem::uninitialized();
+        let mut num = 0;
         try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);

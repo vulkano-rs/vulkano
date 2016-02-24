@@ -133,7 +133,7 @@ impl Swapchain {
         });
 
         let images = unsafe {
-            let mut num = mem::uninitialized();
+            let mut num = 0;
             try!(check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
                                                        swapchain.swapchain, &mut num,
                                                        ptr::null_mut())));

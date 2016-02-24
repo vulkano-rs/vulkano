@@ -72,7 +72,7 @@ impl DisplayPlane {
         let vk = device.instance().pointers();
 
         let num = unsafe {
-            let mut num: u32 = mem::uninitialized();
+            let mut num: u32 = 0;
             try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
                                                                             &mut num, ptr::null_mut())));
             num
@@ -90,7 +90,7 @@ impl DisplayPlane {
 
         Ok(planes.into_iter().enumerate().map(|(index, prop)| {
             let num = unsafe {
-                let mut num: u32 = mem::uninitialized();
+                let mut num: u32 = 0;
                 check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(), index as u32,
                                                                     &mut num, ptr::null_mut())).unwrap();       // TODO: shouldn't unwrap
                 num
@@ -140,7 +140,7 @@ impl Display {
         let vk = device.instance().pointers();
 
         let num = unsafe {
-            let mut num = mem::uninitialized();
+            let mut num = 0;
             try!(check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
                                                                        &mut num, ptr::null_mut())));
             num
@@ -185,7 +185,7 @@ impl Display {
         let vk = self.device.instance().pointers();
 
         let num = unsafe {
-            let mut num = mem::uninitialized();
+            let mut num = 0;
             try!(check_errors(vk.GetDisplayModePropertiesKHR(self.device.internal_object(),
                                                              self.properties.display, 
                                                              &mut num, ptr::null_mut())));
