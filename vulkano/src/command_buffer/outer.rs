@@ -8,7 +8,9 @@ use command_buffer::inner::InnerCommandBuffer;
 use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
+use formats::FloatOrCompressedFormatMarker;
 use formats::FloatFormatMarker;
+use formats::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
@@ -106,6 +108,18 @@ impl PrimaryCommandBufferBuilder {
         unsafe {
             PrimaryCommandBufferBuilder {
                 inner: self.inner.copy_buffer(source, destination),
+            }
+        }
+    }
+
+    pub fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
+                                                    -> PrimaryCommandBufferBuilder
+        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatMarker,
+              Ty: ImageTypeMarker
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.copy_buffer_to_color_image(source, destination),
             }
         }
     }

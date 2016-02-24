@@ -16,4 +16,5 @@ vulkano-shaders = { path = "../vulkano-shaders" }
 
 [dev-dependencies]
 cgmath = "0.7.0"
+image = "0.6.1"
 winit = { git = "https://github.com/tomaka/winit" }

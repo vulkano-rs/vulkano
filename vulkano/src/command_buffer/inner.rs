@@ -11,7 +11,9 @@ use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use formats::ClearValue;
+use formats::FloatOrCompressedFormatMarker;
 use formats::FloatFormatMarker;
+use formats::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
@@ -296,31 +298,45 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    /*pub unsafe fn copy_buffer_to_image<'a, S, Sm>(mut self, source: S, )
-        where S: Into<BufferSlice<'a, [], Sm>
+    pub unsafe fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
+                                                           -> InnerCommandBufferBuilder
+        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatMarker,
+              Ty: ImageTypeMarker
     {
+        let source = source.into();
+        //self.add_buffer_resource(source)      // FIXME:
+
+        let region = vk::BufferImageCopy {
+            bufferOffset: source.offset() as vk::DeviceSize,
+            bufferRowLength: 0,
+            bufferImageHeight: 0,
+            imageSubresource: vk::ImageSubresourceLayers {
+                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                mipLevel: 0,            // FIXME:
+                baseArrayLayer: 0,          // FIXME:
+                layerCount: 1,          // FIXME:
+            },
+            imageOffset: vk::Offset3D {
+                x: 0,           // FIXME:
+                y: 0,           // FIXME:
+                z: 0,           // FIXME:
+            },
+            imageExtent: vk::Extent3D {
+                width: 93,         // FIXME:
+                height: 93,            // FIXME:
+                depth: 1,         // FIXME:
+            },
+        };
+
         {
             let vk = self.device.pointers();
-
-            let source = source.into();
-            self.buffer_resources.push(source.buffer().clone());
-
-            let region = vk::BufferImageCopy {
-                bufferOffset: source.offset() as vk::DeviceSize,
-                bufferRowLength: ,
-                bufferImageHeight: ,
-                imageSubresource: ,
-                imageOffset: ,
-                imageExtent: ,
-            };
-
-            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.internal_object(), ,
+            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().internal_object(), image.internal_object(),
                                     vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
                                     1, &region);
         }
 
         self
-    }*/
+    }
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants

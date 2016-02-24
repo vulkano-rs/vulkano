@@ -1,4 +1,5 @@
 extern crate cgmath;
+extern crate image;
 extern crate winit;
 
 #[cfg(windows)]
@@ -97,12 +98,37 @@ fn main() {
 
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
-                                                  vulkano::formats::R8G8B8A8Unorm, images[0].dimensions(), (), 1).unwrap();
+                                                  vulkano::formats::R8G8B8A8Unorm, [93, 93], (), 1).unwrap();
     let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &mut queue.lock().unwrap()).unwrap();
     let texture_view = vulkano::image::ImageView::new(&texture).expect("failed to create image view");
 
+
+    let pixel_buffer = {
+        let image = image::load_from_memory_with_format(include_bytes!("image_img.png"),
+                                                        image::ImageFormat::PNG).unwrap().to_rgba();
+        let image_data = image.into_raw().clone();
+
+        let pixel_buffer = vulkano::buffer::Buffer::<[[u8; 4]], _>
+                               ::array(&device, image_data.len(), &vulkano::buffer::Usage::all(),
+                                       vulkano::memory::HostVisible, &queue)
+                                       .expect("failed to create buffer");
+
+        {
+            let mut mapping = pixel_buffer.try_write().unwrap();
+            for (o, i) in mapping.iter_mut().zip(image_data.chunks(4)) {
+                o[0] = i[0];
+                o[1] = i[1];
+                o[2] = i[2];
+                o[3] = i[3];
+            }
+        }
+
+        pixel_buffer
+    };
+
+
     let sampler = vulkano::sampler::Sampler::new(&device, vulkano::sampler::Filter::Linear,
-                                                 vulkano::sampler::Filter::Linear, vulkano::sampler::MipmapMode::Linear,
+                                                 vulkano::sampler::Filter::Linear, vulkano::sampler::MipmapMode::Nearest,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
@@ -175,7 +201,8 @@ fn main() {
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
-            .clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
+            .copy_buffer_to_color_image(&pixel_buffer, &texture)
+            //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
             .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
