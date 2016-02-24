@@ -216,6 +216,7 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                 },
             };
 
+            // FIXME: the descriptor set must be synchronized
             vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),

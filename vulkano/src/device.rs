@@ -181,6 +181,7 @@ impl Device {
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
     /// This is the Vulkan equivalent of `glFinish`.
+    // FIXME: must synchronize all queuees
     #[inline]
     pub fn wait(&self) -> Result<(), OomError> {
         unsafe {

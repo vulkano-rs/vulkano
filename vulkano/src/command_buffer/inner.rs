@@ -75,13 +75,13 @@ impl InnerCommandBufferBuilder {
         let device = pool.device();
         let vk = device.pointers();
 
-        let cmd = unsafe {
-            let pool = pool.internal_object_guard();
+        let pool_obj = pool.internal_object_guard();
 
+        let cmd = unsafe {
             let infos = vk::CommandBufferAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 pNext: ptr::null(),
-                commandPool: *pool,
+                commandPool: *pool_obj,
                 level: if secondary {
                     vk::COMMAND_BUFFER_LEVEL_SECONDARY
                 } else {
@@ -130,18 +130,19 @@ impl InnerCommandBufferBuilder {
                                           -> InnerCommandBufferBuilder
         where I: Iterator<Item = &'a InnerCommandBuffer>
     {
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let mut command_buffers = Vec::with_capacity(iter.size_hint().0);
+
+        for cb in iter {
+            command_buffers.push(cb.cmd);
+            for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
+            for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+            for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
+        }
+
         {
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let mut command_buffers = Vec::with_capacity(iter.size_hint().0);
-
-            for cb in iter {
-                command_buffers.push(cb.cmd);
-                for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
-                for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-                for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
-            }
-
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdExecuteCommands(self.cmd.unwrap(), command_buffers.len() as u32,
                                   command_buffers.as_ptr());
         }
@@ -182,6 +183,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().internal_object(),
                                buffer.offset() as vk::DeviceSize,
                                buffer.size() as vk::DeviceSize, data as *const T as *const _);
@@ -222,6 +224,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdFillBuffer(self.cmd.unwrap(), buffer.internal_object(),
                              offset as vk::DeviceSize, size as vk::DeviceSize, data);
         }
@@ -264,6 +267,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(),
                              destination.internal_object(), 1, &copy);
         }
@@ -299,6 +303,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
                                   &color, 1, &range);
         }
@@ -346,6 +351,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().internal_object(), image.internal_object(),
                                     vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
                                     1, &region);
@@ -374,6 +380,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
             vk.CmdDraw(self.cmd.unwrap(), 4, 1, 0, 0);  // FIXME: params
@@ -411,6 +418,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
                                   indices.offset() as u64, I::ty() as u32);
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
@@ -428,6 +436,7 @@ impl InnerCommandBufferBuilder {
     {
         unsafe {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.graphics_pipeline != Some(pipeline.internal_object()) {
@@ -537,6 +546,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdBeginRenderPass(self.cmd.unwrap(), &infos, content);
         }
 
@@ -553,6 +563,7 @@ impl InnerCommandBufferBuilder {
 
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdNextSubpass(self.cmd.unwrap(), content);
         }
 
@@ -563,6 +574,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn end_renderpass(self) -> InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdEndRenderPass(self.cmd.unwrap());
         }
 
@@ -573,6 +585,7 @@ impl InnerCommandBufferBuilder {
     pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
         unsafe {
             let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
 
             // ending the commands recording

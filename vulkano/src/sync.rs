@@ -150,6 +150,7 @@ impl Fence {
     }
 
     /// Resets the fence.
+    // FIXME: must synchronize the fence
     #[inline]
     pub fn reset(&self) {
         unsafe {
