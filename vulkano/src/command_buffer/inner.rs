@@ -10,11 +10,14 @@ use command_buffer::DynamicState;
 use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
+use formats::FloatOrCompressedFormatMarker;
 use framebuffer::ClearValue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
 use image::AbstractImageView;
+use image::Image;
+use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
@@ -264,6 +267,31 @@ impl InnerCommandBufferBuilder {
         self
     }
 
+    pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
+                                                  color: [f32; 4] /* FIXME: */)
+                                                  -> InnerCommandBufferBuilder
+        where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
+    {
+        {
+            let vk = self.device.pointers();
+
+            let color = vk::ClearColorValue::float32(color);
+
+            let range = vk::ImageSubresourceRange {
+                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                baseMipLevel: 0,        // FIXME:
+                levelCount: 1,      // FIXME:
+                baseArrayLayer: 0,      // FIXME:
+                layerCount: 1,      // FIXME:
+            };
+
+            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
+                                  &color, 1, &range);
+        }
+
+        self
+    }
+
     /*pub unsafe fn copy_buffer_to_image<'a, S, Sm>(mut self, source: S, )
         where S: Into<BufferSlice<'a, [], Sm>
     {
@@ -313,7 +341,7 @@ impl InnerCommandBufferBuilder {
             let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
-            vk.CmdDraw(self.cmd.unwrap(), 3, 1, 0, 0);  // FIXME: params
+            vk.CmdDraw(self.cmd.unwrap(), 4, 1, 0, 0);  // FIXME: params
         }
 
         self

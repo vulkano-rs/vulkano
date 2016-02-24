@@ -115,13 +115,19 @@ macro_rules! formats {
         )+
     );
 
-    (__inner_impl__ $name:ident float) => { unsafe impl FloatFormatMarker for $name {} };
+    (__inner_impl__ $name:ident float) => {
+        unsafe impl FloatFormatMarker for $name {}
+        unsafe impl FloatOrCompressedFormatMarker for $name {}
+    };
     (__inner_impl__ $name:ident uint) => { unsafe impl UintFormatMarker for $name {} };
     (__inner_impl__ $name:ident sint) => { unsafe impl SintFormatMarker for $name {} };
     (__inner_impl__ $name:ident depth) => { unsafe impl DepthFormatMarker for $name {} };
     (__inner_impl__ $name:ident stencil) => { unsafe impl StencilFormatMarker for $name {} };
     (__inner_impl__ $name:ident depthstencil) => { unsafe impl DepthStencilFormatMarker for $name {} };
-    (__inner_impl__ $name:ident compressed) => { unsafe impl CompressedFormatMarker for $name {} };
+    (__inner_impl__ $name:ident compressed) => {
+        unsafe impl CompressedFormatMarker for $name {}
+        unsafe impl FloatOrCompressedFormatMarker for $name {}
+    };
 
     (__inner_ty__ $name:ident float) => { FormatTy::Float };
     (__inner_ty__ $name:ident uint) => { FormatTy::Uint };
@@ -331,6 +337,7 @@ pub unsafe trait DepthFormatMarker: FormatMarker {}
 pub unsafe trait StencilFormatMarker: FormatMarker {}
 pub unsafe trait DepthStencilFormatMarker: FormatMarker {}
 pub unsafe trait CompressedFormatMarker: FormatMarker {}
+pub unsafe trait FloatOrCompressedFormatMarker {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum FormatTy {

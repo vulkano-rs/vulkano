@@ -8,9 +8,12 @@ use command_buffer::inner::InnerCommandBuffer;
 use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
+use formats::FloatOrCompressedFormatMarker;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
+use image::Image;
+use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
@@ -103,6 +106,18 @@ impl PrimaryCommandBufferBuilder {
         unsafe {
             PrimaryCommandBufferBuilder {
                 inner: self.inner.copy_buffer(source, destination),
+            }
+        }
+    }
+
+    pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
+                                           color: [f32; 4] /* FIXME: */)
+                                           -> PrimaryCommandBufferBuilder
+        where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.clear_color_image(image, color),
             }
         }
     }

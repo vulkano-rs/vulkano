@@ -297,7 +297,7 @@ macro_rules! single_pass_renderpass {
 
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = ([f32; 4], f32);        // FIXME:
+                type ClearValues = [f32; 4];        // FIXME:
                 type ClearValuesIter = std::vec::IntoIter<$crate::framebuffer::ClearValue>;
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
@@ -306,15 +306,14 @@ macro_rules! single_pass_renderpass {
 
                 // FIXME: should be stronger-typed
                 type AttachmentsList = (
-                    Arc<$crate::image::AbstractImageView>,
                     Arc<$crate::image::AbstractImageView>
                 );      // FIXME:
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
                     vec![
-                        $crate::framebuffer::ClearValue::Float(val.0),
-                        $crate::framebuffer::ClearValue::Depth(val.1)
+                        $crate::framebuffer::ClearValue::Float(val)
+                        //$crate::framebuffer::ClearValue::Depth(val.1)
                     ].into_iter()
                 }
 
@@ -332,14 +331,14 @@ macro_rules! single_pass_renderpass {
                             },
                         )*
 
-                        $crate::framebuffer::AttachmentDescription {
+                        /*$crate::framebuffer::AttachmentDescription {
                             format: $crate::formats::Format::D16Unorm,       // FIXME:
                             samples: 1,                         // FIXME:
                             load: $crate::framebuffer::LoadOp::Clear,      // FIXME:
                             store: $crate::framebuffer::StoreOp::Store,     // FIXME:
                             initial_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
                             final_layout: $crate::image::Layout::DepthStencilAttachmentOptimal,       // FIXME:
-                        },
+                        },*/
                     ].into_iter()
                 }
 
@@ -348,7 +347,7 @@ macro_rules! single_pass_renderpass {
                     Some(
                         $crate::framebuffer::PassDescription {
                             color_attachments: vec![(0, $crate::image::Layout::ColorAttachmentOptimal)],
-                            depth_stencil: Some((1, $crate::image::Layout::DepthStencilAttachmentOptimal)),
+                            depth_stencil: None,//Some((1, $crate::image::Layout::DepthStencilAttachmentOptimal)),
                             input_attachments: vec![],
                             resolve_attachments: vec![],
                             preserve_attachments: vec![],
@@ -363,7 +362,7 @@ macro_rules! single_pass_renderpass {
 
                 #[inline]
                 fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
-                    vec![l.0.clone(), l.1.clone()].into_iter()
+                    vec![l.clone()/*, l.1.clone()*/].into_iter()
                 }
             }
 

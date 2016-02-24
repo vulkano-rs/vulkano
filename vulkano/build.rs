@@ -47,4 +47,16 @@ fn write_examples() {
     let content = glsl_to_spirv::compile(include_str!("examples/teapot_fs.glsl"), glsl_to_spirv::ShaderType::Fragment).unwrap();
     let output = vulkano_shaders::reflect("TeapotShader", content).unwrap();
     write!(file_output, "{}", output).unwrap();
+
+    let mut file_output = File::create(&dest.join("examples-image_vs.rs")).unwrap();
+    println!("cargo:rerun-if-changed=examples/image_vs.glsl");
+    let content = glsl_to_spirv::compile(include_str!("examples/image_vs.glsl"), glsl_to_spirv::ShaderType::Vertex).unwrap();
+    let output = vulkano_shaders::reflect("ImageShader", content).unwrap();
+    write!(file_output, "{}", output).unwrap();
+
+    let mut file_output = File::create(&dest.join("examples-image_fs.rs")).unwrap();
+    println!("cargo:rerun-if-changed=examples/image_fs.glsl");
+    let content = glsl_to_spirv::compile(include_str!("examples/image_fs.glsl"), glsl_to_spirv::ShaderType::Fragment).unwrap();
+    let output = vulkano_shaders::reflect("ImageShader", content).unwrap();
+    write!(file_output, "{}", output).unwrap();
 }
