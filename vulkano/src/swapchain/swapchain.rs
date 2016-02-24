@@ -216,6 +216,8 @@ impl Swapchain {
         unsafe {
             let mut result = mem::uninitialized();
 
+            let queue = queue.internal_object_guard();
+
             let index = index as u32;
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -228,7 +230,7 @@ impl Swapchain {
                 pResults: &mut result,
             };
 
-            try!(check_errors(vk.QueuePresentKHR(*queue.internal_object_guard(), &infos)));
+            try!(check_errors(vk.QueuePresentKHR(*queue, &infos)));
             try!(check_errors(result));
             Ok(())
         }
