@@ -143,6 +143,10 @@ fn main() {
                 store: DontCare,
                 format: D16Unorm,
             }
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {depth}
         }
     }.unwrap();
 

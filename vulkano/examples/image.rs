@@ -93,6 +93,10 @@ fn main() {
                 store: Store,
                 format: B8G8R8A8Srgb,
             }
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
         }
     }.unwrap();
 

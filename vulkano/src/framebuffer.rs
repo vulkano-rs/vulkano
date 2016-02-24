@@ -278,6 +278,10 @@ macro_rules! single_pass_renderpass {
                     format: $format:ident,
                 }
             ),*
+        },
+        pass: {
+            color: [$($color_atch:ident),*],
+            depth_stencil: {$($depth_atch:ident)*}
         }
     ) => (
         {
@@ -321,11 +325,28 @@ macro_rules! single_pass_renderpass {
                 }
 
                 #[inline]
+                #[allow(unused_mut)]
+                #[allow(unused_assignments)]
                 fn passes(&self) -> Self::PassesIter {
+                    let mut attachment_num = 0;
+                    $(
+                        let $atch_name = attachment_num;
+                        attachment_num += 1;
+                    )*
+
+                    let mut depth = None;
+                    $(
+                        depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                    )*
+
                     Some(
                         $crate::framebuffer::PassDescription {
-                            color_attachments: vec![(0, $crate::image::Layout::ColorAttachmentOptimal)],
-                            depth_stencil: None,//Some((1, $crate::image::Layout::DepthStencilAttachmentOptimal)),
+                            color_attachments: vec![
+                                $(
+                                    ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                                ),*
+                            ],
+                            depth_stencil: depth,
                             input_attachments: vec![],
                             resolve_attachments: vec![],
                             preserve_attachments: vec![],

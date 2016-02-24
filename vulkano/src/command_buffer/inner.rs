@@ -270,6 +270,11 @@ impl InnerCommandBufferBuilder {
 
     ///
     /// Note that compressed formats are not supported.
+    ///
+    /// # Safety
+    ///
+    /// - Care must be taken to respect the rules about secondary command buffers.
+    ///
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                                   color: F::ClearValue) -> InnerCommandBufferBuilder
         where Ty: ImageTypeMarker, F: FloatFormatMarker
@@ -298,6 +303,14 @@ impl InnerCommandBufferBuilder {
         self
     }
 
+    /// Copies data from a buffer to a color image.
+    ///
+    /// This operation can be performed by any kind of queue.
+    ///
+    /// # Safety
+    ///
+    /// - Care must be taken to respect the rules about secondary command buffers.
+    ///
     pub unsafe fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                            -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatMarker,
