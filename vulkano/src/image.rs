@@ -33,6 +33,7 @@ use sync::Semaphore;
 use sync::SharingMode;
 
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -64,14 +65,14 @@ pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
     ///
     /// The function can return a semaphore which will be waited up by the GPU before the
     /// work starts.
-    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 }
 
 pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
     fn default_layout(&self) -> Layout;
 
-    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
 
     /// True if the image can be used as a source for transfers.
@@ -441,7 +442,7 @@ unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
     }
 
     #[inline]
-    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         // FIXME: if the image is in its initial transition phase, we need to a semaphore
@@ -507,7 +508,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
     ///
     /// - Panicks if `layout` is `Undefined` or `Preinitialized`.
     // FIXME: PresentSrc is only allowed for swapchain images
-    pub fn transition(self, layout: Layout, pool: &CommandBufferPool, submit_queue: &mut Queue)
+    pub fn transition(self, layout: Layout, pool: &CommandBufferPool, submit_queue: &Arc<Queue>)
                       -> Result<Arc<Image<Ty, F, M>>, OomError>     // FIXME: error type
     {
         // FIXME: check pool and submit queue correspondance
@@ -524,10 +525,12 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
 
         unsafe {
             let cmd = {
+                let pool = pool.internal_object_guard();
+
                 let infos = vk::CommandBufferAllocateInfo {
                     sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                     pNext: ptr::null(),
-                    commandPool: pool.internal_object(),
+                    commandPool: *pool,
                     level: vk::COMMAND_BUFFER_LEVEL_SECONDARY,
                     commandBufferCount: 1,
                 };
@@ -588,7 +591,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
                     pSignalSemaphores: ptr::null(),         // TODO:
                 };
 
-                try!(check_errors(vk.QueueSubmit(submit_queue.internal_object(), 1, &infos, 0)));
+                try!(check_errors(vk.QueueSubmit(*submit_queue.internal_object_guard(), 1, &infos, 0)));
             }
         }
 
@@ -769,7 +772,7 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
     }
 
     #[inline]
-    unsafe fn gpu_access(&self, write: bool, queue: &mut Queue, fence: Option<Arc<Fence>>,
+    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         self.image.gpu_access(write, queue, fence, semaphore)

@@ -10,6 +10,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use instance::Features;
 use instance::Instance;
@@ -18,6 +19,7 @@ use instance::QueueFamily;
 
 use Error;
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -57,7 +59,7 @@ impl Device {
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I,
                          layers: L)
-                         -> Result<(Arc<Device>, Vec<Arc<Mutex<Queue>>>), DeviceCreationError>
+                         -> Result<(Arc<Device>, Vec<Arc<Queue>>), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               L: IntoIterator<Item = &'a &'a str>
     {
@@ -163,12 +165,12 @@ impl Device {
             unsafe {
                 let mut output = mem::uninitialized();
                 device.vk.GetDeviceQueue(device.device, family, id, &mut output);
-                Arc::new(Mutex::new(Queue {
+                Arc::new(Queue {
+                    queue: Mutex::new(output),
                     device: device.clone(),
-                    queue: output,
                     family: family,
                     id: id,
-                }))
+                })
             }
         }).collect();
 
@@ -276,8 +278,8 @@ impl From<Error> for DeviceCreationError {
 /// Represents a queue where commands can be submitted.
 // TODO: should use internal synchronization
 pub struct Queue {
+    queue: Mutex<vk::Queue>,
     device: Arc<Device>,
-    queue: vk::Queue,
     family: u32,
     id: u32,    // id within family
 }
@@ -299,20 +301,21 @@ impl Queue {
     ///
     /// Just like `Device::wait()`, you shouldn't have to call this function.
     #[inline]
-    pub fn wait(&mut self) -> Result<(), OomError> {
+    pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.QueueWaitIdle(self.queue)));
+            let queue = self.queue.lock().unwrap();
+            try!(check_errors(vk.QueueWaitIdle(*queue)));
             Ok(())
         }
     }
 }
 
-unsafe impl VulkanObject for Queue {
+unsafe impl SynchronizedVulkanObject for Queue {
     type Object = vk::Queue;
 
     #[inline]
-    fn internal_object(&self) -> vk::Queue {
-        self.queue
+    fn internal_object_guard(&self) -> MutexGuard<vk::Queue> {
+        self.queue.lock().unwrap()
     }
 }

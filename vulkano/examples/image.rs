@@ -52,7 +52,7 @@ fn main() {
     };
 
 
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family())
                                                   .expect("failed to create command buffer pool");
 
 
@@ -103,7 +103,7 @@ fn main() {
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
                                                   vulkano::formats::R8G8B8A8Unorm, [93, 93], (), 1).unwrap();
-    let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &mut queue.lock().unwrap()).unwrap();
+    let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &queue).unwrap();
     let texture_view = vulkano::image::ImageView::new(&texture).expect("failed to create image view");
 
 
@@ -160,8 +160,7 @@ fn main() {
 
 
     let images = images.into_iter().map(|image| {
-        let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,
-                                     &mut queue.lock().unwrap()).unwrap();
+        let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool, &queue).unwrap();
         vulkano::image::ImageView::new(&image).expect("failed to create image view")
     }).collect::<Vec<_>>();
 
@@ -215,10 +214,8 @@ fn main() {
 
     loop {
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
-        let mut queue = queue.lock().unwrap();
-        command_buffers[image_num].submit(&mut queue).unwrap();
-        swapchain.present(&mut queue, image_num).unwrap();
-        drop(queue);
+        command_buffers[image_num].submit(&queue).unwrap();
+        swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.poll_events() {
             match ev {

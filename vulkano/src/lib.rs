@@ -67,6 +67,7 @@ use std::error;
 use std::fmt;
 use std::mem;
 use std::path::Path;
+use std::sync::MutexGuard;
 
 mod vk {
     #![allow(dead_code)]
@@ -104,6 +105,15 @@ pub unsafe trait VulkanObject {
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;
+}
+
+/// Gives access to the internal identifier of an object.
+pub unsafe trait SynchronizedVulkanObject {
+    /// The type of the object.
+    type Object;
+
+    /// Returns a reference to the object.
+    fn internal_object_guard(&self) -> MutexGuard<Self::Object>;
 }
 
 // TODO: remove eventually

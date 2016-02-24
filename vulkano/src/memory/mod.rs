@@ -159,7 +159,7 @@ pub unsafe trait MemorySourceChunk {
     /// return a semaphore that must be waited upon by the GPU before the access can start. The
     /// semaphore being returned is usually one that has been previously passed to this function,
     /// but it doesn't need to be the case.
-    unsafe fn gpu_access(&self, write: bool, range: ChunkRange, queue: &mut Queue,
+    unsafe fn gpu_access(&self, write: bool, range: ChunkRange, queue: &Arc<Queue>,
                          fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                          -> Option<Arc<Semaphore>>;
 

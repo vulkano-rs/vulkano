@@ -1,11 +1,14 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use instance::QueueFamily;
 
 use device::Device;
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -13,8 +16,8 @@ use vk;
 
 /// A pool from which command buffers are created from.
 pub struct CommandBufferPool {
+    pool: Mutex<vk::CommandPool>,
     device: Arc<Device>,
-    pool: vk::CommandPool,
     queue_family_index: u32,
 }
 
@@ -52,8 +55,8 @@ impl CommandBufferPool {
         };
 
         Ok(Arc::new(CommandBufferPool {
+            pool: Mutex::new(pool),
             device: device.clone(),
-            pool: pool,
             queue_family_index: queue_family.id(),
         }))
     }
@@ -71,12 +74,12 @@ impl CommandBufferPool {
     }
 }
 
-unsafe impl VulkanObject for CommandBufferPool {
+unsafe impl SynchronizedVulkanObject for CommandBufferPool {
     type Object = vk::CommandPool;
 
     #[inline]
-    fn internal_object(&self) -> vk::CommandPool {
-        self.pool
+    fn internal_object_guard(&self) -> MutexGuard<vk::CommandPool> {
+        self.pool.lock().unwrap()
     }
 }
 
@@ -85,7 +88,8 @@ impl Drop for CommandBufferPool {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyCommandPool(self.device.internal_object(), self.pool, ptr::null());
+            let pool = self.pool.lock().unwrap();
+            vk.DestroyCommandPool(self.device.internal_object(), *pool, ptr::null());
         }
     }
 }

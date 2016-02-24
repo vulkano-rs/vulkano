@@ -27,6 +27,7 @@ use check_errors;
 use Error;
 use OomError;
 use Success;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -202,7 +203,7 @@ impl Swapchain {
     ///
     /// The actual behavior depends on the present mode that you passed when creating the
     /// swapchain.
-    pub fn present(&self, queue: &mut Queue, index: usize) -> Result<(), OomError> {     // FIXME: wrong error
+    pub fn present(&self, queue: &Arc<Queue>, index: usize) -> Result<(), OomError> {     // FIXME: wrong error
         let vk = self.device.pointers();
 
         let wait_semaphore = {
@@ -227,7 +228,7 @@ impl Swapchain {
                 pResults: &mut result,
             };
 
-            try!(check_errors(vk.QueuePresentKHR(queue.internal_object(), &infos)));
+            try!(check_errors(vk.QueuePresentKHR(*queue.internal_object_guard(), &infos)));
             try!(check_errors(result));
             Ok(())
         }
@@ -303,7 +304,7 @@ unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
     fn may_alias(&self) -> bool { false }
 
     #[inline]
-    unsafe fn gpu_access(&self, _: bool, _: ChunkRange, _: &mut Queue, _: Option<Arc<Fence>>,
+    unsafe fn gpu_access(&self, _: bool, _: ChunkRange, _: &Arc<Queue>, _: Option<Arc<Fence>>,
                          post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         assert!(post_semaphore.is_some());

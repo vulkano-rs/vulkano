@@ -1,10 +1,13 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use device::Device;
 
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -15,7 +18,7 @@ use vk;
 /// A pool has a maximum number of descriptor sets and a maximum number of descriptors (one value
 /// per descriptor type) it can allocate.
 pub struct DescriptorPool {
-    pool: vk::DescriptorPool,
+    pool: Mutex<vk::DescriptorPool>,
     device: Arc<Device>,
 }
 
@@ -50,7 +53,7 @@ impl DescriptorPool {
         };
 
         Ok(Arc::new(DescriptorPool {
-            pool: pool,
+            pool: Mutex::new(pool),
             device: device.clone(),
         }))
     }
@@ -62,12 +65,12 @@ impl DescriptorPool {
     }
 }
 
-unsafe impl VulkanObject for DescriptorPool {
+unsafe impl SynchronizedVulkanObject for DescriptorPool {
     type Object = vk::DescriptorPool;
 
     #[inline]
-    fn internal_object(&self) -> vk::DescriptorPool {
-        self.pool
+    fn internal_object_guard(&self) -> MutexGuard<vk::DescriptorPool> {
+        self.pool.lock().unwrap()
     }
 }
 
@@ -76,7 +79,8 @@ impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyDescriptorPool(self.device.internal_object(), self.pool, ptr::null());
+            let pool = self.pool.lock().unwrap();
+            vk.DestroyDescriptorPool(self.device.internal_object(), *pool, ptr::null());
         }
     }
 }

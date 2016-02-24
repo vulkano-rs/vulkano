@@ -63,7 +63,7 @@ pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
     ///
     /// The function can return a semaphore which will be waited up by the GPU before the
     /// work starts.
-    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &Arc<Queue>,
                          fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                          -> Option<Arc<Semaphore>>;
 
@@ -246,7 +246,7 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySourceC
     }
 
     #[inline]
-    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &mut Queue,
+    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &Arc<Queue>,
                          fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                          -> Option<Arc<Semaphore>>
     {

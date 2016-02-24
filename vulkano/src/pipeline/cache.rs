@@ -76,6 +76,7 @@ impl PipelineCache {
     ///
     /// - Panicks if `self` is included in the list of other pipelines.
     ///
+    // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
     pub fn merge<'a, I>(&self, pipelines: I) -> Result<(), OomError>
         where I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>
     {

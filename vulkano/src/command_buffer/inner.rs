@@ -31,6 +31,7 @@ use sync::Semaphore;
 
 use device::Device;
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -75,10 +76,12 @@ impl InnerCommandBufferBuilder {
         let vk = device.pointers();
 
         let cmd = unsafe {
+            let pool = pool.internal_object_guard();
+
             let infos = vk::CommandBufferAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 pNext: ptr::null(),
-                commandPool: pool.internal_object(),
+                commandPool: *pool,
                 level: if secondary {
                     vk::COMMAND_BUFFER_LEVEL_SECONDARY
                 } else {
@@ -608,8 +611,9 @@ impl Drop for InnerCommandBufferBuilder {
             unsafe {
                 let vk = self.device.pointers();
                 vk.EndCommandBuffer(cmd);
-                vk.FreeCommandBuffers(self.device.internal_object(), self.pool.internal_object(),
-                                      1, &cmd);
+
+                let pool = self.pool.internal_object_guard();
+                vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &cmd);
             }
         }
     }
@@ -635,7 +639,7 @@ impl InnerCommandBuffer {
     /// - Panicks if the queue doesn't belong to the device this command buffer was created with.
     /// - Panicks if the queue doesn't belong to the family the pool was created with.
     ///
-    pub fn submit(&self, queue: &mut Queue) -> Result<(), OomError> {       // TODO: wrong error type
+    pub fn submit(&self, queue: &Arc<Queue>) -> Result<(), OomError> {       // TODO: wrong error type
         // FIXME: the whole function should be checked
         let vk = self.device.pointers();
 
@@ -723,7 +727,7 @@ impl InnerCommandBuffer {
 
         unsafe {
             let fence = if let Some(ref fence) = fence { fence.internal_object() } else { 0 };
-            try!(check_errors(vk.QueueSubmit(queue.internal_object(), 1, &infos, fence)));
+            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
         }
 
         // FIXME: the return value shouldn't be () because the command buffer
@@ -743,8 +747,8 @@ impl Drop for InnerCommandBuffer {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.FreeCommandBuffers(self.device.internal_object(), self.pool.internal_object(),
-                                  1, &self.cmd);
+            let pool = self.pool.internal_object_guard();
+            vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &self.cmd);
         }
     }
 }

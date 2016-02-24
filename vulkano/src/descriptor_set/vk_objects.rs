@@ -13,6 +13,7 @@ use image::AbstractImageView;
 use sampler::Sampler;
 
 use OomError;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -61,10 +62,12 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         let vk = pool.device().pointers();
 
         let set = {
+            let pool_obj = pool.internal_object_guard();
+
             let infos = vk::DescriptorSetAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                 pNext: ptr::null(),
-                descriptorPool: pool.internal_object(),
+                descriptorPool: *pool_obj,
                 descriptorSetCount: 1,
                 pSetLayouts: &layout.layout,
             };
@@ -252,7 +255,7 @@ impl<S> Drop for DescriptorSet<S> {
         unsafe {
             let vk = self.pool.device().pointers();
             vk.FreeDescriptorSets(self.pool.device().internal_object(),
-                                  self.pool.internal_object(), 1, &self.set);
+                                  *self.pool.internal_object_guard(), 1, &self.set);
         }
     }
 }

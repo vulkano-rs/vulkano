@@ -13,11 +13,13 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use device::Device;
 use device::Queue;
 use OomError;
 use Success;
+use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -54,19 +56,17 @@ pub enum SharingMode {
     Concurrent(Vec<u32>),       // TODO: Vec is too expensive here
 }
 
-impl<'a> From<&'a Arc<Mutex<Queue>>> for SharingMode {
+impl<'a> From<&'a Arc<Queue>> for SharingMode {
     #[inline]
-    fn from(queue: &'a Arc<Mutex<Queue>>) -> SharingMode {
-        let queue = queue.lock().unwrap();      // TODO: meh
+    fn from(queue: &'a Arc<Queue>) -> SharingMode {
         SharingMode::Exclusive(queue.family().id())
     }
 }
 
-impl<'a> From<&'a [&'a Arc<Mutex<Queue>>]> for SharingMode {
+impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
     #[inline]
-    fn from(queues: &'a [&'a Arc<Mutex<Queue>>]) -> SharingMode {
+    fn from(queues: &'a [&'a Arc<Queue>]) -> SharingMode {
         SharingMode::Concurrent(queues.iter().map(|queue| {
-            let queue = queue.lock().unwrap();      // TODO: meh
             queue.family().id()
         }).collect())
     }
@@ -270,7 +270,7 @@ impl Drop for Semaphore {
 /// device loss.
 pub struct Event {
     device: Arc<Device>,
-    event: vk::Event,
+    event: Mutex<vk::Event>,
 }
 
 impl Event {
@@ -295,7 +295,7 @@ impl Event {
 
         Ok(Arc::new(Event {
             device: device.clone(),
-            event: event,
+            event: Mutex::new(event),
         }))
     }
 
@@ -304,8 +304,9 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
+            let event = self.event.lock().unwrap();
             let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             self.event)));
+                                                             *event)));
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -321,7 +322,8 @@ impl Event {
     pub fn set(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.SetEvent(self.device.internal_object(), self.event)).map(|_| ()));
+            let event = self.event.lock().unwrap();
+            try!(check_errors(vk.SetEvent(self.device.internal_object(), *event)).map(|_| ()));
             Ok(())
         }
     }
@@ -331,18 +333,19 @@ impl Event {
     pub fn reset(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)).map(|_| ()));
+            let event = self.event.lock().unwrap();
+            try!(check_errors(vk.ResetEvent(self.device.internal_object(), *event)).map(|_| ()));
             Ok(())
         }
     }
 }
 
-unsafe impl VulkanObject for Event {
+unsafe impl SynchronizedVulkanObject for Event {
     type Object = vk::Event;
 
     #[inline]
-    fn internal_object(&self) -> vk::Event {
-        self.event
+    fn internal_object_guard(&self) -> MutexGuard<vk::Event> {
+        self.event.lock().unwrap()
     }
 }
 
@@ -351,7 +354,8 @@ impl Drop for Event {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyEvent(self.device.internal_object(), self.event, ptr::null());
+            let event = self.event.lock().unwrap();
+            vk.DestroyEvent(self.device.internal_object(), *event, ptr::null());
         }
     }
 }

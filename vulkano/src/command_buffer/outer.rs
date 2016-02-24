@@ -437,7 +437,7 @@ impl PrimaryCommandBuffer {
     /// - Panicks if the queue doesn't belong to the family the pool was created with.
     ///
     #[inline]
-    pub fn submit(&self, queue: &mut Queue) -> Result<(), OomError> {       // TODO: wrong error type
+    pub fn submit(&self, queue: &Arc<Queue>) -> Result<(), OomError> {       // TODO: wrong error type
         self.inner.submit(queue)
     }
 }
