@@ -50,8 +50,18 @@ unsafe impl MemorySource for DeviceLocal {
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
                 -> Result<DeviceLocalChunk, OomError>
     {
-        let mem_ty = device.physical_device().memory_types()
-                           .skip(memory_type_bits.trailing_zeros() as usize).next().unwrap();
+        // We try to find a device-local memory type, but fall back to any memory type if we don't
+        // find any.
+
+        let device_local = device.physical_device().memory_types()
+                                 .filter(|t| (memory_type_bits & (1 << t.id())) != 0)
+                                 .filter(|t| t.is_device_local());
+
+        let any = device.physical_device().memory_types()
+                        .filter(|t| (memory_type_bits & (1 << t.id())) != 0);
+
+        let mem_ty = device_local.chain(any).next().expect("could not find any memory type");
+
         let mem = try!(DeviceMemory::alloc(device, &mem_ty, size));
 
         // note: alignment doesn't need to be checked because allocating memory is guaranteed to
