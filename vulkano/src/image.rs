@@ -17,6 +17,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::vec::IntoIter as VecIntoIter;
 
 use command_buffer::CommandBufferPool;
 use device::Device;
@@ -90,6 +91,50 @@ pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
     /// True if the image can be used as an input attachment in a framebuffer.
     fn usage_input_attachment(&self) -> bool;
 }
+
+// IMPORTANT: we transmute some Arc<AbstractTypedImageView> into Arc<AbstractImageView>, so
+//            the signature of AbstractTypedImageView should never require another trait
+pub unsafe trait AbstractTypedImageView<Ty, F>: AbstractImageView
+    where Ty: ImageTypeMarker, F: FormatMarker
+{
+}
+
+pub unsafe trait AbstractTypedImageViewsTuple {
+    type Iter: Iterator<Item = Arc<AbstractImageView>>;
+    fn iter(self) -> Self::Iter;
+}
+
+macro_rules! impl_abstract_typed_image_views_tuple {
+    ({$f_ty:ident, $f_m:ident} $({$o_ty:ident, $o_m:ident})*) => (
+        unsafe impl<$f_ty, $f_m $(, $o_ty, $o_m)*> AbstractTypedImageViewsTuple for
+            (Arc<AbstractTypedImageView<$f_ty, $f_m>>, $(Arc<AbstractTypedImageView<$o_ty, $o_m>>),*)
+        {
+            type Iter = VecIntoIter<Arc<AbstractImageView>>;
+
+            #[inline]
+            #[allow(non_snake_case)]
+            fn iter(self) -> VecIntoIter<Arc<AbstractImageView>> {
+                // TODO: Holy shit that transmute is ultra dangerous, but it's the only
+                //       solution to turn that Arc<AbstractTypedImageView> into an
+                //       Arc<AbstractImageView>.
+                //       See https://github.com/rust-lang/rust/issues/5665.
+                unsafe {
+                    let ($f_ty, $($o_ty,)*) = self;
+                    vec![
+                        mem::transmute($f_ty) $(, mem::transmute($o_ty))*
+                    ].into_iter()
+                }
+            }
+        }
+
+        impl_abstract_typed_image_views_tuple!($({$o_ty, $o_m})*);
+    );
+
+    () => ();
+}
+
+impl_abstract_typed_image_views_tuple!({Aty, Am} {Bty, Bm});       // TODO: finish
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
@@ -769,6 +814,11 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
     fn usage_input_attachment(&self) -> bool {
         (self.image.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
     }
+}
+
+unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
+    where Ty: ImageTypeMarker, F: FormatMarker, M: MemorySourceChunk
+{
 }
 
 impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker {

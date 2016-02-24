@@ -294,8 +294,10 @@ macro_rules! single_pass_renderpass {
 
                 // FIXME: should be stronger-typed
                 type AttachmentsList = (
-                    Arc<$crate::image::AbstractImageView>
-                );      // FIXME:
+                    $(
+                        Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::formats::$format>>,
+                    )*
+                );
 
                 #[inline]
                 fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
@@ -338,7 +340,7 @@ macro_rules! single_pass_renderpass {
 
                 #[inline]
                 fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
-                    vec![l.clone()/*, l.1.clone()*/].into_iter()
+                    $crate::image::AbstractTypedImageViewsTuple::iter(l)
                 }
             }
 
