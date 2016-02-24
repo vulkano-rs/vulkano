@@ -157,7 +157,7 @@ fn main() {
 
     let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
     let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::UniformBuffer(uniform_buffer.clone()))]).unwrap();
+                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: uniform_buffer.clone(), offset: 0, size: uniform_buffer.size() })]).unwrap();
 
 
     let pipeline = {

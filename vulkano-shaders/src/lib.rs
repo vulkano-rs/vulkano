@@ -360,9 +360,10 @@ unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set{set} {{
     }}
 
     fn decode_write(&self, write: Self::Write) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
-        vec![
+        /*vec![     // FIXME: disabled, not compiling
             {writes}
-        ]
+        ]*/
+        unimplemented!()
     }}
 
     #[inline]

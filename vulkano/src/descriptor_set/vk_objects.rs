@@ -113,24 +113,24 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let buffer_descriptors = write.iter().filter_map(|write| {
             match write.content {
-                DescriptorBind::UniformBuffer(ref buffer) |
-                DescriptorBind::DynamicUniformBuffer(ref buffer) => {
+                DescriptorBind::UniformBuffer { ref buffer, offset, size } |
+                DescriptorBind::DynamicUniformBuffer { ref buffer, offset, size } => {
                     assert!(buffer.usage_uniform_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
                         buffer: buffer.internal_object(),
-                        offset: 0,      // FIXME: allow buffer slices
-                        range: buffer.size() as u64,       // FIXME: allow buffer slices
+                        offset: offset as u64,
+                        range: size as u64,
                     })
                 },
-                DescriptorBind::StorageBuffer(ref buffer) |
-                DescriptorBind::DynamicStorageBuffer(ref buffer) => {
+                DescriptorBind::StorageBuffer { ref buffer, offset, size } |
+                DescriptorBind::DynamicStorageBuffer { ref buffer, offset, size } => {
                     assert!(buffer.usage_storage_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
                         buffer: buffer.internal_object(),
-                        offset: 0,      // FIXME: allow buffer slices
-                        range: buffer.size() as u64,       // FIXME: allow buffer slices
+                        offset: offset as u64,
+                        range: size as u64,
                     })
                 },
                 _ => None
@@ -204,9 +204,9 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
                     (ptr::null(), img)
                 },
                 //DescriptorBind::UniformTexelBuffer(_) | DescriptorBind::StorageTexelBuffer(_) =>
-                DescriptorBind::UniformBuffer(_) | DescriptorBind::StorageBuffer(_) |
-                DescriptorBind::DynamicUniformBuffer(_) |
-                DescriptorBind::DynamicStorageBuffer(_) => {
+                DescriptorBind::UniformBuffer { .. } | DescriptorBind::StorageBuffer { .. } |
+                DescriptorBind::DynamicUniformBuffer { .. } |
+                DescriptorBind::DynamicStorageBuffer { .. } => {
                     let buf = buffer_descriptors.as_ptr().offset(next_buffer_desc as isize);
                     next_buffer_desc += 1;
                     (buf, ptr::null())

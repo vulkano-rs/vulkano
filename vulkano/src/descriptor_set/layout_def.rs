@@ -72,10 +72,10 @@ pub enum DescriptorBind {
     CombinedImageSampler(Arc<Sampler>, Arc<AbstractImageView>, ImageLayout),
     //UniformTexelBuffer(Arc<AbstractBuffer>),      // FIXME: requires buffer views
     //StorageTexelBuffer(Arc<AbstractBuffer>),      // FIXME: requires buffer views
-    UniformBuffer(Arc<AbstractBuffer>),
-    StorageBuffer(Arc<AbstractBuffer>),
-    DynamicUniformBuffer(Arc<AbstractBuffer>),
-    DynamicStorageBuffer(Arc<AbstractBuffer>),
+    UniformBuffer { buffer: Arc<AbstractBuffer>, offset: usize, size: usize },
+    StorageBuffer { buffer: Arc<AbstractBuffer>, offset: usize, size: usize },
+    DynamicUniformBuffer { buffer: Arc<AbstractBuffer>, offset: usize, size: usize },
+    DynamicStorageBuffer { buffer: Arc<AbstractBuffer>, offset: usize, size: usize },
     InputAttachment(Arc<AbstractImageView>, ImageLayout),
 }
 
@@ -90,10 +90,10 @@ impl DescriptorBind {
             DescriptorBind::StorageImage(_, _) => DescriptorType::StorageImage,
             //DescriptorBind::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
             //DescriptorBind::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
-            DescriptorBind::UniformBuffer(_) => DescriptorType::UniformBuffer,
-            DescriptorBind::StorageBuffer(_) => DescriptorType::StorageBuffer,
-            DescriptorBind::DynamicUniformBuffer(_) => DescriptorType::UniformBufferDynamic,
-            DescriptorBind::DynamicStorageBuffer(_) => DescriptorType::StorageBufferDynamic,
+            DescriptorBind::UniformBuffer { .. } => DescriptorType::UniformBuffer,
+            DescriptorBind::StorageBuffer { .. } => DescriptorType::StorageBuffer,
+            DescriptorBind::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
+            DescriptorBind::DynamicStorageBuffer { .. } => DescriptorType::StorageBufferDynamic,
             DescriptorBind::InputAttachment(_, _) => DescriptorType::InputAttachment,
         }
     }
