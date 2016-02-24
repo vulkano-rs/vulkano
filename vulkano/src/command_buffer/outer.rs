@@ -8,7 +8,7 @@ use command_buffer::inner::InnerCommandBuffer;
 use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
-use formats::FloatOrCompressedFormatMarker;
+use formats::FloatFormatMarker;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
@@ -110,9 +110,11 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
+    ///
+    /// Note that compressed formats are not supported.
     pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                            color: F::ClearValue) -> PrimaryCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
+        where Ty: ImageTypeMarker, F: FloatFormatMarker
     {
         unsafe {
             PrimaryCommandBufferBuilder {
