@@ -45,7 +45,7 @@ fn main() {
         let usage = caps.supported_usage_flags;
 
         vulkano::swapchain::Swapchain::new(&device, &surface, 3,
-                                           vulkano::formats::B8G8R8A8Srgb, dimensions, 1,
+                                           vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true).expect("failed to create swapchain")
@@ -102,7 +102,7 @@ fn main() {
 
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
-                                                  vulkano::formats::R8G8B8A8Unorm, [93, 93], (), 1).unwrap();
+                                                  vulkano::format::R8G8B8A8Unorm, [93, 93], (), 1).unwrap();
     let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &queue).unwrap();
     let texture_view = vulkano::image::ImageView::new(&texture).expect("failed to create image view");
 

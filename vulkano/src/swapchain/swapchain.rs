@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use device::Device;
 use device::Queue;
-use formats::FormatMarker;
+use format::FormatMarker;
 use image::Image;
 use image::ImagePrototype;
 use image::Type2d;

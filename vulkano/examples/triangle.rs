@@ -80,7 +80,7 @@ fn main() {
         let usage = caps.supported_usage_flags;
 
         vulkano::swapchain::Swapchain::new(&device, &surface, 3,
-                                           vulkano::formats::B8G8R8A8Srgb, dimensions, 1,
+                                           vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true).expect("failed to create swapchain")

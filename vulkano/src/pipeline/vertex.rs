@@ -5,7 +5,7 @@ use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
 use buffer::AbstractBuffer;
-use formats::Format;
+use format::Format;
 use memory::MemorySourceChunk;
 use vk;
 
@@ -209,7 +209,7 @@ macro_rules! impl_vertex {
                             },
 
                             format: unsafe {
-                                #[inline] fn f<T: $crate::pipeline::vertex::Attribute>(_: &T) -> $crate::formats::Format { T::format() }
+                                #[inline] fn f<T: $crate::pipeline::vertex::Attribute>(_: &T) -> $crate::format::Format { T::format() }
                                 let dummy = 0usize as *const $out;
                                 f(&(&*dummy).$member)
                             },

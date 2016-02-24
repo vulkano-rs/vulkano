@@ -3,8 +3,8 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use formats::Format;
-use formats::FormatMarker;
+use format::Format;
+use format::FormatMarker;
 use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;

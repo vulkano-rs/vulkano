@@ -22,7 +22,7 @@ use std::vec::IntoIter as VecIntoIter;
 use command_buffer::CommandBufferPool;
 use device::Device;
 use device::Queue;
-use formats::FormatMarker;
+use format::FormatMarker;
 use memory::ChunkProperties;
 use memory::ChunkRange;
 use memory::MemorySource;

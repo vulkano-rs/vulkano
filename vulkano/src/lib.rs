@@ -51,7 +51,7 @@ pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor_set;
 pub mod device;
-pub mod formats;
+pub mod format;
 pub mod framebuffer;
 pub mod image;
 pub mod instance;
