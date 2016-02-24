@@ -155,9 +155,9 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn update_buffer<'a, B, T: 'a, M: 'a>(self, buffer: B, data: &T)
-                                                 -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, M>>
+    pub unsafe fn update_buffer<B, T>(self, buffer: B, data: &T)
+                                      -> InnerCommandBufferBuilder
+        where B: Into<BufferSlice<T>>
     {
         {
             let vk = self.device.pointers();
@@ -168,13 +168,13 @@ impl InnerCommandBufferBuilder {
             assert!(buffer.size() <= 65536);
             assert!(buffer.offset() % 4 == 0);
             assert!(buffer.size() % 4 == 0);
-            assert!(buffer.usage_transfer_dest());
+            assert!(buffer.buffer().usage_transfer_dest());
 
             // FIXME: check that the queue family supports transfers
             // FIXME: add the buffer to the list of resources
             // FIXME: check queue family of the buffer
 
-            vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.internal_object(),
+            vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().internal_object(),
                                buffer.offset() as vk::DeviceSize,
                                buffer.size() as vk::DeviceSize, data as *const T as *const _);
         }
@@ -321,12 +321,12 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, Pl, L, I, Ib, IbM>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub unsafe fn draw_indexed<V, Pl, L, I, Ib>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                                  vertices: V, indices: Ib, dynamic: &DynamicState,
                                                  sets: L) -> InnerCommandBufferBuilder
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static
+              Ib: Into<BufferSlice<[I]>>, I: 'static + Index
     {
 
         // FIXME: add buffers to the resources

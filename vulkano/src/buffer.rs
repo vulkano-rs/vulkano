@@ -441,15 +441,14 @@ impl Usage {
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
 #[derive(Clone)]
-pub struct BufferSlice<'a, T: ?Sized + 'a, M: 'a> {
+pub struct BufferSlice<T: ?Sized> {
     marker: PhantomData<T>,
     resource: Arc<AbstractBuffer>,
-    inner: &'a Inner<M>,
     offset: usize,
     size: usize,
 }
 
-impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {
+impl<T: ?Sized> BufferSlice<T> {
     /// Returns the buffer that this slice belongs to.
     pub fn buffer(&self) -> &Arc<AbstractBuffer> {
         &self.resource
@@ -466,63 +465,9 @@ impl<'a, T: ?Sized + 'a, M: 'a> BufferSlice<'a, T, M> {
     pub fn size(&self) -> usize {
         self.size
     }
-
-    /// True if the buffer can be used as a source for buffer transfers.
-    #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a destination for buffer transfers.
-    #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_uniform_texel_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_storage_texel_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_uniform_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_storage_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a source for index data.
-    #[inline]
-    pub fn usage_index_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_INDEX_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as a source for vertex data.
-    #[inline]
-    pub fn usage_vertex_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0
-    }
-
-    /// True if the buffer can be used as
-    #[inline]
-    pub fn usage_indirect_buffer(&self) -> bool {
-        (self.inner.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
-    }
 }
 
-impl<'a, T: 'a, M: 'a> BufferSlice<'a, [T], M> {
+impl<T> BufferSlice<[T]> {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> usize {
@@ -530,37 +475,26 @@ impl<'a, T: 'a, M: 'a> BufferSlice<'a, [T], M> {
     }
 }
 
-unsafe impl<'a, T: ?Sized, M> VulkanObject for BufferSlice<'a, T, M> {
-    type Object = vk::Buffer;
-
-    #[inline]
-    fn internal_object(&self) -> vk::Buffer {
-        self.inner.buffer
-    }
-}
-
-impl<'a, T: ?Sized + 'static, M: 'static> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, M>
+impl<'a, T: ?Sized + 'static, M: 'static> From<&'a Arc<Buffer<T, M>>> for BufferSlice<T>
     where M: MemorySourceChunk
 {
     #[inline]
-    fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<'a, T, M> {
+    fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<T> {
         BufferSlice {
             marker: PhantomData,
             resource: r.clone(),
-            inner: &r.inner,
             offset: 0,
             size: r.inner.size,
         }
     }
 }
 
-impl<'a, T: 'a, M: 'a> From<BufferSlice<'a, T, M>> for BufferSlice<'a, [T], M> {
+impl<T> From<BufferSlice<T>> for BufferSlice<[T]> {
     #[inline]
-    fn from(r: BufferSlice<'a, T, M>) -> BufferSlice<'a, [T], M> {
+    fn from(r: BufferSlice<T>) -> BufferSlice<[T]> {
         BufferSlice {
             marker: PhantomData,
             resource: r.resource,
-            inner: r.inner,
             offset: r.offset,
             size: r.size,
         }

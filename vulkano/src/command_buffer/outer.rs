@@ -60,9 +60,8 @@ impl PrimaryCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T: 'a, M: 'a>(self, buffer: B, data: &T)
-                                              -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, M>>
+    pub fn update_buffer<B, T>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
+        where B: Into<BufferSlice<T>>
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -220,11 +219,11 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, I, Ib, IbM>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<V, L, Pl, I, Ib>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
         where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<'a, [I], IbM>>, I: 'static + Index, IbM: 'static,
+              Ib: Into<BufferSlice<[I]>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static
     {
         unsafe {
@@ -477,9 +476,8 @@ impl SecondaryComputeCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T: 'a, M: 'a>(self, buffer: B, data: &T)
-                                              -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, M>>
+    pub fn update_buffer<B, T>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
+        where B: Into<BufferSlice<T>>
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {
