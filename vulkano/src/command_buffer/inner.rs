@@ -162,21 +162,21 @@ impl InnerCommandBufferBuilder {
                                       -> InnerCommandBufferBuilder
         where B: Into<BufferSlice<T>>
     {
+        let buffer = buffer.into();
+
+        assert!(self.pool.queue_family().supports_transfers());
+        assert_eq!(buffer.size(), mem::size_of_val(data));
+        assert!(buffer.size() <= 65536);
+        assert!(buffer.offset() % 4 == 0);
+        assert!(buffer.size() % 4 == 0);
+        assert!(buffer.buffer().usage_transfer_dest());
+
+        // FIXME: check that the queue family supports transfers
+        // FIXME: add the buffer to the list of resources
+        // FIXME: check queue family of the buffer
+
         {
             let vk = self.device.pointers();
-            let buffer = buffer.into();
-
-            assert!(self.pool.queue_family().supports_transfers());
-            assert_eq!(buffer.size(), mem::size_of_val(data));
-            assert!(buffer.size() <= 65536);
-            assert!(buffer.offset() % 4 == 0);
-            assert!(buffer.size() % 4 == 0);
-            assert!(buffer.buffer().usage_transfer_dest());
-
-            // FIXME: check that the queue family supports transfers
-            // FIXME: add the buffer to the list of resources
-            // FIXME: check queue family of the buffer
-
             vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().internal_object(),
                                buffer.offset() as vk::DeviceSize,
                                buffer.size() as vk::DeviceSize, data as *const T as *const _);
@@ -203,20 +203,20 @@ impl InnerCommandBufferBuilder {
                                              size: usize, data: u32) -> InnerCommandBufferBuilder
         where M: MemorySourceChunk + 'static
     {
+
+        assert!(self.pool.queue_family().supports_transfers());
+        assert!(offset + size <= buffer.size());
+        assert!(offset % 4 == 0);
+        assert!(size % 4 == 0);
+        assert!(buffer.usage_transfer_dest());
+
+        self.add_buffer_resource(buffer.clone(), true, offset, size);
+
+        // FIXME: check that the queue family supports transfers
+        // FIXME: check queue family of the buffer
+
         {
             let vk = self.device.pointers();
-
-            assert!(self.pool.queue_family().supports_transfers());
-            assert!(offset + size <= buffer.size());
-            assert!(offset % 4 == 0);
-            assert!(size % 4 == 0);
-            assert!(buffer.usage_transfer_dest());
-
-            self.buffer_resources.push(buffer.clone());
-
-            // FIXME: check that the queue family supports transfers
-            // FIXME: check queue family of the buffer
-
             vk.CmdFillBuffer(self.cmd.unwrap(), buffer.internal_object(),
                              offset as vk::DeviceSize, size as vk::DeviceSize, data);
         }
@@ -243,25 +243,24 @@ impl InnerCommandBufferBuilder {
                                                            -> InnerCommandBufferBuilder
         where Ms: MemorySourceChunk + 'static, Md: MemorySourceChunk + 'static
     {
+        assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
+        assert!(self.pool.queue_family().supports_transfers());
+        assert!(source.usage_transfer_src());
+        assert!(destination.usage_transfer_dest());
+
+        let copy = vk::BufferCopy {
+            srcOffset: 0,
+            dstOffset: 0,
+            size: source.size() as u64,     // FIXME: what is destination is too small?
+        };
+
+        self.add_buffer_resource(source.clone(), false, 0, source.size());
+        self.add_buffer_resource(destination.clone(), true, 0, source.size());
+
         {
             let vk = self.device.pointers();
-
-            assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
-            assert!(self.pool.queue_family().supports_transfers());
-            assert!(source.usage_transfer_src());
-            assert!(destination.usage_transfer_dest());
-
-            let copy = vk::BufferCopy {
-                srcOffset: 0,
-                dstOffset: 0,
-                size: source.size() as u64,
-            };
-
             vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(),
                              destination.internal_object(), 1, &copy);
-
-            self.buffer_resources.push(source.clone());
-            self.buffer_resources.push(destination.clone());
         }
 
         self
@@ -272,19 +271,18 @@ impl InnerCommandBufferBuilder {
                                                   -> InnerCommandBufferBuilder
         where Ty: ImageTypeMarker, F: FloatOrCompressedFormatMarker
     {
+        let color = vk::ClearColorValue::float32(color);
+
+        let range = vk::ImageSubresourceRange {
+            aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+            baseMipLevel: 0,        // FIXME:
+            levelCount: 1,      // FIXME:
+            baseArrayLayer: 0,      // FIXME:
+            layerCount: 1,      // FIXME:
+        };
+
         {
             let vk = self.device.pointers();
-
-            let color = vk::ClearColorValue::float32(color);
-
-            let range = vk::ImageSubresourceRange {
-                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                baseMipLevel: 0,        // FIXME:
-                levelCount: 1,      // FIXME:
-                baseArrayLayer: 0,      // FIXME:
-                layerCount: 1,      // FIXME:
-            };
-
             vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
                                   &color, 1, &range);
         }
@@ -326,19 +324,18 @@ impl InnerCommandBufferBuilder {
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc
     {
-
         // FIXME: add buffers to the resources
 
+        self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
+
+        assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
+        let buffers = vertices.buffers();
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
+        let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+
         {
-            self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
-
             let vk = self.device.pointers();
-
-            assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
-            let buffers = vertices.buffers();
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
-            let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
             vk.CmdDraw(self.cmd.unwrap(), 4, 1, 0, 0);  // FIXME: params
@@ -359,22 +356,23 @@ impl InnerCommandBufferBuilder {
 
         // FIXME: add buffers to the resources
 
+        self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
+
+
+        let indices = indices.into();
+
+        assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
+        let buffers = vertices.buffers();
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
+        let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+
+        assert!(indices.buffer().usage_index_buffer());
+
+        self.add_buffer_resource(indices.buffer().clone(), false, indices.offset(), indices.size());
+
         {
-            self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
-
             let vk = self.device.pointers();
-
-            let indices = indices.into();
-
-            assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
-            let buffers = vertices.buffers();
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
-            let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
-
-
-            assert!(indices.buffer().usage_index_buffer());
-
             vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
                                   indices.offset() as u64, I::ty() as u32);
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
@@ -392,7 +390,6 @@ impl InnerCommandBufferBuilder {
     {
         unsafe {
             let vk = self.device.pointers();
-
             assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.graphics_pipeline != Some(pipeline.internal_object()) {
@@ -478,31 +475,30 @@ impl InnerCommandBufferBuilder {
             self.image_resources.push(attachment.clone());
         }
 
+        let infos = vk::RenderPassBeginInfo {
+            sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            pNext: ptr::null(),
+            renderPass: renderpass.internal_object(),
+            framebuffer: framebuffer.internal_object(),
+            renderArea: vk::Rect2D {                // TODO: let user customize
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: framebuffer.width(),
+                    height: framebuffer.height(),
+                },
+            },
+            clearValueCount: clear_values.len() as u32,
+            pClearValues: clear_values.as_ptr(),
+        };
+
+        let content = if secondary_cmd_buffers {
+            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+        } else {
+            vk::SUBPASS_CONTENTS_INLINE
+        };
+
         {
             let vk = self.device.pointers();
-
-            let infos = vk::RenderPassBeginInfo {
-                sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                pNext: ptr::null(),
-                renderPass: renderpass.internal_object(),
-                framebuffer: framebuffer.internal_object(),
-                renderArea: vk::Rect2D {                // TODO: let user customize
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: vk::Extent2D {
-                        width: framebuffer.width(),
-                        height: framebuffer.height(),
-                    },
-                },
-                clearValueCount: clear_values.len() as u32,
-                pClearValues: clear_values.as_ptr(),
-            };
-
-            let content = if secondary_cmd_buffers {
-                vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-            } else {
-                vk::SUBPASS_CONTENTS_INLINE
-            };
-
             vk.CmdBeginRenderPass(self.cmd.unwrap(), &infos, content);
         }
 
@@ -511,15 +507,14 @@ impl InnerCommandBufferBuilder {
 
     #[inline]
     pub unsafe fn next_subpass(self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
+        let content = if secondary_cmd_buffers {
+            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+        } else {
+            vk::SUBPASS_CONTENTS_INLINE
+        };
+
         {
             let vk = self.device.pointers();
-
-            let content = if secondary_cmd_buffers {
-                vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-            } else {
-                vk::SUBPASS_CONTENTS_INLINE
-            };
-
             vk.CmdNextSubpass(self.cmd.unwrap(), content);
         }
 
@@ -554,6 +549,20 @@ impl InnerCommandBufferBuilder {
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
         }
+    }
+
+    /// Adds a buffer resource to the list of resources used by this command buffer.
+    // FIXME: add access flags
+    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, write: bool, offset: usize,
+                           size: usize)
+    {
+        // TODO: handle memory barriers
+        self.buffer_resources.push(buffer);
+    }
+
+    /// Adds an image resource to the list of resources used by this command buffer.
+    fn add_image_resource(&mut self) {   // TODO:
+        unimplemented!()
     }
 }
 
