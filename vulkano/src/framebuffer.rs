@@ -790,6 +790,12 @@ impl<L> Framebuffer<L> {
             self.renderpass.is_compatible_with(renderpass)
     }
 
+    /// Returns the width, height and layers of this framebuffer.
+    #[inline]
+    pub fn dimensions(&self) -> [u32; 3] {
+        [self.dimensions.0, self.dimensions.1, self.dimensions.2]
+    }
+
     /// Returns the width of the framebuffer in pixels.
     #[inline]
     pub fn width(&self) -> u32 {
