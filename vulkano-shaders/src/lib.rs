@@ -32,8 +32,7 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
             s
         };
 
-        let out_file = dest.join("shaders").join(shader);
-        fs::create_dir_all(&dest.join("shaders")).unwrap();
+        fs::create_dir_all(&dest.join("shaders").join(shader.parent().unwrap())).unwrap();
         let mut file_output = File::create(&dest.join("shaders").join(shader))
                                                         .expect("failed to open shader output");
 
