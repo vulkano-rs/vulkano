@@ -80,10 +80,10 @@ fn main() {
     }
 
 
-    mod vs { include!{concat!(env!("OUT_DIR"), "/examples-image_vs.rs")} }
-    let vs = vs::ImageShader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/examples-image_fs.rs")} }
-    let fs = fs::ImageShader::load(&device).expect("failed to create shader module");
+    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/image_vs.glsl")} }
+    let vs = vs::Shader::load(&device).expect("failed to create shader module");
+    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/image_fs.glsl")} }
+    let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     let renderpass = single_pass_renderpass!{
         device: &device,

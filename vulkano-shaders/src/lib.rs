@@ -1,11 +1,47 @@
+extern crate glsl_to_spirv;
+
 use std::collections::HashSet;
+use std::env;
+use std::fs;
+use std::fs::File;
 use std::io::Error as IoError;
 use std::io::Read;
+use std::io::Write;
+use std::path::Path;
 
 pub use parse::ParseError;
+pub use glsl_to_spirv::ShaderType;
 
 mod enums;
 mod parse;
+
+pub fn build_glsl_shaders<'a, I>(shaders: I)
+    where I: IntoIterator<Item = (&'a str, ShaderType)>
+{
+    let dest = env::var("OUT_DIR").unwrap();
+    let dest = Path::new(&dest);
+
+    for (shader, ty) in shaders {
+        println!("cargo:rerun-if-changed={}", shader);
+        let shader = Path::new(shader);
+
+        let shader_content = {
+            let mut s = String::new();
+            File::open(shader).expect("failed to open shader").read_to_string(&mut s)
+                              .expect("failed to read shader content");
+            s
+        };
+
+        let out_file = dest.join("shaders").join(shader);
+        fs::create_dir_all(&dest.join("shaders")).unwrap();
+        let mut file_output = File::create(&dest.join("shaders").join(shader))
+                                                        .expect("failed to open shader output");
+
+        let content = glsl_to_spirv::compile(&shader_content, ty).unwrap();
+        let output = reflect("Shader", content).unwrap();
+        write!(file_output, "{}", output).unwrap();
+    }
+}
 
 pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     where R: Read

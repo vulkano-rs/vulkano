@@ -3,5 +3,5 @@ name = "vulkano-shaders"
 version = "0.1.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
 
-[dev-dependencies]
+[dependencies]
 glsl-to-spirv = { path = "../glsl-to-spirv" }

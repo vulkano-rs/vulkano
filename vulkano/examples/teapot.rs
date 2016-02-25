@@ -119,10 +119,10 @@ fn main() {
         mapping.1 = proj.into();
     }
 
-    mod vs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_vs.rs")} }
-    let vs = vs::TeapotShader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/examples-teapot_fs.rs")} }
-    let fs = fs::TeapotShader::load(&device).expect("failed to create shader module");
+    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
+    let vs = vs::Shader::load(&device).expect("failed to create shader module");
+    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
+    let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     let images = images.into_iter().map(|image| {
         let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,

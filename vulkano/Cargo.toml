@@ -11,7 +11,6 @@ lazy_static = "0.1.15"
 
 [build-dependencies]
 vk-sys = { path = "../vk-sys" }
-glsl-to-spirv = { path = "../glsl-to-spirv" }
 vulkano-shaders = { path = "../vulkano-shaders" }
 
 [dev-dependencies]
