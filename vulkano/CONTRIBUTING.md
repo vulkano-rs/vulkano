@@ -12,7 +12,7 @@ For each module, the tile is checked if the code inside it is in an "acceptable"
 - [ ] Device
 - [x] Features
 - [ ] Formats
-- [ ] Framebuffer
+- [x] Framebuffer
 - [ ] Image
 - [ ] Instance
 - [ ] Lib

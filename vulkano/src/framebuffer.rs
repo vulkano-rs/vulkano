@@ -1,24 +1,65 @@
 //! Targets on which your draw commands are executed.
 //! 
+//! # Render passes and framebuffers
+//!
 //! There are two concepts in Vulkan:
 //! 
-//! - A `RenderPass` is a collection of rendering passes (called subpasses). Each subpass contains
-//!   the list of attachments that are written to when drawing. The `RenderPass` only defines the
-//!   formats and dimensions of all the attachments of the multiple subpasses.
-//! - A `Framebuffer` defines the actual images that are attached. The format of the images must
-//!   match what the `RenderPass` expects.
+//! - A `RenderPass` is a collection of rendering passes called subpasses. Each subpass contains
+//!   the format and dimensions of the attachments that are part of the subpass. The render
+//!   pass only defines the layout of the rendering process.
+//! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
+//!   `RenderPass` and has to match its characteristics.
 //!
-//! Creating a `RenderPass` is necessary before you create a graphics pipeline.
-//! A `Framebuffer`, however, is only needed when you build the command buffer.
+//! This split means that you can create graphics pipelines from a `RenderPass` alone.
+//! A `Framebuffer` is only needed when you add draw commands to a command buffer.
 //!
-//! # Creating a RenderPass
+//! # Render passes
+//!
+//! A render pass is composed of three things:
+//!
+//! - A list of attachments with their format.
+//! - A list of subpasses, that defines for each subpass which attachment is used for which
+//!   purpose.
+//! - A list of dependencies between subpasses. Vulkan implementations are free to reorder the
+//!   subpasses, which means that you need to declare dependencies if the output of a subpass
+//!   needs to be read in a following subpass.
+//!
+//! Before you can create a `RenderPass` object with the vulkano library, you have to create an
+//! object that can describe these three lists through `RenderPassLayout` trait. This trait is
+//! unsafe because the information that its methods return is trusted blindly by vulkano.
 //! 
-//! Creating a `RenderPass` in the vulkano library is best done with the
-//! `single_pass_renderpass!` macro.
+//! There are two ways to do this:   TODO add more ways
+//! 
+//! - Creating an instance of an `EmptySinglePassLayout`, which describes a renderpass with no
+//!   attachment and with one subpass.
+//! - Using the `single_pass_renderpass!` macro. See the documentation of this macro.
 //!
-//! This macro creates an inaccessible struct which implements the `RenderPassLayout` trait. This
-//! trait tells vulkano what the characteristics of the renderpass are, and is also used to
-//! determine the types of the various parameters later on.
+//! ## Example
+//! 
+//! With `EmptySinglePassLayout`:
+//! 
+//! ```no_run
+//! use vulkano::framebuffer::RenderPass;
+//! use vulkano::framebuffer::EmptySinglePassLayout;
+//! 
+//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! let renderpass = RenderPass::new(&device, EmptySinglePassLayout).unwrap();
+//! // the type of `renderpass` is `RenderPass<EmptySinglePassLayout>`
+//! ```
+//!
+//! # Framebuffers
+//!
+//! Creating a framebuffer is done by passing the render pass object, the dimensions of the
+//! framebuffer, and the list of attachments to `Framebuffer::new()`.
+//!
+//! The slightly tricky part is that the list of attachments depends on the trait implementation
+//! of `RenderPassLayout`. For example if you use an `EmptySinglePassLayout`, you have to pass
+//! `()` for the list of attachments.
+//!
+//! Some implementations of `RenderPassLayout` can use strong typing for the attachments list, in
+//! order to produce a compilation error if you pass the wrong kind of attachment. Other
+//! implementations may have more relaxed rules and check the format of the attachments at runtime
+//! instead.
 //!
 use std::error;
 use std::fmt;
@@ -289,7 +330,7 @@ macro_rules! single_pass_renderpass {
 
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);
+                type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
                 type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
@@ -427,7 +468,8 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     ///
     /// # Panic
     ///
-    /// - Panicks if the layout described by the `RenderPassLayout` implementation is invalid.
+    /// - Panicks if this functions detects that the `RenderPassLayout` trait was not implemented
+    ///   correctly and contains an error.
     ///   See the documentation of the various methods and structs related to `RenderPassLayout`
     ///   for more details.
     ///
@@ -702,9 +744,9 @@ impl<'a, L: 'a> Subpass<'a, L> {
 /// This is a structure that you must pass when you start recording draw commands in a
 /// command buffer.
 ///
-/// A framebuffer can be used alongside with any other renderpass object as long as it is
-/// compatible with the renderpass that his framebuffer was created with. You can determine whether
-/// two renderpass objects are compatible by calling `is_compatible_with`.
+/// A framebuffer can be used alongside with any other render pass object as long as it is
+/// compatible with the render pass that his framebuffer was created with. You can determine
+/// whether two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct Framebuffer<L> {
     device: Arc<Device>,
     renderpass: Arc<RenderPass<L>>,
@@ -717,16 +759,16 @@ impl<L> Framebuffer<L> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which struct is used as a template parameter
-    /// for the renderpass.
+    /// for the render pass.
     ///
     /// # Panic
     ///
-    /// - Panicks if one of the attachments has a different sample count than what the renderpass
+    /// - Panicks if one of the attachments has a different sample count than what the render pass
     ///   describes.
     /// - Additionally, some methods in the `RenderPassLayout` implementation may panic if you
     ///   pass invalid attachments.
     ///
-    pub fn new<'a>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),
+    pub fn new<'a>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                    attachments: L::AttachmentsList)
                    -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: RenderPassLayout
@@ -846,10 +888,13 @@ impl<L> Drop for Framebuffer<L> {
     }
 }
 
+/// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum FramebufferCreationError {
+    /// Out of memory.
     OomError(OomError),
+    /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
 }
 
