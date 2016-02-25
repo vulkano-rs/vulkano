@@ -22,7 +22,7 @@ use std::vec::IntoIter as VecIntoIter;
 use command_buffer::CommandBufferPool;
 use device::Device;
 use device::Queue;
-use format::FormatMarker;
+use format::FormatDesc;
 use memory::ChunkProperties;
 use memory::ChunkRange;
 use memory::MemorySource;
@@ -96,7 +96,7 @@ pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
 // IMPORTANT: we transmute some Arc<AbstractTypedImageView> into Arc<AbstractImageView>, so
 //            the signature of AbstractTypedImageView should never require another trait
 pub unsafe trait AbstractTypedImageView<Ty, F>: AbstractImageView
-    where Ty: ImageTypeMarker, F: FormatMarker
+    where Ty: ImageTypeMarker, F: FormatDesc
 {
 }
 
@@ -232,7 +232,7 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker {
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
-    where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatMarker
+    where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Creates a new image and allocates memory for it.
     ///
@@ -474,7 +474,7 @@ pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker {
 }
 
 impl<Ty, F, M> ImagePrototype<Ty, F, M>
-    where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatMarker
+    where M: MemorySourceChunk, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Returns the dimensions of this image.
     #[inline]
@@ -679,7 +679,7 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     /// Note that you must create the view with identity swizzling if you want to use this view
     /// as a framebuffer attachment.
     pub fn new(image: &Arc<Image<Ty, F, M>>) -> Result<Arc<ImageView<Ty, F, M>>, OomError>
-        where F: FormatMarker
+        where F: FormatDesc
     {
         let vk = image.device.pointers();
 
@@ -820,7 +820,7 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatMarker, M: MemorySourceChunk
+    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySourceChunk
 {
 }
 

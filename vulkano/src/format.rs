@@ -5,7 +5,7 @@
 //! This module contains three things:
 //!
 //! - The `Format` enumeration, which contains all the available formats.
-//! - The `FormatMarker` trait.
+//! - The `FormatDesc` trait.
 //! - One struct for each format.
 //!
 //! # Formats
@@ -166,7 +166,7 @@ macro_rules! formats {
     );
 
     (__inner_impl__ $name:ident float=$num:expr) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = [f32; $num];
 
             #[inline]
@@ -174,12 +174,12 @@ macro_rules! formats {
                 Format::$name
             }
         }
-        unsafe impl FloatFormatMarker for $name {}
-        unsafe impl FloatOrCompressedFormatMarker for $name {}
+        unsafe impl FloatFormatDesc for $name {}
+        unsafe impl FloatOrCompressedFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident uint=$num:expr) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = [u32; $num];
 
             #[inline]
@@ -188,11 +188,11 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl UintFormatMarker for $name {}
+        unsafe impl UintFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident sint=$num:expr) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = [i32; $num];
 
             #[inline]
@@ -201,11 +201,11 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl SintFormatMarker for $name {}
+        unsafe impl SintFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident depth) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = f32;
 
             #[inline]
@@ -214,11 +214,11 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl DepthFormatMarker for $name {}
+        unsafe impl DepthFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident stencil) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = u32;      // FIXME: shouldn't stencil be i32?
 
             #[inline]
@@ -227,11 +227,11 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl StencilFormatMarker for $name {}
+        unsafe impl StencilFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident depthstencil) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = (f32, u32);       // FIXME: shouldn't stencil be i32?
 
             #[inline]
@@ -240,11 +240,11 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl DepthStencilFormatMarker for $name {}
+        unsafe impl DepthStencilFormatDesc for $name {}
     };
 
     (__inner_impl__ $name:ident compressed) => {
-        unsafe impl FormatMarker for $name {
+        unsafe impl FormatDesc for $name {
             type ClearValue = [f32; 4];
 
             #[inline]
@@ -253,8 +253,8 @@ macro_rules! formats {
             }
         }
 
-        unsafe impl CompressedFormatMarker for $name {}
-        unsafe impl FloatOrCompressedFormatMarker for $name {}
+        unsafe impl CompressedFormatDesc for $name {}
+        unsafe impl FloatOrCompressedFormatDesc for $name {}
     };
 
     (__inner_ty__ $name:ident float=$num:tt) => { FormatTy::Float };
@@ -462,22 +462,22 @@ formats! {
     ASTC_12x12SrgbBlock => FORMAT_ASTC_12x12_SRGB_BLOCK [compressed] {},
 }
 
-pub unsafe trait FormatMarker {
+pub unsafe trait FormatDesc {
     type ClearValue: Into<ClearValue>;
 
     fn format(&self) -> Format;
 }
 
-pub unsafe trait FloatFormatMarker: FormatMarker {}
-pub unsafe trait UintFormatMarker: FormatMarker {}
-pub unsafe trait SintFormatMarker: FormatMarker {}
-pub unsafe trait DepthFormatMarker: FormatMarker {}
-pub unsafe trait StencilFormatMarker: FormatMarker {}
-pub unsafe trait DepthStencilFormatMarker: FormatMarker {}
-pub unsafe trait CompressedFormatMarker: FormatMarker {}
-pub unsafe trait FloatOrCompressedFormatMarker: FormatMarker {}
+pub unsafe trait FloatFormatDesc: FormatDesc {}
+pub unsafe trait UintFormatDesc: FormatDesc {}
+pub unsafe trait SintFormatDesc: FormatDesc {}
+pub unsafe trait DepthFormatDesc: FormatDesc {}
+pub unsafe trait StencilFormatDesc: FormatDesc {}
+pub unsafe trait DepthStencilFormatDesc: FormatDesc {}
+pub unsafe trait CompressedFormatDesc: FormatDesc {}
+pub unsafe trait FloatOrCompressedFormatDesc: FormatDesc {}
 
-pub unsafe trait StrongStorage: FormatMarker {
+pub unsafe trait StrongStorage: FormatDesc {
     type Pixel: Copy;
 }
 

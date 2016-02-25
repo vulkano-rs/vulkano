@@ -11,8 +11,8 @@ use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use format::ClearValue;
-use format::FloatOrCompressedFormatMarker;
-use format::FloatFormatMarker;
+use format::FloatOrCompressedFormatDesc;
+use format::FloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
@@ -284,13 +284,13 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                                   color: F::ClearValue) -> InnerCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: FloatFormatMarker
+        where Ty: ImageTypeMarker, F: FloatFormatDesc
     {
         let color = match color.into() {
             ClearValue::Float(data) => vk::ClearColorValue::float32(data),
             ClearValue::Int(data) => vk::ClearColorValue::int32(data),
             ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
-            _ => unreachable!()   // FloatOrCompressedFormatMarker has been improperly implemented
+            _ => unreachable!()   // FloatOrCompressedFormatDesc has been improperly implemented
         };
 
         let range = vk::ImageSubresourceRange {
@@ -321,7 +321,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                            -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatMarker,
+        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatDesc,
               Ty: ImageTypeMarker
     {
         let source = source.into();

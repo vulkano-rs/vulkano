@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use device::Device;
 use device::Queue;
-use format::FormatMarker;
+use format::FormatDesc;
 use image::Image;
 use image::ImagePrototype;
 use image::Type2d;
@@ -66,7 +66,7 @@ impl Swapchain {
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
-        where F: FormatMarker + Clone, S: Into<SharingMode>
+        where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
                              sharing, transform, alpha, mode, clipped)
@@ -79,7 +79,7 @@ impl Swapchain {
                        dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                        clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
-        where F: FormatMarker + Clone, S: Into<SharingMode>
+        where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         // FIXME: check that the parameters are supported
 

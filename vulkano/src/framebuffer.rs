@@ -32,7 +32,7 @@ use std::sync::Arc;
 use device::Device;
 use format::ClearValue;
 use format::Format;
-use format::FormatMarker;
+use format::FormatDesc;
 use image::AbstractImageView;
 use image::Layout as ImageLayout;
 
@@ -289,7 +289,7 @@ macro_rules! single_pass_renderpass {
 
             struct Layout;
             unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = ($(<$crate::format::$format as $crate::format::FormatMarker>::ClearValue,)*);
+                type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);
                 type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
                 type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
                 type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
@@ -313,7 +313,7 @@ macro_rules! single_pass_renderpass {
                     vec![
                         $(
                             $crate::framebuffer::AttachmentDescription {
-                                format: $crate::format::FormatMarker::format(&$crate::format::$format),      // FIXME: only works with markers
+                                format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
                                 samples: 1,                         // FIXME:
                                 load: $crate::framebuffer::LoadOp::$load,
                                 store: $crate::framebuffer::StoreOp::$store,
