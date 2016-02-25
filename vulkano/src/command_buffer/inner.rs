@@ -234,11 +234,12 @@ impl InnerCommandBufferBuilder {
 
     /// Copies data between buffers.
     ///
+    /// There is no restriction for the type of queue that can perform this.
+    ///
     /// # Panic
     ///
     /// - Panicks if the buffers don't belong to the same device.
     /// - Panicks if one of the buffers wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
     ///
     /// # Safety
     ///
@@ -252,7 +253,6 @@ impl InnerCommandBufferBuilder {
         where Ms: MemorySourceChunk + 'static, Md: MemorySourceChunk + 'static
     {
         assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
-        assert!(self.pool.queue_family().supports_transfers());
         assert!(source.usage_transfer_src());
         assert!(destination.usage_transfer_dest());
 
