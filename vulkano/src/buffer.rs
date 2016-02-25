@@ -404,6 +404,22 @@ pub struct Usage {
 }
 
 impl Usage {
+    /// Builds a `Usage` with all values set to false.
+    #[inline]
+    pub fn none() -> Usage {
+        Usage {
+            transfer_source: false,
+            transfer_dest: false,
+            uniform_texel_buffer: false,
+            storage_texel_buffer: false,
+            uniform_buffer: false,
+            storage_buffer: false,
+            index_buffer: false,
+            vertex_buffer: false,
+            indirect_buffer: false,
+        }
+    }
+
     /// Builds a `Usage` with all values set to true. Can be used for quick prototyping.
     #[inline]
     pub fn all() -> Usage {
@@ -417,6 +433,15 @@ impl Usage {
             index_buffer: true,
             vertex_buffer: true,
             indirect_buffer: true,
+        }
+    }
+
+    /// Builds a `Usage` with `transfer_source` set to true and the rest to false.
+    #[inline]
+    pub fn transfer_source() -> Usage {
+        Usage {
+            transfer_source: true,
+            .. Usage::none()
         }
     }
 
