@@ -8,8 +8,8 @@ use command_buffer::inner::InnerCommandBuffer;
 use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
-use format::FloatOrCompressedFormatDesc;
-use format::FloatFormatDesc;
+use format::PossibleFloatOrCompressedFormatDesc;
+use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
@@ -114,7 +114,7 @@ impl PrimaryCommandBufferBuilder {
 
     pub fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
                                                     -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatDesc,
+        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,
               Ty: ImageTypeMarker
     {
         unsafe {
@@ -128,7 +128,7 @@ impl PrimaryCommandBufferBuilder {
     /// Note that compressed formats are not supported.
     pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                            color: F::ClearValue) -> PrimaryCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: FloatFormatDesc
+        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc
     {
         unsafe {
             PrimaryCommandBufferBuilder {

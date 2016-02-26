@@ -375,7 +375,11 @@ impl<Ty, F, M> Image<Ty, F, M>
             },
         }
     }
+}
 
+impl<Ty, F, M> Image<Ty, F, M>
+    where Ty: ImageTypeMarker, F: FormatDesc
+{
     /// Returns the dimensions of this image.
     #[inline]
     pub fn dimensions(&self) -> Ty::Dimensions {
@@ -400,6 +404,12 @@ impl<Ty, F, M> Image<Ty, F, M>
     #[inline]
     pub fn num_samples(&self) -> u32 {
         Ty::num_samples(self.samples)
+    }
+
+    /// Returns the format of the texture.
+    #[inline]
+    pub fn format(&self) -> &F {
+        &self.format
     }
 }
 

@@ -11,8 +11,9 @@ use descriptor_set::PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use format::ClearValue;
-use format::FloatOrCompressedFormatDesc;
-use format::FloatFormatDesc;
+use format::FormatDesc;
+use format::PossibleFloatOrCompressedFormatDesc;
+use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
@@ -284,13 +285,15 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                                   color: F::ClearValue) -> InnerCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: FloatFormatDesc
+        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc   // FIXME: should accept uint and int images too
     {
-        let color = match color.into() {
+        assert!(image.format().is_float()); // FIXME: should accept uint and int images too
+
+        let color = match image.format().decode_clear_value(color) {
             ClearValue::Float(data) => vk::ClearColorValue::float32(data),
             ClearValue::Int(data) => vk::ClearColorValue::int32(data),
             ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
-            _ => unreachable!()   // FloatOrCompressedFormatDesc has been improperly implemented
+            _ => unreachable!()   // PossibleFloatFormatDesc has been improperly implemented
         };
 
         let range = vk::ImageSubresourceRange {
@@ -321,9 +324,11 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                            -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + FloatOrCompressedFormatDesc,
+        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
               Ty: ImageTypeMarker
     {
+        assert!(image.format().is_float_or_compressed());
+
         let source = source.into();
         //self.add_buffer_resource(source)      // FIXME:
 
