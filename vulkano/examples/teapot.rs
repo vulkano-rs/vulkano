@@ -130,25 +130,28 @@ fn main() {
         vulkano::image::ImageView::new(&image).expect("failed to create image view")
     }).collect::<Vec<_>>();
 
-    let renderpass = single_pass_renderpass!{
-        device: &device,
-        attachments: {
-            color: {
-                load: Clear,
-                store: Store,
-                format: B8G8R8A8Srgb,
+    mod renderpass {
+        single_pass_renderpass!{
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: B8G8R8A8Srgb,
+                },
+                depth: {
+                    load: Clear,
+                    store: DontCare,
+                    format: D16Unorm,
+                }
             },
-            depth: {
-                load: Clear,
-                store: DontCare,
-                format: D16Unorm,
+            pass: {
+                color: [color],
+                depth_stencil: {depth}
             }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {depth}
         }
-    }.unwrap();
+    }
+
+    let renderpass = vulkano::framebuffer::RenderPass::new(&device, renderpass::Layout).unwrap();
 
     let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
     let descriptor_set_layout = {

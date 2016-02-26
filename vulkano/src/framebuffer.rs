@@ -310,7 +310,6 @@ unsafe impl RenderPassLayout for EmptySinglePassLayout {
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
-        device: $device:expr,
         attachments: {
             $(
                 $atch_name:ident: {
@@ -324,91 +323,88 @@ macro_rules! single_pass_renderpass {
             color: [$($color_atch:ident),*],
             depth_stencil: {$($depth_atch:ident)*}
         }
-    ) => (
-        {
-            use std::sync::Arc;
+    ) => {
+        use std;        // TODO: import everything instead
+        use std::sync::Arc;
 
-            struct Layout;
-            unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
-                type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
-                type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
-                type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
-                type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
-                type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
-                type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
+        pub struct Layout;
+        unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
+            type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
+            type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
+            type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
+            type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
+            type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
+            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
-                // FIXME: should be stronger-typed
-                type AttachmentsList = (
-                    $(
-                        Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
-                    )*
-                );
+            // FIXME: should be stronger-typed
+            type AttachmentsList = (
+                $(
+                    Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
+                )*
+            );
 
-                #[inline]
-                fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
-                    $crate::format::ClearValuesTuple::iter(val)
-                }
-
-                #[inline]
-                fn attachments(&self) -> Self::AttachmentsDescIter {
-                    vec![
-                        $(
-                            $crate::framebuffer::AttachmentDescription {
-                                format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
-                                samples: 1,                         // FIXME:
-                                load: $crate::framebuffer::LoadOp::$load,
-                                store: $crate::framebuffer::StoreOp::$store,
-                                initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
-                                final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
-                            },
-                        )*
-                    ].into_iter()
-                }
-
-                #[inline]
-                #[allow(unused_mut)]
-                #[allow(unused_assignments)]
-                fn passes(&self) -> Self::PassesIter {
-                    let mut attachment_num = 0;
-                    $(
-                        let $atch_name = attachment_num;
-                        attachment_num += 1;
-                    )*
-
-                    let mut depth = None;
-                    $(
-                        depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
-                    )*
-
-                    Some(
-                        $crate::framebuffer::PassDescription {
-                            color_attachments: vec![
-                                $(
-                                    ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
-                                ),*
-                            ],
-                            depth_stencil: depth,
-                            input_attachments: vec![],
-                            resolve_attachments: vec![],
-                            preserve_attachments: vec![],
-                        }
-                    ).into_iter()
-                }
-
-                #[inline]
-                fn pass_dependencies(&self) -> Self::PassDependenciesIter {
-                    None.into_iter()
-                }
-
-                #[inline]
-                fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
-                    $crate::image::AbstractTypedImageViewsTuple::iter(l)
-                }
+            #[inline]
+            fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
+                $crate::format::ClearValuesTuple::iter(val)
             }
 
-            $crate::framebuffer::RenderPass::<Layout>::new($device, Layout)
+            #[inline]
+            fn attachments(&self) -> Self::AttachmentsDescIter {
+                vec![
+                    $(
+                        $crate::framebuffer::AttachmentDescription {
+                            format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
+                            samples: 1,                         // FIXME:
+                            load: $crate::framebuffer::LoadOp::$load,
+                            store: $crate::framebuffer::StoreOp::$store,
+                            initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
+                            final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
+                        },
+                    )*
+                ].into_iter()
+            }
+
+            #[inline]
+            #[allow(unused_mut)]
+            #[allow(unused_assignments)]
+            fn passes(&self) -> Self::PassesIter {
+                let mut attachment_num = 0;
+                $(
+                    let $atch_name = attachment_num;
+                    attachment_num += 1;
+                )*
+
+                let mut depth = None;
+                $(
+                    depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                )*
+
+                Some(
+                    $crate::framebuffer::PassDescription {
+                        color_attachments: vec![
+                            $(
+                                ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                            ),*
+                        ],
+                        depth_stencil: depth,
+                        input_attachments: vec![],
+                        resolve_attachments: vec![],
+                        preserve_attachments: vec![],
+                    }
+                ).into_iter()
+            }
+
+            #[inline]
+            fn pass_dependencies(&self) -> Self::PassDependenciesIter {
+                None.into_iter()
+            }
+
+            #[inline]
+            fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
+                $crate::image::AbstractTypedImageViewsTuple::iter(l)
+            }
         }
-    );
+    };
 }
 
 /// Describes what the implementation should do with an attachment after all the subpasses have

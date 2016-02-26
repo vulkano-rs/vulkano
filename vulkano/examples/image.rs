@@ -85,20 +85,23 @@ fn main() {
     mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/image_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
-    let renderpass = single_pass_renderpass!{
-        device: &device,
-        attachments: {
-            color: {
-                load: Clear,
-                store: Store,
-                format: B8G8R8A8Srgb,
+    mod renderpass {
+        single_pass_renderpass!{
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: B8G8R8A8Srgb,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
             }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {}
         }
-    }.unwrap();
+    }
+
+    let renderpass = vulkano::framebuffer::RenderPass::new(&device, renderpass::Layout).unwrap();
 
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,
