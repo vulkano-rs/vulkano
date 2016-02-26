@@ -6,6 +6,9 @@
   passing an array of small elements (small structs or integers). Building such an array with a `Vec` can be expensive, especially
   when most of the time the array only contains a single element.
 
+- Having a trait that defines which types can be put inside buffers is very annoying, as users have to implement it for every single struct
+  they create. The best solution would be to use `impl BufferContent for ... {}`, but this syntax is still unstable.
+
 - No way to create a `*mut T` pointer from a `*mut c_void` and a size when `T` is unsized. This had to be implemented in a custom
   trait.
 
