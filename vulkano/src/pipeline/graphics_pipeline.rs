@@ -156,7 +156,11 @@ impl<MV, L> GraphicsPipeline<MV, L>
                     dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                     (viewports, vec![], num)
                 },
-                ViewportsState::Dynamic { num } => (vec![], vec![], num),
+                ViewportsState::Dynamic { num } => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                    dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                    (vec![], vec![], num)
+                },
             };
 
             let viewport_info = vk::PipelineViewportStateCreateInfo {
