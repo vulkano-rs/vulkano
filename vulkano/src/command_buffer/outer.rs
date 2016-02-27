@@ -14,6 +14,7 @@ use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassLayout;
+use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
@@ -443,18 +444,27 @@ impl PrimaryCommandBuffer {
 }
 
 /// A prototype of a secondary compute command buffer.
-pub struct SecondaryGraphicsCommandBufferBuilder {
+pub struct SecondaryGraphicsCommandBufferBuilder<R> {
     inner: InnerCommandBufferBuilder,
+    renderpass_layout: R,
+    renderpass_subpass: u32,
 }
 
-impl SecondaryGraphicsCommandBufferBuilder {
+impl<R> SecondaryGraphicsCommandBufferBuilder<R>
+    where R: RenderPassLayout
+{
     /// Builds a new secondary command buffer and start recording commands in it.
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>)
-               -> Result<SecondaryGraphicsCommandBufferBuilder, OomError>
+    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>)
+               -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
+        where R: Clone
     {
         let inner = try!(InnerCommandBufferBuilder::new(pool, true));
-        Ok(SecondaryGraphicsCommandBufferBuilder { inner: inner })
+        Ok(SecondaryGraphicsCommandBufferBuilder {
+            inner: inner,
+            renderpass_layout: subpass.renderpass().layout().clone(),
+            renderpass_subpass: subpass.index(),
+        })
     }
 
     /// Finish recording commands and build the command buffer.
