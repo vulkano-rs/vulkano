@@ -19,6 +19,17 @@ pub struct InputAssembly {
     pub primitive_restart_enable: bool,
 }
 
+impl InputAssembly {
+    /// Builds an `InputAssembly` struct with the `TriangleList` topology.
+    #[inline]
+    pub fn triangle_list() -> InputAssembly {
+        InputAssembly {
+            topology: PrimitiveTopology::TriangleList,
+            primitive_restart_enable: false,
+        }
+    }
+}
+
 /// Describes how vertices must be grouped together to form primitives.
 ///
 /// Note that some topologies don't support primitive restart.

@@ -175,11 +175,7 @@ fn main() {
 
 
     let pipeline = {
-        let ia = vulkano::pipeline::input_assembly::InputAssembly {
-            topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleList,
-            primitive_restart_enable: false,
-        };
-
+        let ia = vulkano::pipeline::input_assembly::InputAssembly::triangle_list();
         let raster = Default::default();
         let ms = vulkano::pipeline::multisample::Multisample::disabled();
         let blend = vulkano::pipeline::blend::Blend {
