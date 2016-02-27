@@ -6,21 +6,21 @@ starting to do so. Otherwise your work could end up being useless or against the
 
 For each module, the tile is checked if the code inside it is in an "acceptable" state:
 
-- [ ] Buffer
+- [x] Buffer
 - [ ] Command buffer
 - [ ] Descriptor set
-- [ ] Device
+- [x] Device
 - [x] Features
-- [ ] Formats
+- [x] Formats
 - [x] Framebuffer
 - [ ] Image
 - [ ] Instance
-- [ ] Lib
+- [x] Lib
 - [x] Memory
 - [ ] Pipeline
 - [ ] Query
-- [ ] Sampler
+- [x] Sampler
 - [ ] Shader
-- [ ] Swapchain
+- [x] Swapchain
 - [x] Sync
 - [x] Version
