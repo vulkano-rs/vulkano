@@ -9,7 +9,8 @@
 //! In other words modifying the viewport will stretch the image, while modifying the scissor
 //! box acts like a filter.
 //!
-//! It is legal and sensible to use a viewport that is larger than the target image.
+//! It is legal and sensible to use a viewport that is larger than the target image or that
+//! only partially overlaps the target image.
 //!
 //! # Multiple viewports
 //!
@@ -19,6 +20,9 @@
 //! Then in your geometry shader you can specify in which viewport and scissor box the primitive
 //! should be written to. In GLSL this is done by writing to the special variable
 //! `gl_ViewportIndex`.
+//!
+//! If you don't use a geometry shader or use a geometry shader where don't set which viewport to
+//! use, then the first viewport and scissor box will be used.
 //!
 //! # Dynamic and fixed
 //!
