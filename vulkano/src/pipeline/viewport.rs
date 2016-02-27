@@ -1,26 +1,80 @@
+//! Viewports and scissor boxes.
+//!
+//! There are two different concepts to determine where things will be drawn:
+//!
+//! - The viewport is the region of the image which corresponds to the
+//!   vertex coordinates `-1.0` to `1.0`.
+//! - Any pixel outside of the scissor box will be discarded.
+//!
+//! In other words modifying the viewport will stretch the image, while modifying the scissor
+//! box acts like a filter.
+//!
+//! It is legal and sensible to use a viewport that is larger than the target image.
+//!
+//! # Multiple viewports
+//!
+//! In most situations, you only need a single viewport and a single scissor box.
+//!
+//! If, however, you use a geometry shader, you can specify multiple viewports and scissor boxes.
+//! Then in your geometry shader you can specify in which viewport and scissor box the primitive
+//! should be written to. In GLSL this is done by writing to the special variable
+//! `gl_ViewportIndex`.
+//!
+//! # Dynamic and fixed
+//!
+//! Vulkan allows four different setups:
+//!
+//! - The state of both the viewports and scissor boxes is known at pipeline creation.
+//! - The state of viewports is known at pipeline creation, but the state of scissor boxes is
+//!   only known when submitting the draw command.
+//! - The state of scissor boxes is known at pipeline creation, but the state of viewports is
+//!   only known when submitting the draw command.
+//! - The state of both the viewports and scissor boxes is only known when submitting the
+//!   draw command.
+//!
+//! In all cases the number of viewports and scissor boxes must be the same.
+//!
 use std::ops::Range;
 use vk;
 
+/// List of viewports and scissors that are used when creating a graphics pipeline object.
+///
+/// Note that the number of viewports and scissors must be the same.
 #[derive(Debug, Clone)]
 pub enum ViewportsState {
+    /// The state is known in advance.
     Fixed {
+        /// State of the viewports and scissors.
         data: Vec<(Viewport, Scissor)>,
     },
 
+    /// The state of scissors is known in advance, but the state of viewports is dynamic and will
+    /// bet set when drawing.
+    ///
+    /// Note that the number of viewports and scissors must be the same.
     DynamicViewports {
+        /// State of the scissors.
         scissors: Vec<Scissor>,
     },
 
+    /// The state of viewports is known in advance, but the state of scissors is dynamic and will
+    /// bet set when drawing.
+    ///
+    /// Note that the number of viewports and scissors must be the same.
     DynamicScissors {
+        /// State of the viewports
         viewports: Vec<Viewport>,
     },
 
+    /// The state of both the viewports and scissors is dynamic and will be set when drawing.
     Dynamic {
+        /// Number of viewports and scissors.
         num: u32,
     },
 }
 
 impl ViewportsState {
+    /// Returns true if the state of the viewports is dynamic.
     pub fn dynamic_viewports(&self) -> bool {
         match *self {
             ViewportsState::Fixed { .. } => false,
@@ -30,6 +84,7 @@ impl ViewportsState {
         }
     }
 
+    /// Returns true if the state of the scissors is dynamic.
     pub fn dynamic_scissors(&self) -> bool {
         match *self {
             ViewportsState::Fixed { .. } => false,
@@ -39,6 +94,7 @@ impl ViewportsState {
         }
     }
 
+    /// Returns the number of viewports and scissors.
     pub fn num_viewports(&self) -> u32 {
         match *self {
             ViewportsState::Fixed { ref data } => data.len() as u32,
@@ -49,10 +105,24 @@ impl ViewportsState {
     }
 }
 
+/// State of a single viewport.
+// FIXME: check that:
+//        x + width must be less than or equal to viewportBoundsRange[0]
+//        y + height must be less than or equal to viewportBoundsRange[1] 
 #[derive(Debug, Clone)]
 pub struct Viewport {
+    /// Coordinates in pixels of the top-left hand corner of the viewport.
     pub origin: [f32; 2],
+
+    /// Dimensions in pixels of the viewport.
     pub dimensions: [f32; 2],
+
+    /// Minimum and maximum values of the depth.
+    ///
+    /// The values `-1.0` to `1.0` of each vertex's Z coordinate will be mapped to this
+    /// `depth_range` before being compared to the existing depth value.
+    ///
+    /// This is equivalents to `glDepthRange` in OpenGL.
     pub depth_range: Range<f32>,
 }
 
@@ -71,10 +141,35 @@ impl Into<vk::Viewport> for Viewport {
     }
 }
 
-#[derive(Debug, Clone)]
+/// State of a single scissor box.
+// FIXME: add a check:
+//      Evaluation of (offset.x + extent.width) must not cause a signed integer addition overflow
+//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow 
+#[derive(Debug, Copy, Clone)]
 pub struct Scissor {
+    /// Coordinates in pixels of the top-left hand corner of the box.
     pub origin: [i32; 2],
+
+    /// Dimensions in pixels of the box.
     pub dimensions: [u32; 2],
+}
+
+impl Scissor {
+    /// Defines a scissor box that it outside of the image.
+    #[inline]
+    pub fn irrelevant() -> Scissor {
+        Scissor {
+            origin: [0, 0],
+            dimensions: [0x7fffffff, 0x7fffffff],
+        }
+    }
+}
+
+impl Default for Scissor {
+    #[inline]
+    fn default() -> Scissor {
+        Scissor::irrelevant()
+    }
 }
 
 #[doc(hidden)]
