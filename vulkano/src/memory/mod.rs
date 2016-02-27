@@ -43,6 +43,8 @@
 //!    bind the same memory chunk to multiple different resources at once.
 //!
 use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::os::raw::c_void;
 use std::slice;
 use std::sync::Arc;
@@ -67,7 +69,8 @@ mod single;
 
 /// Trait for memory objects that can be accessed from the CPU.
 pub unsafe trait CpuAccessible<'a, T: ?Sized> {
-    type Read;
+    /// The object that provides the access.
+    type Read: Deref<Target = T>;
 
     /// Gives a read access to the content of the buffer.
     ///
@@ -81,9 +84,10 @@ pub unsafe trait CpuAccessible<'a, T: ?Sized> {
     fn try_read(&'a self) -> Option<Self::Read>;
 }
 
-/// Trait for memory objects that be mutably accessed from the CPU.
+/// Trait for memory objects that can be mutably accessed from the CPU.
 pub unsafe trait CpuWriteAccessible<'a, T: ?Sized>: CpuAccessible<'a, T> {
-    type Write;
+    /// The object that provides the access.
+    type Write: DerefMut<Target = T>;
 
     /// Gives a write access to the content of the buffer.
     ///
@@ -172,9 +176,18 @@ pub unsafe trait MemorySourceChunk {
     fn may_alias(&self) -> bool;
 }
 
+/// Describes a range in a memory chunk.
 pub enum ChunkRange {
+    /// The whole chunk.
     All,
-    Range { offset: usize, size: usize }
+
+    /// A subpart of the chunk.
+    Range {
+        /// Number of bytes between the start of the chunk and the part we want.
+        offset: usize,
+        /// Size in bytes of the part we want.
+        size: usize,
+    }
 }
 
 pub enum ChunkProperties<'a> {
@@ -229,3 +242,15 @@ unsafe impl<T> Content for [T] {
         size % mem::size_of::<T>() == 0
     }
 }
+
+/*
+TODO: do this when it's possible
+unsafe impl Content for .. {}
+impl<'a, T> !Content for &'a T {}
+impl<'a, T> !Content for &'a mut T {}
+impl<T> !Content for *const T {}
+impl<T> !Content for *mut T {}
+impl<T> !Content for Box<T> {}
+impl<T> !Content for UnsafeCell<T> {}
+
+*/
