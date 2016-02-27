@@ -1,3 +1,7 @@
+//! Assembling vertices into primitives.
+//!
+//! The input assembly is the stage where lists of vertices are turned into primitives.
+//!
 use vk;
 
 /// How the input assembly stage should behave.
