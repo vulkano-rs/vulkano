@@ -134,7 +134,10 @@ macro_rules! impl_abstract_typed_image_views_tuple {
     () => ();
 }
 
-impl_abstract_typed_image_views_tuple!({Aty, Am} {Bty, Bm});       // TODO: finish
+impl_abstract_typed_image_views_tuple!({Aty, Am} {Bty, Bm} {Cty, Cm} {Dty, Dm} {Ety, Em} {Fty, Fm}
+                                       {Gty, Gm} {Hty, Hm} {Ity, Im} {Jty, Jm} {Kty, Km} {Lty, Lm}
+                                       {Mty, Mm} {Nty, Nm} {Oty, Om} {Pty, Pm} {Qty, Qm} {Rty, Rm}
+                                       {Sty, Sm} {Tty, Tm} {Uty, Um} {Vty, Vm} {Wty, Wm} {Xty, Xm});
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
