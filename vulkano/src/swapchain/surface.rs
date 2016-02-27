@@ -75,6 +75,8 @@ impl Surface {
 
     /// Creates a `Surface` from a Win32 window.
     ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
     /// # Safety
     ///
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
@@ -96,6 +98,143 @@ impl Surface {
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateWin32SurfaceKHR(instance.internal_object(), &infos,
                                                        ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+        }))
+    }
+
+    /// Creates a `Surface` from an XCB window.
+    ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `connection` and the `window` are both correct and stay
+    /// alive for the entire lifetime of the surface.
+    pub unsafe fn from_xcb<C, W>(instance: &Arc<Instance>, connection: *const C, window: *const W)
+                                 -> Result<Arc<Surface>, OomError>
+    {
+        let vk = instance.pointers();
+
+        let surface = {
+            let infos = vk::XcbSurfaceCreateInfoKHR   {
+                sType: vk::STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                connection: connection as *mut _,
+                window: window as *mut _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateXcbSurfaceKHR(instance.internal_object(), &infos,
+                                                     ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+        }))
+    }
+
+    /// Creates a `Surface` from an Xlib window.
+    ///
+    /// The surface's min, max and current extent will always match the window's dimensions.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `display` and the `window` are both correct and stay
+    /// alive for the entire lifetime of the surface.
+    pub unsafe fn from_xlib<D, W>(instance: &Arc<Instance>, display: *const D, window: *const W)
+                                  -> Result<Arc<Surface>, OomError>
+    {
+        let vk = instance.pointers();
+
+        let surface = {
+            let infos = vk::XlibSurfaceCreateInfoKHR  {
+                sType: vk::STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                dpy: display as *mut _,
+                window: window as *mut _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateXlibSurfaceKHR(instance.internal_object(), &infos,
+                                                      ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+        }))
+    }
+
+    /// Creates a `Surface` from a Wayland window.
+    ///
+    /// The window's dimensions will be set to the size of the swapchain.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `display` and the `surface` are both correct and stay
+    /// alive for the entire lifetime of the surface.
+    pub unsafe fn from_wayland<D, S>(instance: &Arc<Instance>, display: *const D, surface: *const S)
+                                     -> Result<Arc<Surface>, OomError>
+    {
+        let vk = instance.pointers();
+
+        let surface = {
+            let infos = vk::WaylandSurfaceCreateInfoKHR {
+                sType: vk::STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                display: display as *mut _,
+                surface: surface as *mut _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateWaylandSurfaceKHR(instance.internal_object(), &infos,
+                                                         ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+        }))
+    }
+
+    /// Creates a `Surface` from a MIR window.
+    ///
+    /// If the swapchain's dimensions does not match the window's dimensions, the image will
+    /// automatically be scaled during presentation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `connection` and the `surface` are both correct and stay
+    /// alive for the entire lifetime of the surface.
+    pub unsafe fn from_mir<C, S>(instance: &Arc<Instance>, connection: *const C, surface: *const S)
+                                 -> Result<Arc<Surface>, OomError>
+    {
+        let vk = instance.pointers();
+
+        let surface = {
+            let infos = vk::MirSurfaceCreateInfoKHR  {
+                sType: vk::STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                connection: connection as *mut _,
+                mirSurface: surface as *mut _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(), &infos,
+                                                     ptr::null(), &mut output)));
             output
         };
 

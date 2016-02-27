@@ -29,7 +29,6 @@
 //! - `VK_KHR_win32_surface`
 //!
 use std::ffi::CStr;
-use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter;
