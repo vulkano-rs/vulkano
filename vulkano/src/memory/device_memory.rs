@@ -187,15 +187,32 @@ mod tests {
 
     #[test]
     #[cfg(target_pointer_width = "64")]
-    fn oom() {
+    fn oom_single() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
                            .next().unwrap();
     
         match DeviceMemory::alloc(&device, &mem_ty, 0xffffffffffffffff) {
             Err(OomError::OutOfDeviceMemory) => (),
-            Err(OomError::OutOfHostMemory) => (),
             _ => panic!()
         }
+    }
+
+    #[test]
+    #[ignore]       // TODO: fails on AMD + Windows
+    fn oom_multi() {
+        let (device, _) = gfx_dev_and_queue!();
+        let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
+                           .next().unwrap();
+        let heap_size = mem_ty.heap().size();
+    
+        for _ in 0 .. 4 {
+            match DeviceMemory::alloc(&device, &mem_ty, heap_size / 3) {
+                Err(OomError::OutOfDeviceMemory) => return,     // test succeeded
+                _ => ()
+            }
+        }
+
+        panic!()
     }
 }
