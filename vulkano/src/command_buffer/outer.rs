@@ -467,6 +467,40 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         })
     }
 
+    /// Calls `vkCmdDraw`.
+    // FIXME: push constants
+    pub fn draw<V, L, Pl>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+                          vertices: V, dynamic: &DynamicState, sets: L)
+                          -> SecondaryGraphicsCommandBufferBuilder<R>
+        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+              L: DescriptorSetsCollection + 'static
+    {
+        unsafe {
+            SecondaryGraphicsCommandBufferBuilder {
+                inner: self.inner.draw(pipeline, vertices, dynamic, sets),
+                renderpass_layout: self.renderpass_layout,
+                renderpass_subpass: self.renderpass_subpass,
+            }
+        }
+    }
+
+    /// Calls `vkCmdDrawIndexed`.
+    pub fn draw_indexed<V, L, Pl, I, Ib>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+                                              vertices: V, indices: Ib, dynamic: &DynamicState,
+                                              sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
+        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+              Ib: Into<BufferSlice<[I]>>, I: 'static + Index,
+              L: DescriptorSetsCollection + 'static
+    {
+        unsafe {
+            SecondaryGraphicsCommandBufferBuilder {
+                inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
+                renderpass_layout: self.renderpass_layout,
+                renderpass_subpass: self.renderpass_subpass,
+            }
+        }
+    }
+
     /// Finish recording commands and build the command buffer.
     #[inline]
     pub fn build(self) -> Result<Arc<SecondaryGraphicsCommandBuffer>, OomError> {
