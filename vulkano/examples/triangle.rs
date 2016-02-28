@@ -1,10 +1,9 @@
-extern crate kernel32;
-extern crate gdi32;
-extern crate user32;
-extern crate winapi;
-
 #[macro_use]
 extern crate vulkano;
+extern crate winit;
+
+#[cfg(windows)]
+use winit::os::windows::WindowExt;
 
 use std::sync::Arc;
 use std::ffi::OsStr;
@@ -39,8 +38,8 @@ fn main() {
     // create the window in a platform-specific way. Then we create a `Surface` object from it.
     //
     // Surface objects are cross-platform. Once you have a `Surface` everything is the same again.
-    let window = unsafe { create_window() };
-    let surface = unsafe { vulkano::swapchain::Surface::from_hwnd(&instance, kernel32::GetModuleHandleW(ptr::null()), window).unwrap() };
+    let window = winit::WindowBuilder::new().build().unwrap();
+    let surface = unsafe { vulkano::swapchain::Surface::from_hwnd(&instance, ptr::null() as *const () /* FIXME */, window.get_hwnd()).unwrap() };
 
     // The next step is to choose which queue will execute our draw commands.
     //
@@ -141,26 +140,37 @@ fn main() {
 
     // We are going to create a command buffer below. Command buffers need to be allocated
     // from a *command buffer pool*, so we create the pool.
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.lock().unwrap().family())
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family())
                                                   .expect("failed to create command buffer pool");
 
     // We are going to draw on the images returned when creating the swapchain. To do so, we must
     // convert them into *image views*. TODO: explain more
     let images = images.into_iter().map(|image| {
         let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,
-                                     &mut queue.lock().unwrap()).unwrap();
+                                     &queue).unwrap();
         vulkano::image::ImageView::new(&image).expect("failed to create image view")
     }).collect::<Vec<_>>();
 
     // The next step is to create a *renderpass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    let renderpass = single_pass_renderpass!{
-        device: &device,
-        attachments: {
-            color [Clear]
+    mod renderpass {
+        single_pass_renderpass!{
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: B8G8R8A8Srgb,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
         }
-    }.unwrap();
+    }
+
+    let renderpass = vulkano::framebuffer::RenderPass::new(&device, renderpass::Layout).unwrap();
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly::triangle_list();
@@ -186,7 +196,8 @@ fn main() {
         };
 
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
-                                                 &raster, &ms, &blend, &fs.main_entry_point(), &vulkano::descriptor_set::PipelineLayout::new(&device, Default::default(), ((), ())).unwrap(),
+                                                 &raster, &ms, &blend, &fs.main_entry_point(),
+                                                 &vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::EmptyPipelineDesc, ()).unwrap(),
                                                  &renderpass.subpass(0).unwrap()).unwrap()
     };
 
@@ -196,7 +207,7 @@ fn main() {
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), image).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image.clone() as Arc<_>,)).unwrap()
     }).collect::<Vec<_>>();
 
     // The final initialization step is to create a command buffer.
@@ -210,8 +221,8 @@ fn main() {
     // each image.
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
-            .draw_inline(&renderpass, &framebuffer, [0.0, 0.0, 1.0, 1.0])
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), ((), ()))
+            .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
+            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), ())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
@@ -227,80 +238,19 @@ fn main() {
         // This operation returns the index of the image that we are allowed to draw upon..
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
 
-        // Our queue is wrapped around a `Mutex`, so we have to lock it.
-        let mut queue = queue.lock().unwrap();
-
         // In order to draw, all we need to do is submit the command buffer to the queue.
-        command_buffers[image_num].submit(&mut queue).unwrap();
+        command_buffers[image_num].submit(&queue).unwrap();
 
         // The color output should now contain our triangle. But in order to show it on the
         // screen, we have to *present* the image. Depending on the presentation mode, this may
         // be shown immediatly or on the next redraw.
-        swapchain.present(&mut queue, image_num).unwrap();
+        swapchain.present(&queue, image_num).unwrap();
 
-        // In a real application we want to submit things to the same queue in parallel, so we
-        // shouldn't keep it locked too long.
-        drop(queue);
-
-        unsafe {
-            let mut msg = mem::uninitialized();
-            if user32::GetMessageW(&mut msg, ptr::null_mut(), 0, 0) == 0 {
-                break;
+        for ev in window.poll_events() {
+            match ev {
+                winit::Event::Closed => break,
+                _ => ()
             }
-
-            user32::TranslateMessage(&msg);
-            user32::DispatchMessageW(&msg);
         }
     }
-}
-
-
-
-
-
-unsafe fn create_window() -> winapi::HWND {
-    let class_name = register_window_class();
-
-    let title: Vec<u16> = vec![b'V' as u16, b'u' as u16, b'l' as u16, b'k' as u16,
-                               b'a' as u16, b'n' as u16, 0];
-
-    user32::CreateWindowExW(winapi::WS_EX_APPWINDOW | winapi::WS_EX_WINDOWEDGE, class_name.as_ptr(),
-                            title.as_ptr() as winapi::LPCWSTR,
-                            winapi::WS_OVERLAPPEDWINDOW | winapi::WS_CLIPSIBLINGS |
-                            winapi::WS_VISIBLE,
-                            winapi::CW_USEDEFAULT, winapi::CW_USEDEFAULT,
-                            winapi::CW_USEDEFAULT, winapi::CW_USEDEFAULT,
-                            ptr::null_mut(), ptr::null_mut(),
-                            kernel32::GetModuleHandleW(ptr::null()),
-                            ptr::null_mut())
-}
-
-unsafe fn register_window_class() -> Vec<u16> {
-    let class_name: Vec<u16> = OsStr::new("Window Class").encode_wide().chain(Some(0).into_iter())
-                                                         .collect::<Vec<u16>>();
-
-    let class = winapi::WNDCLASSEXW {
-        cbSize: mem::size_of::<winapi::WNDCLASSEXW>() as winapi::UINT,
-        style: winapi::CS_HREDRAW | winapi::CS_VREDRAW | winapi::CS_OWNDC,
-        lpfnWndProc: Some(callback),
-        cbClsExtra: 0,
-        cbWndExtra: 0,
-        hInstance: kernel32::GetModuleHandleW(ptr::null()),
-        hIcon: ptr::null_mut(),
-        hCursor: ptr::null_mut(),
-        hbrBackground: ptr::null_mut(),
-        lpszMenuName: ptr::null(),
-        lpszClassName: class_name.as_ptr(),
-        hIconSm: ptr::null_mut(),
-    };
-
-    user32::RegisterClassExW(&class);
-    class_name
-}
-
-unsafe extern "system" fn callback(window: winapi::HWND, msg: winapi::UINT,
-                                   wparam: winapi::WPARAM, lparam: winapi::LPARAM)
-                                   -> winapi::LRESULT
-{
-    user32::DefWindowProcW(window, msg, wparam, lparam)
 }

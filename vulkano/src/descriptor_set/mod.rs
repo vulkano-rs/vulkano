@@ -68,6 +68,21 @@ pub unsafe trait DescriptorSetsCollection {
     fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool;
 }
 
+unsafe impl DescriptorSetsCollection for () {
+    type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
+
+    #[inline]
+    fn list(&self) -> Self::Iter {
+        None.into_iter()
+    }
+
+    #[inline]
+    fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool {
+        // FIXME:
+        true
+    }
+}
+
 unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
     where T: 'static + DescriptorSetDesc
 {
