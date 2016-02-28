@@ -49,6 +49,7 @@ pub use self::surface::SurfaceTransform;
 pub use self::surface::CompositeAlpha;
 pub use self::surface::ColorSpace;
 pub use self::swapchain::Swapchain;
+pub use self::swapchain::SwapchainAllocatedChunk;
 pub use self::swapchain::AcquireError;
 
 mod surface;
