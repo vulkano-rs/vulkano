@@ -161,6 +161,13 @@ impl<'a, F, L> FragmentShaderEntryPoint<'a, F, L> {
     }
 }
 
+pub unsafe trait ShaderInterfaceDef {
+}
+
+pub unsafe trait PossibleMatchShaderInterface<I>: ShaderInterfaceDef where I: ShaderInterfaceDef {
+    fn matches(&self, other: &I) -> bool;
+}
+
 /// Trait to describe structs that contain specialization data for shaders.
 ///
 /// It is implemented on `()` for shaders that don't have any specialization constant.
