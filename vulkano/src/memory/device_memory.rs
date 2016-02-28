@@ -22,16 +22,26 @@ pub struct DeviceMemory {
 impl DeviceMemory {
     /// Allocates a chunk of memory from the device.
     ///
+    /// Some platforms may have a limit on the maximum size of a single allocation. For example,
+    /// certain systems may fail to create allocations with a size greater than or equal to 4GB. 
+    ///
     /// # Panic
     ///
+    /// - Panicks if `size` is 0.
     /// - Panicks if `memory_type` doesn't belong to the same physical device as `device`.
     ///
+    // TODO: VK_ERROR_TOO_MANY_OBJECTS error
     #[inline]
     pub fn alloc(device: &Arc<Device>, memory_type: &MemoryType, size: usize)
                  -> Result<DeviceMemory, OomError>
     {
+        assert!(size >= 1);
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
+
+        if size > memory_type.heap().size() {
+            return Err(OomError::OutOfDeviceMemory);
+        }
 
         let vk = device.pointers();
 
@@ -151,6 +161,41 @@ impl Drop for MappedDeviceMemory {
         unsafe {
             let vk = self.memory.device.pointers();
             vk.UnmapMemory(self.memory.device.internal_object(), self.memory.memory);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use OomError;
+    use memory::DeviceMemory;
+
+    #[test]
+    fn create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let mem_ty = device.physical_device().memory_types().next().unwrap();
+        let _ = DeviceMemory::alloc(&device, &mem_ty, 256).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn zero_size() {
+        let (device, _) = gfx_dev_and_queue!();
+        let mem_ty = device.physical_device().memory_types().next().unwrap();
+        let _ = DeviceMemory::alloc(&device, &mem_ty, 0);
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn oom() {
+        let (device, _) = gfx_dev_and_queue!();
+        let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
+                           .next().unwrap();
+    
+        match DeviceMemory::alloc(&device, &mem_ty, 0xffffffffffffffff) {
+            Err(OomError::OutOfDeviceMemory) => (),
+            Err(OomError::OutOfHostMemory) => (),
+            _ => panic!()
         }
     }
 }
