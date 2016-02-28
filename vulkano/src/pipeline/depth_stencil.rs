@@ -1,10 +1,21 @@
+use std::ops::Range;
 
 pub struct DepthStencil {
     depth_write: bool,
     depth_compare: Compare,
-    depth_bounds_test: bool,
+    depth_bounds_test: Option<Range<f32>>,
 }
 
+impl Default for DepthStencil {
+    #[inline]
+    fn default() -> DepthStencil {
+        DepthStencil {
+            depth_write: false,
+            depth_compare: Compare::Always,
+            depth_bounds_test: None,
+        }
+    }
+}
 
 
     VkBool32                                    depthTestEnable;
