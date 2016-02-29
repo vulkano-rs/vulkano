@@ -64,7 +64,7 @@ fn main() {
     let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &queue).unwrap();
     let depth_buffer = vulkano::image::ImageView::new(&depth_buffer).expect("failed to create image view");
 
-    let vertex_buffer = vulkano::buffer::Buffer::<[teapot::Vertex], _>
+    let vertex_buffer = vulkano::buffer::Buffer
                                ::array(&device, teapot::VERTICES.len(),
                                        &vulkano::buffer::Usage::all(),
                                        vulkano::memory::HostVisible, &queue)
@@ -77,11 +77,11 @@ fn main() {
         }
     }
 
-    let normals_buffer = vulkano::buffer::Buffer::<[teapot::Normal], _>
-                               ::array(&device, teapot::NORMALS.len(),
-                                       &vulkano::buffer::Usage::all(),
-                                       vulkano::memory::HostVisible, &queue)
-                                       .expect("failed to create buffer");
+    let normals_buffer = vulkano::buffer::Buffer
+                                ::array(&device, teapot::NORMALS.len(),
+                                        &vulkano::buffer::Usage::all(),
+                                        vulkano::memory::HostVisible, &queue)
+                                        .expect("failed to create buffer");
 
     {
         let mut mapping = normals_buffer.try_write().unwrap();
@@ -90,11 +90,11 @@ fn main() {
         }
     }
 
-    let index_buffer = vulkano::buffer::Buffer::<[u16], _>
-                               ::array(&device, teapot::INDICES.len(),
-                                       &vulkano::buffer::Usage::all(),
-                                       vulkano::memory::HostVisible, &queue)
-                                       .expect("failed to create buffer");
+    let index_buffer = vulkano::buffer::Buffer
+                              ::array(&device, teapot::INDICES.len(),
+                                      &vulkano::buffer::Usage::all(),
+                                      vulkano::memory::HostVisible, &queue)
+                                      .expect("failed to create buffer");
 
     {
         let mut mapping = index_buffer.try_write().unwrap();
