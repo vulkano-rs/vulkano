@@ -58,8 +58,10 @@ unsafe impl SetLayout for RuntimeDescriptorSetDesc {
     }
 }
 
-unsafe impl SetLayoutWrite<Vec<(u32, DescriptorBind)>> for RuntimeDescriptorSetDesc {
-    fn decode(&self, data: Vec<(u32, DescriptorBind)>) -> Vec<DescriptorWrite> {
+unsafe impl<T> SetLayoutWrite<T> for RuntimeDescriptorSetDesc
+    where T: IntoIterator<Item = (u32, DescriptorBind)>
+{
+    fn decode(&self, data: T) -> Vec<DescriptorWrite> {
         data.into_iter().map(|(binding, bind)| {
             // TODO: check correctness?
 
@@ -72,8 +74,10 @@ unsafe impl SetLayoutWrite<Vec<(u32, DescriptorBind)>> for RuntimeDescriptorSetD
     }
 }
 
-unsafe impl SetLayoutInit<Vec<(u32, DescriptorBind)>> for RuntimeDescriptorSetDesc {
-    fn decode(&self, data: Vec<(u32, DescriptorBind)>) -> Vec<DescriptorWrite> {
+unsafe impl<T> SetLayoutInit<T> for RuntimeDescriptorSetDesc
+    where T: IntoIterator<Item = (u32, DescriptorBind)>
+{
+    fn decode(&self, data: T) -> Vec<DescriptorWrite> {
         SetLayoutWrite::decode(self, data)
     }
 }
