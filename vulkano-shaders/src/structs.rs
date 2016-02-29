@@ -81,7 +81,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("{name}: {ty}", name = member_name, ty = ty));
+        members_defs.push(format!("pub {name}: {ty}", name = member_name, ty = ty));
     }
 
     format!("#[repr(C)]\n#[derive(Copy, Clone, Debug, Default)]\n\

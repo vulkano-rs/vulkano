@@ -109,14 +109,14 @@ fn main() {
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
-    let uniform_buffer = vulkano::buffer::Buffer::<([[f32; 4]; 4], [[f32; 4]; 4]), _>
+    let uniform_buffer = vulkano::buffer::Buffer::<vs::Data, _>
                                ::new(&device, &vulkano::buffer::Usage::all(),
                                      vulkano::memory::HostVisible, &queue)
                                .expect("failed to create buffer");
     {
         let mut mapping = uniform_buffer.try_write().unwrap();
-        mapping.0 = (view * scale).into();
-        mapping.1 = proj.into();
+        mapping.worldview = (view * scale).into();
+        mapping.proj = proj.into();
     }
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
