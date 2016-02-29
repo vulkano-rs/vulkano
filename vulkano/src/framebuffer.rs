@@ -86,20 +86,6 @@ use vk;
 
 /// Types that describes the characteristics of a renderpass.
 pub unsafe trait Layout {
-    /// The list of clear values to use when beginning to draw on this renderpass.
-    type ClearValues;
-
-    /// Iterator that produces one clear value per attachment.
-    type ClearValuesIter: Iterator<Item = ClearValue>;
-
-    /// Decodes a `ClearValues` into a list of clear values where each element corresponds
-    /// to an attachment. The size of the returned array must be the same as the number of
-    /// attachments.
-    ///
-    /// The format of the clear value **must** match the format of the attachment. Only attachments
-    /// that are loaded with `LoadOp::Clear` must have an entry in the array.
-    fn convert_clear_values(&self, Self::ClearValues) -> Self::ClearValuesIter;
-
     /// Iterator that produces attachments.
     type AttachmentsDescIter: ExactSizeIterator<Item = AttachmentDescription>;
 
@@ -126,6 +112,20 @@ pub unsafe trait LayoutAttachmentsList<A>: Layout {
 
     /// Decodes a `A` into a list of attachments.
     fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
+}
+
+/// Extension trait for `Layout`. Defines which types are allowed as a list of clear values.
+pub unsafe trait LayoutClearValues<C>: Layout {
+    /// Iterator that produces one clear value per attachment.
+    type ClearValuesIter: Iterator<Item = ClearValue>;
+
+    /// Decodes a `C` into a list of clear values where each element corresponds
+    /// to an attachment. The size of the returned array must be the same as the number of
+    /// attachments.
+    ///
+    /// The format of the clear value **must** match the format of the attachment. Only attachments
+    /// that are loaded with `LoadOp::Clear` must have an entry in the array.
+    fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
 }
 
 /// Trait implemented on renderpass layouts to check whether they are compatible
@@ -256,14 +256,6 @@ pub struct PassDependencyDescription {
 pub struct EmptySinglePassLayout;
 
 unsafe impl Layout for EmptySinglePassLayout {
-    type ClearValues = ();
-    type ClearValuesIter = EmptyIter<ClearValue>;
-
-    #[inline]
-    fn convert_clear_values(&self, _: Self::ClearValues) -> Self::ClearValuesIter {
-        iter::empty()
-    }
-
     type AttachmentsDescIter = EmptyIter<AttachmentDescription>;
 
     #[inline]
@@ -301,6 +293,15 @@ unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
     }
 }
 
+unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
+    type ClearValuesIter = EmptyIter<ClearValue>;
+
+    #[inline]
+    fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
+        iter::empty()
+    }
+}
+
 /// Builds a `RenderPass` object.
 #[macro_export]
 macro_rules! single_pass_renderpass {
@@ -324,16 +325,9 @@ macro_rules! single_pass_renderpass {
 
         pub struct Layout;
         unsafe impl $crate::framebuffer::Layout for Layout {
-            type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
-            type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
             type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
             type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
             type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
-
-            #[inline]
-            fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
-                $crate::format::ClearValuesTuple::iter(val)
-            }
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsDescIter {
@@ -398,6 +392,17 @@ macro_rules! single_pass_renderpass {
             #[inline]
             fn convert_attachments_list(&self, l: AList) -> Self::AttachmentsIter {
                 $crate::image::AbstractTypedImageViewsTuple::iter(l)
+            }
+        }
+
+        pub type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
+
+        unsafe impl $crate::framebuffer::LayoutClearValues<ClearValues> for Layout {
+            type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
+
+            #[inline]
+            fn convert_clear_values(&self, val: ClearValues) -> Self::ClearValuesIter {
+                $crate::format::ClearValuesTuple::iter(val)
             }
         }
     };

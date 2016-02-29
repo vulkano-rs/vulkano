@@ -14,6 +14,7 @@ use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::Layout as RenderPassLayout;
+use framebuffer::LayoutClearValues as RenderPassLayoutClearValues;
 use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
@@ -161,10 +162,10 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_inline<R, F>(self, renderpass: &Arc<RenderPass<R>>,
-                             framebuffer: &Arc<Framebuffer<F>>, clear_values: F::ClearValues)
-                             -> PrimaryCommandBufferBuilderInlineDraw
-        where F: RenderPassLayout, R: RenderPassLayout
+    pub fn draw_inline<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+                                framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
+                                -> PrimaryCommandBufferBuilderInlineDraw
+        where F: RenderPassLayout + RenderPassLayoutClearValues<C>, R: RenderPassLayout
     {
         // FIXME: check for compatibility
 
@@ -194,10 +195,10 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_secondary<R, F>(self, renderpass: &Arc<RenderPass<R>>,
-                                framebuffer: &Arc<Framebuffer<F>>, clear_values: F::ClearValues)
-                                -> PrimaryCommandBufferBuilderSecondaryDraw
-        where F: RenderPassLayout, R: RenderPassLayout
+    pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+                                   framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
+                                   -> PrimaryCommandBufferBuilderSecondaryDraw
+        where F: RenderPassLayout + RenderPassLayoutClearValues<C>, R: RenderPassLayout
     {
         // FIXME: check for compatibility
 
