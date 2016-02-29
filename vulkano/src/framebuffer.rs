@@ -25,7 +25,7 @@
 //!   needs to be read in a following subpass.
 //!
 //! Before you can create a `RenderPass` object with the vulkano library, you have to create an
-//! object that can describe these three lists through `RenderPassLayout` trait. This trait is
+//! object that can describe these three lists through `Layout` trait. This trait is
 //! unsafe because the information that its methods return is trusted blindly by vulkano.
 //! 
 //! There are two ways to do this:   TODO add more ways
@@ -53,10 +53,10 @@
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
 //! The slightly tricky part is that the list of attachments depends on the trait implementation
-//! of `RenderPassLayout`. For example if you use an `EmptySinglePassLayout`, you have to pass
+//! of `Layout`. For example if you use an `EmptySinglePassLayout`, you have to pass
 //! `()` for the list of attachments.
 //!
-//! Some implementations of `RenderPassLayout` can use strong typing for the attachments list, in
+//! Some implementations of `Layout` can use strong typing for the attachments list, in
 //! order to produce a compilation error if you pass the wrong kind of attachment. Other
 //! implementations may have more relaxed rules and check the format of the attachments at runtime
 //! instead.
@@ -85,7 +85,7 @@ use check_errors;
 use vk;
 
 /// Types that describes the characteristics of a renderpass.
-pub unsafe trait RenderPassLayout {
+pub unsafe trait Layout {
     /// The list of clear values to use when beginning to draw on this renderpass.
     type ClearValues;
 
@@ -119,8 +119,8 @@ pub unsafe trait RenderPassLayout {
     fn pass_dependencies(&self) -> Self::PassDependenciesIter;
 }
 
-/// Extension trait for `RenderPassLayout`. Defines which types are allowed as an attachments list.
-pub unsafe trait AttachmentsList<A>: RenderPassLayout {
+/// Extension trait for `Layout`. Defines which types are allowed as an attachments list.
+pub unsafe trait AttachmentsList<A>: Layout {
     /// A decoded `A`.
     type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
@@ -131,18 +131,18 @@ pub unsafe trait AttachmentsList<A>: RenderPassLayout {
 /// Trait implemented on renderpass layouts to check whether they are compatible
 /// with another layout.
 ///
-/// The trait is automatically implemented for all type that implement `RenderPassLayout`.
+/// The trait is automatically implemented for all type that implement `Layout`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait CompatibleLayout<Other>: RenderPassLayout where Other: RenderPassLayout {
+pub unsafe trait CompatibleLayout<Other>: Layout where Other: Layout {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     fn is_compatible_with(&self, other: &Other) -> bool;
 }
 
 unsafe impl<A, B> CompatibleLayout<B> for A
-    where A: RenderPassLayout, B: RenderPassLayout
+    where A: Layout, B: Layout
 {
     fn is_compatible_with(&self, other: &B) -> bool {
         for (atch1, atch2) in self.attachments().zip(other.attachments()) {
@@ -251,11 +251,11 @@ pub struct PassDependencyDescription {
     pub by_region: bool,
 }
 
-/// Implementation of `RenderPassLayout` with no attachment at all and a single pass.
+/// Implementation of `Layout` with no attachment at all and a single pass.
 #[derive(Debug, Copy, Clone)]
 pub struct EmptySinglePassLayout;
 
-unsafe impl RenderPassLayout for EmptySinglePassLayout {
+unsafe impl Layout for EmptySinglePassLayout {
     type ClearValues = ();
     type ClearValuesIter = EmptyIter<ClearValue>;
 
@@ -323,7 +323,7 @@ macro_rules! single_pass_renderpass {
         use std::sync::Arc;
 
         pub struct Layout;
-        unsafe impl $crate::framebuffer::RenderPassLayout for Layout {
+        unsafe impl $crate::framebuffer::Layout for Layout {
             type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
             type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
             type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
@@ -452,17 +452,17 @@ pub struct RenderPass<L> {
     layout: L,
 }
 
-impl<L> RenderPass<L> where L: RenderPassLayout {
+impl<L> RenderPass<L> where L: Layout {
     /// Builds a new renderpass.
     ///
-    /// This function calls the methods of the `RenderPassLayout` implementation and builds the
+    /// This function calls the methods of the `Layout` implementation and builds the
     /// corresponding Vulkan object.
     ///
     /// # Panic
     ///
-    /// - Panicks if this functions detects that the `RenderPassLayout` trait was not implemented
+    /// - Panicks if this functions detects that the `Layout` trait was not implemented
     ///   correctly and contains an error.
-    ///   See the documentation of the various methods and structs related to `RenderPassLayout`
+    ///   See the documentation of the various methods and structs related to `Layout`
     ///   for more details.
     ///
     pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
@@ -630,7 +630,7 @@ impl RenderPass<EmptySinglePassLayout> {
     }
 }
 
-impl<L> RenderPass<L> where L: RenderPassLayout {
+impl<L> RenderPass<L> where L: Layout {
     /// Returns the device that was used to create this renderpass.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -663,7 +663,7 @@ impl<L> RenderPass<L> where L: RenderPassLayout {
     /// the other renderpass.
     #[inline]
     pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool
-        where R2: RenderPassLayout
+        where R2: Layout
     {
         self.layout.is_compatible_with(&other.layout)
     }
@@ -757,12 +757,12 @@ impl<L> Framebuffer<L> {
     ///
     /// - Panicks if one of the attachments has a different sample count than what the render pass
     ///   describes.
-    /// - Additionally, some methods in the `RenderPassLayout` implementation may panic if you
+    /// - Additionally, some methods in the `Layout` implementation may panic if you
     ///   pass invalid attachments.
     ///
     pub fn new<'a, A>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: RenderPassLayout + AttachmentsList<A>
+        where L: Layout + AttachmentsList<A>
     {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
@@ -816,7 +816,7 @@ impl<L> Framebuffer<L> {
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
     pub fn is_compatible_with<R>(&self, renderpass: &Arc<RenderPass<R>>) -> bool
-        where R: RenderPassLayout, L: RenderPassLayout
+        where R: Layout, L: Layout
     {
         (&*self.renderpass as *const RenderPass<L> as usize ==
          &**renderpass as *const RenderPass<R> as usize) ||

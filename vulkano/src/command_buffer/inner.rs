@@ -17,7 +17,7 @@ use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassLayout;
+use framebuffer::Layout as RenderPassLayout;
 use image::AbstractImageView;
 use image::Image;
 use image::ImageTypeMarker;
