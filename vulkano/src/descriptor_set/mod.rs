@@ -14,20 +14,20 @@
 //!
 //! To build a `PipelineLayout`, you need to pass a collection of `DescriptorSetLayout` structs.
 //! A `DescriptorSetLayout<T>` if the equivalent of `PipelineLayout` but for a single descriptor
-//! set. The `T` parameter must implement the `DescriptorSetDesc` trait.
+//! set. The `T` parameter must implement the `SetLayout` trait.
 //!
 //! # Binding resources
 //! 
 //! In parallel of the pipeline initialization, you have to create a `DescriptorSet<T>`. This
 //! struct contains the list of actual resources that will be bound when the pipeline is executed.
 //! To build a `DescriptorSet<T>`, you need to pass a `DescriptorSetLayout<T>`. The `T` parameter
-//! must implement `DescriptorSetDesc` as if the same for both the descriptor set and its layout.
+//! must implement `SetLayout` as if the same for both the descriptor set and its layout.
 //!
 //! TODO: describe descriptor set writes
 //!
 //! # Shader analyser
 //! 
-//! While you can manually implement the `PipelineLayoutDesc` and `DescriptorSetDesc` traits on
+//! While you can manually implement the `PipelineLayoutDesc` and `SetLayout` traits on
 //! your own types, it is encouraged to use the `vulkano-shaders` crate instead. This crate will
 //! automatically parse your SPIR-V code and generate structs that implement these traits and
 //! describe the pipeline layout to vulkano.
@@ -36,7 +36,7 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 
 pub use self::layout_def::PipelineLayoutDesc;
-pub use self::layout_def::DescriptorSetDesc;
+pub use self::layout_def::SetLayout;
 pub use self::layout_def::DescriptorWrite;
 pub use self::layout_def::DescriptorBind;
 pub use self::layout_def::DescriptorDesc;
@@ -84,7 +84,7 @@ unsafe impl DescriptorSetsCollection for () {
 }
 
 unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
-    where T: 'static + DescriptorSetDesc
+    where T: 'static + SetLayout
 {
     type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
 
@@ -108,7 +108,7 @@ macro_rules! pipeline_layout {
             use std::sync::Arc;
             use $crate::descriptor_set::DescriptorType;
             use $crate::descriptor_set::DescriptorDesc;
-            use $crate::descriptor_set::DescriptorSetDesc;
+            use $crate::descriptor_set::SetLayout;
             use $crate::descriptor_set::DescriptorWrite;
             use $crate::descriptor_set::DescriptorBind;
             use $crate::descriptor_set::PipelineLayout;
@@ -118,7 +118,7 @@ macro_rules! pipeline_layout {
 
             $(
                 pub struct $set_name;
-                unsafe impl DescriptorSetDesc for $set_name {
+                unsafe impl SetLayout for $set_name {
                     type Write = (      // FIXME: variable number of elems
                         Arc<AbstractBuffer>     // FIXME: strong typing
                     );

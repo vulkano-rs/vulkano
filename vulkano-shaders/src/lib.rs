@@ -383,7 +383,7 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
 #[derive(Default)]
 pub struct Set{set};
 
-unsafe impl ::vulkano::descriptor_set::DescriptorSetDesc for Set{set} {{
+unsafe impl ::vulkano::descriptor_set::SetLayout for Set{set} {{
     type Write = {write_ty};
 
     type Init = {write_ty};

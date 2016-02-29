@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use buffer::AbstractBuffer;
 use descriptor_set::layout_def::PipelineLayoutDesc;
-use descriptor_set::layout_def::DescriptorSetDesc;
+use descriptor_set::layout_def::SetLayout;
 use descriptor_set::layout_def::DescriptorWrite;
 use descriptor_set::layout_def::DescriptorBind;
 use descriptor_set::pool::DescriptorPool;
@@ -32,7 +32,7 @@ pub struct DescriptorSet<S> {
     resources_buffers: Vec<Arc<AbstractBuffer>>,
 }
 
-impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
+impl<S> DescriptorSet<S> where S: SetLayout {
     ///
     /// # Panic
     ///
@@ -91,9 +91,9 @@ impl<S> DescriptorSet<S> where S: DescriptorSetDesc {
 
     /// Modifies a descriptor set.
     ///
-    /// The parameter depends on your implementation of `DescriptorSetDesc`.
+    /// The parameter depends on your implementation of `SetLayout`.
     ///
-    /// This function trusts the implementation of `DescriptorSetDesc` when it comes to making sure
+    /// This function trusts the implementation of `SetLayout` when it comes to making sure
     /// that the correct resource type is written to the correct descriptor.
     pub fn write(&mut self, write: S::Write) {
         let write = self.layout.description().decode_write(write);
@@ -273,7 +273,7 @@ pub struct DescriptorSetLayout<S> {
     description: S,
 }
 
-impl<S> DescriptorSetLayout<S> where S: DescriptorSetDesc {
+impl<S> DescriptorSetLayout<S> where S: SetLayout {
     pub fn new(device: &Arc<Device>, description: S)
                -> Result<Arc<DescriptorSetLayout<S>>, OomError>
     {

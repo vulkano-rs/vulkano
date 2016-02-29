@@ -34,7 +34,7 @@ pub unsafe trait PipelineLayoutDesc {
 }
 
 /// Types that describe a single descriptor set.
-pub unsafe trait DescriptorSetDesc {
+pub unsafe trait SetLayout {
     /// Represents a modification of a descriptor set. A parameter of this type must be passed
     /// when you modify a descriptor set.
     type Write;
@@ -53,7 +53,7 @@ pub unsafe trait DescriptorSetDesc {
     fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;      // TODO: better perfs
 
     // FIXME: implement this correctly
-    fn is_compatible_with<S>(&self, _: &S) -> bool where S: DescriptorSetDesc { true }
+    fn is_compatible_with<S>(&self, _: &S) -> bool where S: SetLayout { true }
 }
 
 // FIXME: shoud allow multiple array binds at once

@@ -4,7 +4,7 @@ use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::AbstractDescriptorSetLayout;
 use descriptor_set::DescriptorBind;
 use descriptor_set::DescriptorDesc;
-use descriptor_set::DescriptorSetDesc;
+use descriptor_set::SetLayout;
 use descriptor_set::DescriptorWrite;
 use descriptor_set::PipelineLayoutDesc;
 
@@ -50,7 +50,7 @@ pub struct RuntimeDescriptorSetDesc {
     pub descriptors: Vec<DescriptorDesc>,
 }
 
-unsafe impl DescriptorSetDesc for RuntimeDescriptorSetDesc {
+unsafe impl SetLayout for RuntimeDescriptorSetDesc {
     type Write = Vec<(u32, DescriptorBind)>;
 
     type Init = Vec<(u32, DescriptorBind)>;
