@@ -120,7 +120,7 @@ pub unsafe trait Layout {
 }
 
 /// Extension trait for `Layout`. Defines which types are allowed as an attachments list.
-pub unsafe trait AttachmentsList<A>: Layout {
+pub unsafe trait LayoutAttachmentsList<A>: Layout {
     /// A decoded `A`.
     type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
@@ -292,7 +292,7 @@ unsafe impl Layout for EmptySinglePassLayout {
     }
 }
 
-unsafe impl AttachmentsList<()> for EmptySinglePassLayout {
+unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
     type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
 
     #[inline]
@@ -391,7 +391,7 @@ macro_rules! single_pass_renderpass {
             Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
         )*);
 
-        unsafe impl $crate::framebuffer::AttachmentsList<AList> for Layout {
+        unsafe impl $crate::framebuffer::LayoutAttachmentsList<AList> for Layout {
             // TODO: shouldn't build a Vec
             type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
@@ -762,7 +762,7 @@ impl<L> Framebuffer<L> {
     ///
     pub fn new<'a, A>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: Layout + AttachmentsList<A>
+        where L: Layout + LayoutAttachmentsList<A>
     {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
