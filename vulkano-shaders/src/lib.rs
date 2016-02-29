@@ -14,6 +14,7 @@ pub use glsl_to_spirv::ShaderType;
 
 mod enums;
 mod parse;
+mod structs;
 
 pub fn build_glsl_shaders<'a, I>(shaders: I)
     where I: IntoIterator<Item = (&'a str, ShaderType)>
@@ -120,6 +121,9 @@ impl {name} {{
         output.push_str(&format!(r#"
 }}
         "#));
+
+        // struct definitions
+        output.push_str(&structs::write_structs(&doc));
 
         // descriptor sets
         output.push_str(&write_descriptor_sets(&doc));
@@ -500,6 +504,11 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 let t = type_from_id(doc, component_id);
                 return format!("[{}; {}]", t, count);
+            },
+            &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
+                // FIXME: row-major or column-major
+                let t = type_from_id(doc, column_type_id);
+                return format!("[{}; {}]", t, column_count);
             },
             &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, depth, arrayed, ms, sampled, ref format, ref access } if result_id == searched => {
                 return format!("{}{}Texture{:?}{}{:?}",
