@@ -5,6 +5,8 @@ use descriptor_set::AbstractDescriptorSetLayout;
 use descriptor_set::DescriptorBind;
 use descriptor_set::DescriptorDesc;
 use descriptor_set::SetLayout;
+use descriptor_set::SetLayoutInit;
+use descriptor_set::SetLayoutWrite;
 use descriptor_set::DescriptorWrite;
 use descriptor_set::PipelineLayoutDesc;
 
@@ -51,15 +53,13 @@ pub struct RuntimeDescriptorSetDesc {
 }
 
 unsafe impl SetLayout for RuntimeDescriptorSetDesc {
-    type Write = Vec<(u32, DescriptorBind)>;
-
-    type Init = Vec<(u32, DescriptorBind)>;
-
     fn descriptors(&self) -> Vec<DescriptorDesc> {
         self.descriptors.clone()
     }
+}
 
-    fn decode_write(&self, data: Self::Write) -> Vec<DescriptorWrite> {
+unsafe impl SetLayoutWrite<Vec<(u32, DescriptorBind)>> for RuntimeDescriptorSetDesc {
+    fn decode(&self, data: Vec<(u32, DescriptorBind)>) -> Vec<DescriptorWrite> {
         data.into_iter().map(|(binding, bind)| {
             // TODO: check correctness?
 
@@ -70,8 +70,10 @@ unsafe impl SetLayout for RuntimeDescriptorSetDesc {
             }
         }).collect()
     }
+}
 
-    fn decode_init(&self, data: Self::Init) -> Vec<DescriptorWrite> {
-        self.decode_write(data)
+unsafe impl SetLayoutInit<Vec<(u32, DescriptorBind)>> for RuntimeDescriptorSetDesc {
+    fn decode(&self, data: Vec<(u32, DescriptorBind)>) -> Vec<DescriptorWrite> {
+        SetLayoutWrite::decode(self, data)
     }
 }

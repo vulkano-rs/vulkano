@@ -384,26 +384,25 @@ fn write_descriptor_sets(doc: &parse::Spirv) -> String {
 pub struct Set{set};
 
 unsafe impl ::vulkano::descriptor_set::SetLayout for Set{set} {{
-    type Write = {write_ty};
-
-    type Init = {write_ty};
-
     fn descriptors(&self) -> Vec<::vulkano::descriptor_set::DescriptorDesc> {{
         vec![
             {descr}
         ]
     }}
+}}
 
-    fn decode_write(&self, write: Self::Write) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
+unsafe impl ::vulkano::descriptor_set::SetLayoutWrite<{write_ty}> for Set{set} {{
+    fn decode(&self, data: {write_ty}) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
         /*vec![     // FIXME: disabled, not compiling
             {writes}
         ]*/
         unimplemented!()
     }}
+}}
 
-    #[inline]
-    fn decode_init(&self, init: Self::Init) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
-        self.decode_write(init)
+unsafe impl ::vulkano::descriptor_set::SetLayoutInit<{write_ty}> for Set{set} {{
+    fn decode(&self, data: {write_ty}) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
+        ::vulkano::descriptor_set::SetLayoutWrite::decode(self, data)
     }}
 }}
 

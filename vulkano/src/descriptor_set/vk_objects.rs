@@ -5,6 +5,8 @@ use std::sync::Arc;
 use buffer::AbstractBuffer;
 use descriptor_set::layout_def::PipelineLayoutDesc;
 use descriptor_set::layout_def::SetLayout;
+use descriptor_set::layout_def::SetLayoutWrite;
+use descriptor_set::layout_def::SetLayoutInit;
 use descriptor_set::layout_def::DescriptorWrite;
 use descriptor_set::layout_def::DescriptorBind;
 use descriptor_set::pool::DescriptorPool;
@@ -38,12 +40,13 @@ impl<S> DescriptorSet<S> where S: SetLayout {
     ///
     /// - Panicks if the pool and the layout were not created from the same `Device`.
     ///
-    pub fn new(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>, init: S::Init)
-               -> Result<Arc<DescriptorSet<S>>, OomError>
+    pub fn new<I>(pool: &Arc<DescriptorPool>, layout: &Arc<DescriptorSetLayout<S>>, init: I)
+                  -> Result<Arc<DescriptorSet<S>>, OomError>
+        where S: SetLayoutInit<I>
     {
         unsafe {
             let mut set = try!(DescriptorSet::uninitialized(pool, layout));
-            Arc::get_mut(&mut set).unwrap().unchecked_write(layout.description().decode_init(init));
+            Arc::get_mut(&mut set).unwrap().unchecked_write(layout.description().decode(init));
             Ok(set)
         }
     }
@@ -95,8 +98,10 @@ impl<S> DescriptorSet<S> where S: SetLayout {
     ///
     /// This function trusts the implementation of `SetLayout` when it comes to making sure
     /// that the correct resource type is written to the correct descriptor.
-    pub fn write(&mut self, write: S::Write) {
-        let write = self.layout.description().decode_write(write);
+    pub fn write<W>(&mut self, write: W)
+        where S: SetLayoutWrite<W>
+    {
+        let write = self.layout.description().decode(write);
         unsafe { self.unchecked_write(write); }
     }
 

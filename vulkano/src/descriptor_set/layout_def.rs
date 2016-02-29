@@ -35,25 +35,23 @@ pub unsafe trait PipelineLayoutDesc {
 
 /// Types that describe a single descriptor set.
 pub unsafe trait SetLayout {
-    /// Represents a modification of a descriptor set. A parameter of this type must be passed
-    /// when you modify a descriptor set.
-    type Write;
-
-    /// Contains the list of attachments that must be passed at the initialization of a
-    /// descriptor set object.
-    type Init;
-
     /// Returns the list of descriptors contained in this set.
     fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: better perfs
 
-    /// Turns the `Write` associated type into something vulkano can understand.
-    fn decode_write(&self, Self::Write) -> Vec<DescriptorWrite>;        // TODO: better perfs
-
-    /// Turns the `Init` associated type into something vulkano can understand.
-    fn decode_init(&self, Self::Init) -> Vec<DescriptorWrite>;      // TODO: better perfs
-
     // FIXME: implement this correctly
     fn is_compatible_with<S>(&self, _: &S) -> bool where S: SetLayout { true }
+}
+
+/// Extension for the `SetLayout` trait.
+pub unsafe trait SetLayoutWrite<Data>: SetLayout {
+    /// Turns the data into something vulkano can understand.
+    fn decode(&self, Data) -> Vec<DescriptorWrite>;        // TODO: better perfs
+}
+
+/// Extension for the `SetLayout` trait.
+pub unsafe trait SetLayoutInit<Data>: SetLayout {
+    /// Turns the data into something vulkano can understand.
+    fn decode(&self, Data) -> Vec<DescriptorWrite>;        // TODO: better perfs
 }
 
 // FIXME: shoud allow multiple array binds at once
