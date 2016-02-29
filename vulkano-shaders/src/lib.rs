@@ -486,6 +486,7 @@ unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {{
     output
 }
 
+// TODO: struct definitions don't use this function, so irrelevant elements should be removed
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
     for instruction in doc.instructions.iter() {
         match instruction {
