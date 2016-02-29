@@ -117,19 +117,15 @@ pub unsafe trait RenderPassLayout {
 
     /// Returns the descriptions of the dependencies between passes.
     fn pass_dependencies(&self) -> Self::PassDependenciesIter;
+}
 
-    /// List of images that will be binded to attachments.
-    ///
-    /// A parameter of this type must be passed when creating a `Framebuffer`.
-    // TODO: should use HKTs so that attachments list can get passed references to the attachments
-    type AttachmentsList;
-
-    /// A decoded `AttachmentsList`.
-    // TODO: should be AbstractImageView or something like that, so that images can't get passed
+/// Extension trait for `RenderPassLayout`. Defines which types are allowed as an attachments list.
+pub unsafe trait AttachmentsList<A>: RenderPassLayout {
+    /// A decoded `A`.
     type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
-    /// Decodes a `AttachmentsList` into a list of attachments.
-    fn convert_attachments_list(&self, Self::AttachmentsList) -> Self::AttachmentsIter;
+    /// Decodes a `A` into a list of attachments.
+    fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
 }
 
 /// Trait implemented on renderpass layouts to check whether they are compatible
@@ -294,17 +290,16 @@ unsafe impl RenderPassLayout for EmptySinglePassLayout {
     fn pass_dependencies(&self) -> Self::PassDependenciesIter {
         iter::empty()
     }
+}
 
-    type AttachmentsList = ();
+unsafe impl AttachmentsList<()> for EmptySinglePassLayout {
     type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
 
     #[inline]
-    fn convert_attachments_list(&self, _: Self::AttachmentsList) -> Self::AttachmentsIter {
+    fn convert_attachments_list(&self, _: ()) -> Self::AttachmentsIter {
         iter::empty()
     }
 }
-
-
 
 /// Builds a `RenderPass` object.
 #[macro_export]
@@ -334,14 +329,6 @@ macro_rules! single_pass_renderpass {
             type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
             type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
             type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
-            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
-
-            // FIXME: should be stronger-typed
-            type AttachmentsList = (
-                $(
-                    Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
-                )*
-            );
 
             #[inline]
             fn convert_clear_values(&self, val: Self::ClearValues) -> Self::ClearValuesIter {
@@ -398,9 +385,18 @@ macro_rules! single_pass_renderpass {
             fn pass_dependencies(&self) -> Self::PassDependenciesIter {
                 None.into_iter()
             }
+        }
+
+        pub type AList = ($(      // FIXME: should not use a trait
+            Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
+        )*);
+
+        unsafe impl $crate::framebuffer::AttachmentsList<AList> for Layout {
+            // TODO: shouldn't build a Vec
+            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
             #[inline]
-            fn convert_attachments_list(&self, l: Self::AttachmentsList) -> Self::AttachmentsIter {
+            fn convert_attachments_list(&self, l: AList) -> Self::AttachmentsIter {
                 $crate::image::AbstractTypedImageViewsTuple::iter(l)
             }
         }
@@ -764,10 +760,9 @@ impl<L> Framebuffer<L> {
     /// - Additionally, some methods in the `RenderPassLayout` implementation may panic if you
     ///   pass invalid attachments.
     ///
-    pub fn new<'a>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
-                   attachments: L::AttachmentsList)
-                   -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: RenderPassLayout
+    pub fn new<'a, A>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
+                      attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
+        where L: RenderPassLayout + AttachmentsList<A>
     {
         let vk = renderpass.device.pointers();
         let device = renderpass.device.clone();
