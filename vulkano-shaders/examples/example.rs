@@ -10,9 +10,9 @@ struct S {
     bool val2[5];
 };
 
-uniform sampler2D u_texture;
+layout(set = 0, binding = 0) uniform sampler2D u_texture;
 
-uniform Block {
+layout(set = 0, binding = 1) uniform Block {
     S u_data;
 } block;
 
