@@ -150,14 +150,16 @@ impl Instance {
                     let message = CStr::from_ptr(message).to_str()
                                                     .expect("debug callback message not utf-8");
                     println!("Debug callback message: {:?}", message);
-                    vk::DEBUG_REPORT_ERROR_NONE_EXT
+                    vk::FALSE
                 }
             }
 
             let infos = vk::DebugReportCallbackCreateInfoEXT {
                 sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: /*vk::DEBUG_REPORT_INFORMATION_BIT_EXT |*/ vk::DEBUG_REPORT_WARNING_BIT_EXT |
+                       /*vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |*/
+                       vk::DEBUG_REPORT_ERROR_BIT_EXT /*| vk::DEBUG_REPORT_DEBUG_BIT_EXT*/,
                 pfnCallback: callback,
                 pUserData: ptr::null_mut(),
             };
