@@ -23,6 +23,7 @@ use command_buffer::CommandBufferPool;
 use device::Device;
 use device::Queue;
 use format::FormatDesc;
+use format::FormatTy;
 use memory::ChunkProperties;
 use memory::ChunkRange;
 use memory::MemorySource;
@@ -696,6 +697,15 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     {
         let vk = image.device.pointers();
 
+        let aspect_mask = match image.format().format().ty() {
+            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
+                vk::IMAGE_ASPECT_COLOR_BIT
+            },
+            FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
+            FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
+            FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+        };
+
         let view = unsafe {
             let infos = vk::ImageViewCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -706,7 +716,7 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
                 format: image.format.format() as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: 1,          // FIXME:
+                    aspectMask: aspect_mask,
                     baseMipLevel: 0,            // FIXME:
                     levelCount: 1,          // FIXME:
                     baseArrayLayer: 0,          // FIXME:
