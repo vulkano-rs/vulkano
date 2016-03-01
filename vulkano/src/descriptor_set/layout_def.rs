@@ -37,9 +37,6 @@ pub unsafe trait PipelineLayoutDesc {
 pub unsafe trait SetLayout {
     /// Returns the list of descriptors contained in this set.
     fn descriptors(&self) -> Vec<DescriptorDesc>;       // TODO: better perfs
-
-    // FIXME: implement this correctly
-    fn is_compatible_with<S>(&self, _: &S) -> bool where S: SetLayout { true }
 }
 
 /// Extension for the `SetLayout` trait.
@@ -52,6 +49,12 @@ pub unsafe trait SetLayoutWrite<Data>: SetLayout {
 pub unsafe trait SetLayoutInit<Data>: SetLayout {
     /// Turns the data into something vulkano can understand.
     fn decode(&self, Data) -> Vec<DescriptorWrite>;        // TODO: better perfs
+}
+
+/// Extension for `SetLayout`.
+pub unsafe trait SetLayoutPossibleSuperset<Other>: SetLayout where Other: SetLayout {
+    /// Returns true if `self` is a superset of `Other`.
+    fn is_superset_of(&self, &Other) -> bool;
 }
 
 // FIXME: shoud allow multiple array binds at once
