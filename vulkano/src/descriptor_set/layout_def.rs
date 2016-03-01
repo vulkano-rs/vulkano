@@ -215,3 +215,38 @@ impl Into<vk::ShaderStageFlags> for ShaderStages {
         result
     }
 }
+
+#[macro_export]
+macro_rules! pipeline_from_sets {
+    ($($set:ty),*) => {
+        use std::sync::Arc;
+        use $crate::descriptor_set::AbstractDescriptorSet;
+        use $crate::descriptor_set::AbstractDescriptorSetLayout;
+        use $crate::descriptor_set::DescriptorSet;
+        use $crate::descriptor_set::DescriptorSetLayout;
+        use $crate::descriptor_set::DescriptorSetsCollection;
+
+        pub struct Layout;
+
+        pub type DescriptorSets = ($(Arc<DescriptorSet<$set>>,)*);
+        pub type DescriptorSetLayouts = ($(Arc<DescriptorSetLayout<$set>>,)*);
+
+        unsafe impl $crate::descriptor_set::Layout for Layout {
+            type DescriptorSets = DescriptorSets;
+            type DescriptorSetLayouts = DescriptorSetLayouts;
+            type PushConstants = ();
+
+            fn decode_descriptor_sets(&self, sets: DescriptorSets) -> Vec<Arc<AbstractDescriptorSet>> {
+                DescriptorSetsCollection::list(&sets).collect()
+            }
+
+            /// Turns the `DescriptorSetLayouts` associated type into something vulkano can understand.
+            fn decode_descriptor_set_layouts(&self, sets: DescriptorSetLayouts)
+                                             -> Vec<Arc<AbstractDescriptorSetLayout>>
+            {
+                // FIXME:
+                vec![sets.0.clone() as Arc<_>]
+            }
+        }
+    };
+}

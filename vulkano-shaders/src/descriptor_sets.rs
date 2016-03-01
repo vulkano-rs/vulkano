@@ -12,7 +12,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         name: String,
         desc_ty: String,
         bind_ty: String,
-        bind: String,
+        bind_start: String,
+        bind_end: String,
         set: u32,
         binding: u32,
     }
@@ -42,13 +43,14 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         }).next().expect("A uniform is missing a binding");
 
         // find informations about the kind of binding for this descriptor
-        let (desc_ty, bind_ty, bind) = doc.instructions.iter().filter_map(|i| {
+        let (desc_ty, bind_ty, bind_start, bind_end) = doc.instructions.iter().filter_map(|i| {
             match i {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
                         "::vulkano::buffer::AbstractBuffer",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: ",
+                        ", offset: 0, size: 128 /* FIXME */ }"
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
@@ -58,7 +60,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
                         "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer",      // FIXME:
+                        ""
                     ))
                 },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
@@ -67,7 +70,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
                         "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer",      // FIXME:
+                        ""
                     ))
                 },
                 _ => None,      // TODO: other types
@@ -78,7 +82,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             name: name,
             desc_ty: desc_ty.to_owned(),
             bind_ty: bind_ty.to_owned(),
-            bind: bind.to_owned(),
+            bind_start: bind_start.to_owned(),
+            bind_end: bind_end.to_owned(),
             set: descriptor_set,
             binding: binding,
         });
@@ -105,8 +110,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                     format!("::vulkano::descriptor_set::DescriptorWrite {{
                                                  binding: {binding},
                                                  array_element: 0,
-                                                 content: {bind}(write{entry}),
-                                             }}", binding = d.binding, bind = d.bind,
+                                                 content: {bind_start} data{entry} {bind_end},
+                                             }}", binding = d.binding, bind_start = d.bind_start,
+                                                  bind_end = d.bind_end,
                                                   entry = entry)
                                 })
                                 .collect::<Vec<_>>();
@@ -136,10 +142,9 @@ unsafe impl ::vulkano::descriptor_set::SetLayout for Set{set} {{
 
 unsafe impl ::vulkano::descriptor_set::SetLayoutWrite<{write_ty}> for Set{set} {{
     fn decode(&self, data: {write_ty}) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
-        /*vec![     // FIXME: disabled, not compiling
+        vec![
             {writes}
-        ]*/
-        unimplemented!()
+        ]
     }}
 }}
 

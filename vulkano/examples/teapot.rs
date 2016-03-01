@@ -15,6 +15,9 @@ use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
 
+mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
+mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
+
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
@@ -119,9 +122,7 @@ fn main() {
         mapping.proj = proj.into();
     }
 
-    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     let images = images.into_iter().map(|image| {
@@ -154,24 +155,12 @@ fn main() {
     let renderpass = vulkano::framebuffer::RenderPass::new(&device, renderpass::Layout).unwrap();
 
     let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
-    let descriptor_set_layout = {
-        let desc = vulkano::descriptor_set::RuntimeDescriptorSetDesc {
-            descriptors: vec![
-                vulkano::descriptor_set::DescriptorDesc {
-                    binding: 0,
-                    ty: vulkano::descriptor_set::DescriptorType::UniformBuffer,
-                    array_count: 1,
-                    stages: vulkano::descriptor_set::ShaderStages::all_graphics(),
-                }
-            ]
-        };
+    let descriptor_set_layout = vulkano::descriptor_set::DescriptorSetLayout::new(&device, vs::Set0).unwrap();
 
-        vulkano::descriptor_set::DescriptorSetLayout::new(&device, desc).unwrap()
-    };
-
-    let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
+    mod pipeline_layout { pipeline_from_sets!(::vs::Set0); }
+    let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, pipeline_layout::Layout, (descriptor_set_layout.clone(),)).unwrap();
     let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: uniform_buffer.clone(), offset: 0, size: uniform_buffer.size() })]).unwrap();
+                                                          uniform_buffer.clone() as std::sync::Arc<_>).unwrap();
 
 
     let pipeline = {

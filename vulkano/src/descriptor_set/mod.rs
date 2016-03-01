@@ -104,6 +104,24 @@ unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
     }
 }
 
+unsafe impl<T> DescriptorSetsCollection for (Arc<DescriptorSet<T>>,)
+    where T: 'static + SetLayout
+{
+    type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
+
+    #[inline]
+    fn list(&self) -> Self::Iter {
+        Some(self.0.clone() as Arc<_>).into_iter()
+    }
+
+    #[inline]
+    fn is_compatible_with<P>(&self, pipeline_layout: &Arc<PipelineLayout<P>>) -> bool {
+        // FIXME:
+        true
+    }
+}
+
+
 /*
 #[macro_export]
 macro_rules! pipeline_layout {
