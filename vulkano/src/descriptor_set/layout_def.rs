@@ -28,9 +28,6 @@ pub unsafe trait Layout {
     /// Turns the `DescriptorSetLayouts` associated type into something vulkano can understand.
     fn decode_descriptor_set_layouts(&self, Self::DescriptorSetLayouts)
                                      -> Vec<Arc<AbstractDescriptorSetLayout>>;  // TODO: vec is slow
-
-    // FIXME: implement this correctly
-    fn is_compatible_with<P>(&self, _: &P) -> bool where P: Layout { true }
 }
 
 /// Extension for `Layout`.
