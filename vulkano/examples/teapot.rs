@@ -21,7 +21,7 @@ fn main() {
 
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let instance = vulkano::instance::Instance::new(Some(&app), &[]).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_standard_validation"]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -35,7 +35,7 @@ fn main() {
                                                 .expect("couldn't find a graphical queue family");
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(), &[])
+                                                        [(queue, 0.5)].iter().cloned(), &["VK_LAYER_LUNARG_standard_validation"])
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
