@@ -6,6 +6,7 @@ use std::sync::Arc;
 use device::Device;
 use descriptor_set::PipelineLayout;
 use descriptor_set::Layout as PipelineLayoutDesc;
+use descriptor_set::LayoutPossibleSuperset as PipelineLayoutPossibleSuperset;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;
@@ -64,10 +65,13 @@ impl<MV, L> GraphicsPipeline<MV, L>
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
                layout: &Arc<PipelineLayout<L>>, render_pass: &Subpass<R>)
                -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
+        where L: PipelineLayoutDesc + PipelineLayoutPossibleSuperset<Vl> + PipelineLayoutPossibleSuperset<Fl>,
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 
-        // FIXME: check layout compatibility
+        assert!(PipelineLayoutPossibleSuperset::is_superset_of(layout.layout(), vertex_shader.layout()));
+        assert!(PipelineLayoutPossibleSuperset::is_superset_of(layout.layout(), fragment_shader.layout()));
 
         let pipeline = unsafe {
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)

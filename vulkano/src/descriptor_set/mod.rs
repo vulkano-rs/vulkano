@@ -36,9 +36,11 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 
 pub use self::layout_def::Layout;
+pub use self::layout_def::LayoutPossibleSuperset;
 pub use self::layout_def::SetLayout;
 pub use self::layout_def::SetLayoutWrite;
 pub use self::layout_def::SetLayoutInit;
+pub use self::layout_def::SetLayoutPossibleSuperset;
 pub use self::layout_def::DescriptorWrite;
 pub use self::layout_def::DescriptorBind;
 pub use self::layout_def::DescriptorDesc;

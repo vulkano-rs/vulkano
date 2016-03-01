@@ -46,7 +46,7 @@ impl<S> DescriptorSet<S> where S: SetLayout {
     {
         unsafe {
             let mut set = try!(DescriptorSet::uninitialized(pool, layout));
-            Arc::get_mut(&mut set).unwrap().unchecked_write(layout.description().decode(init));
+            Arc::get_mut(&mut set).unwrap().unchecked_write(layout.layout().decode(init));
             Ok(set)
         }
     }
@@ -101,7 +101,7 @@ impl<S> DescriptorSet<S> where S: SetLayout {
     pub fn write<W>(&mut self, write: W)
         where S: SetLayoutWrite<W>
     {
-        let write = self.layout.description().decode(write);
+        let write = self.layout.layout().decode(write);
         unsafe { self.unchecked_write(write); }
     }
 
@@ -318,7 +318,7 @@ impl<S> DescriptorSetLayout<S> where S: SetLayout {
     }
 
     #[inline]
-    pub fn description(&self) -> &S {
+    pub fn layout(&self) -> &S {
         &self.description
     }
 }
@@ -395,7 +395,7 @@ impl<P> PipelineLayout<P> where P: Layout {
     }
 
     #[inline]
-    pub fn description(&self) -> &P {
+    pub fn layout(&self) -> &P {
         &self.description
     }
 }

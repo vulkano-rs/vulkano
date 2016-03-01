@@ -198,7 +198,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
             let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input}), Layout>",
                             input = input);
-            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), vec![{}])", attributes);
+            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, vec![{}])", attributes);
             (t, f)
         },
 
@@ -238,7 +238,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
             let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output}), Layout>",
                             output = output);
-            (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _))"))
+            (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {

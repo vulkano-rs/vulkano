@@ -33,6 +33,19 @@ pub unsafe trait Layout {
     fn is_compatible_with<P>(&self, _: &P) -> bool where P: Layout { true }
 }
 
+/// Extension for `Layout`.
+pub unsafe trait LayoutPossibleSuperset<Other>: Layout where Other: Layout {
+    /// Returns true if `self` is a superset of `Other`. That is, all the descriptors in `Other`
+    /// are also in `self` and have an identical definition.
+    fn is_superset_of(&self, &Other) -> bool;
+}
+
+// CRITICAL FIXME: temporary hack
+unsafe impl<T, U> LayoutPossibleSuperset<U> for T where T: Layout, U: Layout {
+    #[inline]
+    fn is_superset_of(&self, _: &U) -> bool { true }
+}
+
 /// Types that describe a single descriptor set.
 pub unsafe trait SetLayout {
     /// Returns the list of descriptors contained in this set.
@@ -53,7 +66,8 @@ pub unsafe trait SetLayoutInit<Data>: SetLayout {
 
 /// Extension for `SetLayout`.
 pub unsafe trait SetLayoutPossibleSuperset<Other>: SetLayout where Other: SetLayout {
-    /// Returns true if `self` is a superset of `Other`.
+    /// Returns true if `self` is a superset of `Other`. That is, all the descriptors in `Other`
+    /// are also in `self` and have an identical definition.
     fn is_superset_of(&self, &Other) -> bool;
 }
 
