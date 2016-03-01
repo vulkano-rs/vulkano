@@ -9,7 +9,7 @@
 //! In order to build a pipeline object (a `GraphicsPipeline` or a `ComputePipeline`), you have to
 //! pass a pointer to a `PipelineLayout<T>` struct. This struct is a wrapper around a Vulkan struct
 //! that contains all the data about the descriptor sets and descriptors that will be available
-//! in the pipeline. The `T` parameter must implement the `PipelineLayoutDesc` trait and describes
+//! in the pipeline. The `T` parameter must implement the `Layout` trait and describes
 //! the descriptor sets and descriptors on vulkano's side.
 //!
 //! To build a `PipelineLayout`, you need to pass a collection of `DescriptorSetLayout` structs.
@@ -27,7 +27,7 @@
 //!
 //! # Shader analyser
 //! 
-//! While you can manually implement the `PipelineLayoutDesc` and `SetLayout` traits on
+//! While you can manually implement the `Layout` and `SetLayout` traits on
 //! your own types, it is encouraged to use the `vulkano-shaders` crate instead. This crate will
 //! automatically parse your SPIR-V code and generate structs that implement these traits and
 //! describe the pipeline layout to vulkano.
@@ -35,7 +35,7 @@
 use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 
-pub use self::layout_def::PipelineLayoutDesc;
+pub use self::layout_def::Layout;
 pub use self::layout_def::SetLayout;
 pub use self::layout_def::SetLayoutWrite;
 pub use self::layout_def::SetLayoutInit;
@@ -114,7 +114,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor_set::DescriptorWrite;
             use $crate::descriptor_set::DescriptorBind;
             use $crate::descriptor_set::PipelineLayout;
-            use $crate::descriptor_set::PipelineLayoutDesc;
+            use $crate::descriptor_set::Layout;
             use $crate::descriptor_set::ShaderStages;
             use $crate::buffer::AbstractBuffer;
 
@@ -175,7 +175,7 @@ macro_rules! pipeline_layout {
             )*
 
             pub struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
+            unsafe impl Layout for Layout {
                 type DescriptorSets = ($(Arc<DescriptorSet<$set_name>>),*);
                 type DescriptorSetLayouts = ($(Arc<DescriptorSetLayout<$set_name>>),*);
                 type PushConstants = ();

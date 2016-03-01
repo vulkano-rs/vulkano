@@ -8,7 +8,7 @@ use descriptor_set::SetLayout;
 use descriptor_set::SetLayoutInit;
 use descriptor_set::SetLayoutWrite;
 use descriptor_set::DescriptorWrite;
-use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::Layout as PipelineLayoutDesc;
 
 /// FIXME: it should be unsafe to create this struct
 pub struct RuntimeDesc;

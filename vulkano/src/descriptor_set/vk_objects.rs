@@ -3,7 +3,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use buffer::AbstractBuffer;
-use descriptor_set::layout_def::PipelineLayoutDesc;
+use descriptor_set::layout_def::Layout;
 use descriptor_set::layout_def::SetLayout;
 use descriptor_set::layout_def::SetLayoutWrite;
 use descriptor_set::layout_def::SetLayoutInit;
@@ -355,7 +355,7 @@ pub struct PipelineLayout<P> {
     layouts: Vec<Arc<AbstractDescriptorSetLayout>>,     // TODO: is it necessary to keep the layouts alive? check the specs
 }
 
-impl<P> PipelineLayout<P> where P: PipelineLayoutDesc {
+impl<P> PipelineLayout<P> where P: Layout {
     /// Creates a new `PipelineLayout`.
     pub fn new(device: &Arc<Device>, description: P, layouts: P::DescriptorSetLayouts)
                -> Result<Arc<PipelineLayout<P>>, OomError>

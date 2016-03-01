@@ -10,7 +10,7 @@ use sampler::Sampler;
 use vk;
 
 /// Types that describe the layout of a pipeline (descriptor sets and push constants).
-pub unsafe trait PipelineLayoutDesc {
+pub unsafe trait Layout {
     /// Represents a collection of `DescriptorSet` structs. A parameter of this type must be
     /// passed when you add a draw command to a command buffer that uses this layout.
     type DescriptorSets;
@@ -30,7 +30,7 @@ pub unsafe trait PipelineLayoutDesc {
                                      -> Vec<Arc<AbstractDescriptorSetLayout>>;  // TODO: vec is slow
 
     // FIXME: implement this correctly
-    fn is_compatible_with<P>(&self, _: &P) -> bool where P: PipelineLayoutDesc { true }
+    fn is_compatible_with<P>(&self, _: &P) -> bool where P: Layout { true }
 }
 
 /// Types that describe a single descriptor set.

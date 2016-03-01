@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use device::Device;
 use descriptor_set::PipelineLayout;
-use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::Layout as PipelineLayoutDesc;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;

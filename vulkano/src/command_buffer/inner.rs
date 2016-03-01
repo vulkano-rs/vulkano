@@ -7,7 +7,7 @@ use buffer::BufferSlice;
 use buffer::AbstractBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
-use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use format::ClearValue;

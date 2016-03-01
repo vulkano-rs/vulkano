@@ -198,7 +198,7 @@ unsafe impl ::vulkano::descriptor_set::SetLayoutInit<{write_ty}> for Set{set} {{
 #[derive(Default)]
 pub struct Layout;
 
-unsafe impl ::vulkano::descriptor_set::PipelineLayoutDesc for Layout {{
+unsafe impl ::vulkano::descriptor_set::Layout for Layout {{
     type DescriptorSets = ({sets_defs});
     type DescriptorSetLayouts = ({layouts_defs});
     type PushConstants = ();

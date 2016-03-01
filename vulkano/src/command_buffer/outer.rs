@@ -5,7 +5,7 @@ use buffer::BufferSlice;
 use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
-use descriptor_set::PipelineLayoutDesc;
+use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use format::PossibleFloatOrCompressedFormatDesc;
