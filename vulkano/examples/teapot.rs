@@ -205,9 +205,13 @@ fn main() {
             .build().unwrap()
     }).collect::<Vec<_>>();
 
+    let mut submissions: Vec<vulkano::command_buffer::Submission> = Vec::new();
+
     loop {
+        submissions.retain(|s| !s.destroying_would_block());
+
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
-        command_buffers[image_num].submit(&queue).unwrap();
+        submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
         swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.poll_events() {

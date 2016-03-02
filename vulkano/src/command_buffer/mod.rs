@@ -32,6 +32,8 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
+pub use self::inner::Submission;
+pub use self::outer::submit;
 pub use self::outer::DynamicState;
 pub use self::outer::PrimaryCommandBufferBuilder;
 pub use self::outer::PrimaryCommandBufferBuilderInlineDraw;
@@ -46,3 +48,5 @@ pub use self::pool::CommandBufferPool;
 mod inner;
 mod outer;
 mod pool;
+
+pub trait AbstractCommandBuffer {}

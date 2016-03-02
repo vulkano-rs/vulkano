@@ -5,6 +5,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::AbstractBuffer;
+use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
 use descriptor_set::Layout as PipelineLayoutDesc;
@@ -647,117 +648,101 @@ pub struct InnerCommandBuffer {
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 
-impl InnerCommandBuffer {
-    /// Submits the command buffer to a queue.
-    ///
-    /// Queues are not thread-safe, therefore we need to get a `&mut`.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if the queue doesn't belong to the device this command buffer was created with.
-    /// - Panicks if the queue doesn't belong to the family the pool was created with.
-    ///
-    pub fn submit(&self, queue: &Arc<Queue>) -> Result<(), OomError> {       // TODO: wrong error type
-        // FIXME: the whole function should be checked
-        let vk = self.device.pointers();
+/// Submits the command buffer to a queue.
+///
+/// Queues are not thread-safe, therefore we need to get a `&mut`.
+///
+/// # Panic
+///
+/// - Panicks if the queue doesn't belong to the device this command buffer was created with.
+/// - Panicks if the queue doesn't belong to the family the pool was created with.
+///
+pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
+              queue: &Arc<Queue>) -> Result<Submission, OomError>   // TODO: wrong error type
+{
+    // FIXME: the whole function should be checked
+    let vk = me.device.pointers();
 
-        assert_eq!(queue.device().internal_object(), self.pool.device().internal_object());
-        assert_eq!(queue.family().id(), self.pool.queue_family().id());
+    assert_eq!(queue.device().internal_object(), me.pool.device().internal_object());
+    assert_eq!(queue.family().id(), me.pool.queue_family().id());
 
-        // FIXME: fence shouldn't be discarded, as it could be ignored by resources and
-        //        destroyed while in use
-        let fence = if self.buffer_resources.iter().any(|r| r.requires_fence()) ||
-                       self.image_resources.iter().any(|r| r.requires_fence())
-        {
-            Some(try!(Fence::new(queue.device())))
+    let fence = try!(Fence::new(queue.device()));
+
+    let mut post_semaphores = Vec::new();
+    let mut post_semaphores_ids = Vec::new();
+    let mut pre_semaphores = Vec::new();
+    let mut pre_semaphores_ids = Vec::new();
+    let mut pre_semaphores_stages = Vec::new();
+
+    for resource in me.buffer_resources.iter() {
+        let post_semaphore = if resource.requires_semaphore() {
+            let semaphore = try!(Semaphore::new(queue.device()));
+            post_semaphores.push(semaphore.clone());
+            post_semaphores_ids.push(semaphore.internal_object());
+            Some(semaphore)
+
         } else {
             None
         };
 
-        let mut post_semaphores = Vec::new();
-        let mut post_semaphores_ids = Vec::new();
-        let mut pre_semaphores = Vec::new();
-        let mut pre_semaphores_ids = Vec::new();
-        let mut pre_semaphores_stages = Vec::new();
-
-        // FIXME: pre-semaphores shouldn't be discarded as they could be deleted while in use
-        //        they should be included in a return value instead
-        // FIXME: same for post-semaphores
-
-        for resource in self.buffer_resources.iter() {
-            let post_semaphore = if resource.requires_semaphore() {
-                let semaphore = try!(Semaphore::new(queue.device()));
-                post_semaphores.push(semaphore.clone());
-                post_semaphores_ids.push(semaphore.internal_object());
-                Some(semaphore)
-
-            } else {
-                None
-            };
-
-            // FIXME: for the moment `write` is always true ; that shouldn't be the case
-            // FIXME: wrong offset and size
-            let sem = unsafe {
-                resource.gpu_access(true, 0, 18, queue, fence.clone(), post_semaphore)
-            };
-
-            if let Some(s) = sem {
-                pre_semaphores_ids.push(s.internal_object());
-                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(s);
-            }
-        }
-
-        for resource in self.image_resources.iter() {
-            let post_semaphore = if resource.requires_semaphore() {
-                let semaphore = try!(Semaphore::new(queue.device()));
-                post_semaphores.push(semaphore.clone());
-                post_semaphores_ids.push(semaphore.internal_object());
-                Some(semaphore)
-
-            } else {
-                None
-            };
-
-            // FIXME: for the moment `write` is always true ; that shouldn't be the case
-            let sem = unsafe {
-                resource.gpu_access(true, queue, fence.clone(), post_semaphore)
-            };
-
-            if let Some(s) = sem {
-                pre_semaphores_ids.push(s.internal_object());
-                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(s);
-            }
-        }
-
-        let infos = vk::SubmitInfo {
-            sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
-            pNext: ptr::null(),
-            waitSemaphoreCount: pre_semaphores_ids.len() as u32,
-            pWaitSemaphores: pre_semaphores_ids.as_ptr(),
-            pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
-            commandBufferCount: 1,
-            pCommandBuffers: &self.cmd,
-            signalSemaphoreCount: post_semaphores_ids.len() as u32,
-            pSignalSemaphores: post_semaphores_ids.as_ptr(),
+        // FIXME: for the moment `write` is always true ; that shouldn't be the case
+        // FIXME: wrong offset and size
+        let sem = unsafe {
+            resource.gpu_access(true, 0, 18, queue, Some(fence.clone()), post_semaphore)
         };
 
-        unsafe {
-            let fence = if let Some(ref fence) = fence { fence.internal_object() } else { 0 };
-            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
+        if let Some(s) = sem {
+            pre_semaphores_ids.push(s.internal_object());
+            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+            pre_semaphores.push(s);
         }
-
-        // FIXME: the return value shouldn't be () because the command buffer
-        //        could be deleted while in use
-
-        Ok(())
     }
 
-/*  TODO:
-    fn reset() -> InnerCommandBufferBuilder {
+    for resource in me.image_resources.iter() {
+        let post_semaphore = if resource.requires_semaphore() {
+            let semaphore = try!(Semaphore::new(queue.device()));
+            post_semaphores.push(semaphore.clone());
+            post_semaphores_ids.push(semaphore.internal_object());
+            Some(semaphore)
 
-    }*/
+        } else {
+            None
+        };
+
+        // FIXME: for the moment `write` is always true ; that shouldn't be the case
+        let sem = unsafe {
+            resource.gpu_access(true, queue, Some(fence.clone()), post_semaphore)
+        };
+
+        if let Some(s) = sem {
+            pre_semaphores_ids.push(s.internal_object());
+            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+            pre_semaphores.push(s);
+        }
+    }
+
+    let infos = vk::SubmitInfo {
+        sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+        pNext: ptr::null(),
+        waitSemaphoreCount: pre_semaphores_ids.len() as u32,
+        pWaitSemaphores: pre_semaphores_ids.as_ptr(),
+        pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
+        commandBufferCount: 1,
+        pCommandBuffers: &me.cmd,
+        signalSemaphoreCount: post_semaphores_ids.len() as u32,
+        pSignalSemaphores: post_semaphores_ids.as_ptr(),
+    };
+
+    unsafe {
+        let fence = fence.internal_object();
+        try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
+    }
+
+    Ok(Submission {
+        cmd: Some(me_arc),
+        semaphores: post_semaphores.iter().cloned().chain(pre_semaphores.iter().cloned()).collect(),
+        fence: fence,
+    })
 }
 
 impl Drop for InnerCommandBuffer {
@@ -768,5 +753,37 @@ impl Drop for InnerCommandBuffer {
             let pool = self.pool.internal_object_guard();
             vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &self.cmd);
         }
+    }
+}
+
+#[must_use]
+pub struct Submission {
+    cmd: Option<Arc<AbstractCommandBuffer>>,
+    semaphores: Vec<Arc<Semaphore>>,
+    fence: Arc<Fence>,
+}
+
+impl Submission {
+    #[doc(hidden)]
+    #[inline]
+    pub fn from_raw(semaphores: Vec<Arc<Semaphore>>, fence: Arc<Fence>) -> Submission {
+        Submission {
+            cmd: None,
+            semaphores: semaphores,
+            fence: fence,
+        }
+    }
+
+    /// Returns `true` is destroying this `Submission` object would block the CPU for some time.
+    #[inline]
+    pub fn destroying_would_block(&self) -> bool {
+        self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?
+    }
+}
+
+impl Drop for Submission {
+    #[inline]
+    fn drop(&mut self) {
+        self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */).unwrap();
     }
 }

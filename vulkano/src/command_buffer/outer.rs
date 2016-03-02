@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
+use command_buffer::inner::Submission;
+use command_buffer::inner::submit as inner_submit;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
@@ -428,21 +431,21 @@ pub struct PrimaryCommandBuffer {
     inner: InnerCommandBuffer,
 }
 
-impl PrimaryCommandBuffer {
-    /// Submits the command buffer to a queue so that it is executed.
-    ///
-    /// Fences and semaphores are automatically handled.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if the queue doesn't belong to the device this command buffer was created with.
-    /// - Panicks if the queue doesn't belong to the family the pool was created with.
-    ///
-    #[inline]
-    pub fn submit(&self, queue: &Arc<Queue>) -> Result<(), OomError> {       // TODO: wrong error type
-        self.inner.submit(queue)
-    }
+/// Submits the command buffer to a queue so that it is executed.
+///
+/// Fences and semaphores are automatically handled.
+///
+/// # Panic
+///
+/// - Panicks if the queue doesn't belong to the device this command buffer was created with.
+/// - Panicks if the queue doesn't belong to the family the pool was created with.
+///
+#[inline]
+pub fn submit(cmd: &Arc<PrimaryCommandBuffer>, queue: &Arc<Queue>) -> Result<Submission, OomError> {       // TODO: wrong error type
+    inner_submit(&cmd.inner, cmd.clone() as Arc<_>, queue)
 }
+
+impl AbstractCommandBuffer for PrimaryCommandBuffer {}
 
 /// A prototype of a secondary compute command buffer.
 pub struct SecondaryGraphicsCommandBufferBuilder<R> {

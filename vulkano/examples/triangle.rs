@@ -233,13 +233,17 @@ fn main() {
     // Everything else is kept alive internally with `Arc`s (even the vertex buffer for example),
     // so the only variable that we need is this one.
 
+    let mut submissions: Vec<vulkano::command_buffer::Submission> = Vec::new();
+
     loop {
+        submissions.retain(|s| !s.destroying_would_block());
+
         // Before we can draw on the output, we have to *acquire* an image from the swapchain.
         // This operation returns the index of the image that we are allowed to draw upon..
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
 
         // In order to draw, all we need to do is submit the command buffer to the queue.
-        command_buffers[image_num].submit(&queue).unwrap();
+        submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
 
         // The color output should now contain our triangle. But in order to show it on the
         // screen, we have to *present* the image. Depending on the presentation mode, this may
