@@ -14,6 +14,8 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use device::Device;
 use device::Queue;
@@ -80,6 +82,11 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
 pub struct Fence {
     device: Arc<Device>,
     fence: vk::Fence,
+
+    // If true, we know that the `Fence` is signaled. If false, we don't know.
+    // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
+    // multiple times.
+    signaled: AtomicBool,
 }
 
 impl Fence {
@@ -113,6 +120,7 @@ impl Fence {
         Ok(Arc::new(Fence {
             device: device.clone(),
             fence: fence,
+            signaled: AtomicBool::new(signaled),
         }))
     }
 
@@ -120,11 +128,16 @@ impl Fence {
     #[inline]
     pub fn ready(&self) -> Result<bool, OomError> {
         unsafe {
+            if self.signaled.load(Ordering::Relaxed) { return Ok(true); }
+
             let vk = self.device.pointers();
             let result = try!(check_errors(vk.GetFenceStatus(self.device.internal_object(),
                                                              self.fence)));
             match result {
-                Success::Success => Ok(true),
+                Success::Success => {
+                    self.signaled.store(true, Ordering::Relaxed);
+                    Ok(true)
+                },
                 Success::NotReady => Ok(false),
                 _ => unreachable!()
             }
@@ -137,12 +150,17 @@ impl Fence {
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
     pub fn wait(&self, timeout_ns: u64) -> Result<(), OomError> {       // FIXME: wrong error
         unsafe {
+            if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
+
             let vk = self.device.pointers();
             let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
                                                        &self.fence, vk::TRUE, timeout_ns)));
 
             match r {
-                Success::Success => Ok(()),
+                Success::Success => {
+                    self.signaled.store(true, Ordering::Relaxed);
+                    Ok(())
+                },
                 Success::Timeout => panic!(),        // FIXME:
                 _ => unreachable!()
             }
@@ -156,6 +174,7 @@ impl Fence {
         unsafe {
             let vk = self.device.pointers();
             vk.ResetFences(self.device.internal_object(), 1, &self.fence);
+            self.signaled.store(false, Ordering::Relaxed);
         }
     }
 
@@ -177,7 +196,9 @@ impl Fence {
                 _ => panic!("Tried to reset multiple fences that didn't belong to the same device"),
             };
 
+            fence.signaled.store(false, Ordering::Relaxed);
             fence.fence
+
         }).collect();
 
         if let Some(device) = device {
