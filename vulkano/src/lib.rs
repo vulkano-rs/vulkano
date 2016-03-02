@@ -242,6 +242,6 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_OUT_OF_DATE_KHR => Err(Error::OutOfDate),
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
-        _ => unreachable!("Unexpected error code returned by Vulkan")
+        c => unreachable!("Unexpected error code returned by Vulkan: {}", c)
     }
 }
