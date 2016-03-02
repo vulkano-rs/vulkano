@@ -217,13 +217,14 @@ impl Swapchain {
             let mut result = mem::uninitialized();
 
             let queue = queue.internal_object_guard();
+            let semaphore = if let Some(ref sem) = wait_semaphore { sem.internal_object() } else { 0 };
 
             let index = index as u32;
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 pNext: ptr::null(),
                 waitSemaphoreCount: if let Some(_) = wait_semaphore { 1 } else { 0 },
-                pWaitSemaphores: if let Some(ref sem) = wait_semaphore { &sem.internal_object() } else { ptr::null() },
+                pWaitSemaphores: &semaphore,
                 swapchainCount: 1,
                 pSwapchains: &self.swapchain,
                 pImageIndices: &index,
@@ -231,7 +232,7 @@ impl Swapchain {
             };
 
             try!(check_errors(vk.QueuePresentKHR(*queue, &infos)));
-            try!(check_errors(result));
+            //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
             Ok(())
         }
     }
