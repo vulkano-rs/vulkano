@@ -466,16 +466,16 @@ impl Usage {
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
 #[derive(Clone)]
-pub struct BufferSlice<T: ?Sized> {
+pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> {
     marker: PhantomData<T>,
-    resource: Arc<AbstractBuffer>,
+    resource: &'a Arc<Buffer<O, M>>,
     offset: usize,
     size: usize,
 }
 
-impl<T: ?Sized> BufferSlice<T> {
+impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> {
     /// Returns the buffer that this slice belongs to.
-    pub fn buffer(&self) -> &Arc<AbstractBuffer> {
+    pub fn buffer(&self) -> &Arc<Buffer<O, M>> {
         &self.resource
     }
 
@@ -492,7 +492,7 @@ impl<T: ?Sized> BufferSlice<T> {
     }
 }
 
-impl<T> BufferSlice<[T]> {
+impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> usize {
@@ -500,23 +500,23 @@ impl<T> BufferSlice<[T]> {
     }
 }
 
-impl<'a, T: ?Sized + 'static, M: 'static> From<&'a Arc<Buffer<T, M>>> for BufferSlice<T>
+impl<'a, T: ?Sized, M> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, T, M>
     where M: MemorySourceChunk
 {
     #[inline]
-    fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<T> {
+    fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<'a, T, T, M> {
         BufferSlice {
             marker: PhantomData,
-            resource: r.clone(),
+            resource: r,
             offset: 0,
             size: r.inner.size,
         }
     }
 }
 
-impl<T> From<BufferSlice<T>> for BufferSlice<[T]> {
+impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T], O, M> {
     #[inline]
-    fn from(r: BufferSlice<T>) -> BufferSlice<[T]> {
+    fn from(r: BufferSlice<'a, T, O, M>) -> BufferSlice<'a, [T], O, M> {
         BufferSlice {
             marker: PhantomData,
             resource: r.resource,

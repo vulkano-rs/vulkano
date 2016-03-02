@@ -166,9 +166,9 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn update_buffer<B, T>(self, buffer: B, data: &T)
-                                      -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<T>>
+    pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T)
+                                                          -> InnerCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
     {
         let buffer = buffer.into();
 
@@ -323,9 +323,9 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
-                                                           -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
+    pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized + 'a, Sm: 'a, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
+                                                                   -> InnerCommandBufferBuilder
+        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
               Ty: ImageTypeMarker
     {
         assert!(image.format().is_float_or_compressed());
@@ -397,12 +397,13 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<V, Pl, L, I, Ib>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
-                                                 vertices: V, indices: Ib, dynamic: &DynamicState,
-                                                 sets: L) -> InnerCommandBufferBuilder
+    pub unsafe fn draw_indexed<'a, V, Pl, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+                                                          vertices: V, indices: Ib, dynamic: &DynamicState,
+                                                          sets: L) -> InnerCommandBufferBuilder
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<[I]>>, I: 'static + Index
+              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
+              Ibm: MemorySourceChunk
     {
 
         // FIXME: add buffers to the resources

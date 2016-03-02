@@ -70,8 +70,8 @@ impl PrimaryCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<B, T>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<T>>
+    pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -117,9 +117,9 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<S, Ty, F, Im>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
+    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, So: ?Sized + 'a, Sm: 'a>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
                                                     -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<[F::Pixel]>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,
+        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,
               Ty: ImageTypeMarker
     {
         unsafe {
@@ -254,12 +254,13 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<V, L, Pl, I, Ib>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<'a, V, L, Pl, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
         where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<[I]>>, I: 'static + Index,
-              L: DescriptorSetsCollection + 'static
+              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
+              L: DescriptorSetsCollection + 'static,
+              Ibm: MemorySourceChunk
     {
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
@@ -489,12 +490,13 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<V, L, Pl, I, Ib>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<'a, V, L, Pl, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
         where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
-              Ib: Into<BufferSlice<[I]>>, I: 'static + Index,
-              L: DescriptorSetsCollection + 'static
+              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
+              L: DescriptorSetsCollection + 'static,
+              Ibm: MemorySourceChunk
     {
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
@@ -554,8 +556,8 @@ impl SecondaryComputeCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<B, T>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<T>>
+    pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {
