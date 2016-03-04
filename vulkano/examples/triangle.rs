@@ -198,7 +198,7 @@ fn main() {
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
                                                  &vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::EmptyPipelineDesc, ()).unwrap(),
-                                                 &renderpass.subpass(0).unwrap()).unwrap()
+                                                 renderpass.subpass(0).unwrap()).unwrap()
     };
 
     // The renderpass we created above only describes the layout of our framebuffers. We also need

@@ -63,7 +63,7 @@ impl<MV, L> GraphicsPipeline<MV, L>
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
-               layout: &Arc<PipelineLayout<L>>, render_pass: &Subpass<R>)
+               layout: &Arc<PipelineLayout<L>>, render_pass: Subpass<R>)
                -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
         where L: PipelineLayoutDesc + PipelineLayoutPossibleSuperset<Vl> + PipelineLayoutPossibleSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc

@@ -196,7 +196,7 @@ fn main() {
 
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &pipeline_layout, &renderpass.subpass(0).unwrap())
+                                                 &pipeline_layout, renderpass.subpass(0).unwrap())
                                                  .unwrap()
     };
 
