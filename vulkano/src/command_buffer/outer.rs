@@ -396,10 +396,11 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if one of the secondary command buffers wasn't created with a compatible
     ///   renderpass or is using the wrong subpass.
     #[inline]
-    pub fn execute_commands<'a, I>(mut self, iter: I) -> PrimaryCommandBufferBuilderSecondaryDraw
-        where I: Iterator<Item = &'a SecondaryGraphicsCommandBuffer>
+    pub fn execute_commands<'a, I, R: 'static>(mut self, iter: I) -> PrimaryCommandBufferBuilderSecondaryDraw
+        where I: Iterator<Item = &'a SecondaryGraphicsCommandBuffer<R>>, R: RenderPassLayout
     {
         // FIXME: check renderpass and subpass
+        // FIXME: keep the command buffer alive
 
         unsafe {
             self.inner = self.inner.execute_commands(iter.map(|cb| &cb.inner));
@@ -509,9 +510,14 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
     /// Finish recording commands and build the command buffer.
     #[inline]
-    pub fn build(self) -> Result<Arc<SecondaryGraphicsCommandBuffer>, OomError> {
+    pub fn build(self) -> Result<Arc<SecondaryGraphicsCommandBuffer<R>>, OomError> {
         let inner = try!(self.inner.build());
-        Ok(Arc::new(SecondaryGraphicsCommandBuffer { inner: inner }))
+
+        Ok(Arc::new(SecondaryGraphicsCommandBuffer {
+            inner: inner,
+            renderpass_layout: self.renderpass_layout,
+            renderpass_subpass: self.renderpass_subpass,
+        }))
     }
 }
 
@@ -522,8 +528,10 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 /// a primary command buffer, specify a framebuffer, and then call the secondary command buffer.
 ///
 /// A secondary graphics command buffer can't be called outside of a renderpass.
-pub struct SecondaryGraphicsCommandBuffer {
+pub struct SecondaryGraphicsCommandBuffer<R> {
     inner: InnerCommandBuffer,
+    renderpass_layout: R,
+    renderpass_subpass: u32,
 }
 
 /// A prototype of a secondary compute command buffer.
