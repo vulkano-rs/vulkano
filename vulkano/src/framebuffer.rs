@@ -648,19 +648,7 @@ impl<L> RenderPass<L> where L: Layout {
         self.num_passes
     }
 
-    /// Returns a handle that represents a subpass of this renderpass.
-    #[inline]
-    pub fn subpass(&self, id: u32) -> Option<Subpass<L>> {
-        if id < self.num_passes {
-            Some(Subpass {
-                renderpass: self,
-                subpass_id: id,
-            })
-
-        } else {
-            None
-        }
-    }
+    // TODO: add a `subpass` method that takes `Arc<Self>` as parameter
 
     /// Returns true if this renderpass is compatible with another one.
     ///
@@ -705,15 +693,29 @@ impl<L> Drop for RenderPass<L> {
 /// combination of a render pass and subpass ID.
 #[derive(Copy, Clone)]
 pub struct Subpass<'a, L: 'a> {
-    renderpass: &'a RenderPass<L>,
+    render_pass: &'a Arc<RenderPass<L>>,
     subpass_id: u32,
 }
 
 impl<'a, L: 'a> Subpass<'a, L> {
-    /// Returns the renderpass of this subpass.
+    /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn renderpass(&self) -> &'a RenderPass<L> {
-        self.renderpass
+    pub fn from(render_pass: &Arc<RenderPass<L>>, id: u32) -> Option<Subpass<L>> {
+        if id < render_pass.num_passes {
+            Some(Subpass {
+                render_pass: render_pass,
+                subpass_id: id,
+            })
+
+        } else {
+            None
+        }
+    }
+
+    /// Returns the render pass of this subpass.
+    #[inline]
+    pub fn render_pass(&self) -> &'a Arc<RenderPass<L>> {
+        self.render_pass
     }
 
     /// Returns the index of this subpass within the renderpass.

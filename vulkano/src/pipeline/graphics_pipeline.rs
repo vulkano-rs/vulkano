@@ -306,7 +306,7 @@ impl<MV, L> GraphicsPipeline<MV, L>
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
                 layout: layout.internal_object(),
-                renderPass: render_pass.renderpass().internal_object(),
+                renderPass: render_pass.render_pass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
                 basePipelineIndex: -1,       // TODO:

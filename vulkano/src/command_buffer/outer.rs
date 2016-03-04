@@ -468,7 +468,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         let inner = try!(InnerCommandBufferBuilder::new(pool, true));
         Ok(SecondaryGraphicsCommandBufferBuilder {
             inner: inner,
-            renderpass_layout: subpass.renderpass().layout().clone(),
+            renderpass_layout: subpass.render_pass().layout().clone(),
             renderpass_subpass: subpass.index(),
         })
     }
