@@ -144,12 +144,12 @@ impl PrimaryCommandBufferBuilder {
 
     /// Executes secondary compute command buffers within this primary command buffer.
     #[inline]
-    pub fn execute_commands<'a, I>(self, iter: I) -> PrimaryCommandBufferBuilder
-        where I: Iterator<Item = &'a SecondaryComputeCommandBuffer>
+    pub fn execute_commands(self, cb: &Arc<SecondaryComputeCommandBuffer>)
+                            -> PrimaryCommandBufferBuilder
     {
         unsafe {
             PrimaryCommandBufferBuilder {
-                inner: self.inner.execute_commands(iter.map(|cb| &cb.inner))
+                inner: self.inner.execute_commands(cb.clone() as Arc<_>, &cb.inner)
             }
         }
     }
@@ -393,17 +393,16 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     ///
     /// # Panic
     ///
-    /// - Panicks if one of the secondary command buffers wasn't created with a compatible
+    /// - Panicks if the secondary command buffers wasn't created with a compatible
     ///   renderpass or is using the wrong subpass.
     #[inline]
-    pub fn execute_commands<'a, I, R: 'static>(mut self, iter: I) -> PrimaryCommandBufferBuilderSecondaryDraw
-        where I: Iterator<Item = &'a SecondaryGraphicsCommandBuffer<R>>, R: RenderPassLayout
+    pub fn execute_commands<R: 'static>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R>>)
+                                        -> PrimaryCommandBufferBuilderSecondaryDraw
     {
         // FIXME: check renderpass and subpass
-        // FIXME: keep the command buffer alive
 
         unsafe {
-            self.inner = self.inner.execute_commands(iter.map(|cb| &cb.inner));
+            self.inner = self.inner.execute_commands(cb.clone() as Arc<_>, &cb.inner);
             self
         }
     }
@@ -534,6 +533,8 @@ pub struct SecondaryGraphicsCommandBuffer<R> {
     renderpass_subpass: u32,
 }
 
+impl<R> AbstractCommandBuffer for SecondaryGraphicsCommandBuffer<R> {}
+
 /// A prototype of a secondary compute command buffer.
 pub struct SecondaryComputeCommandBufferBuilder {
     inner: InnerCommandBufferBuilder,
@@ -614,6 +615,8 @@ impl SecondaryComputeCommandBufferBuilder {
 pub struct SecondaryComputeCommandBuffer {
     inner: InnerCommandBuffer,
 }
+
+impl AbstractCommandBuffer for SecondaryComputeCommandBuffer {}
 
 /// The dynamic state to use for a draw command.
 #[derive(Debug, Copy, Clone)]

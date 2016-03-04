@@ -47,6 +47,9 @@ pub struct InnerCommandBufferBuilder {
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
 
+    // List of secondary command buffers.
+    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
 
@@ -114,6 +117,7 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
+            secondary_command_buffers: Vec::new(),
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
             pipelines: Vec::new(),
@@ -128,25 +132,19 @@ impl InnerCommandBufferBuilder {
     /// # Safety
     ///
     /// Care must be taken to respect the rules about secondary command buffers.
-    pub unsafe fn execute_commands<'a, I>(mut self, iter: I)
-                                          -> InnerCommandBufferBuilder
-        where I: Iterator<Item = &'a InnerCommandBuffer>
+    pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<AbstractCommandBuffer>,
+                                       cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let mut command_buffers = Vec::with_capacity(iter.size_hint().0);
+        self.secondary_command_buffers.push(cb_arc);
 
-        for cb in iter {
-            command_buffers.push(cb.cmd);
-            for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
-            for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-            for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
-        }
+        for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
+        for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
 
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdExecuteCommands(self.cmd.unwrap(), command_buffers.len() as u32,
-                                  command_buffers.as_ptr());
+            vk.CmdExecuteCommands(self.cmd.unwrap(), 1, &cb.cmd);
         }
 
         self
@@ -602,6 +600,7 @@ impl InnerCommandBufferBuilder {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
+                secondary_command_buffers: mem::replace(&mut self.secondary_command_buffers, Vec::new()),
                 buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
                 image_resources: mem::replace(&mut self.image_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
@@ -644,6 +643,7 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
+    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
