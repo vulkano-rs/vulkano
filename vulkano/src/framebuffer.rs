@@ -323,7 +323,9 @@ macro_rules! single_pass_renderpass {
         use std;        // TODO: import everything instead
         use std::sync::Arc;
 
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         pub struct Layout;
+
         unsafe impl $crate::framebuffer::Layout for Layout {
             type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
             type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
