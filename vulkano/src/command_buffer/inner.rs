@@ -74,7 +74,7 @@ pub struct InnerCommandBufferBuilder {
 
 impl InnerCommandBufferBuilder {
     /// Creates a new builder.
-    pub fn new(pool: &Arc<CommandBufferPool>, secondary: bool)
+    pub fn new(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: bool)
                -> Result<InnerCommandBufferBuilder, OomError>
     {
         let device = pool.device();
@@ -103,10 +103,14 @@ impl InnerCommandBufferBuilder {
         };
 
         unsafe {
+            // TODO: one time submit
+            let flags = vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |     // TODO:
+                        if secondary_cont { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
+
             let infos = vk::CommandBufferBeginInfo {
                 sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 pNext: ptr::null(),
-                flags: vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,       // TODO:
+                flags: flags,
                 pInheritanceInfo: ptr::null(),     // TODO: 
             };
 
