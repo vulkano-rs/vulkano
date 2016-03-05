@@ -167,7 +167,7 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T)
+    pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(mut self, buffer: B, data: &T)
                                                           -> InnerCommandBufferBuilder
         where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
     {
@@ -179,9 +179,9 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().usage_transfer_dest());
 
-        // FIXME: check that the queue family supports transfers
-        // FIXME: add the buffer to the list of resources
         // FIXME: check queue family of the buffer
+
+        self.add_buffer_resource(buffer.buffer().clone(), true, buffer.offset(), buffer.size());
 
         {
             let vk = self.device.pointers();
