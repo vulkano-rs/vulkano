@@ -25,6 +25,8 @@ use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::MultiVertex;
+use pipeline::viewport::Viewport;
+use pipeline::viewport::Scissor;
 
 use OomError;
 
@@ -619,9 +621,11 @@ pub struct SecondaryComputeCommandBuffer {
 impl AbstractCommandBuffer for SecondaryComputeCommandBuffer {}
 
 /// The dynamic state to use for a draw command.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct DynamicState {
     pub line_width: Option<f32>,
+    pub viewports: Option<Vec<Viewport>>,
+    pub scissors: Option<Vec<Scissor>>,
 }
 
 impl DynamicState {
@@ -629,6 +633,8 @@ impl DynamicState {
     pub fn none() -> DynamicState {
         DynamicState {
             line_width: None,
+            viewports: None,
+            scissors: None,
         }
     }
 }

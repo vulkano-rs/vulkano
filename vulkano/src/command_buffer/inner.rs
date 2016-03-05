@@ -469,6 +469,30 @@ impl InnerCommandBufferBuilder {
                 assert!(!pipeline.has_dynamic_line_width());
             }
 
+            if let Some(ref viewports) = dynamic.viewports {
+                assert!(pipeline.has_dynamic_viewports());
+                assert_eq!(viewports.len(), pipeline.num_viewports() as usize);
+                // TODO: check limits
+                // TODO: cache state?
+                // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<Vec<_>>();
+                vk.CmdSetViewport(self.cmd.unwrap(), 0, viewports.len() as u32, viewports.as_ptr());
+            } else {
+                assert!(!pipeline.has_dynamic_viewports());
+            }
+
+            if let Some(ref scissors) = dynamic.scissors {
+                assert!(pipeline.has_dynamic_scissors());
+                assert_eq!(scissors.len(), pipeline.num_viewports() as usize);
+                // TODO: check limits
+                // TODO: cache state?
+                // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<Vec<_>>();
+                vk.CmdSetScissor(self.cmd.unwrap(), 0, scissors.len() as u32, scissors.as_ptr());
+            } else {
+                assert!(!pipeline.has_dynamic_scissors());
+            }
+
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = sets.list().collect::<Vec<_>>();
             for d in &descriptor_sets { self.descriptor_sets.push(d.clone()); }

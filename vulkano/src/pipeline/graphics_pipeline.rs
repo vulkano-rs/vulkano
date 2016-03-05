@@ -351,6 +351,24 @@ impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {
     pub fn has_dynamic_line_width(&self) -> bool {
         self.dynamic_line_width
     }
+
+    /// Returns the number of viewports and scissors of this pipeline.
+    #[inline]
+    pub fn num_viewports(&self) -> u32 {
+        self.num_viewports
+    }
+
+    /// Returns true if the viewports used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_viewports(&self) -> bool {
+        self.dynamic_viewport
+    }
+
+    /// Returns true if the scissors used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_scissors(&self) -> bool {
+        self.dynamic_scissor
+    }
 }
 
 impl<MultiVertex, Layout> GenericPipeline for GraphicsPipeline<MultiVertex, Layout> {
