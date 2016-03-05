@@ -123,7 +123,9 @@ impl {name} {{
         "#));
 
         // struct definitions
+        output.push_str("pub mod ty {");
         output.push_str(&structs::write_structs(&doc));
+        output.push_str("}");
 
         // descriptor sets
         output.push_str(&descriptor_sets::write_descriptor_sets(&doc));

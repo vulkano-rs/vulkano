@@ -112,7 +112,7 @@ fn main() {
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
-    let uniform_buffer = vulkano::buffer::Buffer::<vs::Data, _>
+    let uniform_buffer = vulkano::buffer::Buffer::<vs::ty::Data, _>
                                ::new(&device, &vulkano::buffer::Usage::all(),
                                      vulkano::memory::HostVisible, &queue)
                                .expect("failed to create buffer");
@@ -188,7 +188,7 @@ fn main() {
 
         vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &pipeline_layout, renderpass.subpass(0).unwrap())
+                                                 &pipeline_layout, vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap())
                                                  .unwrap()
     };
 
