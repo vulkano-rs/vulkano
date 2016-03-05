@@ -162,7 +162,6 @@ impl InnerCommandBufferBuilder {
     /// - Panicks if the size of `data` is superior to 65536 bytes.
     /// - Panicks if the offset or size is not a multiple of 4.
     /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
     ///
     /// # Safety
     ///
@@ -174,7 +173,6 @@ impl InnerCommandBufferBuilder {
     {
         let buffer = buffer.into();
 
-        assert!(self.pool.queue_family().supports_transfers());
         assert_eq!(buffer.size(), mem::size_of_val(data));
         assert!(buffer.size() <= 65536);
         assert!(buffer.offset() % 4 == 0);
