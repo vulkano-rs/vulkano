@@ -10,6 +10,7 @@ use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
+use descriptor_set::AbstractDescriptorSet;
 use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
@@ -49,6 +50,9 @@ pub struct InnerCommandBufferBuilder {
 
     // List of secondary command buffers.
     secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+
+    // List of descriptor sets used in this CB.
+    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
 
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
@@ -122,6 +126,7 @@ impl InnerCommandBufferBuilder {
             pool: pool.clone(),
             cmd: Some(cmd),
             secondary_command_buffers: Vec::new(),
+            descriptor_sets: Vec::new(),
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
             pipelines: Vec::new(),
@@ -464,9 +469,9 @@ impl InnerCommandBufferBuilder {
                 assert!(!pipeline.has_dynamic_line_width());
             }
 
-            // FIXME: keep these alive
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = sets.list().collect::<Vec<_>>();
+            for d in &descriptor_sets { self.descriptor_sets.push(d.clone()); }
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
 
@@ -603,6 +608,7 @@ impl InnerCommandBufferBuilder {
                 pool: self.pool.clone(),
                 cmd: cmd,
                 secondary_command_buffers: mem::replace(&mut self.secondary_command_buffers, Vec::new()),
+                descriptor_sets: mem::replace(&mut self.descriptor_sets, Vec::new()),
                 buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
                 image_resources: mem::replace(&mut self.image_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
@@ -646,6 +652,7 @@ pub struct InnerCommandBuffer {
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
     secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
