@@ -320,16 +320,17 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Finish drawing this renderpass and get back the builder.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if not at the last subpass.
+    ///
     #[inline]
     pub fn draw_end(mut self) -> PrimaryCommandBufferBuilder {
+        assert!(self.current_subpass + 1 == self.num_subpasses);
+
         unsafe {
-            // skipping the remaining subpasses
-            for _ in 0 .. (self.num_subpasses - self.current_subpass - 1) {
-                self.inner = self.inner.next_subpass(false);
-            }
-
             let inner = self.inner.end_renderpass();
-
             PrimaryCommandBufferBuilder {
                 inner: inner,
             }
@@ -410,16 +411,17 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     }
 
     /// Finish drawing this renderpass and get back the builder.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if not at the last subpass.
+    ///
     #[inline]
     pub fn draw_end(mut self) -> PrimaryCommandBufferBuilder {
+        assert!(self.current_subpass + 1 == self.num_subpasses);
+
         unsafe {
-            // skipping the remaining subpasses
-            for _ in 0 .. (self.num_subpasses - self.current_subpass - 1) {
-                self.inner = self.inner.next_subpass(false);
-            }
-
             let inner = self.inner.end_renderpass();
-
             PrimaryCommandBufferBuilder {
                 inner: inner,
             }
