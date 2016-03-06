@@ -306,6 +306,29 @@ unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
+        attachments: { $($a:tt)* },
+        pass: {
+            color: [$($color_atch:ident),*],
+            depth_stencil: {$($depth_atch:ident)*}
+        }
+    ) => {
+        ordered_passes_renderpass!{
+            attachments: { $($a)* },
+            passes: [
+                {
+                    color: [$($color_atch),*],
+                    depth_stencil: {$($depth_atch)*},
+                    input: []
+                }
+            ]
+        }
+    }
+}
+
+/// Builds a `RenderPass` object.
+#[macro_export]
+macro_rules! ordered_passes_renderpass {
+    (
         attachments: {
             $(
                 $atch_name:ident: {
@@ -315,10 +338,15 @@ macro_rules! single_pass_renderpass {
                 }
             ),*
         },
-        pass: {
-            color: [$($color_atch:ident),*],
-            depth_stencil: {$($depth_atch:ident)*}
-        }
+        passes: [
+            $(
+                {
+                    color: [$($color_atch:ident),*],
+                    depth_stencil: {$($depth_atch:ident)*},
+                    input: [$($input_atch:ident),*]
+                }
+            ),*
+        ]
     ) => {
         use std;        // TODO: import everything instead
         use std::sync::Arc;
@@ -328,8 +356,8 @@ macro_rules! single_pass_renderpass {
 
         unsafe impl $crate::framebuffer::Layout for Layout {
             type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
-            type PassesIter = std::option::IntoIter<$crate::framebuffer::PassDescription>;
-            type PassDependenciesIter = std::option::IntoIter<$crate::framebuffer::PassDependencyDescription>;
+            type PassesIter = std::vec::IntoIter<$crate::framebuffer::PassDescription>;
+            type PassDependenciesIter = std::vec::IntoIter<$crate::framebuffer::PassDependencyDescription>;
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsDescIter {
@@ -357,29 +385,47 @@ macro_rules! single_pass_renderpass {
                     attachment_num += 1;
                 )*
 
-                let mut depth = None;
-                $(
-                    depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
-                )*
+                vec![
+                    $({
+                        let mut depth = None;
+                        $(
+                            depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                        )*
 
-                Some(
-                    $crate::framebuffer::PassDescription {
-                        color_attachments: vec![
-                            $(
-                                ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
-                            ),*
-                        ],
-                        depth_stencil: depth,
-                        input_attachments: vec![],
-                        resolve_attachments: vec![],
-                        preserve_attachments: vec![],
-                    }
-                ).into_iter()
+                        $crate::framebuffer::PassDescription {
+                            color_attachments: vec![
+                                $(
+                                    ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                                ),*
+                            ],
+                            depth_stencil: depth,
+                            input_attachments: vec![
+                                $(
+                                    ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
+                                ),*
+                            ],
+                            resolve_attachments: vec![],
+                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                                $(if a == $color_atch { return false; })*
+                                $(if a == $depth_atch { return false; })*
+                                $(if a == $input_atch { return false; })*
+                                true
+                            }).collect()
+                        }
+                    })*
+                ].into_iter()
             }
 
             #[inline]
             fn pass_dependencies(&self) -> Self::PassDependenciesIter {
-                None.into_iter()
+                // TODO: slow
+                (0 .. self.passes().len()).skip(1).map(|p2| {
+                    $crate::framebuffer::PassDependencyDescription {
+                        source_subpass: p2 - 1,
+                        destination_subpass: p2,
+                        by_region: false,
+                    }
+                }).collect::<Vec<_>>().into_iter()
             }
         }
 
