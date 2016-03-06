@@ -76,7 +76,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 },
                 _ => None,      // TODO: other types
             }
-        }).next().expect(&format!("Couldn't find relevant type for uniform `{}` (maybe unimplemented)", name));
+        }).next().expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
             name: name,
