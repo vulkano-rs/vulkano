@@ -412,7 +412,7 @@ macro_rules! ordered_passes_renderpass {
                                 true
                             }).collect()
                         }
-                    })*
+                    }),*
                 ].into_iter()
             }
 
