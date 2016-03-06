@@ -499,6 +499,9 @@ impl InnerCommandBufferBuilder {
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
 
+            // FIXME: input attachments of descriptor sets have to be checked against input
+            //        attachments of the render pass
+
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.is_empty() {
                 vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
