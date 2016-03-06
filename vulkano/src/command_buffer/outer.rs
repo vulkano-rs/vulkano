@@ -184,7 +184,7 @@ impl PrimaryCommandBufferBuilder {
             PrimaryCommandBufferBuilderInlineDraw {
                 inner: inner,
                 current_subpass: 0,
-                num_subpasses: 1,   // FIXME:
+                num_subpasses: framebuffer.renderpass().num_subpasses(),
             }
         }
     }
@@ -217,7 +217,7 @@ impl PrimaryCommandBufferBuilder {
             PrimaryCommandBufferBuilderSecondaryDraw {
                 inner: inner,
                 current_subpass: 0,
-                num_subpasses: 1,   // FIXME:
+                num_subpasses: framebuffer.renderpass().num_subpasses(),
             }
         }
     }
