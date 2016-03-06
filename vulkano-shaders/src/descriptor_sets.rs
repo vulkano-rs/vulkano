@@ -64,6 +64,17 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                         ""
                     ))
                 },
+                &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
+                                                 sampled, ref format, ref access, .. }
+                                        if result_id == pointed_ty && sampled == Some(false) =>
+                {
+                    Some((
+                        "::vulkano::descriptor_set::DescriptorType::InputAttachment",       // FIXME: can be `StorageImage`
+                        "::vulkano::image::AbstractImageView",
+                        "::vulkano::descriptor_set::DescriptorBind::InputAttachment(",      // FIXME:
+                        ", ::vulkano::image::Layout::ShaderReadOnlyOptimal)"     // FIXME:
+                    ))
+                },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
                                                                     if result_id == pointed_ty =>
                 {
@@ -117,6 +128,12 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                 })
                                 .collect::<Vec<_>>();
 
+        let write_ty = if write_ty.len() == 1 {
+            write_ty.into_iter().next().unwrap()
+        } else {
+            format!("({})", write_ty.join(", "))
+        };
+
         let descr = descriptors.iter().enumerate().filter(|&(_, d)| d.set == *set)
                                .map(|(entry, d)| {
                                    format!("::vulkano::descriptor_set::DescriptorDesc {{
@@ -154,7 +171,7 @@ unsafe impl ::vulkano::descriptor_set::SetLayoutInit<{write_ty}> for Set{set} {{
     }}
 }}
 
-"#, set = set, write_ty = write_ty.join(","), writes = writes.join(","), descr = descr.join(",")));
+"#, set = set, write_ty = write_ty, writes = writes.join(","), descr = descr.join(",")));
     }
 
     let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);
