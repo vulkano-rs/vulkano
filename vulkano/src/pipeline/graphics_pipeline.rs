@@ -144,11 +144,10 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 primitiveRestartEnable: if input_assembly.primitive_restart_enable { vk::TRUE } else { vk::FALSE },
             };
 
-            let (vp_vp, vp_sc, vp_vpnum, vp_scnum) = match *viewport {
+            let (vp_vp, vp_sc, vp_num) = match *viewport {
                 ViewportsState::Fixed { ref data } => (
                     data.iter().map(|e| e.0.clone().into()).collect::<Vec<vk::Viewport>>(),
                     data.iter().map(|e| e.1.clone().into()).collect::<Vec<vk::Rect2D>>(),
-                    data.len() as u32,
                     data.len() as u32
                 ),
                 ViewportsState::DynamicViewports { ref scissors } => {
@@ -156,19 +155,19 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                     let scissors = scissors.iter().map(|e| e.clone().into())
                                            .collect::<Vec<vk::Rect2D>>();
                     dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
-                    (vec![], scissors, 0, num)
+                    (vec![], scissors, num)
                 },
                 ViewportsState::DynamicScissors { ref viewports } => {
                     let num = viewports.len() as u32;
                     let viewports = viewports.iter().map(|e| e.clone().into())
                                              .collect::<Vec<vk::Viewport>>();
                     dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
-                    (viewports, vec![], num, 0)
+                    (viewports, vec![], num)
                 },
                 ViewportsState::Dynamic { num } => {
                     dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                     dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
-                    (vec![], vec![], 0, 0)
+                    (vec![], vec![], num)
                 },
             };
 
@@ -176,9 +175,9 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                viewportCount: vp_vpnum,
+                viewportCount: vp_num,
                 pViewports: vp_vp.as_ptr(),
-                scissorCount: vp_scnum,
+                scissorCount: vp_num,
                 pScissors: vp_sc.as_ptr(),
             };
 
