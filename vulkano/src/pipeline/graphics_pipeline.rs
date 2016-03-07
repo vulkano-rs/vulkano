@@ -176,9 +176,9 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 viewportCount: vp_num,
-                pViewports: vp_vp.as_ptr(),
+                pViewports: if vp_vp.is_empty() { ptr::null() } else { vp_vp.as_ptr() },    // validation layer crashes if you just pass the pointer
                 scissorCount: vp_num,
-                pScissors: vp_sc.as_ptr(),
+                pScissors: if vp_sc.is_empty() { ptr::null() } else { vp_sc.as_ptr() },     // validation layer crashes if you just pass the pointer
             };
 
             if let Some(line_width) = raster.line_width {
