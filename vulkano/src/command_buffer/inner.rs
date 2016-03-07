@@ -17,6 +17,8 @@ use format::FormatDesc;
 use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
+use framebuffer::AbstractFramebuffer;
+use framebuffer::AbstractRenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
@@ -54,6 +56,12 @@ pub struct InnerCommandBufferBuilder {
 
     // List of descriptor sets used in this CB.
     descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+
+    // List of framebuffers used in this CB.
+    framebuffers: Vec<Arc<AbstractFramebuffer>>,
+
+    // List of renderpasses used in this CB.
+    renderpasses: Vec<Arc<AbstractRenderPass>>,
 
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
@@ -145,6 +153,8 @@ impl InnerCommandBufferBuilder {
             cmd: Some(cmd),
             secondary_command_buffers: Vec::new(),
             descriptor_sets: Vec::new(),
+            framebuffers: Vec::new(),
+            renderpasses: Vec::new(),
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
             pipelines: Vec::new(),
@@ -545,9 +555,12 @@ impl InnerCommandBufferBuilder {
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
-        where R: RenderPassLayout, F: RenderPassLayout
+        where R: RenderPassLayout + 'static, F: RenderPassLayout + 'static
     {
         assert!(framebuffer.is_compatible_with(renderpass));
+
+        self.framebuffers.push(framebuffer.clone() as Arc<_>);
+        self.renderpasses.push(renderpass.clone() as Arc<_>);
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = clear_values.iter().map(|value| {
@@ -654,6 +667,8 @@ impl InnerCommandBufferBuilder {
                 cmd: cmd,
                 secondary_command_buffers: mem::replace(&mut self.secondary_command_buffers, Vec::new()),
                 descriptor_sets: mem::replace(&mut self.descriptor_sets, Vec::new()),
+                framebuffers: mem::replace(&mut self.framebuffers, Vec::new()),
+                renderpasses: mem::replace(&mut self.renderpasses, Vec::new()),
                 buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
                 image_resources: mem::replace(&mut self.image_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
@@ -698,6 +713,8 @@ pub struct InnerCommandBuffer {
     cmd: vk::CommandBuffer,
     secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
     descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+    framebuffers: Vec<Arc<AbstractFramebuffer>>,
+    renderpasses: Vec<Arc<AbstractRenderPass>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,

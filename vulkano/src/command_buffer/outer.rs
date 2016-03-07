@@ -170,7 +170,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn draw_inline<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
                                 framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                 -> PrimaryCommandBufferBuilderInlineDraw
-        where F: RenderPassLayout + RenderPassLayoutClearValues<C>, R: RenderPassLayout
+        where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static, R: RenderPassLayout + 'static
     {
         // FIXME: check for compatibility
 
@@ -203,7 +203,8 @@ impl PrimaryCommandBufferBuilder {
     pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
                                    framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                    -> PrimaryCommandBufferBuilderSecondaryDraw
-        where F: RenderPassLayout + RenderPassLayoutClearValues<C>, R: RenderPassLayout
+        where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static,
+              R: RenderPassLayout + 'static
     {
         // FIXME: check for compatibility
 

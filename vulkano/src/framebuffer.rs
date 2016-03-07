@@ -735,6 +735,10 @@ impl<L> Drop for RenderPass<L> {
     }
 }
 
+/// Trait implemented on all render pass objects.
+pub trait AbstractRenderPass {}
+impl<L> AbstractRenderPass for RenderPass<L> {}
+
 /// Represents a subpass within a `RenderPass`.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
@@ -940,6 +944,10 @@ impl<L> Drop for Framebuffer<L> {
         }
     }
 }
+
+/// Trait implemented on all framebuffers.
+pub trait AbstractFramebuffer {}
+impl<L> AbstractFramebuffer for Framebuffer<L> {}
 
 /// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
