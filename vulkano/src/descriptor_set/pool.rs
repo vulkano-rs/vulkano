@@ -44,7 +44,7 @@ impl DescriptorPool {
             let infos = vk::DescriptorPoolCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // TODO:
+                flags: vk::DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,   // TODO:
                 maxSets: 100,       // TODO: let user choose
                 poolSizeCount: pool_sizes.len() as u32,
                 pPoolSizes: pool_sizes.as_ptr(),
