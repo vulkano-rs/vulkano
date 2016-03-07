@@ -7,6 +7,7 @@ use device::Device;
 use descriptor_set::PipelineLayout;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::LayoutPossibleSuperset as PipelineLayoutPossibleSuperset;
+use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;
@@ -30,10 +31,13 @@ use pipeline::viewport::ViewportsState;
 ///
 /// The template parameter contains the descriptor set to use with this pipeline, and the
 /// renderpass layout.
-pub struct GraphicsPipeline<MultiVertex, Layout> {
+pub struct GraphicsPipeline<MultiVertex, Layout, RenderP> {
     device: Arc<Device>,
     pipeline: vk::Pipeline,
     layout: Arc<PipelineLayout<Layout>>,
+
+    render_pass: Arc<RenderPass<RenderP>>,
+    render_pass_subpass: u32,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -45,8 +49,8 @@ pub struct GraphicsPipeline<MultiVertex, Layout> {
     marker: PhantomData<(MultiVertex,)>
 }
 
-impl<MV, L> GraphicsPipeline<MV, L>
-    where MV: MultiVertex, L: PipelineLayoutDesc
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
+    where Mv: MultiVertex, L: PipelineLayoutDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -58,13 +62,13 @@ impl<MV, L> GraphicsPipeline<MV, L>
     /// - Panicks if the line width is different from 1.0 and the `wide_lines` feature is not enabled.
     ///
     // TODO: check all the device's limits
-    pub fn new<Vi, Fo, R, Vl, Fl>
+    pub fn new<Vi, Fo, Vl, Fl>
               (device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
-               layout: &Arc<PipelineLayout<L>>, render_pass: Subpass<R>)
-               -> Result<Arc<GraphicsPipeline<MV, L>>, OomError>
+               layout: &Arc<PipelineLayout<L>>, render_pass: Subpass<Rp>)
+               -> Result<Arc<GraphicsPipeline<Mv, L, Rp>>, OomError>
         where L: PipelineLayoutDesc + PipelineLayoutPossibleSuperset<Vl> + PipelineLayoutPossibleSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
@@ -100,8 +104,8 @@ impl<MV, L> GraphicsPipeline<MV, L>
             });
 
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let binding_descriptions = (0 .. MV::num_buffers()).map(|num| {
-                let (stride, rate) = MV::buffer_info(num);
+            let binding_descriptions = (0 .. Mv::num_buffers()).map(|num| {
+                let (stride, rate) = Mv::buffer_info(num);
                 vk::VertexInputBindingDescription {
                     binding: num,
                     stride: stride,
@@ -111,7 +115,7 @@ impl<MV, L> GraphicsPipeline<MV, L>
 
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let attribute_descriptions = vertex_shader.attributes().iter().map(|&(loc, ref name)| {
-                let (binding, info) = MV::attrib(name).expect("missing attr");       // TODO: error
+                let (binding, info) = Mv::attrib(name).expect("missing attr");       // TODO: error
                 vk::VertexInputAttributeDescription {
                     location: loc as u32,
                     binding: binding,
@@ -323,6 +327,9 @@ impl<MV, L> GraphicsPipeline<MV, L>
             pipeline: pipeline,
             layout: layout.clone(),
 
+            render_pass: render_pass.render_pass().clone(),
+            render_pass_subpass: render_pass.index(),
+
             dynamic_line_width: raster.line_width.is_none(),
             dynamic_viewport: viewport.dynamic_viewports(),
             dynamic_scissor: viewport.dynamic_scissors(),
@@ -335,17 +342,23 @@ impl<MV, L> GraphicsPipeline<MV, L>
     }
 }
 
-impl<MV, L> GraphicsPipeline<MV, L>
-    where MV: MultiVertex, L: PipelineLayoutDesc
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
+    where Mv: MultiVertex, L: PipelineLayoutDesc
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout<L>> {
         &self.layout
     }
+
+    /// Returns the pass used in the constructor.
+    #[inline]
+    pub fn subpass(&self) -> Subpass<Rp> {
+        Subpass::from(&self.render_pass, self.render_pass_subpass).unwrap()
+    }
 }
 
-impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     /// Returns true if the line width used by this pipeline is dynamic.
     #[inline]
     pub fn has_dynamic_line_width(&self) -> bool {
@@ -371,10 +384,10 @@ impl<MultiVertex, Layout> GraphicsPipeline<MultiVertex, Layout> {
     }
 }
 
-impl<MultiVertex, Layout> GenericPipeline for GraphicsPipeline<MultiVertex, Layout> {
+impl<Mv, L, Rp> GenericPipeline for GraphicsPipeline<Mv, L, Rp> {
 }
 
-unsafe impl<MultiVertex, Layout> VulkanObject for GraphicsPipeline<MultiVertex, Layout> {
+unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {
     type Object = vk::Pipeline;
 
     #[inline]
@@ -383,7 +396,7 @@ unsafe impl<MultiVertex, Layout> VulkanObject for GraphicsPipeline<MultiVertex, 
     }
 }
 
-impl<MultiVertex, Layout> Drop for GraphicsPipeline<MultiVertex, Layout> {
+impl<Mv, L, Rp> Drop for GraphicsPipeline<Mv, L, Rp> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

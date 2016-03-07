@@ -373,11 +373,11 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V, Pl, L>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub unsafe fn draw<V, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L) -> InnerCommandBufferBuilder
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc
+              Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
         // FIXME: add buffers to the resources
 
@@ -402,11 +402,11 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, Pl, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub unsafe fn draw_indexed<'a, V, Pl, Rp, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
                                                           sets: L) -> InnerCommandBufferBuilder
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc,
+              Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               Ibm: MemorySourceChunk
     {
@@ -441,10 +441,10 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    fn bind_gfx_pipeline_state<V, Pl, L>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
-                                         dynamic: &DynamicState, sets: L)
+    fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+                                             dynamic: &DynamicState, sets: L)
         where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc
+              Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
         unsafe {
             let vk = self.device.pointers();

@@ -240,12 +240,14 @@ pub struct PrimaryCommandBufferBuilderInlineDraw {
 impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V, L, Pl>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
-                          vertices: V, dynamic: &DynamicState, sets: L)
-                          -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+    pub fn draw<V, L, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+                              vertices: V, dynamic: &DynamicState, sets: L)
+                              -> PrimaryCommandBufferBuilderInlineDraw
+        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
               L: DescriptorSetsCollection + 'static
     {
+        // FIXME: check subpass
+
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
@@ -256,14 +258,16 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<'a, V, L, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
               Ibm: MemorySourceChunk
     {
+        // FIXME: check subpass
+
         unsafe {
             PrimaryCommandBufferBuilderInlineDraw {
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
@@ -478,12 +482,13 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V, L, Pl>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
-                          vertices: V, dynamic: &DynamicState, sets: L)
-                          -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+    pub fn draw<V, L, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+                              vertices: V, dynamic: &DynamicState, sets: L)
+                              -> SecondaryGraphicsCommandBufferBuilder<R>
+        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
               L: DescriptorSetsCollection + 'static
     {
+        // FIXME: check subpass
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
@@ -494,14 +499,15 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl>>,
+    pub fn draw_indexed<'a, V, L, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
               Ibm: MemorySourceChunk
     {
+        // FIXME: check subpass
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
