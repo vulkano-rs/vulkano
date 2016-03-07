@@ -53,7 +53,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<PrimaryCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new(pool, false, false));
+        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, false, None));
         Ok(PrimaryCommandBufferBuilder { inner: inner })
     }
 
@@ -472,7 +472,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
         where R: Clone
     {
-        let inner = try!(InnerCommandBufferBuilder::new(pool, true, true));
+        let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass)));
         Ok(SecondaryGraphicsCommandBufferBuilder {
             inner: inner,
             renderpass_layout: subpass.render_pass().layout().clone(),
@@ -556,7 +556,7 @@ impl SecondaryComputeCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<SecondaryComputeCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new(pool, true, false));
+        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, true, None));
         Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
     }
 

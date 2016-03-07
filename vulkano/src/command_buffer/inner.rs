@@ -19,6 +19,7 @@ use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
+use framebuffer::Subpass;
 use framebuffer::Layout as RenderPassLayout;
 use image::AbstractImageView;
 use image::Image;
@@ -78,8 +79,8 @@ pub struct InnerCommandBufferBuilder {
 
 impl InnerCommandBufferBuilder {
     /// Creates a new builder.
-    pub fn new(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: bool)
-               -> Result<InnerCommandBufferBuilder, OomError>
+    pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>)
+                  -> Result<InnerCommandBufferBuilder, OomError>
     {
         let device = pool.device();
         let vk = device.pointers();
@@ -109,13 +110,30 @@ impl InnerCommandBufferBuilder {
         unsafe {
             // TODO: one time submit
             let flags = vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |     // TODO:
-                        if secondary_cont { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
+                        if secondary_cont.is_some() { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
+
+            let (rp, sp) = if let Some(ref sp) = secondary_cont {
+                (sp.render_pass().internal_object(), sp.index())
+            } else {
+                (0, 0)
+            };
+
+            let inheritance = vk::CommandBufferInheritanceInfo {
+                sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
+                pNext: ptr::null(),
+                renderPass: rp,
+                subpass: sp,
+                framebuffer: 0,         // TODO:
+                occlusionQueryEnable: 0,            // TODO:
+                queryFlags: 0,          // TODO:
+                pipelineStatistics: 0,          // TODO:
+            };
 
             let infos = vk::CommandBufferBeginInfo {
                 sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 pNext: ptr::null(),
                 flags: flags,
-                pInheritanceInfo: ptr::null(),     // TODO: 
+                pInheritanceInfo: &inheritance,
             };
 
             try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
