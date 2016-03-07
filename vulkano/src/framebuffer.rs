@@ -637,10 +637,10 @@ impl<L> RenderPass<L> where L: Layout {
             vk::SubpassDependency {
                 srcSubpass: dependency.source_subpass as u32,
                 dstSubpass: dependency.destination_subpass as u32,
-                srcStageMask: vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,      // FIXME:
-                dstStageMask: vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,      // FIXME:
-                srcAccessMask: vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,       // FIXME:
-                dstAccessMask: vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,       // FIXME:
+                srcStageMask: vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,      // FIXME:
+                dstStageMask: vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,      // FIXME:
+                srcAccessMask: 0x0001FFFF,       // FIXME:
+                dstAccessMask: 0x0001FFFF,       // FIXME:
                 dependencyFlags: if dependency.by_region { vk::DEPENDENCY_BY_REGION_BIT } else { 0 },
             }
         }).collect::<Vec<_>>();
