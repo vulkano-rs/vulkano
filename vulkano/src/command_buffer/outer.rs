@@ -16,6 +16,7 @@ use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
+use framebuffer::CompatibleLayout as RenderPassCompatibleLayout;
 use framebuffer::Layout as RenderPassLayout;
 use framebuffer::LayoutClearValues as RenderPassLayoutClearValues;
 use framebuffer::Subpass;
@@ -486,10 +487,13 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw<V, L, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
-              L: DescriptorSetsCollection + 'static
+        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+              Rp: RenderPassLayout + 'static, L: DescriptorSetsCollection + 'static,
+              R: RenderPassCompatibleLayout<Rp>
     {
-        // FIXME: check subpass
+        assert!(self.renderpass_layout.is_compatible_with(pipeline.subpass().render_pass().layout()));
+        assert_eq!(self.renderpass_subpass, pipeline.subpass().index());
+
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
@@ -503,12 +507,15 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw_indexed<'a, V, L, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
+        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+              Rp: RenderPassLayout + 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
               Ibm: MemorySourceChunk
     {
-        // FIXME: check subpass
+        assert!(self.renderpass_layout.is_compatible_with(pipeline.subpass().render_pass().layout()));
+        assert_eq!(self.renderpass_subpass, pipeline.subpass().index());
+
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
