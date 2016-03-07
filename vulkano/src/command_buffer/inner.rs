@@ -394,7 +394,7 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
-            vk.CmdDraw(self.cmd.unwrap(), 4, 1, 0, 0);  // FIXME: params
+            vk.CmdDraw(self.cmd.unwrap(), vertices.vertices() as u32, 1, 0, 0);  // FIXME: params
         }
 
         self

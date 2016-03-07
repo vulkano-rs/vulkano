@@ -40,6 +40,9 @@ pub unsafe trait MultiVertex {
     fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate);
 
     fn buffers(&self) -> Self::BuffersIter;
+
+    /// Returns the number of vertices in total.
+    fn vertices(&self) -> usize;
 }
 
 unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
@@ -67,6 +70,11 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
     fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
         Some(self.clone() as Arc<_>).into_iter()
     }
+
+    #[inline]
+    fn vertices(&self) -> usize {
+        1
+    }
 }
 
 unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
@@ -93,6 +101,11 @@ unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
     #[inline]
     fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
         Some(self.clone() as Arc<_>).into_iter()
+    }
+
+    #[inline]
+    fn vertices(&self) -> usize {
+        self.len()
     }
 }
 
@@ -122,6 +135,11 @@ macro_rules! impl_mv {
             #[inline]
             fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
                 Some(self.clone() as Arc<_>).into_iter()
+            }
+
+            #[inline]
+            fn vertices(&self) -> usize {
+                mem::size_of::<$t2>() / mem::size_of::<$t1>()
             }
         }
     );
@@ -189,6 +207,12 @@ unsafe impl<A, B, Ma, Mb> MultiVertex for (Arc<Buffer<[A], Ma>>, Arc<Buffer<[B],
     #[inline]
     fn buffers(&self) -> VecIntoIter<Arc<AbstractBuffer>> {
         vec![self.0.clone() as Arc<_>, self.1.clone() as Arc<_>].into_iter()
+    }
+
+    #[inline]
+    fn vertices(&self) -> usize {
+        // TODO: panic if number of elements mismatch instead?
+        [self.0.len(), self.1.len()].iter().cloned().min().unwrap()
     }
 }
 
