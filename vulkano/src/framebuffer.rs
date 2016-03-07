@@ -739,7 +739,6 @@ impl<L> Drop for RenderPass<L> {
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// combination of a render pass and subpass ID.
-#[derive(Copy, Clone)]
 pub struct Subpass<'a, L: 'a> {
     render_pass: &'a Arc<RenderPass<L>>,
     subpass_id: u32,
@@ -783,6 +782,14 @@ impl<'a, L: 'a> Subpass<'a, L> {
     #[inline]
     pub fn num_samples(&self) -> Option<u32> {
         unimplemented!()
+    }
+}
+
+impl<'a, L: 'a> Copy for Subpass<'a, L> {}
+impl<'a, L: 'a> Clone for Subpass<'a, L> {
+    #[inline]
+    fn clone(&self) -> Subpass<'a, L> {
+        Subpass { render_pass: self.render_pass, subpass_id: self.subpass_id }
     }
 }
 
