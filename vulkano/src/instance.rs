@@ -660,6 +660,8 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
+    // TODO: graphics and compute queues support transfer operations as well, so this function
+    //       is confusing
     #[inline]
     pub fn supports_transfers(&self) -> bool {
         (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
