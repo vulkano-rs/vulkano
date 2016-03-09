@@ -176,6 +176,10 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                                     storage_class: enums::StorageClass::StorageClassInput, .. }
                                     if &result_id == interface =>
                         {
+                            if is_builtin(doc, result_id) {
+                                continue;
+                            }
+
                             input_types.push(type_from_id(doc, result_type_id));
                             let name = name_from_id(doc, result_id);
                             let loc = match location_decoration(doc, result_id) {
@@ -373,6 +377,23 @@ fn location_decoration(doc: &parse::Spirv, searched: u32) -> Option<u32> {
             None
         }
     }).next()
+}
+
+/// Returns true if a `BuiltIn` decorator is applied on an id.
+fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
+    for instruction in &doc.instructions {
+        match *instruction {
+            parse::Instruction::Decorate { target_id,
+                                           decoration: enums::Decoration::DecorationBuiltIn,
+                                           .. } if target_id == id =>
+            {
+                return true;
+            },
+            _ => ()
+        }
+    }
+
+    false
 }
 
 /// Returns the name of the Vulkan something that corresponds to an `OpCapability`.

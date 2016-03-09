@@ -91,8 +91,6 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
 fn is_builtin_member(doc: &parse::Spirv, id: u32, member_id: u32) -> bool {
-    let mut result = String::new();
-
     for instruction in &doc.instructions {
         match *instruction {
             parse::Instruction::MemberDecorate { target_id, member,
