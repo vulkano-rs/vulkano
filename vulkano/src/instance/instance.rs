@@ -32,7 +32,6 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::mem;
-use std::os::raw::{c_void, c_char};
 use std::ptr;
 use std::sync::Arc;
 
@@ -47,6 +46,7 @@ use VK_STATIC;
 
 use features::Features;
 use version::Version;
+use instance::Extensions;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -56,13 +56,14 @@ pub struct Instance {
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
+    extensions: Extensions,
 }
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, layers: L)
+    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, layers: L, extensions: &Extensions)
                       -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
@@ -103,11 +104,8 @@ impl Instance {
         }).collect::<Vec<_>>();
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let extensions = ["VK_KHR_surface", "VK_KHR_swapchain", "VK_KHR_win32_surface", "VK_EXT_debug_report"].iter().map(|&ext| {
-            // FIXME: check whether each extension is supported
-            CString::new(ext).unwrap()
-        }).collect::<Vec<_>>();
-        let extensions = extensions.iter().map(|extension| {
+        let extensions_list = extensions.build_extensions_list();
+        let extensions_list = extensions_list.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<Vec<_>>();
 
@@ -125,8 +123,8 @@ impl Instance {
                 },
                 enabledLayerCount: layers.len() as u32,
                 ppEnabledLayerNames: layers.as_ptr(),
-                enabledExtensionCount: extensions.len() as u32,
-                ppEnabledExtensionNames: extensions.as_ptr(),
+                enabledExtensionCount: extensions_list.len() as u32,
+                ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
             try!(check_errors(VK_ENTRY.CreateInstance(&infos, ptr::null(), &mut output)));
@@ -140,7 +138,7 @@ impl Instance {
 
         // Creating the debug report callback.
         // TODO: should be optional
-        let debug_report = unsafe {
+        /*let debug_report = unsafe {
             extern "system" fn callback(_: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,
                                         _: u64, _: usize, _: i32, layer_prefix: *const c_char,
                                         message: *const c_char, _: *mut c_void) -> u32
@@ -167,7 +165,7 @@ impl Instance {
             try!(check_errors(vk.CreateDebugReportCallbackEXT(instance, &infos,
                                                               ptr::null(), &mut output)));
             output
-        };
+        };*/
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
@@ -228,10 +226,11 @@ impl Instance {
 
         Ok(Arc::new(Instance {
             instance: instance,
-            debug_report: Some(debug_report),
+            debug_report: None,     // TODO: remove
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
+            extensions: extensions.clone(),
         }))
     }
 
@@ -242,6 +241,12 @@ impl Instance {
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/
+
+    /// Returns the list of extensions that have been loaded.
+    #[inline]
+    pub fn loaded_extensions(&self) -> &Extensions {
+        &self.extensions
+    }
 }
 
 impl fmt::Debug for Instance {

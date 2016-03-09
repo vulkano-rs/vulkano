@@ -10,7 +10,7 @@ macro_rules! instance {
             engine_name: "vulkano tests", engine_version: 1
         };
 
-        match instance::Instance::new(Some(&app), None) {
+        match instance::Instance::new(Some(&app), None, &instance::Extensions::none()) {
             Ok(i) => i,
             Err(_) => return
         }

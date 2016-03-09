@@ -7,7 +7,7 @@ macro_rules! extensions {
         #[allow(missing_docs)]
         pub struct Extensions {
             $(
-                $ext: bool,
+                pub $ext: bool,
             )*
         }
 
@@ -20,12 +20,11 @@ macro_rules! extensions {
                 }
             }
 
-            /// Builds a string containing the list of extensions.
-            pub fn build_extensions_list_string(&self) -> CString {
+            /// Builds a Vec containing the list of extensions.
+            pub fn build_extensions_list(&self) -> Vec<CString> {
                 let mut data = Vec::new();
-                $(if self.$ext { data.extend_from_slice(&$s[..]); data.push(b' '); })*
-                if !data.is_empty() { data.pop(); }     // remove extra space
-                CString::new(data).unwrap()
+                $(if self.$ext { data.push(CString::new(&$s[..]).unwrap()); })*
+                data
             }
         }
     );
@@ -50,22 +49,8 @@ mod tests {
     use instance::Extensions;
 
     #[test]
-    fn empty_extensions_string() {
-        let s = Extensions::none().build_extensions_list_string();
-        assert!(s.as_bytes().is_empty());
-    }
-
-    #[test]
-    fn extensions_string() {
-        let ext = Extensions {
-            khr_swapchain: true,
-            khr_wayland_surface: true,
-            ext_debug_report: true,
-            .. Extensions::none()
-        };
-
-        let s = ext.build_extensions_list_string();
-        let expected = b"VK_KHR_swapchain VK_KHR_wayland_surface VK_EXT_debug_report";
-        assert_eq!(s.as_bytes(), &expected[..]);
+    fn empty_extensions() {
+        let s = Extensions::none().build_extensions_list();
+        assert!(s.is_empty());
     }
 }

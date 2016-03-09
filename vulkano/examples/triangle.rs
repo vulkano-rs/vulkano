@@ -15,7 +15,13 @@ fn main() {
     // The first step of any vulkan program is to create an instance.
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_draw_state"]).expect("failed to create instance");
+    let extensions = vulkano::instance::Extensions {
+        khr_surface: true,
+        khr_swapchain: true,
+        khr_win32_surface: true,
+        .. vulkano::instance::Extensions::none()
+    };
+    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_draw_state"], &extensions).expect("failed to create instance");
 
     // We then choose which physical device to use.
     //
