@@ -33,6 +33,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter;
 
+use instance::Instance;
 use instance::PhysicalDevice;
 use memory::MemorySourceChunk;
 
@@ -60,7 +61,8 @@ mod swapchain;
 /// ?
 // TODO: plane capabilities
 pub struct DisplayPlane {
-    device: PhysicalDevice,
+    instance: Arc<Instance>,
+    physical_device: usize,
     index: u32,
     properties: vk::DisplayPlanePropertiesKHR,
     supported_displays: Vec<vk::DisplayKHR>,
@@ -107,7 +109,8 @@ impl DisplayPlane {
             };
 
             DisplayPlane {
-                device: device.clone(),
+                instance: device.instance().clone(),
+                physical_device: device.index(),
                 index: index as u32,
                 properties: prop,
                 supported_displays: supported_displays,
@@ -115,11 +118,17 @@ impl DisplayPlane {
         }).collect::<Vec<_>>().into_iter())
     }
 
+    /// Returns the physical device that was used to create this display.
+    #[inline]
+    pub fn physical_device(&self) -> PhysicalDevice {
+        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    }
+
     /// Returns true if this plane supports the given display.
     #[inline]
     pub fn supports(&self, display: &Display) -> bool {
         // making sure that the physical device is the same
-        if self.device.internal_object() != display.device.internal_object() {
+        if self.physical_device().internal_object() != display.physical_device().internal_object() {
             return false;
         }
 
@@ -130,7 +139,8 @@ impl DisplayPlane {
 /// Represents a monitor connected to a physical device.
 #[derive(Clone)]
 pub struct Display {
-    device: PhysicalDevice,
+    instance: Arc<Instance>,
+    physical_device: usize,
     properties: Arc<vk::DisplayPropertiesKHR>,      // TODO: Arc because struct isn't clone
 }
 
@@ -158,7 +168,8 @@ impl Display {
 
         Ok(displays.into_iter().map(|prop| {
             Display {
-                device: device.clone(),
+                instance: device.instance().clone(),
+                physical_device: device.index(),
                 properties: Arc::new(prop),
             }
         }).collect::<Vec<_>>().into_iter())
@@ -173,6 +184,12 @@ impl Display {
         }
     }
 
+    /// Returns the physical device that was used to create this display.
+    #[inline]
+    pub fn physical_device(&self) -> PhysicalDevice {
+        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    }
+
     /// Returns the physical resolution of the display.
     #[inline]
     pub fn physical_resolution(&self) -> [u32; 2] {
@@ -182,11 +199,11 @@ impl Display {
 
     /// Returns a list of all modes available on this display.
     pub fn display_modes(&self) -> Result<IntoIter<DisplayMode>, OomError> {
-        let vk = self.device.instance().pointers();
+        let vk = self.instance.pointers();
 
         let num = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.device.internal_object(),
+            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
                                                              self.properties.display, 
                                                              &mut num, ptr::null_mut())));
             num
@@ -195,7 +212,7 @@ impl Display {
         let modes: Vec<vk::DisplayModePropertiesKHR> = unsafe {
             let mut modes = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.device.internal_object(),
+            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
                                                              self.properties.display, &mut num,
                                                              modes.as_mut_ptr())));
             modes.set_len(num as usize);

@@ -398,26 +398,48 @@ struct PhysicalDeviceInfos {
 }
 
 /// Represents one of the available devices on this machine.
-#[derive(Debug, Clone)]
-pub struct PhysicalDevice {
-    instance: Arc<Instance>,
+#[derive(Debug, Copy, Clone)]
+pub struct PhysicalDevice<'a> {
+    instance: &'a Arc<Instance>,
     device: usize,
 }
 
-impl PhysicalDevice {
+impl<'a> PhysicalDevice<'a> {
     /// Returns an iterator that enumerates the physical devices available.
     #[inline]
-    pub fn enumerate(instance: &Arc<Instance>) -> PhysicalDevicesIter {
+    pub fn enumerate(instance: &'a Arc<Instance>) -> PhysicalDevicesIter<'a> {
         PhysicalDevicesIter {
             instance: instance,
             current_id: 0,
         }
     }
 
+    /// Returns a physical device from its index. Returns `None` if out of range.
+    #[inline]
+    pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
+        if instance.physical_devices.len() > index {
+            Some(PhysicalDevice {
+                instance: instance,
+                device: index,
+            })
+        } else {
+            None
+        }
+    }
+
     /// Returns the instance corresponding to this physical device.
     #[inline]
-    pub fn instance(&self) -> &Arc<Instance> {
+    pub fn instance(&self) -> &'a Arc<Instance> {
         &self.instance
+    }
+
+    /// Returns the index of the physical device in the physical devices list.
+    ///
+    /// This index never changes and can be used later to retreive a `PhysicalDevice` from an
+    /// instance and an index.
+    #[inline]
+    pub fn index(&self) -> usize {
+        self.device
     }
 
     /// Returns the human-readable name of the device.
@@ -452,25 +474,25 @@ impl PhysicalDevice {
 
     /// Returns the Vulkan features that are supported by this physical device.
     #[inline]
-    pub fn supported_features(&self) -> &Features {
+    pub fn supported_features(&self) -> &'a Features {
         &self.infos().available_features
     }
 
     /// Builds an iterator that enumerates all the queue families on this physical device.
     #[inline]
-    pub fn queue_families(&self) -> QueueFamiliesIter {
+    pub fn queue_families(&self) -> QueueFamiliesIter<'a> {
         QueueFamiliesIter {
-            physical_device: self,
+            physical_device: *self,
             current_id: 0,
         }
     }
 
     /// Returns the queue family with the given index, or `None` if out of range.
     #[inline]
-    pub fn queue_family_by_id(&self, id: u32) -> Option<QueueFamily> {
+    pub fn queue_family_by_id(&self, id: u32) -> Option<QueueFamily<'a>> {
         if (id as usize) < self.infos().queue_families.len() {
             Some(QueueFamily {
-                physical_device: self,
+                physical_device: *self,
                 id: id,
             })
 
@@ -481,19 +503,19 @@ impl PhysicalDevice {
 
     /// Builds an iterator that enumerates all the memory types on this physical device.
     #[inline]
-    pub fn memory_types(&self) -> MemoryTypesIter {
+    pub fn memory_types(&self) -> MemoryTypesIter<'a> {
         MemoryTypesIter {
-            physical_device: self,
+            physical_device: *self,
             current_id: 0,
         }
     }
 
     /// Returns the memory type with the given index, or `None` if out of range.
     #[inline]
-    pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType> {
+    pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType<'a>> {
         if id < self.infos().memory.memoryTypeCount {
             Some(MemoryType {
-                physical_device: self,
+                physical_device: *self,
                 id: id,
             })
 
@@ -504,19 +526,19 @@ impl PhysicalDevice {
 
     /// Builds an iterator that enumerates all the memory heaps on this physical device.
     #[inline]
-    pub fn memory_heaps(&self) -> MemoryHeapsIter {
+    pub fn memory_heaps(&self) -> MemoryHeapsIter<'a> {
         MemoryHeapsIter {
-            physical_device: self,
+            physical_device: *self,
             current_id: 0,
         }
     }
 
     /// Returns the memory heap with the given index, or `None` if out of range.
     #[inline]
-    pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap> {
+    pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap<'a>> {
         if id < self.infos().memory.memoryHeapCount {
             Some(MemoryHeap {
-                physical_device: self,
+                physical_device: *self,
                 id: id,
             })
 
@@ -530,8 +552,8 @@ impl PhysicalDevice {
     /// This function should be zero-cost in release mode. It only exists to not pollute the
     /// namespace of `PhysicalDevice` with all the limits-related getters.
     #[inline]
-    pub fn limits(&self) -> Limits {
-        Limits { device: self }
+    pub fn limits(&self) -> Limits<'a> {
+        Limits { device: *self }
     }
 
     /// Returns an opaque number representing the version of the driver of this device.
@@ -560,12 +582,12 @@ impl PhysicalDevice {
 
     /// Internal function to make it easier to get the infos of this device.
     #[inline]
-    fn infos(&self) -> &PhysicalDeviceInfos {
+    fn infos(&self) -> &'a PhysicalDeviceInfos {
         &self.instance.physical_devices[self.device]
     }
 }
 
-unsafe impl VulkanObject for PhysicalDevice {
+unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
     type Object = vk::PhysicalDevice;
 
     #[inline]
@@ -582,16 +604,16 @@ pub struct PhysicalDevicesIter<'a> {
 }
 
 impl<'a> Iterator for PhysicalDevicesIter<'a> {
-    type Item = PhysicalDevice;
+    type Item = PhysicalDevice<'a>;
 
     #[inline]
-    fn next(&mut self) -> Option<PhysicalDevice> {
+    fn next(&mut self) -> Option<PhysicalDevice<'a>> {
         if self.current_id >= self.instance.physical_devices.len() {
             return None;
         }
 
         let dev = PhysicalDevice {
-            instance: self.instance.clone(),
+            instance: self.instance,
             device: self.current_id,
         };
 
@@ -622,14 +644,14 @@ pub enum PhysicalDeviceType {
 /// characteristics.
 #[derive(Debug, Copy, Clone)]
 pub struct QueueFamily<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     id: u32,
 }
 
 impl<'a> QueueFamily<'a> {
     /// Returns the physical device associated to this queue family.
     #[inline]
-    pub fn physical_device(&self) -> &'a PhysicalDevice {
+    pub fn physical_device(&self) -> PhysicalDevice<'a> {
         self.physical_device
     }
 
@@ -683,7 +705,7 @@ impl<'a> QueueFamily<'a> {
 /// Iterator for all the queue families available on a physical device.
 #[derive(Debug, Clone)]
 pub struct QueueFamiliesIter<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     current_id: u32,
 }
 
@@ -718,14 +740,14 @@ impl<'a> ExactSizeIterator for QueueFamiliesIter<'a> {}
 /// Represents a memory type in a physical device.
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryType<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     id: u32,
 }
 
 impl<'a> MemoryType<'a> {
     /// Returns the physical device associated to this memory type.
     #[inline]
-    pub fn physical_device(&self) -> &'a PhysicalDevice {
+    pub fn physical_device(&self) -> PhysicalDevice<'a> {
         self.physical_device
     }
 
@@ -794,7 +816,7 @@ impl<'a> MemoryType<'a> {
 /// Iterator for all the memory types available on a physical device.
 #[derive(Debug, Clone)]
 pub struct MemoryTypesIter<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     current_id: u32,
 }
 
@@ -829,14 +851,14 @@ impl<'a> ExactSizeIterator for MemoryTypesIter<'a> {}
 /// Represents a memory heap in a physical device.
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryHeap<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     id: u32,
 }
 
 impl<'a> MemoryHeap<'a> {
     /// Returns the physical device associated to this memory heap.
     #[inline]
-    pub fn physical_device(&self) -> &'a PhysicalDevice {
+    pub fn physical_device(&self) -> PhysicalDevice<'a> {
         self.physical_device
     }
 
@@ -863,7 +885,7 @@ impl<'a> MemoryHeap<'a> {
 /// Iterator for all the memory heaps available on a physical device.
 #[derive(Debug, Clone)]
 pub struct MemoryHeapsIter<'a> {
-    physical_device: &'a PhysicalDevice,
+    physical_device: PhysicalDevice<'a>,
     current_id: u32,
 }
 
@@ -895,7 +917,7 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
 
 /// Limits of a physical device.
 pub struct Limits<'a> {
-    device: &'a PhysicalDevice,
+    device: PhysicalDevice<'a>,
 }
 
 macro_rules! limits_impl {

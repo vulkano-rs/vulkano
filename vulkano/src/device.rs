@@ -28,7 +28,7 @@ use vk;
 /// Represents a Vulkan context.
 pub struct Device {
     instance: Arc<Instance>,
-    physical_device: PhysicalDevice,
+    physical_device: usize,
     device: vk::Device,
     vk: vk::DevicePointers,
     features: Features,
@@ -154,7 +154,7 @@ impl Device {
 
         let device = Arc::new(Device {
             instance: phys.instance().clone(),
-            physical_device: phys.clone(),
+            physical_device: phys.index(),
             device: device,
             vk: vk,
             features: requested_features.clone(),
@@ -192,8 +192,8 @@ impl Device {
 
     /// Returns the physical device that was used to create this device.
     #[inline]
-    pub fn physical_device(&self) -> &PhysicalDevice {
-        &self.physical_device
+    pub fn physical_device(&self) -> PhysicalDevice {
+        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
     }
 
     /// Returns the features that are enabled in the device.

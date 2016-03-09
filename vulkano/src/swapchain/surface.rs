@@ -38,10 +38,11 @@ impl Surface {
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, OomError>
     {
-        assert_eq!(display_mode.display.device.internal_object(), plane.device.internal_object());
+        assert_eq!(display_mode.display.physical_device().internal_object(),
+                   plane.physical_device().internal_object());
         assert!(plane.supports(display_mode.display()));
 
-        let instance = display_mode.display.device.instance();
+        let instance = display_mode.display.physical_device().instance();
         let vk = instance.pointers();
 
         let surface = unsafe {
