@@ -2,7 +2,9 @@
 
 *Warning: this library breaks every five minutes for the moment.*
 
-## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.html)
+## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.tml)
+
+## [Differences between Vulkan and vulkano](FEATURES.md)
 
 This repository contains three libraries:
 
