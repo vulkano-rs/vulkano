@@ -1,4 +1,5 @@
 pub use features::Features;
+pub use self::extensions::Extensions;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;
 pub use self::instance::ApplicationInfo;
@@ -15,5 +16,6 @@ pub use self::instance::Limits;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 
+mod extensions;
 mod instance;
 mod layers;
