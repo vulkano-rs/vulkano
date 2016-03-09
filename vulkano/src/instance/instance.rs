@@ -45,8 +45,8 @@ use vk;
 use VK_ENTRY;
 use VK_STATIC;
 
-pub use features::Features;
-pub use version::Version;
+use features::Features;
+use version::Version;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
