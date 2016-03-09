@@ -40,7 +40,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 },
                 _ => None,      // TODO: other types
             }
-        }).next().expect("A uniform is missing a binding");
+        }).next().expect(&format!("Uniform `{}` is missing a binding", name));
 
         // find informations about the kind of binding for this descriptor
         let (desc_ty, bind_ty, bind_start, bind_end) = doc.instructions.iter().filter_map(|i| {
