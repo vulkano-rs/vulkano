@@ -63,8 +63,8 @@ impl Instance {
     /// Initializes a new instance of Vulkan.
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, layers: L, extensions: &InstanceExtensions)
-                      -> Result<Arc<Instance>, InstanceCreationError>
+    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
+                      layers: L) -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
         // Building the CStrings from the `str`s within `app_infos`.

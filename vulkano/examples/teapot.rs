@@ -30,7 +30,7 @@ fn main() {
         khr_win32_surface: true,
         .. vulkano::instance::InstanceExtensions::none()
     };
-    let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_standard_validation"], &extensions).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &extensions, &["VK_LAYER_LUNARG_standard_validation"]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -48,7 +48,7 @@ fn main() {
     };
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(), &["VK_LAYER_LUNARG_standard_validation"], &device_ext)
+                                                        &device_ext, &["VK_LAYER_LUNARG_standard_validation"], [(queue, 0.5)].iter().cloned())
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 

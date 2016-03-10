@@ -60,8 +60,8 @@ impl Device {
     /// - Panicks if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
-    pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I,
-                         layers: L, extensions: &DeviceExtensions)
+    pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features,
+                         extensions: &DeviceExtensions, layers: L, queue_families: I)
                          -> Result<(Arc<Device>, Vec<Arc<Queue>>), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               L: IntoIterator<Item = &'a &'a str>

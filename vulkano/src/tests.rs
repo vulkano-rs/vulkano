@@ -10,7 +10,7 @@ macro_rules! instance {
             engine_name: "vulkano tests", engine_version: 1
         };
 
-        match instance::Instance::new(Some(&app), None, &instance::Extensions::none()) {
+        match instance::Instance::new(Some(&app), &instance::Extensions::none(), None) {
             Ok(i) => i,
             Err(_) => return
         }
@@ -39,7 +39,7 @@ macro_rules! gfx_dev_and_queue {
         let extensions = DeviceExtensions::none();
 
         let (device, queues) = match Device::new(&physical, physical.supported_features(),
-                                                 [(queue, 0.5)].iter().cloned(), None, &extensions)
+                                                 &extensions, None, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,
             Err(_) => return
