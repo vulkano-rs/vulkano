@@ -644,6 +644,33 @@ impl Usage {
         }
     }
 
+    /// Builds a `Usage` with all values set to false. Useful as a default value.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use vulkano::image::Usage as ImageUsage;
+    ///
+    /// let _usage = ImageUsage {
+    ///     transfer_dest: true,
+    ///     sampled: true,
+    ///     .. ImageUsage::none()
+    /// };
+    /// ```
+    #[inline]
+    pub fn none() -> Usage {
+        Usage {
+            transfer_source: false,
+            transfer_dest: false,
+            sampled: false,
+            storage: false,
+            color_attachment: false,
+            depth_stencil_attachment: false,
+            transient_attachment: false,
+            input_attachment: false,
+        }
+    }
+
     #[doc(hidden)]
     #[inline]
     pub fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
