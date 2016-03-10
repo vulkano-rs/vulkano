@@ -46,7 +46,7 @@ use VK_STATIC;
 
 use features::Features;
 use version::Version;
-use instance::Extensions;
+use instance::InstanceExtensions;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -56,14 +56,14 @@ pub struct Instance {
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
-    extensions: Extensions,
+    extensions: InstanceExtensions,
 }
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, layers: L, extensions: &Extensions)
+    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, layers: L, extensions: &InstanceExtensions)
                       -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
@@ -244,7 +244,7 @@ impl Instance {
 
     /// Returns the list of extensions that have been loaded.
     #[inline]
-    pub fn loaded_extensions(&self) -> &Extensions {
+    pub fn loaded_extensions(&self) -> &InstanceExtensions {
         &self.extensions
     }
 }

@@ -22,6 +22,7 @@ macro_rules! gfx_dev_and_queue {
     () => ({
         use instance;
         use device::Device;
+        use device::DeviceExtensions;
 
         let instance = instance!();
 
@@ -35,8 +36,10 @@ macro_rules! gfx_dev_and_queue {
             None => return
         };
 
+        let extensions = DeviceExtensions::none();
+
         let (device, queues) = match Device::new(&physical, physical.supported_features(),
-                                                 [(queue, 0.5)].iter().cloned(), None)
+                                                 [(queue, 0.5)].iter().cloned(), None, &extensions)
         {
             Ok(r) => r,
             Err(_) => return

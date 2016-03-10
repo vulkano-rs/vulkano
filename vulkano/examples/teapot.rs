@@ -24,11 +24,11 @@ fn main() {
 
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let extensions = vulkano::instance::Extensions {
+    let extensions = vulkano::instance::InstanceExtensions {
         khr_surface: true,
         khr_swapchain: true,
         khr_win32_surface: true,
-        .. vulkano::instance::Extensions::none()
+        .. vulkano::instance::InstanceExtensions::none()
     };
     let instance = vulkano::instance::Instance::new(Some(&app), &["VK_LAYER_LUNARG_standard_validation"], &extensions).expect("failed to create instance");
 
@@ -43,8 +43,12 @@ fn main() {
                                                    surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
+    let device_ext = vulkano::device::DeviceExtensions {
+        khr_swapchain: true,
+    };
+
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(), &["VK_LAYER_LUNARG_standard_validation"])
+                                                        [(queue, 0.5)].iter().cloned(), &["VK_LAYER_LUNARG_standard_validation"], &device_ext)
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 

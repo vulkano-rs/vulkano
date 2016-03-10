@@ -1,5 +1,6 @@
 pub use features::Features;
-pub use self::extensions::Extensions;
+pub use self::extensions::DeviceExtensions;
+pub use self::extensions::InstanceExtensions;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;
 pub use self::instance::ApplicationInfo;

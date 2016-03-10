@@ -1,21 +1,21 @@
 use std::ffi::CString;
 
 macro_rules! extensions {
-    ($($ext:ident => $s:expr,)*) => (
+    ($sname:ident, $($ext:ident => $s:expr,)*) => (
         /// List of extensions that are enabled or available.
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         #[allow(missing_docs)]
-        pub struct Extensions {
+        pub struct $sname {
             $(
                 pub $ext: bool,
             )*
         }
 
-        impl Extensions {
+        impl $sname {
             /// Returns an `Extensions` object with all members set to `false`.
             #[inline]
-            pub fn none() -> Extensions {
-                Extensions {
+            pub fn none() -> $sname {
+                $sname {
                     $($ext: false,)*
                 }
             }
@@ -31,6 +31,7 @@ macro_rules! extensions {
 }
 
 extensions! {
+    InstanceExtensions,
     khr_surface => b"VK_KHR_surface",
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display => b"VK_KHR_display",
@@ -44,13 +45,18 @@ extensions! {
     ext_debug_report => b"VK_EXT_debug_report",
 }
 
+extensions! {
+    DeviceExtensions,
+    khr_swapchain => b"VK_KHR_swapchain",
+}
+
 #[cfg(test)]
 mod tests {
-    use instance::Extensions;
+    use instance::InstanceExtensions;
 
     #[test]
     fn empty_extensions() {
-        let s = Extensions::none().build_extensions_list();
+        let s = InstanceExtensions::none().build_extensions_list();
         assert!(s.is_empty());
     }
 }

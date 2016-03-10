@@ -25,6 +25,8 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub use instance::DeviceExtensions;
+
 /// Represents a Vulkan context.
 pub struct Device {
     instance: Arc<Instance>,
@@ -32,6 +34,7 @@ pub struct Device {
     device: vk::Device,
     vk: vk::DevicePointers,
     features: Features,
+    extensions: DeviceExtensions,
 }
 
 impl Device {
@@ -58,7 +61,7 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features, queue_families: I,
-                         layers: L)
+                         layers: L, extensions: &DeviceExtensions)
                          -> Result<(Arc<Device>, Vec<Arc<Queue>>), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               L: IntoIterator<Item = &'a &'a str>
@@ -82,11 +85,8 @@ impl Device {
         }).collect::<Vec<_>>();
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let extensions = ["VK_KHR_swapchain"].iter().map(|&ext| {
-            // FIXME: check whether each extension is supported
-            CString::new(ext).unwrap()
-        }).collect::<Vec<_>>();
-        let extensions = extensions.iter().map(|extension| {
+        let extensions_list = extensions.build_extensions_list();
+        let extensions_list = extensions_list.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<Vec<_>>();
 
@@ -136,8 +136,8 @@ impl Device {
                 pQueueCreateInfos: queues.as_ptr(),
                 enabledLayerCount: layers.len() as u32,
                 ppEnabledLayerNames: layers.as_ptr(),
-                enabledExtensionCount: extensions.len() as u32,
-                ppEnabledExtensionNames: extensions.as_ptr(),
+                enabledExtensionCount: extensions_list.len() as u32,
+                ppEnabledExtensionNames: extensions_list.as_ptr(),
                 pEnabledFeatures: &features,
             };
 
@@ -158,6 +158,7 @@ impl Device {
             device: device,
             vk: vk,
             features: requested_features.clone(),
+            extensions: extensions.clone(),
         });
 
         // querying the queues
@@ -200,6 +201,12 @@ impl Device {
     #[inline]
     pub fn enabled_features(&self) -> &Features {
         &self.features
+    }
+
+    /// Returns the list of extensions that have been loaded.
+    #[inline]
+    pub fn loaded_extensions(&self) -> &DeviceExtensions {
+        &self.extensions
     }
 }
 
