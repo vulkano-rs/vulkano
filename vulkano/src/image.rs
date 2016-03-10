@@ -616,6 +616,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
 /// Describes how an image is going to be used. This is **not** an optimization.
 ///
 /// If you try to use an image in a way that you didn't declare, a panic will happen.
+// TODO: enforce the fact that `transient_attachment` can't be set at the same time as other bits
 #[derive(Debug, Copy, Clone)]
 pub struct Usage {
     pub transfer_source: bool,
