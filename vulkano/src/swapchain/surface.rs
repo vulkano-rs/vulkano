@@ -38,6 +38,8 @@ impl Surface {
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, OomError>
     {
+        assert!(display_mode.display.physical_device().instance().loaded_extensions().khr_display);     // TODO: return error instead
+
         assert_eq!(display_mode.display.physical_device().internal_object(),
                    plane.physical_device().internal_object());
         assert!(plane.supports(display_mode.display()));
@@ -86,6 +88,7 @@ impl Surface {
                                   -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_win32_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::Win32SurfaceCreateInfoKHR {
@@ -120,6 +123,7 @@ impl Surface {
                                  -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_xcb_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::XcbSurfaceCreateInfoKHR   {
@@ -154,6 +158,7 @@ impl Surface {
                                   -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_xlib_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::XlibSurfaceCreateInfoKHR  {
@@ -188,6 +193,7 @@ impl Surface {
                                      -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_wayland_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::WaylandSurfaceCreateInfoKHR {
@@ -223,6 +229,7 @@ impl Surface {
                                  -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_mir_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::MirSurfaceCreateInfoKHR  {
@@ -255,6 +262,7 @@ impl Surface {
                                         -> Result<Arc<Surface>, OomError>
     {
         let vk = instance.pointers();
+        assert!(instance.loaded_extensions().khr_android_surface);     // TODO: return error instead
 
         let surface = {
             let infos = vk::AndroidSurfaceCreateInfoKHR {

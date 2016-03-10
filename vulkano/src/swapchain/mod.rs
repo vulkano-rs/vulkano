@@ -73,6 +73,8 @@ impl DisplayPlane {
     pub fn enumerate(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let vk = device.instance().pointers();
 
+        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
+
         let num = unsafe {
             let mut num: u32 = 0;
             try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
@@ -148,6 +150,7 @@ impl Display {
     /// Enumerates all the displays that are available on a given physical device.
     pub fn enumerate(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let vk = device.instance().pointers();
+        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
 
         let num = unsafe {
             let mut num = 0;
@@ -248,6 +251,7 @@ pub struct DisplayMode {
 impl DisplayMode {
     /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
         let vk = instance.pointers();
+        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
 
         let parameters = vk::DisplayModeParametersKHR {
             visibleRegion: vk::Extent2D { width: , height:  },

@@ -85,6 +85,7 @@ impl Swapchain {
 
         // FIXME: check that the device and the surface belong to the same instance
         let vk = device.pointers();
+        assert!(device.loaded_extensions().khr_swapchain);     // TODO: return error instead
 
         assert!(usage.color_attachment);
         let usage = usage.to_usage_bits();
