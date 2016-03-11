@@ -91,7 +91,8 @@ pub struct InnerCommandBufferBuilder {
 
 impl InnerCommandBufferBuilder {
     /// Creates a new builder.
-    pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>)
+    pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>,
+                  secondary_cont_fb: Option<&Arc<Framebuffer<R>>>)
                   -> Result<InnerCommandBufferBuilder, OomError>
         where R: 'static
     {
@@ -121,6 +122,7 @@ impl InnerCommandBufferBuilder {
         };
 
         let mut renderpasses = Vec::new();
+        let mut framebuffers = Vec::new();
 
         unsafe {
             // TODO: one time submit
@@ -134,12 +136,19 @@ impl InnerCommandBufferBuilder {
                 (0, 0)
             };
 
+            let framebuffer = if let Some(fb) = secondary_cont_fb {
+                framebuffers.push(fb.clone() as Arc<_>);
+                fb.internal_object()
+            } else {
+                0
+            };
+
             let inheritance = vk::CommandBufferInheritanceInfo {
                 sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
                 pNext: ptr::null(),
                 renderPass: rp,
                 subpass: sp,
-                framebuffer: 0,         // TODO:
+                framebuffer: framebuffer,
                 occlusionQueryEnable: 0,            // TODO:
                 queryFlags: 0,          // TODO:
                 pipelineStatistics: 0,          // TODO:
@@ -161,7 +170,7 @@ impl InnerCommandBufferBuilder {
             cmd: Some(cmd),
             secondary_command_buffers: Vec::new(),
             descriptor_sets: Vec::new(),
-            framebuffers: Vec::new(),
+            framebuffers: framebuffers,
             renderpasses: renderpasses,
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),

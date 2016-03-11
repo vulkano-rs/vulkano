@@ -55,7 +55,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<PrimaryCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, false, None));
+        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, false, None, None));
         Ok(PrimaryCommandBufferBuilder { inner: inner })
     }
 
@@ -411,7 +411,7 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     pub fn execute_commands<R: 'static>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R>>)
                                         -> PrimaryCommandBufferBuilderSecondaryDraw
     {
-        // FIXME: check renderpass and subpass
+        // FIXME: check renderpass, subpass and framebuffer
 
         unsafe {
             self.inner = self.inner.execute_commands(cb.clone() as Arc<_>, &cb.inner);
@@ -466,22 +466,27 @@ pub struct SecondaryGraphicsCommandBufferBuilder<R> {
     inner: InnerCommandBufferBuilder,
     renderpass_layout: R,
     renderpass_subpass: u32,
+    framebuffer: Option<Arc<Framebuffer<R>>>,
 }
 
 impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     where R: RenderPassLayout
 {
     /// Builds a new secondary command buffer and start recording commands in it.
+    ///
+    /// The `framebuffer` parameter is optional and can be used as an optimisation.
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>)
+    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
+               framebuffer: Option<&Arc<Framebuffer<R>>>)
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
         where R: Clone + 'static
     {
-        let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass)));
+        let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone()));
         Ok(SecondaryGraphicsCommandBufferBuilder {
             inner: inner,
             renderpass_layout: subpass.render_pass().layout().clone(),
             renderpass_subpass: subpass.index(),
+            framebuffer: framebuffer.map(|fb| fb.clone()),
         })
     }
 
@@ -502,6 +507,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
                 renderpass_layout: self.renderpass_layout,
                 renderpass_subpass: self.renderpass_subpass,
+                framebuffer: self.framebuffer,
             }
         }
     }
@@ -524,6 +530,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
                 renderpass_layout: self.renderpass_layout,
                 renderpass_subpass: self.renderpass_subpass,
+                framebuffer: self.framebuffer,
             }
         }
     }
@@ -567,7 +574,7 @@ impl SecondaryComputeCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<SecondaryComputeCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, true, None));
+        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, true, None, None));
         Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
     }
 
