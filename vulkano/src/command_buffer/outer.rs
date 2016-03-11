@@ -121,10 +121,10 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, So: ?Sized + 'a, Sm: 'a>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
+    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, So: ?Sized, Sm>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
                                                     -> PrimaryCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,
-              Ty: ImageTypeMarker
+              Ty: ImageTypeMarker, So: 'static, Sm: MemorySourceChunk + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {

@@ -361,15 +361,15 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized + 'a, Sm: 'a, Ty, F, Im>(self, source: S, image: &Arc<Image<Ty, F, Im>>)
+    pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized, Sm, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                                    -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker
+              Ty: ImageTypeMarker, Sm: MemorySourceChunk + 'static, So: 'static
     {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
-        //self.add_buffer_resource(source)      // FIXME:
+        self.add_buffer_resource(source.buffer().clone(), false, source.offset(), source.size());
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
