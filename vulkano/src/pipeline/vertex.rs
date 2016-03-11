@@ -1,3 +1,54 @@
+//! # Vertex sources definition
+//! 
+//! When you create a graphics pipeline object, you need to pass an object which indicates the
+//! layout of the vertex buffer(s) that will serve as input for the vertex shader. This is done
+//! by passing an implementation of the `Definition` trait.
+//! 
+//! The most common situation is a single vertex buffer and no instancing, in which case you can
+//! pass a `SingleBufferDefinition` when you create the pipeline.
+//! 
+//! # Implementing `Vertex`
+//! 
+//! The implementations of the `Definition` trait that are provided by vulkano (like
+//! `SingleBufferDefinition`) require you to use a buffer whose content is `[V]` where `V`
+//! implements the `Vertex` trait.
+//! 
+//! The `Vertex` trait is unsafe, but can be implemented on a struct with the `impl_vertex!`
+//! macro.
+//! 
+//! # Example
+//! 
+//! ```no_run
+//! # #[macro_use] extern crate vulkano
+//! # fn main() {
+//! # use std::sync::Arc;
+//! # use vulkano::device::Device;
+//! # use vulkano::device::Queue;
+//! use vulkano::buffer::Buffer;
+//! use vulkano::buffer::Usage as BufferUsage;
+//! use vulkano::memory::HostVisible;
+//! use vulkano::pipeline::vertex::;
+//! # let device: Arc<Device> = unsafe { std::mem::uninitialized() };
+//! # let queue: Arc<Queue> = unsafe { std::mem::uninitialized() };
+//! 
+//! struct Vertex {
+//!     position: [f32; 2]
+//! }
+//! 
+//! impl_vertex!(Vertex, position);
+//! 
+//! let usage = BufferUsage {
+//!     vertex_buffer: true,
+//!     .. BufferUsage::none()
+//! };
+//! 
+//! let vertex_buffer = Buffer::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)
+//!                                                     .expect("failed to create buffer");
+//! 
+//! // TODO: finish example
+//! # }
+//! ```
+//!
 use std::marker::PhantomData;
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
@@ -17,37 +68,45 @@ pub enum InputRate {
     Instance = vk::VERTEX_INPUT_RATE_INSTANCE,
 }
 
-/// Describes an individual `Vertex`. More precisely, a collection of attributes that can be read
+/// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
 pub unsafe trait Vertex {
     /// Returns the characteristics of a vertex attribute.
     fn attrib(name: &str) -> Option<AttributeInfo>;
 }
 
+/// Information about a single attribute within a vertex.
 pub struct AttributeInfo {
+    /// Number of bytes between the start of a vertex and the location of attribute.
     pub offset: usize,
+    /// Data type of the attribute.
     pub format: Format,
 }
 
-/// Trait for types that contain the definition of the vertex input.
+/// Trait for types that contain a definition of the vertex input used by a graphics pipeline.
 pub unsafe trait Definition {
+    /// Iterator used to enumerate the list of buffers.
     type InfoIter: ExactSizeIterator<Item = (usize, InputRate)>;
 
-    /// Returns information about an attribute, and the index of the buffer in which the attribute
-    /// is found.
+    /// Returns information about an attribute, and the index of the buffer (within the iterator
+    /// returned by `buffers`) in which the attribute is found.
     fn attrib(&self, name: &str) -> Option<(usize, AttributeInfo)>;
 
     /// Produces an iterator that returns the stride (in bytes) and input rate of each buffer.
     fn buffers(&self) -> Self::InfoIter;
 }
 
+/// Extension for `Definition` trait. The `L` parameter is an acceptable vertex source for this
+/// vertex definition.
 pub unsafe trait Source<L>: Definition {
+    /// Iterator used by `decode`.
     type Iter: ExactSizeIterator<Item = Arc<AbstractBuffer>>;
 
-    /// Returns the list of buffers, number of vertices and number of instances.
+    /// Checks and returns the list of buffers, number of vertices and number of instances.
     fn decode(&self, L) -> (Self::Iter, usize, usize);
 }
 
+/// Implementation of `Definition` for a single vertex buffer.
 pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
 
 impl<T> SingleBufferDefinition<T> {
@@ -83,6 +142,7 @@ unsafe impl<'a, V, M> Source<&'a Arc<Buffer<[V], M>>> for SingleBufferDefinition
     }
 }
 
+/// Unstable.
 // TODO: shouldn't be just `Two` but `Multi`
 pub struct TwoBuffersDefinition<T, U>(pub PhantomData<(T, U)>);
 
@@ -129,6 +189,7 @@ unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[
     }
 }
 
+/// Unstable.
 // TODO: bad way to do things
 pub struct OneVertexOneInstanceDefinition<T, U>(pub PhantomData<(T, U)>);
 
@@ -175,6 +236,8 @@ unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[
     }
 }
 
+/// Implements the `Vertex` trait on a struct.
+// TODO: add example
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ident $(, $member:ident)*) => (
@@ -205,7 +268,9 @@ macro_rules! impl_vertex {
     )
 }
 
+/// Trait for data types that can be used as vertex attributes. Used by the `impl_vertex!` macro.
 pub unsafe trait Data {
+    /// Returns the format of the attribute.
     fn format() -> Format;
 }
 
