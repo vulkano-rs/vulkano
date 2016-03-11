@@ -23,6 +23,7 @@ use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use framebuffer::Layout as RenderPassLayout;
+use image::AbstractImage;
 use image::AbstractImageView;
 use image::Image;
 use image::ImageTypeMarker;
@@ -67,9 +68,11 @@ pub struct InnerCommandBufferBuilder {
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
 
+    image_resources: Vec<Arc<AbstractImage>>,
+
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
     // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
-    image_resources: Vec<Arc<AbstractImageView>>,
+    image_views_resources: Vec<Arc<AbstractImageView>>,
 
     // List of pipelines that are used by this command buffer.
     //
@@ -162,6 +165,7 @@ impl InnerCommandBufferBuilder {
             renderpasses: renderpasses,
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
+            image_views_resources: Vec::new(),
             pipelines: Vec::new(),
             graphics_pipeline: None,
             compute_pipeline: None,
@@ -181,6 +185,7 @@ impl InnerCommandBufferBuilder {
 
         for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
         for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+        for r in cb.image_views_resources.iter() { self.image_views_resources.push(r.clone()); }
         for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
 
         {
@@ -363,13 +368,15 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized, Sm, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                                    -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker, Sm: MemorySourceChunk + 'static, So: 'static
+        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
+              Ty: ImageTypeMarker + 'static, Sm: MemorySourceChunk + 'static, So: 'static,
+              Im: MemorySourceChunk + 'static
     {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
         self.add_buffer_resource(source.buffer().clone(), false, source.offset(), source.size());
+        self.add_image_resource(image.clone() as Arc<_>, true);
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -606,7 +613,7 @@ impl InnerCommandBufferBuilder {
         }*/
 
         for attachment in framebuffer.attachments() {
-            self.image_resources.push(attachment.clone());
+            self.image_views_resources.push(attachment.clone());
         }
 
         let infos = vk::RenderPassBeginInfo {
@@ -688,6 +695,7 @@ impl InnerCommandBufferBuilder {
                 renderpasses: mem::replace(&mut self.renderpasses, Vec::new()),
                 buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
                 image_resources: mem::replace(&mut self.image_resources, Vec::new()),
+                image_views_resources: mem::replace(&mut self.image_views_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
         }
@@ -703,8 +711,8 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self) {   // TODO:
-        unimplemented!()
+    fn add_image_resource(&mut self, image: Arc<AbstractImage>, _write: bool) {   // TODO:
+        self.image_resources.push(image);
     }
 }
 
@@ -733,7 +741,8 @@ pub struct InnerCommandBuffer {
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
     renderpasses: Vec<Arc<AbstractRenderPass>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
-    image_resources: Vec<Arc<AbstractImageView>>,
+    image_resources: Vec<Arc<AbstractImage>>,
+    image_views_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 
