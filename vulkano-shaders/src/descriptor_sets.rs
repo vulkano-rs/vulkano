@@ -60,8 +60,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
                         "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer",      // FIXME:
-                        ""
+                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(",
+                        ", ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
@@ -81,8 +81,8 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
                         "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer",      // FIXME:
-                        ""
+                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(",
+                        ", ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
                     ))
                 },
                 _ => None,      // TODO: other types
