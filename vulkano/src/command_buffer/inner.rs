@@ -695,6 +695,29 @@ impl InnerCommandBufferBuilder {
             // ending the commands recording
             try!(check_errors(vk.EndCommandBuffer(cmd)));
 
+            // Computing the list of buffer resources by removing duplicates.
+            let buffer_resources = self.buffer_resources.iter().enumerate().filter_map(|(num, elem)| {
+                if self.buffer_resources.iter().take(num)
+                                       .find(|e| &***e as *const AbstractBuffer == &**elem as *const AbstractBuffer).is_some()
+                {
+                    None
+                } else {
+                    Some(elem.clone())
+                }
+            }).collect::<Vec<_>>();
+
+            // Computing the list of image resources by removing duplicates.
+            // TODO: image views as well
+            let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
+                if self.image_resources.iter().take(num)
+                                       .find(|e| &***e as *const AbstractImage == &**elem as *const AbstractImage).is_some()
+                {
+                    None
+                } else {
+                    Some(elem.clone())
+                }
+            }).collect::<Vec<_>>();
+
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
@@ -703,8 +726,8 @@ impl InnerCommandBufferBuilder {
                 descriptor_sets: mem::replace(&mut self.descriptor_sets, Vec::new()),
                 framebuffers: mem::replace(&mut self.framebuffers, Vec::new()),
                 renderpasses: mem::replace(&mut self.renderpasses, Vec::new()),
-                buffer_resources: mem::replace(&mut self.buffer_resources, Vec::new()),
-                image_resources: mem::replace(&mut self.image_resources, Vec::new()),
+                buffer_resources: buffer_resources,
+                image_resources: image_resources,
                 image_views_resources: mem::replace(&mut self.image_views_resources, Vec::new()),
                 pipelines: mem::replace(&mut self.pipelines, Vec::new()),
             })
