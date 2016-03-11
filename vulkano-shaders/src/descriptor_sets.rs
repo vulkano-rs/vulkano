@@ -47,7 +47,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
-                        "::vulkano::buffer::AbstractBuffer",
+                        "::std::sync::Arc<::vulkano::buffer::AbstractBuffer>",
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: data, offset: 0, size: 128 /* FIXME */ }"
                     ))
                 },
@@ -56,9 +56,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                         if result_id == pointed_ty && sampled == Some(true) =>
                 {
                     Some((
-                        "::vulkano::descriptor_set::DescriptorType::CombinedImageSampler",
-                        "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(data.0, data.1, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorType::SampledImage",
+                        "::std::sync::Arc<::vulkano::image::AbstractImageView>",
+                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(data, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
@@ -67,7 +67,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::InputAttachment",       // FIXME: can be `StorageImage`
-                        "::vulkano::image::AbstractImageView",
+                        "::std::sync::Arc<::vulkano::image::AbstractImageView>",
                         "::vulkano::descriptor_set::DescriptorBind::InputAttachment(data, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"     // FIXME:
                     ))
                 },
@@ -75,9 +75,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                                                     if result_id == pointed_ty =>
                 {
                     Some((
-                        "::vulkano::descriptor_set::DescriptorType::SampledImage",
-                        "::vulkano::image::AbstractImageView",
-                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(data, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorType::CombinedImageSampler",
+                        "(::std::sync::Arc<::vulkano::sampler::Sampler>, ::std::sync::Arc<::vulkano::image::AbstractImageView>)",
+                        "::vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(data.0, data.1, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
                     ))
                 },
                 _ => None,      // TODO: other types
@@ -101,7 +101,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // iterate once per set that is defined somewhere
     for set in sets_list.iter() {
         let write_ty = descriptors.iter().filter(|d| d.set == *set)
-                                  .map(|d| format!("::std::sync::Arc<{}>", d.bind_ty))
+                                  .map(|d| d.bind_ty.clone())
                                   .collect::<Vec<_>>();
 
         let writes = descriptors.iter().enumerate().filter(|&(_, d)| d.set == *set)
