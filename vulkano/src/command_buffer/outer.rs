@@ -473,7 +473,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     #[inline]
     pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>)
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
-        where R: Clone
+        where R: Clone + 'static
     {
         let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass)));
         Ok(SecondaryGraphicsCommandBufferBuilder {

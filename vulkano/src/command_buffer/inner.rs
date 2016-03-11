@@ -90,6 +90,7 @@ impl InnerCommandBufferBuilder {
     /// Creates a new builder.
     pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>)
                   -> Result<InnerCommandBufferBuilder, OomError>
+        where R: 'static
     {
         let device = pool.device();
         let vk = device.pointers();
@@ -116,12 +117,15 @@ impl InnerCommandBufferBuilder {
             output
         };
 
+        let mut renderpasses = Vec::new();
+
         unsafe {
             // TODO: one time submit
             let flags = vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |     // TODO:
                         if secondary_cont.is_some() { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
 
             let (rp, sp) = if let Some(ref sp) = secondary_cont {
+                renderpasses.push(sp.render_pass().clone() as Arc<_>);
                 (sp.render_pass().internal_object(), sp.index())
             } else {
                 (0, 0)
@@ -155,7 +159,7 @@ impl InnerCommandBufferBuilder {
             secondary_command_buffers: Vec::new(),
             descriptor_sets: Vec::new(),
             framebuffers: Vec::new(),
-            renderpasses: Vec::new(),
+            renderpasses: renderpasses,
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
             pipelines: Vec::new(),
