@@ -418,13 +418,15 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn pass_dependencies(&self) -> Self::PassDependenciesIter {
-                // TODO: slow
-                (0 .. self.passes().len()).skip(1).map(|p2| {
-                    $crate::framebuffer::PassDependencyDescription {
-                        source_subpass: p2 - 1,
-                        destination_subpass: p2,
-                        by_region: false,
-                    }
+                // TODO: could use a custom iterator
+                (1 .. self.passes().len()).flat_map(|p2| {
+                    (0 .. p2.clone()).map(move |p1| {
+                        $crate::framebuffer::PassDependencyDescription {
+                            source_subpass: p1,
+                            destination_subpass: p2,
+                            by_region: false,
+                        }
+                    })
                 }).collect::<Vec<_>>().into_iter()
             }
         }
