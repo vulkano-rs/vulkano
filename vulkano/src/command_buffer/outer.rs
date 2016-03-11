@@ -25,7 +25,8 @@ use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
-use pipeline::vertex::MultiVertex;
+use pipeline::vertex::Definition as VertexDefinition;
+use pipeline::vertex::Source as VertexSource;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 
@@ -242,10 +243,10 @@ pub struct PrimaryCommandBufferBuilderInlineDraw {
 impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V, L, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> PrimaryCommandBufferBuilderInlineDraw
-        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
               L: DescriptorSetsCollection + 'static
     {
         // FIXME: check subpass
@@ -260,10 +261,10 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
-        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
+        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
               Ibm: MemorySourceChunk
@@ -484,10 +485,10 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub fn draw<V, L, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: MultiVertex + 'static, Pl: PipelineLayoutDesc + 'static,
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static,
               Rp: RenderPassLayout + 'static, L: DescriptorSetsCollection + 'static,
               R: RenderPassCompatibleLayout<Rp>
     {
@@ -504,10 +505,10 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where V: 'static + MultiVertex, Pl: 'static + PipelineLayoutDesc,
+        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc,
               Rp: RenderPassLayout + 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,

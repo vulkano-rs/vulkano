@@ -196,7 +196,7 @@ fn main() {
             )],
         };
 
-        vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
+        vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::vertex::TwoBuffersDefinition::new(), &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
                                                  &pipeline_layout, vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap())
                                                  .unwrap()
@@ -210,7 +210,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0], 1.0))
-            .draw_indexed(&pipeline, (vertex_buffer.clone(), normals_buffer.clone()), &index_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
+            .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

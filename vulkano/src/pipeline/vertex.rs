@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use vk;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
-pub enum VertexInputRate {
+pub enum InputRate {
     Vertex = vk::VERTEX_INPUT_RATE_VERTEX,
     Instance = vk::VERTEX_INPUT_RATE_INSTANCE,
 }
@@ -20,212 +21,159 @@ pub enum VertexInputRate {
 /// from a vertex shader.
 pub unsafe trait Vertex {
     /// Returns the characteristics of a vertex attribute.
-    fn attrib(name: &str) -> Option<VertexAttribute>;
+    fn attrib(name: &str) -> Option<AttributeInfo>;
 }
 
-pub struct VertexAttribute {
+pub struct AttributeInfo {
     pub offset: usize,
     pub format: Format,
 }
 
-/// Trait for types that contain the layout of a collection of vertex buffers.
-pub unsafe trait MultiVertex {
-    type BuffersIter: ExactSizeIterator<Item = Arc<AbstractBuffer>>;
+/// Trait for types that contain the definition of the vertex input.
+pub unsafe trait Definition {
+    type InfoIter: ExactSizeIterator<Item = (usize, InputRate)>;
 
-    fn attrib(name: &str) -> Option<(u32, VertexAttribute)>;
+    /// Returns information about an attribute, and the index of the buffer in which the attribute
+    /// is found.
+    fn attrib(&self, name: &str) -> Option<(usize, AttributeInfo)>;
 
-    /// Returns the number of buffers in this collection.
-    fn num_buffers() -> u32;
-
-    fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate);
-
-    fn buffers(&self) -> Self::BuffersIter;
-
-    /// Returns the number of vertices in total.
-    fn vertices(&self) -> usize;
+    /// Produces an iterator that returns the stride (in bytes) and input rate of each buffer.
+    fn buffers(&self) -> Self::InfoIter;
 }
 
-unsafe impl<T, M> MultiVertex for Arc<Buffer<T, M>>
-    where T: 'static + Vertex, M: 'static + MemorySourceChunk
+pub unsafe trait Source<L>: Definition {
+    type Iter: ExactSizeIterator<Item = Arc<AbstractBuffer>>;
+
+    /// Returns the list of buffers, number of vertices and number of instances.
+    fn decode(&self, L) -> (Self::Iter, usize, usize);
+}
+
+pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
+
+impl<T> SingleBufferDefinition<T> {
+    #[inline]
+    pub fn new() -> SingleBufferDefinition<T> { SingleBufferDefinition(PhantomData) }
+}
+
+unsafe impl<T> Definition for SingleBufferDefinition<T> where T: Vertex {
+    type InfoIter = OptionIntoIter<(usize, InputRate)>;
+
+    #[inline]
+    fn attrib(&self, name: &str) -> Option<(usize, AttributeInfo)> {
+        <T as Vertex>::attrib(name).map(|info| (0, info))
+    }
+
+    #[inline]
+    fn buffers(&self) -> Self::InfoIter {
+        Some((mem::size_of::<T>(), InputRate::Vertex)).into_iter()
+    }
+}
+
+unsafe impl<'a, V, M> Source<&'a Arc<Buffer<[V], M>>> for SingleBufferDefinition<V>
+    where V: Vertex + 'static, M: MemorySourceChunk + 'static
 {
-    type BuffersIter = OptionIntoIter<Arc<AbstractBuffer>>;
+    type Iter = OptionIntoIter<Arc<AbstractBuffer>>;
 
     #[inline]
-    fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
-        T::attrib(name).map(|attr| (0, attr))
-    }
-
-    #[inline]
-    fn num_buffers() -> u32 {
-        1
-    }
-
-    #[inline]
-    fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate) {
-        assert_eq!(buffer_id, 0);
-        (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
-    }
-
-    #[inline]
-    fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
-        Some(self.clone() as Arc<_>).into_iter()
-    }
-
-    #[inline]
-    fn vertices(&self) -> usize {
-        1
+    fn decode(&self, source: &'a Arc<Buffer<[V], M>>)
+              -> (OptionIntoIter<Arc<AbstractBuffer>>, usize, usize)
+    {
+        let iter = Some(source.clone() as Arc<_>).into_iter();
+        (iter, source.len(), 1)
     }
 }
 
-unsafe impl<T, M> MultiVertex for Arc<Buffer<[T], M>>
-    where T: 'static + Vertex, M: 'static + MemorySourceChunk
-{
-    type BuffersIter = OptionIntoIter<Arc<AbstractBuffer>>;
+// TODO: shouldn't be just `Two` be `Multi`
+pub struct TwoBuffersDefinition<T, U>(pub PhantomData<(T, U)>);
 
+impl<T, U> TwoBuffersDefinition<T, U> {
     #[inline]
-    fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
-        T::attrib(name).map(|attr| (0, attr))
-    }
-
-    #[inline]
-    fn num_buffers() -> u32 {
-        1
-    }
-
-    #[inline]
-    fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate) {
-        assert_eq!(buffer_id, 0);
-        (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
-    }
-
-    #[inline]
-    fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
-        Some(self.clone() as Arc<_>).into_iter()
-    }
-
-    #[inline]
-    fn vertices(&self) -> usize {
-        self.len()
-    }
+    pub fn new() -> TwoBuffersDefinition<T, U> { TwoBuffersDefinition(PhantomData) }
 }
 
-macro_rules! impl_mv {
-    ($t1:ident, $t2:ty) => (
-        unsafe impl<$t1, M> MultiVertex for Arc<Buffer<$t2, M>>
-            where T: 'static + Vertex, M: 'static + MemorySourceChunk
-        {
-            type BuffersIter = OptionIntoIter<Arc<AbstractBuffer>>;
-
-            #[inline]
-            fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
-                T::attrib(name).map(|attr| (0, attr))
-            }
-
-            #[inline]
-            fn num_buffers() -> u32 {
-                1
-            }
-
-            #[inline]
-            fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate) {
-                assert_eq!(buffer_id, 0);
-                (mem::size_of::<T>() as u32, VertexInputRate::Vertex)
-            }
-
-            #[inline]
-            fn buffers(&self) -> OptionIntoIter<Arc<AbstractBuffer>> {
-                Some(self.clone() as Arc<_>).into_iter()
-            }
-
-            #[inline]
-            fn vertices(&self) -> usize {
-                mem::size_of::<$t2>() / mem::size_of::<$t1>()
-            }
-        }
-    );
-}
-
-impl_mv!(T, [T; 1]);
-impl_mv!(T, [T; 2]);
-impl_mv!(T, [T; 3]);
-impl_mv!(T, [T; 4]);
-impl_mv!(T, [T; 5]);
-impl_mv!(T, [T; 6]);
-impl_mv!(T, [T; 7]);
-impl_mv!(T, [T; 8]);
-impl_mv!(T, [T; 9]);
-impl_mv!(T, [T; 10]);
-impl_mv!(T, [T; 11]);
-impl_mv!(T, [T; 12]);
-impl_mv!(T, [T; 13]);
-impl_mv!(T, [T; 14]);
-impl_mv!(T, [T; 15]);
-impl_mv!(T, [T; 16]);
-impl_mv!(T, [T; 32]);
-impl_mv!(T, [T; 64]);
-impl_mv!(T, [T; 128]);
-impl_mv!(T, [T; 256]);
-impl_mv!(T, [T; 512]);
-impl_mv!(T, [T; 1024]);
-impl_mv!(T, [T; 2048]);
-impl_mv!(T, [T; 4096]);
-
-
-unsafe impl<A, B, Ma, Mb> MultiVertex for (Arc<Buffer<[A], Ma>>, Arc<Buffer<[B], Mb>>)
-    where A: 'static + Vertex, B: 'static + Vertex, Ma: 'static + MemorySourceChunk,
-          Mb: 'static + MemorySourceChunk
-{
-    type BuffersIter = VecIntoIter<Arc<AbstractBuffer>>;
+unsafe impl<T, U> Definition for TwoBuffersDefinition<T, U> where T: Vertex, U: Vertex {
+    type InfoIter = VecIntoIter<(usize, InputRate)>;
 
     #[inline]
-    fn attrib(name: &str) -> Option<(u32, VertexAttribute)> {
-        if let Some(attr) = A::attrib(name) {
-            Some((0, attr))
-        } else if let Some(attr) = B::attrib(name) {
-            Some((1, attr))
+    fn attrib(&self, name: &str) -> Option<(usize, AttributeInfo)> {
+        if let Some(a) = <T as Vertex>::attrib(name) {
+            Some((0, a))
+        } else if let Some(a) = <U as Vertex>::attrib(name) {
+            Some((1, a))
         } else {
             None
         }
     }
 
     #[inline]
-    fn num_buffers() -> u32 {
-        2
-    }
-
-    #[inline]
-    fn buffer_info(buffer_id: u32) -> (u32, VertexInputRate) {
-        if buffer_id == 0 {
-            (mem::size_of::<A>() as u32, VertexInputRate::Vertex)
-        } else if buffer_id == 1 {
-            (mem::size_of::<B>() as u32, VertexInputRate::Vertex)
-        } else {
-            panic!()
-        }
-    }
-
-    #[inline]
-    fn buffers(&self) -> VecIntoIter<Arc<AbstractBuffer>> {
-        vec![self.0.clone() as Arc<_>, self.1.clone() as Arc<_>].into_iter()
-    }
-
-    #[inline]
-    fn vertices(&self) -> usize {
-        // TODO: panic if number of elements mismatch instead?
-        [self.0.len(), self.1.len()].iter().cloned().min().unwrap()
+    fn buffers(&self) -> Self::InfoIter {
+        vec![
+            (mem::size_of::<T>(), InputRate::Vertex),
+            (mem::size_of::<U>(), InputRate::Vertex)
+        ].into_iter()
     }
 }
 
+unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for TwoBuffersDefinition<T, U>
+    where T: Vertex + 'static, Mt: MemorySourceChunk + 'static,
+          U: Vertex + 'static, Mu: MemorySourceChunk + 'static
+{
+    type Iter = VecIntoIter<Arc<AbstractBuffer>>;
+
+    #[inline]
+    fn decode(&self, source: (&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>))
+              -> (VecIntoIter<Arc<AbstractBuffer>>, usize, usize)
+    {
+        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
+        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
+    }
+}
+
+/*pub struct OneVertexOneInstanceDefinition<V, I>;
+
+unsafe impl<V, I> Definition for OneVertexOneInstanceDefinition<V, I>
+    where V: Vertex, I: Vertex
+{
+    type InfoIter = OptionIntoIter<(u32, InputRate)>;
+
+    #[inline]
+    fn attrib(&self, name: &str) -> Option<(u32, AttributeInfo)> {
+        Vertex::attrib(name).map(|info| (0, info))
+    }
+
+    #[inline]
+    fn buffers(&self) -> Self::InfoIter {
+        Some((mem::size_of::<T>(), InputRate::Vertex)).into_iter()
+    }
+}
+
+unsafe impl<'a, V, S> Source<S> for OneVertexOneInstanceDefinition<V>
+    where V: Vertex, S: Into<BufferSlice<'a, [V]>>
+{
+    type Iter = OptionIntoIter<Arc<AbstractBuffer>>;
+
+    #[inline]
+    fn iter(&self, source: S) -> OptionIntoIter<Arc<AbstractBuffer>> {
+        let source = source.into();
+        assert!(source.offset() == 0);      // TODO: not supported otherwise
+        Some(source.buffer().clone() as Arc<_>).into_iter()
+    }
+
+    #[inline]
+    fn num_vertices(&self, source: S) -> usize {
+        source.into().len()
+    }
+}*/
 
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ident $(, $member:ident)*) => (
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
-            fn attrib(name: &str) -> Option<$crate::pipeline::vertex::VertexAttribute> {
+            fn attrib(name: &str) -> Option<$crate::pipeline::vertex::AttributeInfo> {
                 $(
                     if name == stringify!($member) {
-                        return Some($crate::pipeline::vertex::VertexAttribute {
+                        return Some($crate::pipeline::vertex::AttributeInfo {
                             offset: unsafe {
                                 let dummy = 0usize as *const $out;
                                 let member = (&(&*dummy).$member) as *const _;
@@ -233,7 +181,7 @@ macro_rules! impl_vertex {
                             },
 
                             format: unsafe {
-                                #[inline] fn f<T: $crate::pipeline::vertex::Attribute>(_: &T) -> $crate::format::Format { T::format() }
+                                #[inline] fn f<T: $crate::pipeline::vertex::Data>(_: &T) -> $crate::format::Format { T::format() }
                                 let dummy = 0usize as *const $out;
                                 f(&(&*dummy).$member)
                             },
@@ -247,67 +195,67 @@ macro_rules! impl_vertex {
     )
 }
 
-pub unsafe trait Attribute {
+pub unsafe trait Data {
     fn format() -> Format;
 }
 
-unsafe impl Attribute for f32 {
+unsafe impl Data for f32 {
     #[inline]
     fn format() -> Format {
         Format::R32Sfloat
     }
 }
 
-unsafe impl Attribute for [f32; 1] {
+unsafe impl Data for [f32; 1] {
     #[inline]
     fn format() -> Format {
         Format::R32Sfloat
     }
 }
 
-unsafe impl Attribute for [f32; 2] {
+unsafe impl Data for [f32; 2] {
     #[inline]
     fn format() -> Format {
         Format::R32G32Sfloat
     }
 }
 
-unsafe impl Attribute for [f32; 3] {
+unsafe impl Data for [f32; 3] {
     #[inline]
     fn format() -> Format {
         Format::R32G32B32Sfloat
     }
 }
 
-unsafe impl Attribute for [f32; 4] {
+unsafe impl Data for [f32; 4] {
     #[inline]
     fn format() -> Format {
         Format::R32G32B32A32Sfloat
     }
 }
 
-unsafe impl Attribute for (f32,) {
+unsafe impl Data for (f32,) {
     #[inline]
     fn format() -> Format {
         Format::R32Sfloat
     }
 }
 
-unsafe impl Attribute for (f32, f32) {
+unsafe impl Data for (f32, f32) {
     #[inline]
     fn format() -> Format {
         Format::R32G32Sfloat
     }
 }
 
-unsafe impl Attribute for (f32, f32, f32) {
+unsafe impl Data for (f32, f32, f32) {
     #[inline]
     fn format() -> Format {
         Format::R32G32B32Sfloat
     }
 }
 
-unsafe impl Attribute for (f32, f32, f32, f32) {
+unsafe impl Data for (f32, f32, f32, f32) {
     #[inline]
     fn format() -> Format {
         Format::R32G32B32A32Sfloat

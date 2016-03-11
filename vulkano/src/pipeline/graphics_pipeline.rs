@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -23,7 +22,7 @@ use pipeline::input_assembly::InputAssembly;
 use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::Rasterization;
-use pipeline::vertex::MultiVertex;
+use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
 
@@ -31,7 +30,7 @@ use pipeline::viewport::ViewportsState;
 ///
 /// The template parameter contains the descriptor set to use with this pipeline, and the
 /// renderpass layout.
-pub struct GraphicsPipeline<MultiVertex, Layout, RenderP> {
+pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     device: Arc<Device>,
     pipeline: vk::Pipeline,
     layout: Arc<PipelineLayout<Layout>>,
@@ -39,18 +38,18 @@ pub struct GraphicsPipeline<MultiVertex, Layout, RenderP> {
     render_pass: Arc<RenderPass<RenderP>>,
     render_pass_subpass: u32,
 
+    vertex_definition: VertexDefinition,
+
     dynamic_line_width: bool,
     dynamic_viewport: bool,
     dynamic_scissor: bool,
     dynamic_depth_bias: bool,
 
     num_viewports: u32,
-
-    marker: PhantomData<(MultiVertex,)>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: MultiVertex, L: PipelineLayoutDesc
+    where Mv: VertexDefinition, L: PipelineLayoutDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -63,7 +62,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     ///
     // TODO: check all the device's limits
     pub fn new<Vi, Fo, Vl, Fl>
-              (device: &Arc<Device>, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
+              (device: &Arc<Device>, vertex: Mv, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
@@ -104,21 +103,21 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
             });
 
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let binding_descriptions = (0 .. Mv::num_buffers()).map(|num| {
-                let (stride, rate) = Mv::buffer_info(num);
+            let binding_descriptions = vertex.buffers().enumerate().map(|(num, (stride, rate))| {
                 vk::VertexInputBindingDescription {
-                    binding: num,
-                    stride: stride,
+                    binding: num as u32,
+                    stride: stride as u32,
                     inputRate: rate as u32,
                 }
             }).collect::<Vec<_>>();
 
             // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let attribute_descriptions = vertex_shader.attributes().iter().map(|&(loc, ref name)| {
-                let (binding, info) = Mv::attrib(name).expect("missing attr");       // TODO: error
+                let (binding, info) = vertex.attrib(name).expect("missing attr");       // TODO: error
+                debug_assert!(binding < vertex.buffers().len());
                 vk::VertexInputAttributeDescription {
                     location: loc as u32,
-                    binding: binding,
+                    binding: binding as u32,
                     format: info.format as u32,
                     offset: info.offset as u32,
                 }
@@ -327,6 +326,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
             pipeline: pipeline,
             layout: layout.clone(),
 
+            vertex_definition: vertex,
+
             render_pass: render_pass.render_pass().clone(),
             render_pass_subpass: render_pass.index(),
 
@@ -336,15 +337,19 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
             dynamic_depth_bias: raster.depth_bias.is_dynamic(),
 
             num_viewports: viewport.num_viewports(),
-
-            marker: PhantomData,
         }))
     }
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: MultiVertex, L: PipelineLayoutDesc
+    where Mv: VertexDefinition, L: PipelineLayoutDesc
 {
+    /// Returns the vertex definition used in the constructor.
+    #[inline]
+    pub fn vertex_definition(&self) -> &Mv {
+        &self.vertex_definition
+    }
+
     /// Returns the pipeline layout used in the constructor.
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout<L>> {

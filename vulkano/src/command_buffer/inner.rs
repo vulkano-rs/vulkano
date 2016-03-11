@@ -30,7 +30,8 @@ use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
-use pipeline::vertex::MultiVertex;
+use pipeline::vertex::Definition as VertexDefinition;
+use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
 use sync::Resource;
 use sync::Semaphore;
@@ -401,28 +402,33 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub unsafe fn draw<V, Pv, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L) -> InnerCommandBufferBuilder
-        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+        where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
         // FIXME: add buffers to the resources
 
         self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
 
-        assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
-        let buffers = vertices.buffers();
+        let vertices = pipeline.vertex_definition().decode(vertices);
+
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
-        let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<Vec<_>>();
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let ids = vertices.0.map(|b| {
+            assert!(b.usage_vertex_buffer());
+            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            b.internal_object()
+        }).collect::<Vec<_>>();
 
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
-            vk.CmdDraw(self.cmd.unwrap(), vertices.vertices() as u32, 1, 0, 0);  // FIXME: params
+            vk.CmdDraw(self.cmd.unwrap(), vertices.1 as u32, vertices.2 as u32, 0, 0);  // FIXME: params
         }
 
         self
@@ -430,10 +436,11 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, Pl, Rp, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+    pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
                                                           sets: L) -> InnerCommandBufferBuilder
-        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+        where L: 'static + DescriptorSetsCollection,
+              Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               Ibm: MemorySourceChunk
@@ -446,11 +453,16 @@ impl InnerCommandBufferBuilder {
 
         let indices = indices.into();
 
-        assert!(vertices.buffers().all(|b| b.usage_vertex_buffer()));
-        let buffers = vertices.buffers();
+        let vertices = pipeline.vertex_definition().decode(vertices);
+
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let offsets = (0 .. buffers.len()).map(|_| 0).collect::<Vec<_>>();
-        let ids = buffers.map(|b| b.internal_object()).collect::<Vec<_>>();
+        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<Vec<_>>();
+        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let ids = vertices.0.map(|b| {
+            assert!(b.usage_vertex_buffer());
+            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            b.internal_object()
+        }).collect::<Vec<_>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
@@ -463,7 +475,8 @@ impl InnerCommandBufferBuilder {
                                   indices.offset() as u64, I::ty() as u32);
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
-            vk.CmdDrawIndexed(self.cmd.unwrap(), indices.len() as u32, 1, 0, 0, 0);  // FIXME: params
+            vk.CmdDrawIndexed(self.cmd.unwrap(), indices.len() as u32, vertices.2 as u32,
+                              0, 0, 0);  // FIXME: params
         }
 
         self
@@ -471,7 +484,7 @@ impl InnerCommandBufferBuilder {
 
     fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                              dynamic: &DynamicState, sets: L)
-        where V: 'static + MultiVertex, L: 'static + DescriptorSetsCollection,
+        where V: 'static + VertexDefinition, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
         unsafe {
