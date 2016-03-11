@@ -414,7 +414,7 @@ impl<P> Drop for PipelineLayout<P> {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
+            vk.DestroyPipelineLayout(self.device.internal_object(), self.layout, ptr::null());
         }
     }
 }
