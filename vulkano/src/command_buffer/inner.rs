@@ -107,6 +107,7 @@ impl InnerCommandBufferBuilder {
                 pNext: ptr::null(),
                 commandPool: *pool_obj,
                 level: if secondary {
+                    assert!(secondary_cont.is_some());
                     vk::COMMAND_BUFFER_LEVEL_SECONDARY
                 } else {
                     vk::COMMAND_BUFFER_LEVEL_PRIMARY
