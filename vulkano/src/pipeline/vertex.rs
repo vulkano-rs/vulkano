@@ -83,7 +83,7 @@ unsafe impl<'a, V, M> Source<&'a Arc<Buffer<[V], M>>> for SingleBufferDefinition
     }
 }
 
-// TODO: shouldn't be just `Two` be `Multi`
+// TODO: shouldn't be just `Two` but `Multi`
 pub struct TwoBuffersDefinition<T, U>(pub PhantomData<(T, U)>);
 
 impl<T, U> TwoBuffersDefinition<T, U> {
@@ -129,41 +129,51 @@ unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[
     }
 }
 
-/*pub struct OneVertexOneInstanceDefinition<V, I>;
+// TODO: bad way to do things
+pub struct OneVertexOneInstanceDefinition<T, U>(pub PhantomData<(T, U)>);
 
-unsafe impl<V, I> Definition for OneVertexOneInstanceDefinition<V, I>
-    where V: Vertex, I: Vertex
-{
-    type InfoIter = OptionIntoIter<(u32, InputRate)>;
+impl<T, U> OneVertexOneInstanceDefinition<T, U> {
+    #[inline]
+    pub fn new() -> OneVertexOneInstanceDefinition<T, U> { OneVertexOneInstanceDefinition(PhantomData) }
+}
+
+unsafe impl<T, U> Definition for OneVertexOneInstanceDefinition<T, U> where T: Vertex, U: Vertex {
+    type InfoIter = VecIntoIter<(usize, InputRate)>;
 
     #[inline]
-    fn attrib(&self, name: &str) -> Option<(u32, AttributeInfo)> {
-        Vertex::attrib(name).map(|info| (0, info))
+    fn attrib(&self, name: &str) -> Option<(usize, AttributeInfo)> {
+        if let Some(a) = <T as Vertex>::attrib(name) {
+            Some((0, a))
+        } else if let Some(a) = <U as Vertex>::attrib(name) {
+            Some((1, a))
+        } else {
+            None
+        }
     }
 
     #[inline]
     fn buffers(&self) -> Self::InfoIter {
-        Some((mem::size_of::<T>(), InputRate::Vertex)).into_iter()
+        vec![
+            (mem::size_of::<T>(), InputRate::Vertex),
+            (mem::size_of::<U>(), InputRate::Instance)
+        ].into_iter()
     }
 }
 
-unsafe impl<'a, V, S> Source<S> for OneVertexOneInstanceDefinition<V>
-    where V: Vertex, S: Into<BufferSlice<'a, [V]>>
+unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for OneVertexOneInstanceDefinition<T, U>
+    where T: Vertex + 'static, Mt: MemorySourceChunk + 'static,
+          U: Vertex + 'static, Mu: MemorySourceChunk + 'static
 {
-    type Iter = OptionIntoIter<Arc<AbstractBuffer>>;
+    type Iter = VecIntoIter<Arc<AbstractBuffer>>;
 
     #[inline]
-    fn iter(&self, source: S) -> OptionIntoIter<Arc<AbstractBuffer>> {
-        let source = source.into();
-        assert!(source.offset() == 0);      // TODO: not supported otherwise
-        Some(source.buffer().clone() as Arc<_>).into_iter()
+    fn decode(&self, source: (&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>))
+              -> (VecIntoIter<Arc<AbstractBuffer>>, usize, usize)
+    {
+        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
+        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
     }
-
-    #[inline]
-    fn num_vertices(&self, source: S) -> usize {
-        source.into().len()
-    }
-}*/
+}
 
 #[macro_export]
 macro_rules! impl_vertex {
