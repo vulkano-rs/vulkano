@@ -137,35 +137,41 @@ impl Instance {
         });
 
         // Creating the debug report callback.
-        // TODO: should be optional
-        /*let debug_report = unsafe {
-            extern "system" fn callback(_: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,
-                                        _: u64, _: usize, _: i32, layer_prefix: *const c_char,
-                                        message: *const c_char, _: *mut c_void) -> u32
-            {
-                unsafe {
-                    let message = CStr::from_ptr(message).to_str()
-                                                    .expect("debug callback message not utf-8");
-                    println!("Debug callback message: {:?}", message);
-                    vk::FALSE
+        // TODO: should used registered by the user
+        let debug_report = if extensions.ext_debug_report {
+            Some(unsafe {
+                use std::os::raw::{c_void, c_char};
+
+                extern "system" fn callback(_: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,
+                                            _: u64, _: usize, _: i32, layer_prefix: *const c_char,
+                                            message: *const c_char, _: *mut c_void) -> u32
+                {
+                    unsafe {
+                        let message = CStr::from_ptr(message).to_str()
+                                                        .expect("debug callback message not utf-8");
+                        println!("Debug callback message: {:?}", message);
+                        vk::FALSE
+                    }
                 }
-            }
 
-            let infos = vk::DebugReportCallbackCreateInfoEXT {
-                sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
-                pNext: ptr::null(),
-                flags: /*vk::DEBUG_REPORT_INFORMATION_BIT_EXT |*/ vk::DEBUG_REPORT_WARNING_BIT_EXT |
-                       /*vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |*/
-                       vk::DEBUG_REPORT_ERROR_BIT_EXT /*| vk::DEBUG_REPORT_DEBUG_BIT_EXT*/,
-                pfnCallback: callback,
-                pUserData: ptr::null_mut(),
-            };
+                let infos = vk::DebugReportCallbackCreateInfoEXT {
+                    sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
+                    pNext: ptr::null(),
+                    flags: /*vk::DEBUG_REPORT_INFORMATION_BIT_EXT |*/ vk::DEBUG_REPORT_WARNING_BIT_EXT |
+                           /*vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |*/
+                           vk::DEBUG_REPORT_ERROR_BIT_EXT /*| vk::DEBUG_REPORT_DEBUG_BIT_EXT*/,
+                    pfnCallback: callback,
+                    pUserData: ptr::null_mut(),
+                };
 
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDebugReportCallbackEXT(instance, &infos,
-                                                              ptr::null(), &mut output)));
-            output
-        };*/
+                let mut output = mem::uninitialized();
+                try!(check_errors(vk.CreateDebugReportCallbackEXT(instance, &infos,
+                                                                  ptr::null(), &mut output)));
+                output
+            })
+        } else {
+            None
+        };
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
@@ -226,7 +232,7 @@ impl Instance {
 
         Ok(Arc::new(Instance {
             instance: instance,
-            debug_report: None,     // TODO: remove
+            debug_report: debug_report,     // TODO: remove
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
