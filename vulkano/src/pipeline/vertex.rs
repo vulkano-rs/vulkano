@@ -232,7 +232,7 @@ unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[
               -> (VecIntoIter<Arc<AbstractBuffer>>, usize, usize)
     {
         let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
+        (iter, source.0.len(), source.1.len())
     }
 }
 
