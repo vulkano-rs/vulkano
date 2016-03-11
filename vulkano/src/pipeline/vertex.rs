@@ -336,3 +336,66 @@ unsafe impl Data for (f32, f32, f32, f32) {
         Format::R32G32B32A32Sfloat
     }
 }
+
+unsafe impl Data for u32 {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Uint
+    }
+}
+
+unsafe impl Data for [u32; 1] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Uint
+    }
+}
+
+unsafe impl Data for [u32; 2] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32Uint
+    }
+}
+
+unsafe impl Data for [u32; 3] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32Uint
+    }
+}
+
+unsafe impl Data for [u32; 4] {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32A32Uint
+    }
+}
+
+unsafe impl Data for (u32,) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32Uint
+    }
+}
+
+unsafe impl Data for (u32, u32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32Uint
+    }
+}
+
+unsafe impl Data for (u32, u32, u32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32Uint
+    }
+}
+
+unsafe impl Data for (u32, u32, u32, u32) {
+    #[inline]
+    fn format() -> Format {
+        Format::R32G32B32A32Uint
+    }
+}
