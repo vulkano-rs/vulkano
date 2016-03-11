@@ -37,7 +37,15 @@ impl DescriptorPool {
             vk::DescriptorPoolSize {
                 ty: vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
                 descriptorCount: 10,
-            }
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                descriptorCount: 10,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                descriptorCount: 10,
+            },
         ];
 
         let pool = unsafe {
