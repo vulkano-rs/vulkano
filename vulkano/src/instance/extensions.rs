@@ -34,7 +34,7 @@ extensions! {
     InstanceExtensions,
     khr_surface => b"VK_KHR_surface",
     khr_display => b"VK_KHR_display",
-    khr_display_swapchain => b"VK_KHR_display_swapchain",
+    khr_display_swapchain => b"VK_KHR_display_swapchain",       // FIXME: device extension
     khr_xlib_surface => b"VK_KHR_xlib_surface",
     khr_xcb_surface => b"VK_KHR_xcb_surface",
     khr_wayland_surface => b"VK_KHR_wayland_surface",
