@@ -134,7 +134,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                                 binding: {binding},
                                                 ty: {desc_ty},
                                                 array_count: 1,
-                                                stages: ::vulkano::descriptor_set::ShaderStages::all_graphics(),        // TODO:
+                                                stages: ::vulkano::descriptor_set::ShaderStages::all(),        // TODO:
                                             }}", binding = d.binding, desc_ty = d.desc_ty)
                                })
                                .collect::<Vec<_>>();

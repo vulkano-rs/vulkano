@@ -174,6 +174,19 @@ pub struct ShaderStages {
 }
 
 impl ShaderStages {
+    /// Creates a `ShaderStages` struct will all stages set to `true`.
+    #[inline]
+    pub fn all() -> ShaderStages {
+        ShaderStages {
+            vertex: true,
+            tessellation_control: true,
+            tessellation_evaluation: true,
+            geometry: true,
+            fragment: true,
+            compute: true,
+        }
+    }
+
     /// Creates a `ShaderStages` struct will all graphics stages set to `true`.
     #[inline]
     pub fn all_graphics() -> ShaderStages {
