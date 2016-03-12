@@ -349,7 +349,7 @@ impl<Ty, F, M> Image<Ty, F, M>
                 mipmaps: mipmaps,
                 sharing: sharing,
                 needs_destruction: true,
-                layout: Layout::Undefined,        // TODO:
+                layout: Layout::Undefined,        // TODO: can be "predefined"
             },
         })
     }
@@ -533,6 +533,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
         let mut image = self.image;
         let old_layout = image.layout;
         image.layout = layout;
+        let image = Arc::new(image);
 
         let device = image.device.clone();
         let vk = device.pointers();
@@ -545,7 +546,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
                     sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                     pNext: ptr::null(),
                     commandPool: *pool,
-                    level: vk::COMMAND_BUFFER_LEVEL_SECONDARY,
+                    level: vk::COMMAND_BUFFER_LEVEL_PRIMARY,
                     commandBufferCount: 1,
                 };
 
@@ -572,7 +573,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
                     pNext: ptr::null(),
                     srcAccessMask: 0x0001ffff,      // FIXME:
                     dstAccessMask: 0x0001ffff,      // FIXME:
-                    oldLayout: image.layout as u32,
+                    oldLayout: old_layout as u32,
                     newLayout: layout as u32,
                     srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                     dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
@@ -580,9 +581,9 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
                     subresourceRange: vk::ImageSubresourceRange {
                         aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
                         baseMipLevel: 0,
-                        levelCount: vk::REMAINING_MIP_LEVELS,
+                        levelCount: 1,  // TODO: vk::REMAINING_MIP_LEVELS,
                         baseArrayLayer: 0,
-                        layerCount: vk::REMAINING_ARRAY_LAYERS,
+                        layerCount: 1,  // TODO: vk::REMAINING_ARRAY_LAYERS,
                     }
                 };
 
@@ -609,7 +610,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
             }
         }
 
-        Ok(Arc::new(image))
+        Ok(image)
     }
 }
 

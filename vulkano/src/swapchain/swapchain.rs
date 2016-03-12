@@ -75,6 +75,8 @@ impl Swapchain {
     // TODO:
     //pub fn recreate() { ... }
 
+    // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
+    //       layout at present time
     fn new_inner<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                        dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
