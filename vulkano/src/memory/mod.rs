@@ -212,7 +212,7 @@ pub unsafe trait Content {
 unsafe impl<T> Content for T {
     #[inline]
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut T> {
-        if size != mem::size_of::<T>() {
+        if size < mem::size_of::<T>() {
             return None;
         }
 
@@ -228,10 +228,6 @@ unsafe impl<T> Content for T {
 unsafe impl<T> Content for [T] {
     #[inline]
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut [T]> {
-        if size % mem::size_of::<T>() != 0 {
-            return None;
-        }
-
         let ptr = ptr as *mut T;
         let size = size / mem::size_of::<T>();
         Some(unsafe { slice::from_raw_parts_mut(&mut *ptr, size) as *mut [T] })
