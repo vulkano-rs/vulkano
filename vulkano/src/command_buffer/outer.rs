@@ -350,8 +350,8 @@ impl PrimaryCommandBufferBuilderInlineDraw {
 /// Object that you obtain when calling `draw_secondary` or `next_subpass_secondary`.
 pub struct PrimaryCommandBufferBuilderSecondaryDraw {
     inner: InnerCommandBufferBuilder,
-    num_subpasses: u32,
     current_subpass: u32,
+    num_subpasses: u32,
 }
 
 impl PrimaryCommandBufferBuilderSecondaryDraw {
