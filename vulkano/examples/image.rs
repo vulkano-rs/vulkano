@@ -25,7 +25,7 @@ fn main() {
         khr_win32_surface: true,
         .. vulkano::instance::InstanceExtensions::none()
     };
-    let instance = vulkano::instance::Instance::new(Some(&app), &[], &extensions).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &extensions, &[]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -38,8 +38,11 @@ fn main() {
                                                    surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
+    let device_ext = vulkano::device::DeviceExtensions {
+        khr_swapchain: true,
+    };
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        [(queue, 0.5)].iter().cloned(), &[])
+                                                        &device_ext, &[], [(queue, 0.5)].iter().cloned())
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
@@ -200,9 +203,10 @@ fn main() {
             )],
         };
 
-        vulkano::pipeline::GraphicsPipeline::new(&device, &vs.main_entry_point(), &ia, &viewports,
+        vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::vertex::SingleBufferDefinition::new(),
+                                                 &vs.main_entry_point(), &ia, &viewports,
                                                  &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &pipeline_layout, renderpass.subpass(0).unwrap())
+                                                 &pipeline_layout, vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap())
                                                  .unwrap()
     };
 
@@ -216,14 +220,14 @@ fn main() {
             .copy_buffer_to_color_image(&pixel_buffer, &texture)
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), set.clone())
+            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();
 
     loop {
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
-        command_buffers[image_num].submit(&queue).unwrap();
+        vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap();
         swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.poll_events() {
