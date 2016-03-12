@@ -16,7 +16,7 @@ use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
-use framebuffer::CompatibleLayout as RenderPassCompatibleLayout;
+use framebuffer::LayoutCompatible as RenderPassLayoutCompatible;
 use framebuffer::Layout as RenderPassLayout;
 use framebuffer::LayoutClearValues as RenderPassLayoutClearValues;
 use framebuffer::Subpass;
@@ -497,7 +497,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                               -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static,
               Rp: RenderPassLayout + 'static, L: DescriptorSetsCollection + 'static,
-              R: RenderPassCompatibleLayout<Rp>
+              R: RenderPassLayoutCompatible<Rp>
     {
         assert!(self.renderpass_layout.is_compatible_with(pipeline.subpass().render_pass().layout()));
         assert_eq!(self.renderpass_subpass, pipeline.subpass().index());

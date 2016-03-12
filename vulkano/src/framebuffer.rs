@@ -87,19 +87,19 @@ use vk;
 /// Types that describes the characteristics of a renderpass.
 pub unsafe trait Layout {
     /// Iterator that produces attachments.
-    type AttachmentsDescIter: ExactSizeIterator<Item = AttachmentDescription>;
+    type AttachmentsDescIter: ExactSizeIterator<Item = LayoutAttachmentDescription>;
 
     /// Returns the descriptions of the attachments.
     fn attachments(&self) -> Self::AttachmentsDescIter;
 
     /// Iterator that produces passes.
-    type PassesIter: ExactSizeIterator<Item = PassDescription>;
+    type PassesIter: ExactSizeIterator<Item = LayoutPassDescription>;
 
     /// Returns the descriptions of the passes.
     fn passes(&self) -> Self::PassesIter;
 
     /// Iterator that produces pass dependencies.
-    type PassDependenciesIter: ExactSizeIterator<Item = PassDependencyDescription>;
+    type PassDependenciesIter: ExactSizeIterator<Item = LayoutPassDependencyDescription>;
 
     /// Returns the descriptions of the dependencies between passes.
     fn pass_dependencies(&self) -> Self::PassDependenciesIter;
@@ -135,13 +135,13 @@ pub unsafe trait LayoutClearValues<C>: Layout {
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait CompatibleLayout<Other>: Layout where Other: Layout {
+pub unsafe trait LayoutCompatible<Other>: Layout where Other: Layout {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     fn is_compatible_with(&self, other: &Other) -> bool;
 }
 
-unsafe impl<A, B> CompatibleLayout<B> for A
+unsafe impl<A, B> LayoutCompatible<B> for A
     where A: Layout, B: Layout
 {
     fn is_compatible_with(&self, other: &B) -> bool {
@@ -158,7 +158,7 @@ unsafe impl<A, B> CompatibleLayout<B> for A
 }
 
 /// Describes an attachment that will be used in a renderpass.
-pub struct AttachmentDescription {
+pub struct LayoutAttachmentDescription {
     /// Format of the image that is going to be binded.
     pub format: Format,
     /// Number of samples of the image that is going to be binded.
@@ -179,11 +179,11 @@ pub struct AttachmentDescription {
     pub final_layout: ImageLayout,
 }
 
-impl AttachmentDescription {
+impl LayoutAttachmentDescription {
     /// Returns true if this attachment is compatible with another attachment, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     #[inline]
-    pub fn is_compatible_with(&self, other: &AttachmentDescription) -> bool {
+    pub fn is_compatible_with(&self, other: &LayoutAttachmentDescription) -> bool {
         self.format == other.format && self.samples == other.samples
     }
 }
@@ -210,7 +210,7 @@ impl AttachmentDescription {
 ///
 // TODO: add tests for all these restrictions
 // TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
-pub struct PassDescription {
+pub struct LayoutPassDescription {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
 
@@ -236,7 +236,7 @@ pub struct PassDescription {
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
 // FIXME: finish
-pub struct PassDependencyDescription {
+pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
 
@@ -256,18 +256,18 @@ pub struct PassDependencyDescription {
 pub struct EmptySinglePassLayout;
 
 unsafe impl Layout for EmptySinglePassLayout {
-    type AttachmentsDescIter = EmptyIter<AttachmentDescription>;
+    type AttachmentsDescIter = EmptyIter<LayoutAttachmentDescription>;
 
     #[inline]
     fn attachments(&self) -> Self::AttachmentsDescIter {
         iter::empty()
     }
 
-    type PassesIter = OptionIntoIter<PassDescription>;
+    type PassesIter = OptionIntoIter<LayoutPassDescription>;
 
     #[inline]
     fn passes(&self) -> Self::PassesIter {
-        Some(PassDescription {
+        Some(LayoutPassDescription {
             color_attachments: vec![],
             depth_stencil: None,
             input_attachments: vec![],
@@ -276,7 +276,7 @@ unsafe impl Layout for EmptySinglePassLayout {
         }).into_iter()
     }
 
-    type PassDependenciesIter = EmptyIter<PassDependencyDescription>;
+    type PassDependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
 
     #[inline]
     fn pass_dependencies(&self) -> Self::PassDependenciesIter {
@@ -355,15 +355,15 @@ macro_rules! ordered_passes_renderpass {
         pub struct Layout;
 
         unsafe impl $crate::framebuffer::Layout for Layout {
-            type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::AttachmentDescription>;
-            type PassesIter = std::vec::IntoIter<$crate::framebuffer::PassDescription>;
-            type PassDependenciesIter = std::vec::IntoIter<$crate::framebuffer::PassDependencyDescription>;
+            type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::LayoutAttachmentDescription>;
+            type PassesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDescription>;
+            type PassDependenciesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDependencyDescription>;
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsDescIter {
                 vec![
                     $(
-                        $crate::framebuffer::AttachmentDescription {
+                        $crate::framebuffer::LayoutAttachmentDescription {
                             format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
                             samples: 1,                         // FIXME:
                             load: $crate::framebuffer::LoadOp::$load,
@@ -392,7 +392,7 @@ macro_rules! ordered_passes_renderpass {
                             depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
                         )*
 
-                        $crate::framebuffer::PassDescription {
+                        $crate::framebuffer::LayoutPassDescription {
                             color_attachments: vec![
                                 $(
                                     ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
@@ -421,7 +421,7 @@ macro_rules! ordered_passes_renderpass {
                 // TODO: could use a custom iterator
                 (1 .. self.passes().len()).flat_map(|p2| {
                     (0 .. p2.clone()).map(move |p1| {
-                        $crate::framebuffer::PassDependencyDescription {
+                        $crate::framebuffer::LayoutPassDependencyDescription {
                             source_subpass: p1,
                             destination_subpass: p2,
                             by_region: false,
