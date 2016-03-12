@@ -21,7 +21,6 @@ fn main() {
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
     let extensions = vulkano::instance::InstanceExtensions {
         khr_surface: true,
-        khr_swapchain: true,
         khr_win32_surface: true,
         .. vulkano::instance::InstanceExtensions::none()
     };

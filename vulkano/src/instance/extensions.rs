@@ -33,7 +33,6 @@ macro_rules! extensions {
 extensions! {
     InstanceExtensions,
     khr_surface => b"VK_KHR_surface",
-    khr_swapchain => b"VK_KHR_swapchain",
     khr_display => b"VK_KHR_display",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_xlib_surface => b"VK_KHR_xlib_surface",
