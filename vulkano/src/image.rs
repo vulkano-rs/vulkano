@@ -571,7 +571,7 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
                 let barrier = vk::ImageMemoryBarrier {
                     sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                     pNext: ptr::null(),
-                    srcAccessMask: 0x0001ffff,      // FIXME:
+                    srcAccessMask: 0,      // FIXME:
                     dstAccessMask: 0x0001ffff,      // FIXME:
                     oldLayout: old_layout as u32,
                     newLayout: layout as u32,
