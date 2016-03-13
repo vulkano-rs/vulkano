@@ -1,7 +1,17 @@
 //! Location in memory that contains data.
 //!
 //! All buffers are guaranteed to be accessible from the GPU.
-//! 
+//!
+//! The `Buffer` struct has two template parameters:
+//!
+//! - `T` is the type of data that is contained in the buffer. It can be a struct
+//!   (eg. `Foo`), an array (eg. `[u16; 1024]` or `[Foo; 1024]`), or an unsized array (eg. `[u16]`).
+//!
+//! - `M` is the object that provides memory and handles synchronization for the buffer.
+//!   If the `CpuAccessible` and/or `CpuWriteAccessible` traits are implemented on `M`, then you
+//!   can access the buffer's content from your program.
+//!
+//!
 //! # Strong typing
 //! 
 //! All buffers take a template parameter that indicates their content.
@@ -87,6 +97,9 @@ pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
     fn usage_indirect_buffer(&self) -> bool;
 }
 
+/// Data storage in a GPU-accessible location.
+///
+/// See the module's documentation for more info.
 pub struct Buffer<T: ?Sized, M> {
     marker: PhantomData<T>,
     inner: Inner<M>,
@@ -103,6 +116,40 @@ struct Inner<M> {
 
 impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
     /// Creates a new buffer.
+    ///
+    /// - `usage` indicates how the buffer is going to be used. Using the buffer in a way that
+    ///   wasn't declared here will result in an error or a panic.
+    /// - `memory` indicates how the memory backing the buffer will be allocated.
+    /// - `sharing` indicates which queue family or queue families are going to use the buffer.
+    ///   Just like `usage`, using the buffer in a different queue family will result in an error
+    ///   or panic.
+    ///
+    /// This function is suitable when the type of buffer is `Sized`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::device::Device;
+    /// # use vulkano::device::Queue;
+    /// use vulkano::buffer::Buffer;
+    /// use vulkano::buffer::Usage as BufferUsage;
+    /// use vulkano::memory::HostVisible;
+    /// # let device: Device = unsafe { ::std::mem::uninitialized() };
+    /// # let queue: Queue = unsafe { ::std::mem::uninitialized() };
+    /// struct Data {
+    ///     matrix: [[f32; 4]; 4],
+    ///     color: [f32; 3],
+    /// }
+    ///
+    /// let usage = BufferUsage {
+    ///     transfer_dest: true,
+    ///     uniform_buffer: true,
+    ///     .. BufferUsage::none()
+    /// };
+    ///
+    /// let _buffer: Buffer<Data, _> = Buffer::new(&device, &usage, HostVisible, &queue).unwrap();
+    /// ```
+    ///
     pub fn new<S, Sh>(device: &Arc<Device>, usage: &Usage, memory: S, sharing: Sh)
                       -> Result<Arc<Buffer<T, M>>, OomError>
         where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
@@ -114,7 +161,30 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
 }
 
 impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
-    /// Creates a new buffer with a number of elements.
+    /// Creates a new buffer with a number of elements known at runtime.
+    ///
+    /// See `new` for more information about the parameters.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::device::Device;
+    /// # use vulkano::device::Queue;
+    /// use vulkano::buffer::Buffer;
+    /// use vulkano::buffer::Usage as BufferUsage;
+    /// use vulkano::memory::HostVisible;
+    /// # let device: Device = unsafe { ::std::mem::uninitialized() };
+    /// # let queue: Queue = unsafe { ::std::mem::uninitialized() };
+    /// let usage = BufferUsage {
+    ///     index_buffer: true,
+    ///     .. BufferUsage::none()
+    /// };
+    ///
+    /// let buffer: Buffer<[u16], _> = Buffer::array(&device, 1024, &usage,
+    ///                                              HostVisible, &queue).unwrap();
+    /// assert_eq!(buffer.len(), 1024);
+    /// ```
+    ///
     pub fn array<S, Sh>(device: &Arc<Device>, len: usize, usage: &Usage, memory: S, sharing: Sh)
                         -> Result<Arc<Buffer<[T], M>>, OomError>
         where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
@@ -126,7 +196,8 @@ impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
 }
 
 impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
-    /// Creates a new buffer of the given size without checking whether the type is correct.
+    /// Creates a new buffer of the given size without checking whether there is enough memory
+    /// to hold the type.
     ///
     /// # Safety
     ///
@@ -303,7 +374,8 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySourceC
 impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuAccessible<'a, T> {
     /// Gives a read access to the content of the buffer.
     ///
-    /// If the buffer is in use by the GPU, blocks until it is available.
+    /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
+    /// has elapsed.
     #[inline]
     pub fn read(&'a self, timeout_ns: u64) -> M::Read {
         self.inner.memory.read(timeout_ns)
@@ -321,7 +393,8 @@ impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuAccessible<'a, T> {
 impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuWriteAccessible<'a, T> {
     /// Gives a write access to the content of the buffer.
     ///
-    /// If the buffer is in use by the GPU, blocks until it is available.
+    /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
+    /// has elapsed.
     #[inline]
     pub fn write(&'a self, timeout_ns: u64) -> M::Write {
         self.inner.memory.write(timeout_ns)
@@ -465,6 +538,30 @@ impl Usage {
 ///
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
+///
+/// # Example
+///
+/// ```no_run
+/// # use vulkano::device::Device;
+/// # use vulkano::device::Queue;
+/// use vulkano::buffer::Buffer;
+/// use vulkano::buffer::BufferSlice;
+/// use vulkano::buffer::Usage as BufferUsage;
+/// use vulkano::memory::HostVisible;
+/// # let device: Device = unsafe { ::std::mem::uninitialized() };
+/// # let queue: Queue = unsafe { ::std::mem::uninitialized() };
+/// let usage = BufferUsage {
+///     index_buffer: true,
+///     .. BufferUsage::none()
+/// };
+///
+/// let buffer: Buffer<[u16], _> = Buffer::array(&device, 1024, &usage,
+///                                              HostVisible, &queue).unwrap();
+///
+/// let slice = BufferSlice::from(&buffer);
+/// TODO: add slice.slice() or something to show that it's useful
+/// ```
+///
 #[derive(Clone)]
 pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> {
     marker: PhantomData<T>,
