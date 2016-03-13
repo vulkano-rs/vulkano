@@ -725,12 +725,13 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
     /// as a framebuffer attachment.
-    pub fn new(image: &Arc<Image<Ty, F, M>>) -> Result<Arc<ImageView<Ty, F, M>>, OomError>
-        where F: FormatDesc
+    pub fn new<'a, I>(image: I) -> Result<Arc<ImageView<Ty, F, M>>, OomError>
+        where I: Into<ImageSubresourceRange<'a, Ty, F, M>>, F: FormatDesc + 'a, Ty: 'a, M: 'a
     {
-        let vk = image.device.pointers();
+        let image = image.into();
+        let vk = image.image.device.pointers();
 
-        let aspect_mask = match image.format().format().ty() {
+        let aspect_mask = match image.image.format().format().ty() {
             FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
                 vk::IMAGE_ASPECT_COLOR_BIT
             },
@@ -744,27 +745,27 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker {
                 sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                image: image.image,
+                image: image.image.image,
                 viewType: vk::IMAGE_VIEW_TYPE_2D,     // FIXME:
-                format: image.format.format() as u32,
+                format: image.image.format.format() as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
                     aspectMask: aspect_mask,
-                    baseMipLevel: 0,            // FIXME:
-                    levelCount: 1,          // FIXME:
-                    baseArrayLayer: 0,          // FIXME:
-                    layerCount: 1,          // FIXME:
+                    baseMipLevel: image.base_mip_level,
+                    levelCount: image.level_count,
+                    baseArrayLayer: image.base_array_layer,
+                    layerCount: image.layer_count,
                 },
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateImageView(image.device.internal_object(), &infos,
+            try!(check_errors(vk.CreateImageView(image.image.device.internal_object(), &infos,
                                                  ptr::null(), &mut output)));
             output
         };
 
         Ok(Arc::new(ImageView {
-            image: image.clone(),
+            image: image.image.clone(),
             view: view,
             identity_swizzle: true,     // FIXME:
         }))
@@ -1266,12 +1267,11 @@ pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
     layer_count: u32,
 }
 
-impl<'a, Ty: 'a, F: 'a, M: 'a> ImageSubresourceRange<'a, Ty, F, M>
+impl<'a, Ty: 'a, F: 'a, M: 'a> From<&'a Arc<Image<Ty, F, M>>> for ImageSubresourceRange<'a, Ty, F, M>
     where Ty: ImageTypeMarker, F: FormatDesc
 {
-    /// Builds a subresource range covering the whole image.
     #[inline]
-    pub fn from(image: &'a Arc<Image<Ty, F, M>>) -> ImageSubresourceRange<'a, Ty, F, M> {
+    fn from(image: &'a Arc<Image<Ty, F, M>>) -> ImageSubresourceRange<'a, Ty, F, M> {
         ImageSubresourceRange {
             image: image,
             base_mip_level: 0,
