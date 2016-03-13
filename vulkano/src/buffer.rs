@@ -802,7 +802,7 @@ mod tests {
                                               &queue).unwrap();
 
         match BufferView::new(&buffer) {
-            BufferViewCreationError::WrongBufferUsage => (),
+            Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!()
         }
     }

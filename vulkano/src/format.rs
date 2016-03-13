@@ -109,6 +109,10 @@ pub unsafe trait Data {
 }
 
 // TODO: that's just an example ; implement for all common data types
+unsafe impl Data for i8 {
+    #[inline]
+    fn ty() -> Format { Format::R8Sint }
+}
 unsafe impl Data for u8 {
     #[inline]
     fn ty() -> Format { Format::R8Uint }
