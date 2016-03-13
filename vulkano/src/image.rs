@@ -1248,3 +1248,36 @@ unsafe impl ImageViewTypeMarker for TypeCubeArrayMultisample {
 
 unsafe impl MultisampleType for TypeCubeArrayMultisample {
 }
+
+/// A subpart of an image.
+///
+/// Each mipmap level of each array layer is a *subresource*. This structure corresponds to a
+/// range of subresources.
+///
+/// This object doesn't correspond to any Vulkan object. It exists for the programmer's
+/// convenience.
+pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
+    where Ty: ImageTypeMarker, F: FormatDesc
+{
+    image: &'a Arc<Image<Ty, F, M>>,
+    base_mip_level: u32,
+    level_count: u32,
+    base_array_layer: u32,
+    layer_count: u32,
+}
+
+impl<'a, Ty: 'a, F: 'a, M: 'a> ImageSubresourceRange<'a, Ty, F, M>
+    where Ty: ImageTypeMarker, F: FormatDesc
+{
+    /// Builds a subresource range covering the whole image.
+    #[inline]
+    pub fn from(image: &'a Arc<Image<Ty, F, M>>) -> ImageSubresourceRange<'a, Ty, F, M> {
+        ImageSubresourceRange {
+            image: image,
+            base_mip_level: 0,
+            level_count: image.mipmap_levels(),
+            base_array_layer: 0,
+            layer_count: image.array_layers(),
+        }
+    }
+}
