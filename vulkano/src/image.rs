@@ -195,7 +195,7 @@ pub enum MipmapsCount {
 
     /// Allocates the number of mipmaps required to store all the mipmaps of the image where each
     /// mipmap is half the dimensions of the previous level.
-    Log2,
+    Max,
 
     /// Allocate one mipmap (ie. just the main level).
     One,
@@ -260,22 +260,26 @@ impl<Ty, F, M> Image<Ty, F, M>
         let samples = Ty::num_samples(num_samples);
         assert!(samples >= 1);
 
+        // Compute the maximum number of mipmaps.
+        let max_mipmaps = {
+            let dims = Ty::extent(dimensions);
+            let dim: u32 = match Ty::ty() {
+                ImageType::Type1d => dims[0],
+                ImageType::Type2d => [dims[0], dims[1]].iter().cloned().min().unwrap(),
+                ImageType::Type3d => [dims[0], dims[1], dims[2]].iter().cloned().min().unwrap(),
+            };
+            assert!(dim >= 1);
+            32 - dim.leading_zeros()
+        };
+
         // compute the number of mipmaps
         let mipmaps = match mipmaps.into() {
             MipmapsCount::Specific(num) => {
                 assert!(num >= 1);
+                assert!(num <= max_mipmaps);
                 num
             },
-            MipmapsCount::Log2 => {
-                let dims = Ty::extent(dimensions);
-                let dim: u32 = match Ty::ty() {
-                    ImageType::Type1d => dims[0],
-                    ImageType::Type2d => [dims[0], dims[1]].iter().cloned().min().unwrap(),
-                    ImageType::Type3d => [dims[0], dims[1], dims[2]].iter().cloned().min().unwrap(),
-                };
-                assert!(dim >= 1);
-                32 - dim.leading_zeros()
-            },
+            MipmapsCount::Max => max_mipmaps,
             MipmapsCount::One => 1,
         };
 
