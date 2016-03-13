@@ -645,6 +645,7 @@ impl<T, O: ?Sized, M> BufferView<T, O, M> {
     /// The buffer must have been created with either the `uniform_texel_buffer` or
     /// the `storage_texel_buffer` usage or an error will occur.
     ///
+    // FIXME: how to handle the fact that eg. `u8` can be either Unorm or Uint?
     pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, O, M>>, BufferViewCreationError>
         where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: MemorySourceChunk + 'static,
               O: 'static
