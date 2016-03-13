@@ -10,7 +10,7 @@ using the Vulkan API safe.
 
 *Warning: this library breaks every five minutes for the moment.*
 
-## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.tml)
+## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.html)
 
 ## [Differences between Vulkan and vulkano](FEATURES.md)
 
