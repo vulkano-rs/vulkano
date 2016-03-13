@@ -218,7 +218,9 @@ fn main() {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .copy_buffer_to_color_image(&pixel_buffer, &texture)
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
-            .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
+            .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
+                color: [0.0, 0.0, 1.0, 1.0]
+            })
             .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()

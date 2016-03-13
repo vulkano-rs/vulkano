@@ -670,6 +670,8 @@ pub enum ClearValue {
     DepthStencil((f32, u32)),
 }
 
+// TODO: remove all these From implementations once they are no longer needed
+
 impl From<[f32; 1]> for ClearValue {
     #[inline]
     fn from(val: [f32; 1]) -> ClearValue {
@@ -775,6 +777,8 @@ impl From<(f32, u32)> for ClearValue {
     }
 }
 
+
+// TODO: remove once no longer needed
 pub unsafe trait ClearValuesTuple {
     type Iter: Iterator<Item = ClearValue>;
     fn iter(self) -> Self::Iter;

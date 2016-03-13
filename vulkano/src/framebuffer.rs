@@ -350,6 +350,7 @@ macro_rules! ordered_passes_renderpass {
     ) => {
         use std;        // TODO: import everything instead
         use std::sync::Arc;
+        use $crate::format::ClearValue;
 
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         pub struct Layout;
@@ -445,16 +446,62 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        pub type ClearValues = ($(<$crate::format::$format as $crate::format::FormatDesc>::ClearValue,)*);      // TODO: only attachments with ClearOp should be in there
+        ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format $load,)*] }
 
         unsafe impl $crate::framebuffer::LayoutClearValues<ClearValues> for Layout {
-            type ClearValuesIter = std::vec::IntoIter<$crate::format::ClearValue>;
+            type ClearValuesIter = ClearValuesIter;
 
             #[inline]
-            fn convert_clear_values(&self, val: ClearValues) -> Self::ClearValuesIter {
-                $crate::format::ClearValuesTuple::iter(val)
+            fn convert_clear_values(&self, val: ClearValues) -> ClearValuesIter {
+                ClearValuesIter(val, 0)
             }
         }
+    };
+
+    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ident Clear, $($rest:tt)*]) => {
+        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }
+    };
+
+    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ident $misc:ident, $($rest:tt)*]) => {
+        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
+    };
+
+    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ident,)*] []) => {
+        pub struct ClearValues {
+            $(
+                pub $atch: <$crate::format::$format as $crate::format::FormatDesc>::ClearValue,
+            )*
+        }
+
+        pub struct ClearValuesIter(ClearValues, usize);
+
+        impl Iterator for ClearValuesIter {
+            type Item = $crate::format::ClearValue;
+
+            #[inline]
+            fn next(&mut self) -> Option<Self::Item> {
+                $(
+                    if self.1 == $num {
+                        self.1 += 1;
+                        return Some(ClearValue::from((self.0).$atch));        // FIXME: should use Format::decode_clear_value instead
+                    }
+                )+
+
+                if self.1 >= $total {
+                    None
+                } else {
+                    Some(ClearValue::None)
+                }
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let len = $total - self.1;
+                (len, Some(len))
+            }
+        }
+
+        impl ExactSizeIterator for ClearValuesIter {}
     };
 }
 

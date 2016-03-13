@@ -208,7 +208,10 @@ fn main() {
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
-            .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0], 1.0))
+            .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
+                 color: [0.0, 0.0, 1.0, 1.0],
+                 depth: 1.0,
+             })
             .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
             .draw_end()
             .build().unwrap()
