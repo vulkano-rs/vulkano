@@ -26,12 +26,15 @@
 //! TODO: proof read this section
 //!
 use std::marker::PhantomData;
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
 use device::Queue;
+use format::Data as FormatData;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
@@ -43,6 +46,7 @@ use sync::Resource;
 use sync::Semaphore;
 use sync::SharingMode;
 
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -627,8 +631,131 @@ impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T]
 ///
 /// Note that a buffer view is only required for some operations. For example using a buffer as a
 /// uniform buffer doesn't require creating a `BufferView`.
-pub struct BufferView<T: ?Sized, M> {
-    buffer: Arc<Buffer<T, M>>,
+pub struct BufferView<T, O: ?Sized, M> {
+    view: vk::BufferView,
+    buffer: Arc<Buffer<O, M>>,
+    marker: PhantomData<T>,
+}
+
+impl<T, O: ?Sized, M> BufferView<T, O, M> {
+    /// Builds a new buffer view.
+    ///
+    /// The format of the view will be automatically determined by the `T` parameter.
+    ///
+    /// The buffer must have been created with either the `uniform_texel_buffer` or
+    /// the `storage_texel_buffer` usage or an error will occur.
+    ///
+    pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, O, M>>, BufferViewCreationError>
+        where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: MemorySourceChunk + 'static,
+              O: 'static
+    {
+        let buffer = buffer.into();
+        let device = buffer.resource.device();
+        let format = T::ty();
+
+        if !buffer.buffer().usage_uniform_texel_buffer() &&
+           !buffer.buffer().usage_storage_texel_buffer()
+        {
+            return Err(BufferViewCreationError::WrongBufferUsage);
+        }
+
+        // TODO: check that format is supported? or check only when the view is used?
+
+        let infos = vk::BufferViewCreateInfo {
+            sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved,
+            buffer: buffer.resource.internal_object(),
+            format: format as u32,
+            offset: buffer.offset as u64,
+            range: buffer.size as u64,
+        };
+
+        let view = unsafe {
+            let vk = device.pointers();
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
+                                                  ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(BufferView {
+            view: view,
+            buffer: buffer.resource.clone(),
+            marker: PhantomData,
+        }))
+    }
+}
+
+unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> {
+    type Object = vk::BufferView;
+
+    #[inline]
+    fn internal_object(&self) -> vk::BufferView {
+        self.view
+    }
+}
+
+impl<T, O: ?Sized, M> Drop for BufferView<T, O, M> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.buffer.device().pointers();
+            vk.DestroyBufferView(self.buffer.inner.device.internal_object(), self.view,
+                                 ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating a buffer view.
+#[derive(Debug, Copy, Clone)]
+pub enum BufferViewCreationError {
+    /// Out of memory.
+    OomError(OomError),
+
+    /// The buffer was not creating with one of the `storage_texel_buffer` or
+    /// `uniform_texel_buffer` usages.
+    WrongBufferUsage,
+}
+
+impl error::Error for BufferViewCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
+            BufferViewCreationError::WrongBufferUsage => "the buffer is missing correct usage \
+                                                          flags",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            BufferViewCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BufferViewCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for BufferViewCreationError {
+    #[inline]
+    fn from(err: OomError) -> BufferViewCreationError {
+        BufferViewCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for BufferViewCreationError {
+    #[inline]
+    fn from(err: Error) -> BufferViewCreationError {
+        OomError::from(err).into()
+    }
 }
 
 #[cfg(test)]
@@ -637,6 +764,8 @@ mod tests {
 
     use buffer::Usage;
     use buffer::Buffer;
+    use buffer::BufferView;
+    use buffer::BufferViewCreationError;
     use memory::DeviceLocal;
 
     #[test]
@@ -654,5 +783,27 @@ mod tests {
                                           DeviceLocal, &queue).unwrap();
         assert_eq!(b.len(), 12);
         assert_eq!(b.size(), 12 * mem::size_of::<i16>());
+    }
+
+    #[test]
+    fn view_create() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::all(), DeviceLocal,
+                                              &queue).unwrap();
+        let _ = BufferView::new(&buffer).unwrap();
+    }
+
+    #[test]
+    fn view_wrong_usage() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::none(), DeviceLocal,
+                                              &queue).unwrap();
+
+        match BufferView::new(&buffer) {
+            BufferViewCreationError::WrongBufferUsage => (),
+            _ => panic!()
+        }
     }
 }
