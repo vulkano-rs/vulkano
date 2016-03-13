@@ -467,6 +467,9 @@ impl<T: ?Sized, M> Drop for Buffer<T, M> {
 /// Describes how a buffer is going to be used. This is **not** an optimization.
 ///
 /// If you try to use a buffer in a way that you didn't declare, a panic will happen.
+///
+/// Some methods are provided to build `Usage` structs for some common situations. However
+/// there is no restriction in the combination of usages that can be enabled.
 #[derive(Debug, Copy, Clone)]
 pub struct Usage {
     pub transfer_source: bool,
@@ -518,6 +521,64 @@ impl Usage {
     pub fn transfer_source() -> Usage {
         Usage {
             transfer_source: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `vertex_buffer` set to true and the rest to false.
+    #[inline]
+    pub fn vertex_buffer() -> Usage {
+        Usage {
+            vertex_buffer: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `vertex_buffer` and `transfer_dest` set to true and the rest to false.
+    #[inline]
+    pub fn vertex_buffer_transfer_dest() -> Usage {
+        Usage {
+            vertex_buffer: true,
+            transfer_dest: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `index_buffer` set to true and the rest to false.
+    #[inline]
+    pub fn index_buffer() -> Usage {
+        Usage {
+            index_buffer: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `index_buffer` and `transfer_dest` set to true and the rest to false.
+    #[inline]
+    pub fn index_buffer_transfer_dest() -> Usage {
+        Usage {
+            index_buffer: true,
+            transfer_dest: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `uniform_buffer` set to true and the rest to false.
+    #[inline]
+    pub fn uniform_buffer() -> Usage {
+        Usage {
+            uniform_buffer: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `uniform_buffer` and `transfer_dest` set to true and the rest
+    /// to false.
+    #[inline]
+    pub fn uniform_buffer_transfer_dest() -> Usage {
+        Usage {
+            uniform_buffer: true,
+            transfer_dest: true,
             .. Usage::none()
         }
     }
