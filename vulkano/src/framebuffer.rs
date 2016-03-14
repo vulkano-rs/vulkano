@@ -66,7 +66,6 @@ use std::fmt;
 use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::mem;
-use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
@@ -190,6 +189,7 @@ impl LayoutAttachmentDescription {
 ///
 // TODO: add tests for all these restrictions
 // TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
+#[derive(Debug, Clone)]
 pub struct LayoutPassDescription {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
@@ -231,43 +231,44 @@ pub struct LayoutPassDependencyDescription {
     pub by_region: bool,
 }
 
-// TODO: EmptySinglePassLayout
+/// Implementation of `RenderPass` with no attachment at all and a single pass.
+pub struct EmptySinglePassRenderPass {
+    render_pass: UnsafeRenderPass,
+}
 
-/*
-/// Implementation of `Layout` with no attachment at all and a single pass.
-#[derive(Debug, Copy, Clone)]
-pub struct EmptySinglePassLayout;
+impl EmptySinglePassRenderPass {
+    pub fn new(device: &Arc<Device>) -> Result<Arc<EmptySinglePassRenderPass>, OomError> {
+        let rp = try!(unsafe {
+            let pass = LayoutPassDescription {
+                color_attachments: vec![],
+                depth_stencil: None,
+                input_attachments: vec![],
+                resolve_attachments: vec![],
+                preserve_attachments: vec![],
+            };
 
-unsafe impl Layout for EmptySinglePassLayout {
-    type AttachmentsDescIter = EmptyIter<LayoutAttachmentDescription>;
+            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
+        });
 
-    #[inline]
-    fn attachments(&self) -> Self::AttachmentsDescIter {
-        iter::empty()
-    }
-
-    type PassesIter = OptionIntoIter<LayoutPassDescription>;
-
-    #[inline]
-    fn passes(&self) -> Self::PassesIter {
-        Some(LayoutPassDescription {
-            color_attachments: vec![],
-            depth_stencil: None,
-            input_attachments: vec![],
-            resolve_attachments: vec![],
-            preserve_attachments: vec![],
-        }).into_iter()
-    }
-
-    type PassDependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
-
-    #[inline]
-    fn pass_dependencies(&self) -> Self::PassDependenciesIter {
-        iter::empty()
+        Ok(Arc::new(EmptySinglePassRenderPass {
+            render_pass: rp
+        }))
     }
 }
 
-unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
+impl RenderPass for EmptySinglePassRenderPass {
+    #[inline]
+    fn render_pass(&self) -> &UnsafeRenderPass {
+        &self.render_pass
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> u32 {
+        1
+    }
+}
+
+unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
     type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
 
     #[inline]
@@ -276,14 +277,14 @@ unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
     }
 }
 
-unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
+unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
     type ClearValuesIter = EmptyIter<ClearValue>;
 
     #[inline]
     fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
         iter::empty()
     }
-}*/
+}
 
 /// Builds a `UnsafeRenderPass` object.
 #[macro_export]
@@ -549,8 +550,8 @@ impl UnsafeRenderPass {
     ///   See the documentation of the various methods and structs related to `Layout`
     ///   for more details.
     ///
-    pub fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip, pass_dependencies: Id)
-               -> Result<Arc<UnsafeRenderPass>, OomError>
+    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip, pass_dependencies: Id)
+               -> Result<UnsafeRenderPass, OomError>
         where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle that internally
               Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle that internally
               Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
@@ -624,39 +625,37 @@ impl UnsafeRenderPass {
         let mut preserve_ref_index = 0usize;
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let passes = passes.clone().map(|pass| {
-            unsafe {
-                assert!(pass.color_attachments.len() as u32 <=
-                        device.physical_device().limits().max_color_attachments());
+            assert!(pass.color_attachments.len() as u32 <=
+                    device.physical_device().limits().max_color_attachments());
 
-                let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.color_attachments.len();
-                let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.input_attachments.len();
-                let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.resolve_attachments.len();
-                let depth_stencil = if pass.depth_stencil.is_some() {
-                    let a = attachment_references.as_ptr().offset(ref_index as isize);
-                    ref_index += 1;
-                    a
-                } else {
-                    ptr::null()
-                };
+            let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.color_attachments.len();
+            let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.input_attachments.len();
+            let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.resolve_attachments.len();
+            let depth_stencil = if pass.depth_stencil.is_some() {
+                let a = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += 1;
+                a
+            } else {
+                ptr::null()
+            };
 
-                let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
-                preserve_ref_index += pass.preserve_attachments.len();
+            let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
+            preserve_ref_index += pass.preserve_attachments.len();
 
-                vk::SubpassDescription {
-                    flags: 0,   // reserved
-                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                    inputAttachmentCount: pass.input_attachments.len() as u32,
-                    pInputAttachments: input_attachments,
-                    colorAttachmentCount: pass.color_attachments.len() as u32,
-                    pColorAttachments: color_attachments,
-                    pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
-                    pDepthStencilAttachment: depth_stencil,
-                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                    pPreserveAttachments: preserve_attachments,
-                }
+            vk::SubpassDescription {
+                flags: 0,   // reserved
+                pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
+                inputAttachmentCount: pass.input_attachments.len() as u32,
+                pInputAttachments: input_attachments,
+                colorAttachmentCount: pass.color_attachments.len() as u32,
+                pColorAttachments: color_attachments,
+                pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
+                pDepthStencilAttachment: depth_stencil,
+                preserveAttachmentCount: pass.preserve_attachments.len() as u32,
+                pPreserveAttachments: preserve_attachments,
             }
         }).collect::<Vec<_>>();
 
@@ -681,7 +680,7 @@ impl UnsafeRenderPass {
             }
         }).collect::<Vec<_>>();
 
-        let renderpass = unsafe {
+        let renderpass = {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
                 pNext: ptr::null(),
@@ -700,11 +699,11 @@ impl UnsafeRenderPass {
             output
         };
 
-        Ok(Arc::new(UnsafeRenderPass {
+        Ok(UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
-        }))
+        })
     }
 
     /// Returns the device that was used to create this renderpass.
