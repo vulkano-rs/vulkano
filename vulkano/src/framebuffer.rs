@@ -8,9 +8,9 @@
 //!   the format and dimensions of the attachments that are part of the subpass. The render
 //!   pass only defines the layout of the rendering process.
 //! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
-//!   `RenderPass` and has to match its characteristics.
+//!   `UnsafeRenderPass` and has to match its characteristics.
 //!
-//! This split means that you can create graphics pipelines from a `RenderPass` alone.
+//! This split means that you can create graphics pipelines from a `UnsafeRenderPass` alone.
 //! A `Framebuffer` is only needed when you add draw commands to a command buffer.
 //!
 //! # Render passes
@@ -24,27 +24,27 @@
 //!   subpasses, which means that you need to declare dependencies if the output of a subpass
 //!   needs to be read in a following subpass.
 //!
-//! Before you can create a `RenderPass` object with the vulkano library, you have to create an
-//! object that can describe these three lists through `Layout` trait. This trait is
-//! unsafe because the information that its methods return is trusted blindly by vulkano.
+//! In vulkano, a render pass is any object that implements the `RenderPass` trait.
 //! 
+//! You can create a render pass by creating a `UnsafeRenderPass` object. But as its name tells,
+//! it is unsafe because it doesn't perform some checks.
+//! 
+//! Instead you are encouraged to use a safe wrapper around an `UnsafeRenderPass`.
 //! There are two ways to do this:   TODO add more ways
 //! 
-//! - Creating an instance of an `EmptySinglePassLayout`, which describes a renderpass with no
+//! - Creating an instance of an `EmptySinglePassRenderPass`, which describes a renderpass with no
 //!   attachment and with one subpass.
 //! - Using the `single_pass_renderpass!` macro. See the documentation of this macro.
 //!
 //! ## Example
 //! 
-//! With `EmptySinglePassLayout`:
+//! With `EmptySinglePassRenderPass`:
 //! 
 //! ```no_run
-//! use vulkano::framebuffer::RenderPass;
-//! use vulkano::framebuffer::EmptySinglePassLayout;
+//! use vulkano::framebuffer::EmptySinglePassRenderPass;
 //! 
 //! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let renderpass = RenderPass::new(&device, EmptySinglePassLayout).unwrap();
-//! // the type of `renderpass` is `RenderPass<EmptySinglePassLayout>`
+//! let renderpass = EmptySinglePassRenderPass::new(&device).unwrap();
 //! ```
 //!
 //! # Framebuffers
@@ -53,10 +53,10 @@
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
 //! The slightly tricky part is that the list of attachments depends on the trait implementation
-//! of `Layout`. For example if you use an `EmptySinglePassLayout`, you have to pass
+//! of `RenderPass`. For example if you use an `EmptySinglePassRenderPass`, you have to pass
 //! `()` for the list of attachments.
 //!
-//! Some implementations of `Layout` can use strong typing for the attachments list, in
+//! Some implementations of `RenderPass` can use strong typing for the attachments list, in
 //! order to produce a compilation error if you pass the wrong kind of attachment. Other
 //! implementations may have more relaxed rules and check the format of the attachments at runtime
 //! instead.
@@ -66,7 +66,6 @@ use std::fmt;
 use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::mem;
-use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
@@ -84,29 +83,25 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-/// Types that describes the characteristics of a renderpass.
-pub unsafe trait Layout {
-    /// Iterator that produces attachments.
-    type AttachmentsDescIter: ExactSizeIterator<Item = LayoutAttachmentDescription>;
+/// Trait for objects that describe a render pass.
+///
+/// # Safety
+///
+/// This trait is unsafe because:
+///
+/// - `render_pass` has to return the same `UnsafeRenderPass` every time.
+/// - `num_subpasses` has to return a correct value.
+///
+pub unsafe trait RenderPass {
+    /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
+    fn render_pass(&self) -> &UnsafeRenderPass;
 
-    /// Returns the descriptions of the attachments.
-    fn attachments(&self) -> Self::AttachmentsDescIter;
-
-    /// Iterator that produces passes.
-    type PassesIter: ExactSizeIterator<Item = LayoutPassDescription>;
-
-    /// Returns the descriptions of the passes.
-    fn passes(&self) -> Self::PassesIter;
-
-    /// Iterator that produces pass dependencies.
-    type PassDependenciesIter: ExactSizeIterator<Item = LayoutPassDependencyDescription>;
-
-    /// Returns the descriptions of the dependencies between passes.
-    fn pass_dependencies(&self) -> Self::PassDependenciesIter;
+    /// Returns the number of subpasses within the render pass.
+    fn num_subpasses(&self) -> u32;
 }
 
-/// Extension trait for `Layout`. Defines which types are allowed as an attachments list.
-pub unsafe trait LayoutAttachmentsList<A>: Layout {
+/// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
+pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.
     type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
@@ -114,8 +109,8 @@ pub unsafe trait LayoutAttachmentsList<A>: Layout {
     fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
 }
 
-/// Extension trait for `Layout`. Defines which types are allowed as a list of clear values.
-pub unsafe trait LayoutClearValues<C>: Layout {
+/// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
+pub unsafe trait RenderPassClearValues<C>: RenderPass {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
@@ -128,28 +123,29 @@ pub unsafe trait LayoutClearValues<C>: Layout {
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
 }
 
-/// Trait implemented on renderpass layouts to check whether they are compatible
-/// with another layout.
+/// Trait implemented on render pass objects to check whether they are compatible
+/// with another render pass.
 ///
-/// The trait is automatically implemented for all type that implement `Layout`.
+/// The trait is automatically implemented for all type that implement `RenderPass`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait LayoutCompatible<Other>: Layout where Other: Layout {
+pub unsafe trait RenderPassCompatible<Other>: RenderPass where Other: RenderPass {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
-    fn is_compatible_with(&self, other: &Other) -> bool;
+    fn is_compatible_with(&self, other: &Arc<Other>) -> bool;
 }
 
-unsafe impl<A, B> LayoutCompatible<B> for A
-    where A: Layout, B: Layout
+unsafe impl<A, B> RenderPassCompatible<B> for A
+    where A: RenderPass, B: RenderPass
 {
-    fn is_compatible_with(&self, other: &B) -> bool {
-        for (atch1, atch2) in self.attachments().zip(other.attachments()) {
+    fn is_compatible_with(&self, other: &Arc<B>) -> bool {
+        // FIXME:
+        /*for (atch1, atch2) in self.attachments().zip(other.attachments()) {
             if !atch1.is_compatible_with(&atch2) {
                 return false;
             }
-        }
+        }*/
 
         return true;
 
@@ -157,7 +153,8 @@ unsafe impl<A, B> LayoutCompatible<B> for A
     }
 }
 
-/// Describes an attachment that will be used in a renderpass.
+/// Describes an attachment that will be used in a render pass.
+#[derive(Debug, Clone)]
 pub struct LayoutAttachmentDescription {
     /// Format of the image that is going to be binded.
     pub format: Format,
@@ -188,11 +185,12 @@ impl LayoutAttachmentDescription {
     }
 }
 
-/// Describes one of the passes of a renderpass.
+/// Describes one of the passes of a render pass.
 ///
 /// # Restrictions
 ///
-/// All these restrictions are checked when the `RenderPass` object is created.
+/// All these restrictions are checked when the `UnsafeRenderPass` object is created.
+/// TODO: that's not the case ^
 ///
 /// - The number of color attachments must be less than the limit of the physical device.
 /// - All the attachments in `color_attachments` and `depth_stencil` must have the same
@@ -210,6 +208,7 @@ impl LayoutAttachmentDescription {
 ///
 // TODO: add tests for all these restrictions
 // TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
+#[derive(Debug, Clone)]
 pub struct LayoutPassDescription {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>,      // TODO: Vec is slow
@@ -230,12 +229,13 @@ pub struct LayoutPassDescription {
     pub preserve_attachments: Vec<usize>,      // TODO: Vec is slow
 }
 
-/// Describes a dependency between two passes of a renderpass.
+/// Describes a dependency between two passes of a render pass.
 ///
-/// The implementation is allowed to change the order of the passes within a renderpass, unless
+/// The implementation is allowed to change the order of the passes within a render pass, unless
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
 // FIXME: finish
+#[derive(Debug, Clone)]
 pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
@@ -251,40 +251,48 @@ pub struct LayoutPassDependencyDescription {
     pub by_region: bool,
 }
 
-/// Implementation of `Layout` with no attachment at all and a single pass.
-#[derive(Debug, Copy, Clone)]
-pub struct EmptySinglePassLayout;
+/// Implementation of `RenderPass` with no attachment at all and a single pass.
+///
+/// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
+/// be `()`.
+pub struct EmptySinglePassRenderPass {
+    render_pass: UnsafeRenderPass,
+}
 
-unsafe impl Layout for EmptySinglePassLayout {
-    type AttachmentsDescIter = EmptyIter<LayoutAttachmentDescription>;
+impl EmptySinglePassRenderPass {
+    /// Builds the render pass.
+    pub fn new(device: &Arc<Device>) -> Result<Arc<EmptySinglePassRenderPass>, OomError> {
+        let rp = try!(unsafe {
+            let pass = LayoutPassDescription {
+                color_attachments: vec![],
+                depth_stencil: None,
+                input_attachments: vec![],
+                resolve_attachments: vec![],
+                preserve_attachments: vec![],
+            };
 
-    #[inline]
-    fn attachments(&self) -> Self::AttachmentsDescIter {
-        iter::empty()
-    }
+            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
+        });
 
-    type PassesIter = OptionIntoIter<LayoutPassDescription>;
-
-    #[inline]
-    fn passes(&self) -> Self::PassesIter {
-        Some(LayoutPassDescription {
-            color_attachments: vec![],
-            depth_stencil: None,
-            input_attachments: vec![],
-            resolve_attachments: vec![],
-            preserve_attachments: vec![],
-        }).into_iter()
-    }
-
-    type PassDependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
-
-    #[inline]
-    fn pass_dependencies(&self) -> Self::PassDependenciesIter {
-        iter::empty()
+        Ok(Arc::new(EmptySinglePassRenderPass {
+            render_pass: rp
+        }))
     }
 }
 
-unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
+unsafe impl RenderPass for EmptySinglePassRenderPass {
+    #[inline]
+    fn render_pass(&self) -> &UnsafeRenderPass {
+        &self.render_pass
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> u32 {
+        1
+    }
+}
+
+unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
     type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
 
     #[inline]
@@ -293,7 +301,7 @@ unsafe impl LayoutAttachmentsList<()> for EmptySinglePassLayout {
     }
 }
 
-unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
+unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
     type ClearValuesIter = EmptyIter<ClearValue>;
 
     #[inline]
@@ -302,7 +310,7 @@ unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
     }
 }
 
-/// Builds a `RenderPass` object.
+/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -325,7 +333,7 @@ macro_rules! single_pass_renderpass {
     }
 }
 
-/// Builds a `RenderPass` object.
+/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
@@ -350,19 +358,20 @@ macro_rules! ordered_passes_renderpass {
     ) => {
         use std;        // TODO: import everything instead
         use std::sync::Arc;
+        use $crate::OomError;
+        use $crate::device::Device;
         use $crate::format::ClearValue;
+        use $crate::framebuffer::UnsafeRenderPass;
 
-        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-        pub struct Layout;
+        pub struct CustomRenderPass {
+            render_pass: UnsafeRenderPass
+        }
 
-        unsafe impl $crate::framebuffer::Layout for Layout {
-            type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::LayoutAttachmentDescription>;
-            type PassesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDescription>;
-            type PassDependenciesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDependencyDescription>;
+        impl CustomRenderPass {
+            pub fn new(device: &Arc<Device>) -> Result<Arc<CustomRenderPass>, OomError> {
+                #![allow(unused_assignments)]
 
-            #[inline]
-            fn attachments(&self) -> Self::AttachmentsDescIter {
-                vec![
+                let attachments = vec![
                     $(
                         $crate::framebuffer::LayoutAttachmentDescription {
                             format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
@@ -373,54 +382,48 @@ macro_rules! ordered_passes_renderpass {
                             final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                         },
                     )*
-                ].into_iter()
-            }
+                ];
 
-            #[inline]
-            #[allow(unused_mut)]
-            #[allow(unused_assignments)]
-            fn passes(&self) -> Self::PassesIter {
-                let mut attachment_num = 0;
-                $(
-                    let $atch_name = attachment_num;
-                    attachment_num += 1;
-                )*
+                let passes = {
+                    let mut attachment_num = 0;
+                    $(
+                        let $atch_name = attachment_num;
+                        attachment_num += 1;
+                    )*
 
-                vec![
-                    $({
-                        let mut depth = None;
-                        $(
-                            depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
-                        )*
+                    vec![
+                        $({
+                            let mut depth = None;
+                            $(
+                                depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                            )*
 
-                        $crate::framebuffer::LayoutPassDescription {
-                            color_attachments: vec![
-                                $(
-                                    ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
-                                ),*
-                            ],
-                            depth_stencil: depth,
-                            input_attachments: vec![
-                                $(
-                                    ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
-                                ),*
-                            ],
-                            resolve_attachments: vec![],
-                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                                $(if a == $color_atch { return false; })*
-                                $(if a == $depth_atch { return false; })*
-                                $(if a == $input_atch { return false; })*
-                                true
-                            }).collect()
-                        }
-                    }),*
-                ].into_iter()
-            }
+                            $crate::framebuffer::LayoutPassDescription {
+                                color_attachments: vec![
+                                    $(
+                                        ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                                    ),*
+                                ],
+                                depth_stencil: depth,
+                                input_attachments: vec![
+                                    $(
+                                        ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
+                                    ),*
+                                ],
+                                resolve_attachments: vec![],
+                                preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                                    $(if a == $color_atch { return false; })*
+                                    $(if a == $depth_atch { return false; })*
+                                    $(if a == $input_atch { return false; })*
+                                    true
+                                }).collect()
+                            }
+                        }),*
+                    ]
+                };
 
-            #[inline]
-            fn pass_dependencies(&self) -> Self::PassDependenciesIter {
                 // TODO: could use a custom iterator
-                (1 .. self.passes().len()).flat_map(|p2| {
+                let pass_dependencies = (1 .. passes.len()).flat_map(|p2| {
                     (0 .. p2.clone()).map(move |p1| {
                         $crate::framebuffer::LayoutPassDependencyDescription {
                             source_subpass: p1,
@@ -428,7 +431,34 @@ macro_rules! ordered_passes_renderpass {
                             by_region: false,
                         }
                     })
-                }).collect::<Vec<_>>().into_iter()
+                }).collect::<Vec<_>>();
+
+                let rp = try!(unsafe {
+                    UnsafeRenderPass::new(device, attachments.into_iter(), passes.into_iter(),
+                                          pass_dependencies.into_iter())
+                });
+
+                Ok(Arc::new(CustomRenderPass {
+                    render_pass: rp
+                }))
+            }
+        }
+
+        unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
+            #[inline]
+            fn render_pass(&self) -> &UnsafeRenderPass {
+                &self.render_pass
+            }
+
+            #[inline]
+            fn num_subpasses(&self) -> u32 {
+                #![allow(unused_variables)]
+                let mut attachment_num = 0;
+                $(
+                    $(let $depth_atch = attachment_num;)*    // necessary to make the macro compile
+                    attachment_num += 1;
+                )*
+                attachment_num
             }
         }
 
@@ -436,7 +466,7 @@ macro_rules! ordered_passes_renderpass {
             Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
         )*);
 
-        unsafe impl $crate::framebuffer::LayoutAttachmentsList<AList> for Layout {
+        unsafe impl $crate::framebuffer::RenderPassAttachmentsList<AList> for CustomRenderPass {
             // TODO: shouldn't build a Vec
             type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
@@ -448,7 +478,7 @@ macro_rules! ordered_passes_renderpass {
 
         ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format $load,)*] }
 
-        unsafe impl $crate::framebuffer::LayoutClearValues<ClearValues> for Layout {
+        unsafe impl $crate::framebuffer::RenderPassClearValues<ClearValues> for CustomRenderPass {
             type ClearValuesIter = ClearValuesIter;
 
             #[inline]
@@ -547,33 +577,44 @@ pub enum LoadOp {
 }
 
 /// Defines the layout of multiple subpasses.
-pub struct RenderPass<L> {
-    device: Arc<Device>,
+pub struct UnsafeRenderPass {
     renderpass: vk::RenderPass,
+    device: Arc<Device>,
     num_passes: u32,
-    layout: L,
 }
 
-impl<L> RenderPass<L> where L: Layout {
+impl UnsafeRenderPass {
     /// Builds a new renderpass.
     ///
     /// This function calls the methods of the `Layout` implementation and builds the
     /// corresponding Vulkan object.
     ///
+    /// # Safety
+    ///
+    /// This function doesn't check whether all the restrictions in the attachments, passes and
+    /// passes dependencies were enforced.
+    ///
+    /// See the documentation of the structs of this module for more info about these restrictions.
+    ///
     /// # Panic
     ///
-    /// - Panicks if this functions detects that the `Layout` trait was not implemented
-    ///   correctly and contains an error.
-    ///   See the documentation of the various methods and structs related to `Layout`
-    ///   for more details.
+    /// Can panick if it detects some violations in the restrictions. Only unexpensive checks are
+    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
+    /// mode.
     ///
-    pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
+    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
+                                  pass_dependencies: Id)
+               -> Result<UnsafeRenderPass, OomError>
+        where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
+              Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
+              Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
+    {
         let vk = device.pointers();
 
         // TODO: check the validity of the renderpass layout with debug_assert!
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let attachments = layout.attachments().map(|attachment| {
+        let attachments = attachments.clone().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
                 format: attachment.format as u32,
@@ -594,21 +635,21 @@ impl<L> RenderPass<L> where L: Layout {
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let attachment_references = layout.passes().flat_map(|pass| {
+        let attachment_references = passes.clone().flat_map(|pass| {
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
             let resolve = pass.resolve_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
             let color = pass.color_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
             let input = pass.input_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
@@ -625,7 +666,7 @@ impl<L> RenderPass<L> where L: Layout {
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let preserve_attachments_references = layout.passes().flat_map(|pass| {
+        let preserve_attachments_references = passes.clone().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<Vec<_>>();
 
@@ -636,40 +677,38 @@ impl<L> RenderPass<L> where L: Layout {
         let mut ref_index = 0usize;
         let mut preserve_ref_index = 0usize;
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let passes = layout.passes().map(|pass| {
-            unsafe {
-                assert!(pass.color_attachments.len() as u32 <=
-                        device.physical_device().limits().max_color_attachments());
+        let passes = passes.clone().map(|pass| {
+            assert!(pass.color_attachments.len() as u32 <=
+                    device.physical_device().limits().max_color_attachments());
 
-                let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.color_attachments.len();
-                let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.input_attachments.len();
-                let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += pass.resolve_attachments.len();
-                let depth_stencil = if pass.depth_stencil.is_some() {
-                    let a = attachment_references.as_ptr().offset(ref_index as isize);
-                    ref_index += 1;
-                    a
-                } else {
-                    ptr::null()
-                };
+            let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.color_attachments.len();
+            let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.input_attachments.len();
+            let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+            ref_index += pass.resolve_attachments.len();
+            let depth_stencil = if pass.depth_stencil.is_some() {
+                let a = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += 1;
+                a
+            } else {
+                ptr::null()
+            };
 
-                let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
-                preserve_ref_index += pass.preserve_attachments.len();
+            let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
+            preserve_ref_index += pass.preserve_attachments.len();
 
-                vk::SubpassDescription {
-                    flags: 0,   // reserved
-                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                    inputAttachmentCount: pass.input_attachments.len() as u32,
-                    pInputAttachments: input_attachments,
-                    colorAttachmentCount: pass.color_attachments.len() as u32,
-                    pColorAttachments: color_attachments,
-                    pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
-                    pDepthStencilAttachment: depth_stencil,
-                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                    pPreserveAttachments: preserve_attachments,
-                }
+            vk::SubpassDescription {
+                flags: 0,   // reserved
+                pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
+                inputAttachmentCount: pass.input_attachments.len() as u32,
+                pInputAttachments: input_attachments,
+                colorAttachmentCount: pass.color_attachments.len() as u32,
+                pColorAttachments: color_attachments,
+                pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
+                pDepthStencilAttachment: depth_stencil,
+                preserveAttachmentCount: pass.preserve_attachments.len() as u32,
+                pPreserveAttachments: preserve_attachments,
             }
         }).collect::<Vec<_>>();
 
@@ -679,9 +718,9 @@ impl<L> RenderPass<L> where L: Layout {
         debug_assert!(preserve_ref_index == preserve_attachments_references.len());
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let dependencies = layout.pass_dependencies().map(|dependency| {
-            debug_assert!(dependency.source_subpass < layout.passes().len());
-            debug_assert!(dependency.destination_subpass < layout.passes().len());
+        let dependencies = pass_dependencies.map(|dependency| {
+            debug_assert!(dependency.source_subpass < passes.len());
+            debug_assert!(dependency.destination_subpass < passes.len());
 
             vk::SubpassDependency {
                 srcSubpass: dependency.source_subpass as u32,
@@ -694,7 +733,7 @@ impl<L> RenderPass<L> where L: Layout {
             }
         }).collect::<Vec<_>>();
 
-        let renderpass = unsafe {
+        let renderpass = {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
                 pNext: ptr::null(),
@@ -713,27 +752,14 @@ impl<L> RenderPass<L> where L: Layout {
             output
         };
 
-        Ok(Arc::new(RenderPass {
+        Ok(UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
-            layout: layout,
-        }))
+        })
     }
-}
 
-impl RenderPass<EmptySinglePassLayout> {
-    /// Builds a `RenderPass` with no attachment and a single pass.
-    #[inline]
-    pub fn empty_single_pass(device: &Arc<Device>)
-                             -> Result<Arc<RenderPass<EmptySinglePassLayout>>, OomError>
-    {
-        RenderPass::new(device, EmptySinglePassLayout)
-    }
-}
-
-impl<L> RenderPass<L> where L: Layout {
-    /// Returns the device that was used to create this renderpass.
+    /// Returns the device that was used to create this render pass.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
@@ -746,26 +772,9 @@ impl<L> RenderPass<L> where L: Layout {
     }
 
     // TODO: add a `subpass` method that takes `Arc<Self>` as parameter
-
-    /// Returns true if this renderpass is compatible with another one.
-    ///
-    /// This means that framebuffers created with this renderpass can also be used alongside with
-    /// the other renderpass.
-    #[inline]
-    pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool
-        where R2: Layout
-    {
-        self.layout.is_compatible_with(&other.layout)
-    }
-
-    /// Returns the layout used to create this renderpass.
-    #[inline]
-    pub fn layout(&self) -> &L {
-        &self.layout
-    }
 }
 
-unsafe impl<L> VulkanObject for RenderPass<L> {
+unsafe impl VulkanObject for UnsafeRenderPass {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -774,7 +783,19 @@ unsafe impl<L> VulkanObject for RenderPass<L> {
     }
 }
 
-impl<L> Drop for RenderPass<L> {
+unsafe impl RenderPass for UnsafeRenderPass {
+    #[inline]
+    fn render_pass(&self) -> &UnsafeRenderPass {
+        self
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> u32 {
+        self.num_subpasses()
+    }
+}
+
+impl Drop for UnsafeRenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -784,24 +805,25 @@ impl<L> Drop for RenderPass<L> {
     }
 }
 
-/// Trait implemented on all render pass objects.
-pub trait AbstractRenderPass {}
-impl<L> AbstractRenderPass for RenderPass<L> {}
-
-/// Represents a subpass within a `RenderPass`.
+/// Represents a subpass within a `RenderPass` object.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
-/// combination of a render pass and subpass ID.
+/// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
+/// subpass is checked when the object is created. When you have a `Subpass` you are guaranteed
+/// that the given subpass does exist.
+///
 pub struct Subpass<'a, L: 'a> {
-    render_pass: &'a Arc<RenderPass<L>>,
+    render_pass: &'a Arc<L>,
     subpass_id: u32,
 }
 
 impl<'a, L: 'a> Subpass<'a, L> {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: &Arc<RenderPass<L>>, id: u32) -> Option<Subpass<L>> {
-        if id < render_pass.num_passes {
+    pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
+        where L: RenderPass
+    {
+        if id < render_pass.render_pass().num_passes {
             Some(Subpass {
                 render_pass: render_pass,
                 subpass_id: id,
@@ -814,7 +836,7 @@ impl<'a, L: 'a> Subpass<'a, L> {
 
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &'a Arc<RenderPass<L>> {
+    pub fn render_pass(&self) -> &'a Arc<L> {
         self.render_pass
     }
 
@@ -838,6 +860,8 @@ impl<'a, L: 'a> Subpass<'a, L> {
     }
 }
 
+// we need manual verifications, otherwise Copy/Clone are only implemented if `L`
+// implements Copy/Clone
 impl<'a, L: 'a> Copy for Subpass<'a, L> {}
 impl<'a, L: 'a> Clone for Subpass<'a, L> {
     #[inline]
@@ -846,7 +870,7 @@ impl<'a, L: 'a> Clone for Subpass<'a, L> {
     }
 }
 
-/// Contains the list of images attached to a renderpass.
+/// Contains the list of images attached to a render pass.
 ///
 /// This is a structure that you must pass when you start recording draw commands in a
 /// command buffer.
@@ -856,7 +880,7 @@ impl<'a, L: 'a> Clone for Subpass<'a, L> {
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct Framebuffer<L> {
     device: Arc<Device>,
-    renderpass: Arc<RenderPass<L>>,
+    render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
     resources: Vec<Arc<AbstractImageView>>,
@@ -865,28 +889,27 @@ pub struct Framebuffer<L> {
 impl<L> Framebuffer<L> {
     /// Builds a new framebuffer.
     ///
-    /// The `attachments` parameter depends on which struct is used as a template parameter
-    /// for the render pass.
+    /// The `attachments` parameter depends on which `RenderPass` implementation is used.
     ///
     /// # Panic
     ///
     /// - Panicks if one of the attachments has a different sample count than what the render pass
     ///   describes.
-    /// - Additionally, some methods in the `Layout` implementation may panic if you
-    ///   pass invalid attachments.
+    /// - Additionally, some methods in the `RenderPassAttachmentsList` implementation may panic
+    ///   if you pass invalid attachments.      // TODO: should be error instead
     ///
-    pub fn new<'a, A>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
+    pub fn new<'a, A>(render_pass: &Arc<L>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: Layout + LayoutAttachmentsList<A>
+        where L: RenderPass + RenderPassAttachmentsList<A>
     {
-        let vk = renderpass.device.pointers();
-        let device = renderpass.device.clone();
+        let vk = render_pass.render_pass().device().pointers();
+        let device = render_pass.render_pass().device().clone();
 
-        let attachments = renderpass.layout.convert_attachments_list(attachments).collect::<Vec<_>>();
+        let attachments = render_pass.convert_attachments_list(attachments).collect::<Vec<_>>();
 
         // checking the dimensions against the limits
         {
-            let limits = renderpass.device().physical_device().limits();
+            let limits = render_pass.render_pass().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions.0 > limits[0] || dimensions.1 > limits[1] || dimensions.2 > limits[2] {
@@ -905,7 +928,7 @@ impl<L> Framebuffer<L> {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                renderPass: renderpass.internal_object(),
+                renderPass: render_pass.render_pass().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
                 width: dimensions.0,
@@ -921,7 +944,7 @@ impl<L> Framebuffer<L> {
 
         Ok(Arc::new(Framebuffer {
             device: device,
-            renderpass: renderpass.clone(),
+            render_pass: render_pass.clone(),
             framebuffer: framebuffer,
             dimensions: dimensions,
             resources: attachments,
@@ -930,12 +953,14 @@ impl<L> Framebuffer<L> {
 
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
-    pub fn is_compatible_with<R>(&self, renderpass: &Arc<RenderPass<R>>) -> bool
-        where R: Layout, L: Layout
+    pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
+        where R: RenderPass, L: RenderPass
     {
-        (&*self.renderpass as *const RenderPass<L> as usize ==
-         &**renderpass as *const RenderPass<R> as usize) ||
-            self.renderpass.is_compatible_with(renderpass)
+        // FIXME: 
+        true
+        /*(&*self.renderpass as *const UnsafeRenderPass<L> as usize ==
+         &**renderpass as *const UnsafeRenderPass<R> as usize) ||
+            self.renderpass.is_compatible_with(renderpass)*/
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -964,8 +989,8 @@ impl<L> Framebuffer<L> {
 
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
-    pub fn renderpass(&self) -> &Arc<RenderPass<L>> {
-        &self.renderpass
+    pub fn render_pass(&self) -> &Arc<L> {
+        &self.render_pass
     }
 
     /// Returns all the resources attached to that framebuffer.
@@ -1051,21 +1076,21 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use framebuffer::Framebuffer;
-    use framebuffer::RenderPass;
+    use framebuffer::UnsafeRenderPass;
     use framebuffer::FramebufferCreationError;
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn empty_renderpass_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = RenderPass::empty_single_pass(&device).unwrap();
+        let _ = UnsafeRenderPass::empty_single_pass(&device).unwrap();
     }
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn framebuffer_too_large() {
         let (device, _) = gfx_dev_and_queue!();
-        let renderpass = RenderPass::empty_single_pass(&device).unwrap();
+        let renderpass = UnsafeRenderPass::empty_single_pass(&device).unwrap();
 
         match Framebuffer::new(&renderpass, (0xffffffff, 0xffffffff, 0xffffffff), ()) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),

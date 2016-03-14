@@ -109,7 +109,7 @@ fn main() {
         }
     }
 
-    let renderpass = vulkano::framebuffer::RenderPass::new(&device, renderpass::Layout).unwrap();
+    let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
     let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
                                                   vulkano::memory::DeviceLocal, &queue,

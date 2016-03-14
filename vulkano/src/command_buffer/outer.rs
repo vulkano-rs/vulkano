@@ -15,10 +15,10 @@ use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
+use framebuffer::UnsafeRenderPass;
+use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPass;
-use framebuffer::LayoutCompatible as RenderPassLayoutCompatible;
-use framebuffer::Layout as RenderPassLayout;
-use framebuffer::LayoutClearValues as RenderPassLayoutClearValues;
+use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
@@ -55,7 +55,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<PrimaryCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, false, None, None));
+        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None));
         Ok(PrimaryCommandBufferBuilder { inner: inner })
     }
 
@@ -171,15 +171,15 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_inline<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+    pub fn draw_inline<R, F, C>(self, renderpass: &Arc<R>,
                                 framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                 -> PrimaryCommandBufferBuilderInlineDraw
-        where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static, R: RenderPassLayout + 'static
+        where F: RenderPass + RenderPassClearValues<C> + 'static, R: RenderPass + 'static
     {
         // FIXME: check for compatibility
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values)
+        let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
                                       .collect::<Vec<_>>();
 
         unsafe {
@@ -188,7 +188,7 @@ impl PrimaryCommandBufferBuilder {
             PrimaryCommandBufferBuilderInlineDraw {
                 inner: inner,
                 current_subpass: 0,
-                num_subpasses: framebuffer.renderpass().num_subpasses(),
+                num_subpasses: framebuffer.render_pass().num_subpasses(),
             }
         }
     }
@@ -204,16 +204,16 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+    pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<R>,
                                    framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                    -> PrimaryCommandBufferBuilderSecondaryDraw
-        where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static,
-              R: RenderPassLayout + 'static
+        where F: RenderPass + RenderPassClearValues<C> + 'static,
+              R: RenderPass + 'static
     {
         // FIXME: check for compatibility
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let clear_values = framebuffer.renderpass().layout().convert_clear_values(clear_values)
+        let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
                                       .collect::<Vec<_>>();
 
         unsafe {
@@ -222,7 +222,7 @@ impl PrimaryCommandBufferBuilder {
             PrimaryCommandBufferBuilderSecondaryDraw {
                 inner: inner,
                 current_subpass: 0,
-                num_subpasses: framebuffer.renderpass().num_subpasses(),
+                num_subpasses: framebuffer.render_pass().num_subpasses(),
             }
         }
     }
@@ -464,13 +464,13 @@ impl AbstractCommandBuffer for PrimaryCommandBuffer {}
 /// A prototype of a secondary compute command buffer.
 pub struct SecondaryGraphicsCommandBufferBuilder<R> {
     inner: InnerCommandBufferBuilder,
-    renderpass_layout: R,
-    renderpass_subpass: u32,
+    render_pass: Arc<R>,
+    render_pass_subpass: u32,
     framebuffer: Option<Arc<Framebuffer<R>>>,
 }
 
 impl<R> SecondaryGraphicsCommandBufferBuilder<R>
-    where R: RenderPassLayout
+    where R: RenderPass + 'static
 {
     /// Builds a new secondary command buffer and start recording commands in it.
     ///
@@ -479,13 +479,12 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
                framebuffer: Option<&Arc<Framebuffer<R>>>)
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
-        where R: Clone + 'static
     {
         let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone()));
         Ok(SecondaryGraphicsCommandBufferBuilder {
             inner: inner,
-            renderpass_layout: subpass.render_pass().layout().clone(),
-            renderpass_subpass: subpass.index(),
+            render_pass: subpass.render_pass().clone(),
+            render_pass_subpass: subpass.index(),
             framebuffer: framebuffer.map(|fb| fb.clone()),
         })
     }
@@ -496,17 +495,17 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static,
-              Rp: RenderPassLayout + 'static, L: DescriptorSetsCollection + 'static,
-              R: RenderPassLayoutCompatible<Rp>
+              Rp: RenderPass + 'static, L: DescriptorSetsCollection + 'static,
+              R: RenderPassCompatible<Rp>
     {
-        assert!(self.renderpass_layout.is_compatible_with(pipeline.subpass().render_pass().layout()));
-        assert_eq!(self.renderpass_subpass, pipeline.subpass().index());
+        assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
+        assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
 
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw(pipeline, vertices, dynamic, sets),
-                renderpass_layout: self.renderpass_layout,
-                renderpass_subpass: self.renderpass_subpass,
+                render_pass: self.render_pass,
+                render_pass_subpass: self.render_pass_subpass,
                 framebuffer: self.framebuffer,
             }
         }
@@ -517,19 +516,19 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc,
-              Rp: RenderPassLayout + 'static,
+              Rp: RenderPass + 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
               Ibm: MemorySourceChunk
     {
-        assert!(self.renderpass_layout.is_compatible_with(pipeline.subpass().render_pass().layout()));
-        assert_eq!(self.renderpass_subpass, pipeline.subpass().index());
+        assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
+        assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
 
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets),
-                renderpass_layout: self.renderpass_layout,
-                renderpass_subpass: self.renderpass_subpass,
+                render_pass: self.render_pass,
+                render_pass_subpass: self.render_pass_subpass,
                 framebuffer: self.framebuffer,
             }
         }
@@ -542,8 +541,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
         Ok(Arc::new(SecondaryGraphicsCommandBuffer {
             inner: inner,
-            renderpass_layout: self.renderpass_layout,
-            renderpass_subpass: self.renderpass_subpass,
+            render_pass: self.render_pass,
+            render_pass_subpass: self.render_pass_subpass,
         }))
     }
 }
@@ -557,8 +556,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 /// A secondary graphics command buffer can't be called outside of a renderpass.
 pub struct SecondaryGraphicsCommandBuffer<R> {
     inner: InnerCommandBuffer,
-    renderpass_layout: R,
-    renderpass_subpass: u32,
+    render_pass: Arc<R>,
+    render_pass_subpass: u32,
 }
 
 impl<R> AbstractCommandBuffer for SecondaryGraphicsCommandBuffer<R> {}
@@ -574,7 +573,7 @@ impl SecondaryComputeCommandBufferBuilder {
     pub fn new(pool: &Arc<CommandBufferPool>)
                -> Result<SecondaryComputeCommandBufferBuilder, OomError>
     {
-        let inner = try!(InnerCommandBufferBuilder::new::<()>(pool, true, None, None));
+        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None));
         Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
     }
 

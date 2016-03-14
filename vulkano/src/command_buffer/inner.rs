@@ -18,11 +18,9 @@ use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::AbstractFramebuffer;
-use framebuffer::AbstractRenderPass;
-use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
+use framebuffer::Framebuffer;
 use framebuffer::Subpass;
-use framebuffer::Layout as RenderPassLayout;
 use image::AbstractImage;
 use image::AbstractImageView;
 use image::Image;
@@ -63,7 +61,7 @@ pub struct InnerCommandBufferBuilder {
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
 
     // List of renderpasses used in this CB.
-    renderpasses: Vec<Arc<AbstractRenderPass>>,
+    renderpasses: Vec<Arc<RenderPass>>,
 
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
@@ -94,7 +92,7 @@ impl InnerCommandBufferBuilder {
     pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>,
                   secondary_cont_fb: Option<&Arc<Framebuffer<R>>>)
                   -> Result<InnerCommandBufferBuilder, OomError>
-        where R: 'static
+        where R: RenderPass + 'static
     {
         let device = pool.device();
         let vk = device.pointers();
@@ -132,7 +130,7 @@ impl InnerCommandBufferBuilder {
 
             let (rp, sp) = if let Some(ref sp) = secondary_cont {
                 renderpasses.push(sp.render_pass().clone() as Arc<_>);
-                (sp.render_pass().internal_object(), sp.index())
+                (sp.render_pass().render_pass().internal_object(), sp.index())
             } else {
                 (0, 0)
             };
@@ -585,16 +583,16 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     #[inline]
-    pub unsafe fn begin_renderpass<R, F>(mut self, renderpass: &Arc<RenderPass<R>>,
+    pub unsafe fn begin_renderpass<R, F>(mut self, render_pass: &Arc<R>,
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
-        where R: RenderPassLayout + 'static, F: RenderPassLayout + 'static
+        where R: RenderPass + 'static, F: RenderPass + 'static
     {
-        assert!(framebuffer.is_compatible_with(renderpass));
+        assert!(framebuffer.is_compatible_with(render_pass));
 
         self.framebuffers.push(framebuffer.clone() as Arc<_>);
-        self.renderpasses.push(renderpass.clone() as Arc<_>);
+        self.renderpasses.push(render_pass.clone() as Arc<_>);
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = clear_values.iter().map(|value| {
@@ -629,7 +627,7 @@ impl InnerCommandBufferBuilder {
         let infos = vk::RenderPassBeginInfo {
             sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
             pNext: ptr::null(),
-            renderPass: renderpass.internal_object(),
+            renderPass: render_pass.render_pass().internal_object(),
             framebuffer: framebuffer.internal_object(),
             renderArea: vk::Rect2D {                // TODO: let user customize
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -772,7 +770,7 @@ pub struct InnerCommandBuffer {
     secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
     descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
-    renderpasses: Vec<Arc<AbstractRenderPass>>,
+    renderpasses: Vec<Arc<RenderPass>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImage>>,
     image_views_resources: Vec<Arc<AbstractImageView>>,
