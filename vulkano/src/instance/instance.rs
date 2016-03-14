@@ -9,6 +9,7 @@ use std::sync::Arc;
 //use alloc::Alloc;
 use check_errors;
 use Error;
+use OomError;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -276,27 +277,38 @@ pub struct ApplicationInfo<'a> {
     pub engine_version: u32,
 }
 
+/// Error that can happen when creating an instance.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
 pub enum InstanceCreationError {
-    OutOfHostMemory = vk::ERROR_OUT_OF_HOST_MEMORY,
-    OutOfDeviceMemory = vk::ERROR_OUT_OF_DEVICE_MEMORY,
-    InitializationFailed = vk::ERROR_INITIALIZATION_FAILED,
-    LayerNotPresent = vk::ERROR_LAYER_NOT_PRESENT,
-    ExtensionNotPresent = vk::ERROR_EXTENSION_NOT_PRESENT,
-    IncompatibleDriver = vk::ERROR_INCOMPATIBLE_DRIVER,
+    /// Not enough memory.
+    OomError(OomError),
+    /// Failed to initialize for an implementation-specific reason.
+    InitializationFailed,
+    /// One of the requested layers is missing.
+    LayerNotPresent,
+    /// One of the requested extensions is missing.
+    ExtensionNotPresent,
+    /// The version requested is not supported by the implementation.
+    IncompatibleDriver,
 }
 
 impl error::Error for InstanceCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            InstanceCreationError::OutOfHostMemory => "no memory available on the host",
-            InstanceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
+            InstanceCreationError::OomError(_) => "not enough memory available",
             InstanceCreationError::InitializationFailed => "initialization failed",
             InstanceCreationError::LayerNotPresent => "layer not present",
             InstanceCreationError::ExtensionNotPresent => "extension not present",
             InstanceCreationError::IncompatibleDriver => "incompatible driver",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            InstanceCreationError::OomError(ref err) => Some(err),
+            _ => None
         }
     }
 }
@@ -308,12 +320,19 @@ impl fmt::Display for InstanceCreationError {
     }
 }
 
+impl From<OomError> for InstanceCreationError {
+    #[inline]
+    fn from(err: OomError) -> InstanceCreationError {
+        InstanceCreationError::OomError(err)
+    }
+}
+
 impl From<Error> for InstanceCreationError {
     #[inline]
     fn from(err: Error) -> InstanceCreationError {
         match err {
-            Error::OutOfHostMemory => InstanceCreationError::OutOfHostMemory,
-            Error::OutOfDeviceMemory => InstanceCreationError::OutOfDeviceMemory,
+            err @ Error::OutOfHostMemory => InstanceCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => InstanceCreationError::OomError(OomError::from(err)),
             Error::InitializationFailed => InstanceCreationError::InitializationFailed,
             Error::LayerNotPresent => InstanceCreationError::LayerNotPresent,
             Error::ExtensionNotPresent => InstanceCreationError::ExtensionNotPresent,
