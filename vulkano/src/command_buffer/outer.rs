@@ -335,7 +335,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// - Panicks if not at the last subpass.
     ///
     #[inline]
-    pub fn draw_end(mut self) -> PrimaryCommandBufferBuilder {
+    pub fn draw_end(self) -> PrimaryCommandBufferBuilder {
         assert!(self.current_subpass + 1 == self.num_subpasses);
 
         unsafe {
@@ -426,7 +426,7 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if not at the last subpass.
     ///
     #[inline]
-    pub fn draw_end(mut self) -> PrimaryCommandBufferBuilder {
+    pub fn draw_end(self) -> PrimaryCommandBufferBuilder {
         assert!(self.current_subpass + 1 == self.num_subpasses);
 
         unsafe {
