@@ -6,7 +6,7 @@ use device::Device;
 use descriptor_set::PipelineLayout;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::LayoutPossibleSuperset as PipelineLayoutPossibleSuperset;
-use framebuffer::UnsafeRenderPass;
+use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;
@@ -35,7 +35,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     pipeline: vk::Pipeline,
     layout: Arc<PipelineLayout<Layout>>,
 
-    render_pass: Arc<UnsafeRenderPass<RenderP>>,
+    render_pass: Arc<RenderP>,
     render_pass_subpass: u32,
 
     vertex_definition: VertexDefinition,
@@ -49,7 +49,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition, L: PipelineLayoutDesc
+    where Mv: VertexDefinition, L: PipelineLayoutDesc, Rp: RenderPass
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -309,7 +309,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
                 layout: layout.internal_object(),
-                renderPass: render_pass.render_pass().internal_object(),
+                renderPass: render_pass.render_pass().render_pass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
                 basePipelineIndex: -1,       // TODO:
@@ -342,20 +342,28 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition, L: PipelineLayoutDesc
+    where Mv: VertexDefinition
 {
     /// Returns the vertex definition used in the constructor.
     #[inline]
     pub fn vertex_definition(&self) -> &Mv {
         &self.vertex_definition
     }
+}
 
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutDesc
+{
     /// Returns the pipeline layout used in the constructor.
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout<L>> {
         &self.layout
     }
+}
 
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPass
+{
     /// Returns the pass used in the constructor.
     #[inline]
     pub fn subpass(&self) -> Subpass<Rp> {

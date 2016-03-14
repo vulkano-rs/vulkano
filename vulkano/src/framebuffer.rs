@@ -84,29 +84,8 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-/// Types that describes the characteristics of a renderpass.
-pub unsafe trait Layout {
-    /// Iterator that produces attachments.
-    type AttachmentsDescIter: ExactSizeIterator<Item = LayoutAttachmentDescription>;
-
-    /// Returns the descriptions of the attachments.
-    fn attachments(&self) -> Self::AttachmentsDescIter;
-
-    /// Iterator that produces passes.
-    type PassesIter: ExactSizeIterator<Item = LayoutPassDescription>;
-
-    /// Returns the descriptions of the passes.
-    fn passes(&self) -> Self::PassesIter;
-
-    /// Iterator that produces pass dependencies.
-    type PassDependenciesIter: ExactSizeIterator<Item = LayoutPassDependencyDescription>;
-
-    /// Returns the descriptions of the dependencies between passes.
-    fn pass_dependencies(&self) -> Self::PassDependenciesIter;
-}
-
-/// Extension trait for `Layout`. Defines which types are allowed as an attachments list.
-pub unsafe trait LayoutAttachmentsList<A>: Layout {
+/// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
+pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.
     type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
 
@@ -114,8 +93,8 @@ pub unsafe trait LayoutAttachmentsList<A>: Layout {
     fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
 }
 
-/// Extension trait for `Layout`. Defines which types are allowed as a list of clear values.
-pub unsafe trait LayoutClearValues<C>: Layout {
+/// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
+pub unsafe trait RenderPassClearValues<C>: RenderPass {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
@@ -131,25 +110,26 @@ pub unsafe trait LayoutClearValues<C>: Layout {
 /// Trait implemented on renderpass layouts to check whether they are compatible
 /// with another layout.
 ///
-/// The trait is automatically implemented for all type that implement `Layout`.
+/// The trait is automatically implemented for all type that implement `RenderPass`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait LayoutCompatible<Other>: Layout where Other: Layout {
+pub unsafe trait RenderPassCompatible<Other>: RenderPass where Other: RenderPass {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
-    fn is_compatible_with(&self, other: &Other) -> bool;
+    fn is_compatible_with(&self, other: &Arc<Other>) -> bool;
 }
 
-unsafe impl<A, B> LayoutCompatible<B> for A
-    where A: Layout, B: Layout
+unsafe impl<A, B> RenderPassCompatible<B> for A
+    where A: RenderPass, B: RenderPass
 {
-    fn is_compatible_with(&self, other: &B) -> bool {
-        for (atch1, atch2) in self.attachments().zip(other.attachments()) {
+    fn is_compatible_with(&self, other: &Arc<B>) -> bool {
+        // FIXME:
+        /*for (atch1, atch2) in self.attachments().zip(other.attachments()) {
             if !atch1.is_compatible_with(&atch2) {
                 return false;
             }
-        }
+        }*/
 
         return true;
 
@@ -251,6 +231,9 @@ pub struct LayoutPassDependencyDescription {
     pub by_region: bool,
 }
 
+// TODO: EmptySinglePassLayout
+
+/*
 /// Implementation of `Layout` with no attachment at all and a single pass.
 #[derive(Debug, Copy, Clone)]
 pub struct EmptySinglePassLayout;
@@ -300,7 +283,7 @@ unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
     fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
         iter::empty()
     }
-}
+}*/
 
 /// Builds a `UnsafeRenderPass` object.
 #[macro_export]
@@ -547,14 +530,13 @@ pub enum LoadOp {
 }
 
 /// Defines the layout of multiple subpasses.
-pub struct UnsafeRenderPass<L> {
-    device: Arc<Device>,
+pub struct UnsafeRenderPass {
     renderpass: vk::RenderPass,
+    device: Arc<Device>,
     num_passes: u32,
-    layout: L,
 }
 
-impl<L> UnsafeRenderPass<L> where L: Layout {
+impl UnsafeRenderPass {
     /// Builds a new renderpass.
     ///
     /// This function calls the methods of the `Layout` implementation and builds the
@@ -567,13 +549,18 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
     ///   See the documentation of the various methods and structs related to `Layout`
     ///   for more details.
     ///
-    pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<UnsafeRenderPass<L>>, OomError> {
+    pub fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip, pass_dependencies: Id)
+               -> Result<Arc<UnsafeRenderPass>, OomError>
+        where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle that internally
+              Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle that internally
+              Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
+    {
         let vk = device.pointers();
 
         // TODO: check the validity of the renderpass layout with debug_assert!
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let attachments = layout.attachments().map(|attachment| {
+        let attachments = attachments.clone().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
                 format: attachment.format as u32,
@@ -594,21 +581,21 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let attachment_references = layout.passes().flat_map(|pass| {
+        let attachment_references = passes.clone().flat_map(|pass| {
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
             let resolve = pass.resolve_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
             let color = pass.color_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
             let input = pass.input_attachments.into_iter().map(|(offset, img_la)| {
-                debug_assert!(offset < layout.attachments().len());
+                debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
             });
 
@@ -625,7 +612,7 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let preserve_attachments_references = layout.passes().flat_map(|pass| {
+        let preserve_attachments_references = passes.clone().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<Vec<_>>();
 
@@ -636,7 +623,7 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
         let mut ref_index = 0usize;
         let mut preserve_ref_index = 0usize;
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let passes = layout.passes().map(|pass| {
+        let passes = passes.clone().map(|pass| {
             unsafe {
                 assert!(pass.color_attachments.len() as u32 <=
                         device.physical_device().limits().max_color_attachments());
@@ -679,9 +666,9 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
         debug_assert!(preserve_ref_index == preserve_attachments_references.len());
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let dependencies = layout.pass_dependencies().map(|dependency| {
-            debug_assert!(dependency.source_subpass < layout.passes().len());
-            debug_assert!(dependency.destination_subpass < layout.passes().len());
+        let dependencies = pass_dependencies.map(|dependency| {
+            debug_assert!(dependency.source_subpass < passes.len());
+            debug_assert!(dependency.destination_subpass < passes.len());
 
             vk::SubpassDependency {
                 srcSubpass: dependency.source_subpass as u32,
@@ -717,22 +704,9 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
-            layout: layout,
         }))
     }
-}
 
-impl UnsafeRenderPass<EmptySinglePassLayout> {
-    /// Builds a `UnsafeRenderPass` with no attachment and a single pass.
-    #[inline]
-    pub fn empty_single_pass(device: &Arc<Device>)
-                             -> Result<Arc<UnsafeRenderPass<EmptySinglePassLayout>>, OomError>
-    {
-        UnsafeRenderPass::new(device, EmptySinglePassLayout)
-    }
-}
-
-impl<L> UnsafeRenderPass<L> where L: Layout {
     /// Returns the device that was used to create this renderpass.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -746,26 +720,9 @@ impl<L> UnsafeRenderPass<L> where L: Layout {
     }
 
     // TODO: add a `subpass` method that takes `Arc<Self>` as parameter
-
-    /// Returns true if this renderpass is compatible with another one.
-    ///
-    /// This means that framebuffers created with this renderpass can also be used alongside with
-    /// the other renderpass.
-    #[inline]
-    pub fn is_compatible_with<R2>(&self, other: &UnsafeRenderPass<R2>) -> bool
-        where R2: Layout
-    {
-        self.layout.is_compatible_with(&other.layout)
-    }
-
-    /// Returns the layout used to create this renderpass.
-    #[inline]
-    pub fn layout(&self) -> &L {
-        &self.layout
-    }
 }
 
-unsafe impl<L> VulkanObject for UnsafeRenderPass<L> {
+unsafe impl VulkanObject for UnsafeRenderPass {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -774,7 +731,7 @@ unsafe impl<L> VulkanObject for UnsafeRenderPass<L> {
     }
 }
 
-impl<L> Drop for UnsafeRenderPass<L> {
+impl Drop for UnsafeRenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -785,23 +742,40 @@ impl<L> Drop for UnsafeRenderPass<L> {
 }
 
 /// Trait implemented on all render pass objects.
-pub trait RenderPass {}
-impl<L> RenderPass for UnsafeRenderPass<L> {}
+pub trait RenderPass {
+    fn render_pass(&self) -> &UnsafeRenderPass;
+
+    fn num_subpasses(&self) -> u32;
+}
+
+impl RenderPass for UnsafeRenderPass {
+    #[inline]
+    fn render_pass(&self) -> &UnsafeRenderPass {
+        self
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> u32 {
+        self.num_subpasses()
+    }
+}
 
 /// Represents a subpass within a `UnsafeRenderPass`.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// combination of a render pass and subpass ID.
 pub struct Subpass<'a, L: 'a> {
-    render_pass: &'a Arc<UnsafeRenderPass<L>>,
+    render_pass: &'a Arc<L>,
     subpass_id: u32,
 }
 
 impl<'a, L: 'a> Subpass<'a, L> {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: &Arc<UnsafeRenderPass<L>>, id: u32) -> Option<Subpass<L>> {
-        if id < render_pass.num_passes {
+    pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
+        where L: RenderPass
+    {
+        if id < render_pass.render_pass().num_passes {
             Some(Subpass {
                 render_pass: render_pass,
                 subpass_id: id,
@@ -814,7 +788,7 @@ impl<'a, L: 'a> Subpass<'a, L> {
 
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &'a Arc<UnsafeRenderPass<L>> {
+    pub fn render_pass(&self) -> &'a Arc<L> {
         self.render_pass
     }
 
@@ -856,7 +830,7 @@ impl<'a, L: 'a> Clone for Subpass<'a, L> {
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct Framebuffer<L> {
     device: Arc<Device>,
-    renderpass: Arc<UnsafeRenderPass<L>>,
+    render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
     resources: Vec<Arc<AbstractImageView>>,
@@ -875,18 +849,18 @@ impl<L> Framebuffer<L> {
     /// - Additionally, some methods in the `Layout` implementation may panic if you
     ///   pass invalid attachments.
     ///
-    pub fn new<'a, A>(renderpass: &Arc<UnsafeRenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
+    pub fn new<'a, A>(render_pass: &Arc<L>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: Layout + LayoutAttachmentsList<A>
+        where L: RenderPass + RenderPassAttachmentsList<A>
     {
-        let vk = renderpass.device.pointers();
-        let device = renderpass.device.clone();
+        let vk = render_pass.render_pass().device().pointers();
+        let device = render_pass.render_pass().device().clone();
 
-        let attachments = renderpass.layout.convert_attachments_list(attachments).collect::<Vec<_>>();
+        let attachments = render_pass.convert_attachments_list(attachments).collect::<Vec<_>>();
 
         // checking the dimensions against the limits
         {
-            let limits = renderpass.device().physical_device().limits();
+            let limits = render_pass.render_pass().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions.0 > limits[0] || dimensions.1 > limits[1] || dimensions.2 > limits[2] {
@@ -905,7 +879,7 @@ impl<L> Framebuffer<L> {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                renderPass: renderpass.internal_object(),
+                renderPass: render_pass.render_pass().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
                 width: dimensions.0,
@@ -921,7 +895,7 @@ impl<L> Framebuffer<L> {
 
         Ok(Arc::new(Framebuffer {
             device: device,
-            renderpass: renderpass.clone(),
+            render_pass: render_pass.clone(),
             framebuffer: framebuffer,
             dimensions: dimensions,
             resources: attachments,
@@ -930,12 +904,14 @@ impl<L> Framebuffer<L> {
 
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
-    pub fn is_compatible_with<R>(&self, renderpass: &Arc<UnsafeRenderPass<R>>) -> bool
-        where R: Layout, L: Layout
+    pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
+        where R: RenderPass, L: RenderPass
     {
-        (&*self.renderpass as *const UnsafeRenderPass<L> as usize ==
+        // FIXME: 
+        true
+        /*(&*self.renderpass as *const UnsafeRenderPass<L> as usize ==
          &**renderpass as *const UnsafeRenderPass<R> as usize) ||
-            self.renderpass.is_compatible_with(renderpass)
+            self.renderpass.is_compatible_with(renderpass)*/
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -964,8 +940,8 @@ impl<L> Framebuffer<L> {
 
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
-    pub fn renderpass(&self) -> &Arc<UnsafeRenderPass<L>> {
-        &self.renderpass
+    pub fn render_pass(&self) -> &Arc<L> {
+        &self.render_pass
     }
 
     /// Returns all the resources attached to that framebuffer.
