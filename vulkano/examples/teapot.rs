@@ -161,7 +161,7 @@ fn main() {
         }
     }
 
-    let renderpass = vulkano::framebuffer::UnsafeRenderPass::new(&device, renderpass::Layout).unwrap();
+    let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
     let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
     let descriptor_set_layout = vulkano::descriptor_set::DescriptorSetLayout::new(&device, vs::Set0).unwrap();

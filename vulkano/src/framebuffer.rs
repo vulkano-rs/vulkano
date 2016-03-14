@@ -137,6 +137,7 @@ unsafe impl<A, B> RenderPassCompatible<B> for A
 }
 
 /// Describes an attachment that will be used in a renderpass.
+#[derive(Debug, Clone)]
 pub struct LayoutAttachmentDescription {
     /// Format of the image that is going to be binded.
     pub format: Format,
@@ -216,6 +217,7 @@ pub struct LayoutPassDescription {
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
 // FIXME: finish
+#[derive(Debug, Clone)]
 pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
@@ -256,7 +258,7 @@ impl EmptySinglePassRenderPass {
     }
 }
 
-impl RenderPass for EmptySinglePassRenderPass {
+unsafe impl RenderPass for EmptySinglePassRenderPass {
     #[inline]
     fn render_pass(&self) -> &UnsafeRenderPass {
         &self.render_pass
@@ -334,19 +336,20 @@ macro_rules! ordered_passes_renderpass {
     ) => {
         use std;        // TODO: import everything instead
         use std::sync::Arc;
+        use $crate::OomError;
+        use $crate::device::Device;
         use $crate::format::ClearValue;
+        use $crate::framebuffer::UnsafeRenderPass;
 
-        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-        pub struct Layout;
+        pub struct CustomRenderPass {
+            render_pass: UnsafeRenderPass
+        }
 
-        unsafe impl $crate::framebuffer::Layout for Layout {
-            type AttachmentsDescIter = std::vec::IntoIter<$crate::framebuffer::LayoutAttachmentDescription>;
-            type PassesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDescription>;
-            type PassDependenciesIter = std::vec::IntoIter<$crate::framebuffer::LayoutPassDependencyDescription>;
+        impl CustomRenderPass {
+            pub fn new(device: &Arc<Device>) -> Result<Arc<CustomRenderPass>, OomError> {
+                #![allow(unused_assignments)]
 
-            #[inline]
-            fn attachments(&self) -> Self::AttachmentsDescIter {
-                vec![
+                let attachments = vec![
                     $(
                         $crate::framebuffer::LayoutAttachmentDescription {
                             format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
@@ -357,54 +360,48 @@ macro_rules! ordered_passes_renderpass {
                             final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
                         },
                     )*
-                ].into_iter()
-            }
+                ];
 
-            #[inline]
-            #[allow(unused_mut)]
-            #[allow(unused_assignments)]
-            fn passes(&self) -> Self::PassesIter {
-                let mut attachment_num = 0;
-                $(
-                    let $atch_name = attachment_num;
-                    attachment_num += 1;
-                )*
+                let passes = {
+                    let mut attachment_num = 0;
+                    $(
+                        let $atch_name = attachment_num;
+                        attachment_num += 1;
+                    )*
 
-                vec![
-                    $({
-                        let mut depth = None;
-                        $(
-                            depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
-                        )*
+                    vec![
+                        $({
+                            let mut depth = None;
+                            $(
+                                depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                            )*
 
-                        $crate::framebuffer::LayoutPassDescription {
-                            color_attachments: vec![
-                                $(
-                                    ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
-                                ),*
-                            ],
-                            depth_stencil: depth,
-                            input_attachments: vec![
-                                $(
-                                    ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
-                                ),*
-                            ],
-                            resolve_attachments: vec![],
-                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                                $(if a == $color_atch { return false; })*
-                                $(if a == $depth_atch { return false; })*
-                                $(if a == $input_atch { return false; })*
-                                true
-                            }).collect()
-                        }
-                    }),*
-                ].into_iter()
-            }
+                            $crate::framebuffer::LayoutPassDescription {
+                                color_attachments: vec![
+                                    $(
+                                        ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                                    ),*
+                                ],
+                                depth_stencil: depth,
+                                input_attachments: vec![
+                                    $(
+                                        ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
+                                    ),*
+                                ],
+                                resolve_attachments: vec![],
+                                preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                                    $(if a == $color_atch { return false; })*
+                                    $(if a == $depth_atch { return false; })*
+                                    $(if a == $input_atch { return false; })*
+                                    true
+                                }).collect()
+                            }
+                        }),*
+                    ]
+                };
 
-            #[inline]
-            fn pass_dependencies(&self) -> Self::PassDependenciesIter {
                 // TODO: could use a custom iterator
-                (1 .. self.passes().len()).flat_map(|p2| {
+                let pass_dependencies = (1 .. passes.len()).flat_map(|p2| {
                     (0 .. p2.clone()).map(move |p1| {
                         $crate::framebuffer::LayoutPassDependencyDescription {
                             source_subpass: p1,
@@ -412,7 +409,34 @@ macro_rules! ordered_passes_renderpass {
                             by_region: false,
                         }
                     })
-                }).collect::<Vec<_>>().into_iter()
+                }).collect::<Vec<_>>();
+
+                let rp = try!(unsafe {
+                    UnsafeRenderPass::new(device, attachments.into_iter(), passes.into_iter(),
+                                          pass_dependencies.into_iter())
+                });
+
+                Ok(Arc::new(CustomRenderPass {
+                    render_pass: rp
+                }))
+            }
+        }
+
+        unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
+            #[inline]
+            fn render_pass(&self) -> &UnsafeRenderPass {
+                &self.render_pass
+            }
+
+            #[inline]
+            fn num_subpasses(&self) -> u32 {
+                #![allow(unused_variables)]
+                let mut attachment_num = 0;
+                $(
+                    $(let $depth_atch = attachment_num;)*    // necessary to make the macro compile
+                    attachment_num += 1;
+                )*
+                attachment_num
             }
         }
 
@@ -420,7 +444,7 @@ macro_rules! ordered_passes_renderpass {
             Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
         )*);
 
-        unsafe impl $crate::framebuffer::LayoutAttachmentsList<AList> for Layout {
+        unsafe impl $crate::framebuffer::RenderPassAttachmentsList<AList> for CustomRenderPass {
             // TODO: shouldn't build a Vec
             type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
 
@@ -432,7 +456,7 @@ macro_rules! ordered_passes_renderpass {
 
         ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format $load,)*] }
 
-        unsafe impl $crate::framebuffer::LayoutClearValues<ClearValues> for Layout {
+        unsafe impl $crate::framebuffer::RenderPassClearValues<ClearValues> for CustomRenderPass {
             type ClearValuesIter = ClearValuesIter;
 
             #[inline]
@@ -741,13 +765,13 @@ impl Drop for UnsafeRenderPass {
 }
 
 /// Trait implemented on all render pass objects.
-pub trait RenderPass {
+pub unsafe trait RenderPass {
     fn render_pass(&self) -> &UnsafeRenderPass;
 
     fn num_subpasses(&self) -> u32;
 }
 
-impl RenderPass for UnsafeRenderPass {
+unsafe impl RenderPass for UnsafeRenderPass {
     #[inline]
     fn render_pass(&self) -> &UnsafeRenderPass {
         self

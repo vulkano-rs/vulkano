@@ -176,7 +176,7 @@ fn main() {
         }
     }
 
-    let renderpass = vulkano::framebuffer::UnsafeRenderPass::new(&device, renderpass::Layout).unwrap();
+    let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly::triangle_list();
