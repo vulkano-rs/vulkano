@@ -18,7 +18,7 @@ use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::AbstractFramebuffer;
-use framebuffer::AbstractRenderPass;
+use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::Subpass;
@@ -63,7 +63,7 @@ pub struct InnerCommandBufferBuilder {
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
 
     // List of renderpasses used in this CB.
-    renderpasses: Vec<Arc<AbstractRenderPass>>,
+    renderpasses: Vec<Arc<RenderPass>>,
 
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
@@ -772,7 +772,7 @@ pub struct InnerCommandBuffer {
     secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
     descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
-    renderpasses: Vec<Arc<AbstractRenderPass>>,
+    renderpasses: Vec<Arc<RenderPass>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImage>>,
     image_views_resources: Vec<Arc<AbstractImageView>>,

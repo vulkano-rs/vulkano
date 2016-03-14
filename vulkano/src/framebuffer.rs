@@ -785,8 +785,8 @@ impl<L> Drop for UnsafeRenderPass<L> {
 }
 
 /// Trait implemented on all render pass objects.
-pub trait AbstractRenderPass {}
-impl<L> AbstractRenderPass for UnsafeRenderPass<L> {}
+pub trait RenderPass {}
+impl<L> RenderPass for UnsafeRenderPass<L> {}
 
 /// Represents a subpass within a `UnsafeRenderPass`.
 ///
