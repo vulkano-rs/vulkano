@@ -1,3 +1,39 @@
+//! API entry point.
+//!
+//! The first thing to do before you start using Vulkan is to create an `Instance` object.
+//!
+//! Creating an instance initializes everything and allows you to:
+//! 
+//!  - Enumerate physical devices, ie. all the Vulkan implementations that are available on
+//!    the system.
+//!  - Enumerate monitors.
+//!  - Create surfaces (fullscreen or windowed) which will later be drawn upon.
+//!
+//! Enumerating monitors and creating surfaces can only be done if the proper extensions are
+//! available and have been enabled. It is possible for a machine to support Vulkan without
+//! support for rendering on a screen.
+//!
+//! # Application info
+//! 
+//! When you create an instance, you have the possibility to pass an `ApplicationInfo` struct. This
+//! struct contains various information about your application, most notably its name and engine.
+//! 
+//! Passing such a structure allows for example the driver to let the user configure the driver's
+//! behavior for your application alone through a control panel.
+//!
+//! # Enumerating physical devices
+//!
+//! After you have created an instance, the next step is to enumerate the physical devices that
+//! are available on the system with `PhysicalDevice::enumerate()`.
+//!
+//! When choosing which physical device to use, keep in mind that physical devices may or may not
+//! be able to draw to a certain surface (ie. to a window or a monitor), or may even not be able
+//! to draw at all. See the `swapchain` module for more information about surfaces.
+//!
+//! A physical device can designate a video card, an integrated chip, but also multiple video
+//! cards working together or a software implementation. Once you have chosen a physical device,
+//! you can create a `Device` object from it. See the `device` module for more info.
+//!
 pub use features::Features;
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::InstanceExtensions;

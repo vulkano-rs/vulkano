@@ -1,32 +1,3 @@
-//! API entry point.
-//! 
-//! Creating an instance initializes everything and allows you to:
-//! 
-//!  - Enumerate physical devices.
-//!  - Enumerate monitors.
-//!  - Create surfaces.
-//!
-//! # Application info
-//! 
-//! When you create an instance, you have the possibility to pass an `ApplicationInfo` struct. This
-//! struct contains various information about your application, most notably its name and engine.
-//! 
-//! Passing such a structure allows for example the driver to let the user configure the driver's
-//! behavior for your application alone through a control panel.
-//!
-//! # Enumerating physical devices
-//! 
-//! After you have created an instance, the next step is to enumerate the physical devices that
-//! are available on the system with `PhysicalDevice::enumerate()`.
-//!
-//! When choosing which physical device to use, keep in mind that physical devices may or may not
-//! be able to draw to a certain surface (ie. to a window or a monitor). See the `swapchain`
-//! module for more info.
-//!
-//! A physical device can designate a video card, an integrated chip, but also multiple video
-//! cards working together. Once you have chosen a physical device, you can create a `Device`
-//! from it. See the `device` module for more info.
-//!
 use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
