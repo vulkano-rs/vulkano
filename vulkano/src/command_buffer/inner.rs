@@ -20,7 +20,7 @@ use format::StrongStorage;
 use framebuffer::AbstractFramebuffer;
 use framebuffer::AbstractRenderPass;
 use framebuffer::Framebuffer;
-use framebuffer::RenderPass;
+use framebuffer::UnsafeRenderPass;
 use framebuffer::Subpass;
 use framebuffer::Layout as RenderPassLayout;
 use image::AbstractImage;
@@ -585,7 +585,7 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     #[inline]
-    pub unsafe fn begin_renderpass<R, F>(mut self, renderpass: &Arc<RenderPass<R>>,
+    pub unsafe fn begin_renderpass<R, F>(mut self, renderpass: &Arc<UnsafeRenderPass<R>>,
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder

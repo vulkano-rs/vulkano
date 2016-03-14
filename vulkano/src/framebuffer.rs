@@ -4,13 +4,13 @@
 //!
 //! There are two concepts in Vulkan:
 //! 
-//! - A `RenderPass` is a collection of rendering passes called subpasses. Each subpass contains
+//! - A `UnsafeRenderPass` is a collection of rendering passes called subpasses. Each subpass contains
 //!   the format and dimensions of the attachments that are part of the subpass. The render
 //!   pass only defines the layout of the rendering process.
 //! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
-//!   `RenderPass` and has to match its characteristics.
+//!   `UnsafeRenderPass` and has to match its characteristics.
 //!
-//! This split means that you can create graphics pipelines from a `RenderPass` alone.
+//! This split means that you can create graphics pipelines from a `UnsafeRenderPass` alone.
 //! A `Framebuffer` is only needed when you add draw commands to a command buffer.
 //!
 //! # Render passes
@@ -24,7 +24,7 @@
 //!   subpasses, which means that you need to declare dependencies if the output of a subpass
 //!   needs to be read in a following subpass.
 //!
-//! Before you can create a `RenderPass` object with the vulkano library, you have to create an
+//! Before you can create a `UnsafeRenderPass` object with the vulkano library, you have to create an
 //! object that can describe these three lists through `Layout` trait. This trait is
 //! unsafe because the information that its methods return is trusted blindly by vulkano.
 //! 
@@ -39,12 +39,12 @@
 //! With `EmptySinglePassLayout`:
 //! 
 //! ```no_run
-//! use vulkano::framebuffer::RenderPass;
+//! use vulkano::framebuffer::UnsafeRenderPass;
 //! use vulkano::framebuffer::EmptySinglePassLayout;
 //! 
 //! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let renderpass = RenderPass::new(&device, EmptySinglePassLayout).unwrap();
-//! // the type of `renderpass` is `RenderPass<EmptySinglePassLayout>`
+//! let renderpass = UnsafeRenderPass::new(&device, EmptySinglePassLayout).unwrap();
+//! // the type of `renderpass` is `UnsafeRenderPass<EmptySinglePassLayout>`
 //! ```
 //!
 //! # Framebuffers
@@ -192,7 +192,7 @@ impl LayoutAttachmentDescription {
 ///
 /// # Restrictions
 ///
-/// All these restrictions are checked when the `RenderPass` object is created.
+/// All these restrictions are checked when the `UnsafeRenderPass` object is created.
 ///
 /// - The number of color attachments must be less than the limit of the physical device.
 /// - All the attachments in `color_attachments` and `depth_stencil` must have the same
@@ -302,7 +302,7 @@ unsafe impl LayoutClearValues<()> for EmptySinglePassLayout {
     }
 }
 
-/// Builds a `RenderPass` object.
+/// Builds a `UnsafeRenderPass` object.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -325,7 +325,7 @@ macro_rules! single_pass_renderpass {
     }
 }
 
-/// Builds a `RenderPass` object.
+/// Builds a `UnsafeRenderPass` object.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
@@ -547,14 +547,14 @@ pub enum LoadOp {
 }
 
 /// Defines the layout of multiple subpasses.
-pub struct RenderPass<L> {
+pub struct UnsafeRenderPass<L> {
     device: Arc<Device>,
     renderpass: vk::RenderPass,
     num_passes: u32,
     layout: L,
 }
 
-impl<L> RenderPass<L> where L: Layout {
+impl<L> UnsafeRenderPass<L> where L: Layout {
     /// Builds a new renderpass.
     ///
     /// This function calls the methods of the `Layout` implementation and builds the
@@ -567,7 +567,7 @@ impl<L> RenderPass<L> where L: Layout {
     ///   See the documentation of the various methods and structs related to `Layout`
     ///   for more details.
     ///
-    pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<RenderPass<L>>, OomError> {
+    pub fn new(device: &Arc<Device>, layout: L) -> Result<Arc<UnsafeRenderPass<L>>, OomError> {
         let vk = device.pointers();
 
         // TODO: check the validity of the renderpass layout with debug_assert!
@@ -713,7 +713,7 @@ impl<L> RenderPass<L> where L: Layout {
             output
         };
 
-        Ok(Arc::new(RenderPass {
+        Ok(Arc::new(UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
@@ -722,17 +722,17 @@ impl<L> RenderPass<L> where L: Layout {
     }
 }
 
-impl RenderPass<EmptySinglePassLayout> {
-    /// Builds a `RenderPass` with no attachment and a single pass.
+impl UnsafeRenderPass<EmptySinglePassLayout> {
+    /// Builds a `UnsafeRenderPass` with no attachment and a single pass.
     #[inline]
     pub fn empty_single_pass(device: &Arc<Device>)
-                             -> Result<Arc<RenderPass<EmptySinglePassLayout>>, OomError>
+                             -> Result<Arc<UnsafeRenderPass<EmptySinglePassLayout>>, OomError>
     {
-        RenderPass::new(device, EmptySinglePassLayout)
+        UnsafeRenderPass::new(device, EmptySinglePassLayout)
     }
 }
 
-impl<L> RenderPass<L> where L: Layout {
+impl<L> UnsafeRenderPass<L> where L: Layout {
     /// Returns the device that was used to create this renderpass.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -752,7 +752,7 @@ impl<L> RenderPass<L> where L: Layout {
     /// This means that framebuffers created with this renderpass can also be used alongside with
     /// the other renderpass.
     #[inline]
-    pub fn is_compatible_with<R2>(&self, other: &RenderPass<R2>) -> bool
+    pub fn is_compatible_with<R2>(&self, other: &UnsafeRenderPass<R2>) -> bool
         where R2: Layout
     {
         self.layout.is_compatible_with(&other.layout)
@@ -765,7 +765,7 @@ impl<L> RenderPass<L> where L: Layout {
     }
 }
 
-unsafe impl<L> VulkanObject for RenderPass<L> {
+unsafe impl<L> VulkanObject for UnsafeRenderPass<L> {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -774,7 +774,7 @@ unsafe impl<L> VulkanObject for RenderPass<L> {
     }
 }
 
-impl<L> Drop for RenderPass<L> {
+impl<L> Drop for UnsafeRenderPass<L> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -786,21 +786,21 @@ impl<L> Drop for RenderPass<L> {
 
 /// Trait implemented on all render pass objects.
 pub trait AbstractRenderPass {}
-impl<L> AbstractRenderPass for RenderPass<L> {}
+impl<L> AbstractRenderPass for UnsafeRenderPass<L> {}
 
-/// Represents a subpass within a `RenderPass`.
+/// Represents a subpass within a `UnsafeRenderPass`.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// combination of a render pass and subpass ID.
 pub struct Subpass<'a, L: 'a> {
-    render_pass: &'a Arc<RenderPass<L>>,
+    render_pass: &'a Arc<UnsafeRenderPass<L>>,
     subpass_id: u32,
 }
 
 impl<'a, L: 'a> Subpass<'a, L> {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: &Arc<RenderPass<L>>, id: u32) -> Option<Subpass<L>> {
+    pub fn from(render_pass: &Arc<UnsafeRenderPass<L>>, id: u32) -> Option<Subpass<L>> {
         if id < render_pass.num_passes {
             Some(Subpass {
                 render_pass: render_pass,
@@ -814,7 +814,7 @@ impl<'a, L: 'a> Subpass<'a, L> {
 
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &'a Arc<RenderPass<L>> {
+    pub fn render_pass(&self) -> &'a Arc<UnsafeRenderPass<L>> {
         self.render_pass
     }
 
@@ -856,7 +856,7 @@ impl<'a, L: 'a> Clone for Subpass<'a, L> {
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct Framebuffer<L> {
     device: Arc<Device>,
-    renderpass: Arc<RenderPass<L>>,
+    renderpass: Arc<UnsafeRenderPass<L>>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
     resources: Vec<Arc<AbstractImageView>>,
@@ -875,7 +875,7 @@ impl<L> Framebuffer<L> {
     /// - Additionally, some methods in the `Layout` implementation may panic if you
     ///   pass invalid attachments.
     ///
-    pub fn new<'a, A>(renderpass: &Arc<RenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
+    pub fn new<'a, A>(renderpass: &Arc<UnsafeRenderPass<L>>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: Layout + LayoutAttachmentsList<A>
     {
@@ -930,11 +930,11 @@ impl<L> Framebuffer<L> {
 
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
-    pub fn is_compatible_with<R>(&self, renderpass: &Arc<RenderPass<R>>) -> bool
+    pub fn is_compatible_with<R>(&self, renderpass: &Arc<UnsafeRenderPass<R>>) -> bool
         where R: Layout, L: Layout
     {
-        (&*self.renderpass as *const RenderPass<L> as usize ==
-         &**renderpass as *const RenderPass<R> as usize) ||
+        (&*self.renderpass as *const UnsafeRenderPass<L> as usize ==
+         &**renderpass as *const UnsafeRenderPass<R> as usize) ||
             self.renderpass.is_compatible_with(renderpass)
     }
 
@@ -964,7 +964,7 @@ impl<L> Framebuffer<L> {
 
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
-    pub fn renderpass(&self) -> &Arc<RenderPass<L>> {
+    pub fn renderpass(&self) -> &Arc<UnsafeRenderPass<L>> {
         &self.renderpass
     }
 
@@ -1051,21 +1051,21 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use framebuffer::Framebuffer;
-    use framebuffer::RenderPass;
+    use framebuffer::UnsafeRenderPass;
     use framebuffer::FramebufferCreationError;
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn empty_renderpass_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = RenderPass::empty_single_pass(&device).unwrap();
+        let _ = UnsafeRenderPass::empty_single_pass(&device).unwrap();
     }
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn framebuffer_too_large() {
         let (device, _) = gfx_dev_and_queue!();
-        let renderpass = RenderPass::empty_single_pass(&device).unwrap();
+        let renderpass = UnsafeRenderPass::empty_single_pass(&device).unwrap();
 
         match Framebuffer::new(&renderpass, (0xffffffff, 0xffffffff, 0xffffffff), ()) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),

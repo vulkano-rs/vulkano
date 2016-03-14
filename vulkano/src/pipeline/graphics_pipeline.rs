@@ -6,7 +6,7 @@ use device::Device;
 use descriptor_set::PipelineLayout;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::LayoutPossibleSuperset as PipelineLayoutPossibleSuperset;
-use framebuffer::RenderPass;
+use framebuffer::UnsafeRenderPass;
 use framebuffer::Subpass;
 use shader::FragmentShaderEntryPoint;
 use shader::VertexShaderEntryPoint;
@@ -35,7 +35,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     pipeline: vk::Pipeline,
     layout: Arc<PipelineLayout<Layout>>,
 
-    render_pass: Arc<RenderPass<RenderP>>,
+    render_pass: Arc<UnsafeRenderPass<RenderP>>,
     render_pass_subpass: u32,
 
     vertex_definition: VertexDefinition,

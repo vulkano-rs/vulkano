@@ -15,7 +15,7 @@ use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::StrongStorage;
 use framebuffer::Framebuffer;
-use framebuffer::RenderPass;
+use framebuffer::UnsafeRenderPass;
 use framebuffer::LayoutCompatible as RenderPassLayoutCompatible;
 use framebuffer::Layout as RenderPassLayout;
 use framebuffer::LayoutClearValues as RenderPassLayoutClearValues;
@@ -171,7 +171,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_inline<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+    pub fn draw_inline<R, F, C>(self, renderpass: &Arc<UnsafeRenderPass<R>>,
                                 framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                 -> PrimaryCommandBufferBuilderInlineDraw
         where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static, R: RenderPassLayout + 'static
@@ -204,7 +204,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
-    pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<RenderPass<R>>,
+    pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<UnsafeRenderPass<R>>,
                                    framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                    -> PrimaryCommandBufferBuilderSecondaryDraw
         where F: RenderPassLayout + RenderPassLayoutClearValues<C> + 'static,
