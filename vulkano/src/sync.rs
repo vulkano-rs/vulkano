@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use smallvec::SmallVec;
 
 use device::Device;
 use device::Queue;
@@ -188,8 +189,7 @@ impl Fence {
     {
         let mut device = None;
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let fences: Vec<vk::Fence> = iter.into_iter().map(|fence| {
+        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().map(|fence| {
             match &mut device {
                 dev @ &mut None => *dev = Some(fence.device.clone()),
                 &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
@@ -198,7 +198,6 @@ impl Fence {
 
             fence.signaled.store(false, Ordering::Relaxed);
             fence.fence
-
         }).collect();
 
         if let Some(device) = device {

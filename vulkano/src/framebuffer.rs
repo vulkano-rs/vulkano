@@ -68,6 +68,7 @@ use std::iter::Empty as EmptyIter;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use device::Device;
 use format::ClearValue;
@@ -613,7 +614,6 @@ impl UnsafeRenderPass {
 
         // TODO: check the validity of the renderpass layout with debug_assert!
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let attachments = attachments.clone().map(|attachment| {
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
@@ -626,7 +626,7 @@ impl UnsafeRenderPass {
                 initialLayout: attachment.initial_layout as u32,
                 finalLayout: attachment.final_layout as u32,
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         // We need to pass pointers to vkAttachmentReference structs when creating the renderpass.
         // Therefore we need to allocate them in advance.
@@ -634,7 +634,6 @@ impl UnsafeRenderPass {
         // This block allocates, for each pass, in order, all color attachment references, then all
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let attachment_references = passes.clone().flat_map(|pass| {
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
@@ -660,15 +659,14 @@ impl UnsafeRenderPass {
             }.into_iter();
 
             color.chain(input).chain(resolve).chain(depthstencil)
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         // Same as `attachment_references` but only for the preserve attachments.
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let preserve_attachments_references = passes.clone().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         // Now iterating over passes.
         // `ref_index` and `preserve_ref_index` are increased during the loop and point to the
@@ -676,7 +674,6 @@ impl UnsafeRenderPass {
         // `preserve_attachments_references`.
         let mut ref_index = 0usize;
         let mut preserve_ref_index = 0usize;
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let passes = passes.clone().map(|pass| {
             assert!(pass.color_attachments.len() as u32 <=
                     device.physical_device().limits().max_color_attachments());
@@ -710,14 +707,13 @@ impl UnsafeRenderPass {
                 preserveAttachmentCount: pass.preserve_attachments.len() as u32,
                 pPreserveAttachments: preserve_attachments,
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         assert!(!passes.is_empty());
         // If these assertions fails, there's a serious bug in the code above ^.
         debug_assert!(ref_index == attachment_references.len());
         debug_assert!(preserve_ref_index == preserve_attachments_references.len());
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let dependencies = pass_dependencies.map(|dependency| {
             debug_assert!(dependency.source_subpass < passes.len());
             debug_assert!(dependency.destination_subpass < passes.len());
@@ -731,7 +727,7 @@ impl UnsafeRenderPass {
                 dstAccessMask: 0x0001FFFF,       // FIXME:
                 dependencyFlags: if dependency.by_region { vk::DEPENDENCY_BY_REGION_BIT } else { 0 },
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         let renderpass = {
             let infos = vk::RenderPassCreateInfo {

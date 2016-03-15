@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
@@ -450,14 +451,12 @@ impl InnerCommandBufferBuilder {
 
         let vertices = pipeline.vertex_definition().decode(vertices);
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<Vec<_>>();
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
             self.add_buffer_resource(b.clone(), false, 0, b.size());
             b.internal_object()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 8]>>();
 
         {
             let vk = self.device.pointers();
@@ -491,14 +490,12 @@ impl InnerCommandBufferBuilder {
 
         let vertices = pipeline.vertex_definition().decode(vertices);
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<Vec<_>>();
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
             self.add_buffer_resource(b.clone(), false, 0, b.size());
             b.internal_object()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
@@ -534,11 +531,9 @@ impl InnerCommandBufferBuilder {
                 self.compute_pipeline = Some(pipeline.internal_object());
             }
 
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let descriptor_sets = sets.list().collect::<Vec<_>>();
-            for d in &descriptor_sets { self.descriptor_sets.push(d.clone()); }
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
+            let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.is_empty() {
@@ -583,8 +578,7 @@ impl InnerCommandBufferBuilder {
                 assert_eq!(viewports.len(), pipeline.num_viewports() as usize);
                 // TODO: check limits
                 // TODO: cache state?
-                // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<Vec<_>>();
+                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
                 vk.CmdSetViewport(self.cmd.unwrap(), 0, viewports.len() as u32, viewports.as_ptr());
             } else {
                 assert!(!pipeline.has_dynamic_viewports());
@@ -596,17 +590,15 @@ impl InnerCommandBufferBuilder {
                 // TODO: check limits
                 // TODO: cache state?
                 // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<Vec<_>>();
+                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
                 vk.CmdSetScissor(self.cmd.unwrap(), 0, scissors.len() as u32, scissors.as_ptr());
             } else {
                 assert!(!pipeline.has_dynamic_scissors());
             }
 
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let descriptor_sets = sets.list().collect::<Vec<_>>();
-            for d in &descriptor_sets { self.descriptor_sets.push(d.clone()); }
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
+            let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // FIXME: input attachments of descriptor sets have to be checked against input
             //        attachments of the render pass
@@ -643,7 +635,6 @@ impl InnerCommandBufferBuilder {
         self.framebuffers.push(framebuffer.clone() as Arc<_>);
         self.renderpasses.push(render_pass.clone() as Arc<_>);
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = clear_values.iter().map(|value| {
             match *value {
                 ClearValue::None => vk::ClearValue::color({
@@ -662,7 +653,7 @@ impl InnerCommandBufferBuilder {
                     vk::ClearDepthStencilValue { depth: d, stencil: s }
                 }),
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         // FIXME: change attachment image layouts if necessary, for both initial and final
         /*for attachment in R::attachments() {

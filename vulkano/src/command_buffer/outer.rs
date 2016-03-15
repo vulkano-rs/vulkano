@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
@@ -195,7 +196,7 @@ impl PrimaryCommandBufferBuilder {
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
-                                      .collect::<Vec<_>>();
+                                      .collect::<SmallVec<[_; 16]>>();
 
         unsafe {
             let inner = self.inner.begin_renderpass(renderpass, framebuffer, false, &clear_values);
@@ -227,9 +228,8 @@ impl PrimaryCommandBufferBuilder {
     {
         // FIXME: check for compatibility
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
-                                      .collect::<Vec<_>>();
+                                      .collect::<SmallVec<[_; 16]>>();
 
         unsafe {
             let inner = self.inner.begin_renderpass(renderpass, framebuffer, true, &clear_values);

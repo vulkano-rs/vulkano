@@ -40,6 +40,7 @@
 #[macro_use]
 extern crate lazy_static;
 extern crate shared_library;
+extern crate smallvec;
 
 #[macro_use]
 mod tests;

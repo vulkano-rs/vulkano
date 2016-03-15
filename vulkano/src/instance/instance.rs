@@ -5,6 +5,7 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 //use alloc::Alloc;
 use check_errors;
@@ -66,20 +67,18 @@ impl Instance {
             None
         };
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layers = layers.into_iter().map(|&layer| {
             // FIXME: check whether each layer is supported
             CString::new(layer).unwrap()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
         let layers = layers.iter().map(|layer| {
             layer.as_ptr()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let extensions_list = extensions.build_extensions_list();
         let extensions_list = extensions_list.iter().map(|extension| {
             extension.as_ptr()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 32]>>();
 
         // Creating the Vulkan instance.
         let instance = unsafe {

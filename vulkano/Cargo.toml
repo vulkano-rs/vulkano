@@ -7,6 +7,7 @@ description = "Safe wrapper for the Vulkan graphics API"
 
 [dependencies]
 shared_library = "0.1.4"
+smallvec = "0.1.6"
 lazy_static = "0.1.15"
 
 [build-dependencies]

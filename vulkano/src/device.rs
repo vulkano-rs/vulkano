@@ -11,6 +11,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use smallvec::SmallVec;
 
 use instance::Features;
 use instance::Instance;
@@ -75,20 +76,18 @@ impl Device {
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: Vec<(u32, u32)> = Vec::with_capacity(queue_families.size_hint().0);
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layers = layers.into_iter().map(|&layer| {
             // FIXME: check whether each layer is supported
             CString::new(layer).unwrap()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 8]>>();
         let layers = layers.iter().map(|layer| {
             layer.as_ptr()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 8]>>();
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let extensions_list = extensions.build_extensions_list();
         let extensions_list = extensions_list.iter().map(|extension| {
             extension.as_ptr()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         // device creation
         let device = unsafe {

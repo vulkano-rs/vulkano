@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use device::Device;
 use descriptor_set::PipelineLayout;
@@ -77,10 +78,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
         assert!(PipelineLayoutPossibleSuperset::is_superset_of(layout.layout(), fragment_shader.layout()));
 
         let pipeline = unsafe {
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let mut dynamic_states: Vec<vk::DynamicState> = Vec::new();
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let mut stages = Vec::with_capacity(5);
+            let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
+            let mut stages = SmallVec::<[_; 5]>::new();
 
             stages.push(vk::PipelineShaderStageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

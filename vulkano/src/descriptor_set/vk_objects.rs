@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use buffer::AbstractBuffer;
 use descriptor_set::layout_def::Layout;
@@ -118,7 +119,6 @@ impl<S> DescriptorSet<S> where S: SetLayout {
         let ref mut self_resources_image_views = self.resources_image_views;
         let self_set = self.set;
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let buffer_descriptors = write.iter().filter_map(|write| {
             match write.content {
                 DescriptorBind::UniformBuffer { ref buffer, offset, size } |
@@ -143,9 +143,8 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                 },
                 _ => None
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 64]>>();
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let image_descriptors = write.iter().filter_map(|write| {
             match write.content {
                 DescriptorBind::Sampler(ref sampler) => {
@@ -195,10 +194,9 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                 },
                 _ => None
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 64]>>();
 
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let mut next_buffer_desc = 0;
         let mut next_image_desc = 0;
 
@@ -234,7 +232,7 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                 pBufferInfo: buffer_info,
                 pTexelBufferView: ptr::null(),      // TODO:
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 64]>>();
 
         debug_assert_eq!(next_buffer_desc, buffer_descriptors.len());
         debug_assert_eq!(next_image_desc, image_descriptors.len());
@@ -284,7 +282,6 @@ impl<S> DescriptorSetLayout<S> where S: SetLayout {
     {
         let vk = device.pointers();
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let bindings = description.descriptors().into_iter().map(|desc| {
             vk::DescriptorSetLayoutBinding {
                 binding: desc.binding,
@@ -293,7 +290,7 @@ impl<S> DescriptorSetLayout<S> where S: SetLayout {
                 stageFlags: desc.stages.into(),
                 pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
             }
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 64]>>();
 
         let layout = unsafe {
             let infos = vk::DescriptorSetLayoutCreateInfo {
@@ -363,11 +360,10 @@ impl<P> PipelineLayout<P> where P: Layout {
         let vk = device.pointers();
 
         let layouts = description.decode_descriptor_set_layouts(layouts);
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let layouts_ids = layouts.iter().map(|l| {
             // FIXME: check that they belong to the same device
             ::VulkanObjectU64::internal_object(&**l)
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 32]>>();
 
         let layout = unsafe {
             let infos = vk::PipelineLayoutCreateInfo {
