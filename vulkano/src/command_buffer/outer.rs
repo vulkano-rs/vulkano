@@ -23,6 +23,7 @@ use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
+use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
@@ -156,6 +157,20 @@ impl PrimaryCommandBufferBuilder {
         unsafe {
             PrimaryCommandBufferBuilder {
                 inner: self.inner.execute_commands(cb.clone() as Arc<_>, &cb.inner)
+            }
+        }
+    }
+
+    /// Executes a compute pipeline.
+    #[inline]
+    pub fn dispatch<Pl, L>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
+                           x: u32, y: u32, z: u32) -> PrimaryCommandBufferBuilder
+        where L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.dispatch(pipeline, sets, x, y, z)
             }
         }
     }

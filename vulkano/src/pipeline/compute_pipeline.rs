@@ -85,9 +85,24 @@ impl<Pl> ComputePipeline<Pl> {
             pipeline_layout: pipeline_layout.clone(),
         }))
     }
+
+    /// Returns the `PipelineLayout` used in this compute pipeline.
+    #[inline]
+    pub fn layout(&self) -> &Arc<PipelineLayout<Pl>> {
+        &self.pipeline_layout
+    }
 }
 
 impl<Pl> GenericPipeline for ComputePipeline<Pl> {
+}
+
+unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
+    type Object = vk::Pipeline;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Pipeline {
+        self.pipeline
+    }
 }
 
 impl<Pl> Drop for ComputePipeline<Pl> {

@@ -27,6 +27,7 @@ use image::Image;
 use image::ImageTypeMarker;
 use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
+use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
@@ -419,6 +420,22 @@ impl InnerCommandBufferBuilder {
         self
     }
 
+    pub unsafe fn dispatch<Pl, L>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
+                                  x: u32, y: u32, z: u32) -> InnerCommandBufferBuilder
+        where L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc
+    {
+        self.bind_compute_pipeline_state(pipeline, sets);
+
+        {
+            let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
+            vk.CmdDispatch(self.cmd.unwrap(), x, y, z);
+        }
+
+        self
+    }
+
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
     pub unsafe fn draw<V, Pv, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
@@ -499,6 +516,38 @@ impl InnerCommandBufferBuilder {
         }
 
         self
+    }
+
+    fn bind_compute_pipeline_state<Pl, L>(&mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L)
+        where L: 'static + DescriptorSetsCollection,
+              Pl: 'static + PipelineLayoutDesc
+    {
+        unsafe {
+            let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
+            assert!(sets.is_compatible_with(pipeline.layout()));
+
+            if self.compute_pipeline != Some(pipeline.internal_object()) {
+                vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
+                                   pipeline.internal_object());
+                self.pipelines.push(pipeline.clone());
+                self.compute_pipeline = Some(pipeline.internal_object());
+            }
+
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+            let descriptor_sets = sets.list().collect::<Vec<_>>();
+            for d in &descriptor_sets { self.descriptor_sets.push(d.clone()); }
+            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
+            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<Vec<_>>();
+
+            // TODO: shouldn't rebind everything every time
+            if !descriptor_sets.is_empty() {
+                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
+                                         pipeline.layout().internal_object(), 0,
+                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
+                                         0, ptr::null());   // FIXME: dynamic offsets
+            }
+        }
     }
 
     fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
