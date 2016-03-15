@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 
 /// Represents an API version of Vulkan.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -10,7 +11,28 @@ pub struct Version {
     pub patch: u16,
 }
 
-// TODO: implement PartialOrd & Ord
+impl PartialOrd for Version {
+    #[inline]
+    fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Version) -> Ordering {
+        match self.major.cmp(&other.major) {
+            Ordering::Equal => (),
+            o => return o
+        };
+
+        match self.minor.cmp(&other.minor) {
+            Ordering::Equal => (),
+            o => return o
+        };
+
+        self.patch.cmp(&other.patch)
+    }
+}
 
 impl Version {
     /// Turns a version number given by Vulkan into a `Version` struct.
@@ -43,8 +65,29 @@ mod tests {
     use super::Version;
 
     #[test]
-    fn test() {
+    fn into_vk_version() {
         let version = Version { major: 1, minor: 0, patch: 0 };
         assert_eq!(version.into_vulkan_version(), 0x400000);
+    }
+
+    #[test]
+    fn greater_major() {
+        let v1 = Version { major: 1, minor: 0, patch: 0 };
+        let v2 = Version { major: 2, minor: 0, patch: 0 };
+        assert!(v2 > v1);
+    }
+
+    #[test]
+    fn greater_minor() {
+        let v1 = Version { major: 1, minor: 1, patch: 0 };
+        let v2 = Version { major: 1, minor: 3, patch: 0 };
+        assert!(v2 > v1);
+    }
+
+    #[test]
+    fn greater_patch() {
+        let v1 = Version { major: 1, minor: 0, patch: 4 };
+        let v2 = Version { major: 1, minor: 0, patch: 5 };
+        assert!(v2 > v1);
     }
 }
