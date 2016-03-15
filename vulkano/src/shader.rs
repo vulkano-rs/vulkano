@@ -145,10 +145,27 @@ impl<'a, V, L> VertexShaderEntryPoint<'a, V, L> {
     }
 }
 
-pub struct ComputeShaderEntryPoint<'a, D, S, P> {
+pub struct ComputeShaderEntryPoint<'a, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    marker: PhantomData<(D, S, P)>
+    layout: L,
+}
+
+impl<'a, L> ComputeShaderEntryPoint<'a, L> {
+    #[inline]
+    pub fn module(&self) -> &'a ShaderModule {
+        self.module
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'a CStr {
+        self.name
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &L {
+        &self.layout
+    }
 }
 
 pub struct FragmentShaderEntryPoint<'a, F, L> {

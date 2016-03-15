@@ -1,7 +1,8 @@
 
+pub use self::compute_pipeline::ComputePipeline;
 pub use self::graphics_pipeline::GraphicsPipeline;
 
-//mod compute_pipeline;
+mod compute_pipeline;
 mod graphics_pipeline;
 
 pub mod blend;

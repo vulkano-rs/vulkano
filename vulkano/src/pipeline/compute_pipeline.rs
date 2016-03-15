@@ -1,14 +1,15 @@
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use descriptor_set::Layout;
+use descriptor_set::LayoutPossibleSuperset;
+use descriptor_set::PipelineLayout;
 use pipeline::GenericPipeline;
-use shader::EntryPoint;
+use shader::ComputeShaderEntryPoint;
 
 use device::Device;
 use OomError;
-use Success;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -17,68 +18,79 @@ use vk;
 ///
 ///
 /// The template parameter contains the descriptor set to use with this pipeline.
-pub struct ComputePipeline<D, C> {
-    device: Arc<Device>,
+pub struct ComputePipeline<Pl> {
     pipeline: vk::Pipeline,
-    marker: PhantomData<(D, C)>,
+    device: Arc<Device>,
+    pipeline_layout: Arc<PipelineLayout<Pl>>,
 }
 
-impl<D, C> ComputePipeline<D, C> {
+impl<Pl> ComputePipeline<Pl> {
     ///
     ///
     /// # Panic
     ///
     /// Panicks if the pipeline layout and/or shader don't belong to the device.
-    pub fn new<D, S, P>(device: &Arc<Device>, pipeline_layout: &Arc<PipelineLayout<D, C>>,
-                        shader: &ComputeShaderEntryPoint<D, S, P>, specialization: &S)
-                        -> Result<ComputePipeline<D, C>, OomError>
-        where S: SpecializationConstants
+    pub fn new<Csl>(device: &Arc<Device>, pipeline_layout: &Arc<PipelineLayout<Pl>>,
+                    shader: &ComputeShaderEntryPoint<Csl>) 
+                    -> Result<Arc<ComputePipeline<Pl>>, OomError>
+        where Pl: LayoutPossibleSuperset<Csl>, Csl: Layout
     {
         let vk = device.pointers();
 
+        // TODO: should be an error instead
+        assert!(LayoutPossibleSuperset::is_superset_of(pipeline_layout.layout(), shader.layout()));
+
         let pipeline = unsafe {
-            let spec_descriptors = specialization.descriptors();
+            /*let spec_descriptors = specialization.descriptors();
             let specialization = vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len(),
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
                 dataSize: mem::size_of_val(specialization),
                 pData: specialization as *const S as *const _,
-            };
+            };*/
 
             let stage = vk::PipelineShaderStageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,
-                shader: shader,
-                pSpecializationInfo: if mem::size_of_val(specialization) == 0 {
+                stage: vk::SHADER_STAGE_COMPUTE_BIT,
+                module: shader.module().internal_object(),
+                pName: shader.name().as_ptr(),
+                pSpecializationInfo: //if mem::size_of_val(specialization) == 0 {
                     ptr::null()
-                } else {
+                /*} else {
                     &specialization
-                },
+                }*/,
             };
 
-            let infos = VkComputePipelineCreateInfo {
+            let infos = vk::ComputePipelineCreateInfo {
                 sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
                 layout: pipeline_layout.internal_object(),
-                basePipelineHandle: vk::NULL_HANDLE,
+                basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateComputePipelines(device.internal_object(), vk::NULL_HANDLE,
+            try!(check_errors(vk.CreateComputePipelines(device.internal_object(), 0,
                                                         1, &infos, ptr::null(), &mut output)));
             output
         };
+
+        Ok(Arc::new(ComputePipeline {
+            device: device.clone(),
+            pipeline: pipeline,
+            pipeline_layout: pipeline_layout.clone(),
+        }))
     }
 }
 
-impl GenericPipeline for ComputePipeline {
+impl<Pl> GenericPipeline for ComputePipeline<Pl> {
 }
 
-impl<D, C> Drop for ComputePipeline<D, C> {
+impl<Pl> Drop for ComputePipeline<Pl> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
