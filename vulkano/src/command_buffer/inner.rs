@@ -287,6 +287,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(buffer.buffer().clone(), BufferGpuAccessRange {
             range_start: buffer.offset(),
             range_size: buffer.size(),
+            write: true,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
@@ -330,6 +331,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(buffer.clone(), BufferGpuAccessRange {
             range_start: offset,
             range_size: size,
+            write: true,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
@@ -380,6 +382,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(source.clone(), BufferGpuAccessRange {
             range_start: 0,
             range_size: source.size(),
+            write: false,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
@@ -387,6 +390,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(destination.clone(), BufferGpuAccessRange {
             range_start: 0,
             range_size: destination.size(),
+            write: true,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
@@ -459,6 +463,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(source.buffer().clone(), BufferGpuAccessRange {
             range_start: source.offset(),
             range_size: source.size(),
+            write: false,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
@@ -533,6 +538,7 @@ impl InnerCommandBufferBuilder {
             self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
                 range_start: 0,
                 range_size: b.size(),
+                write: false,
                 expected_queue_family_owner: None,
                 queue_family_owner_transition: None,
             });
@@ -577,6 +583,7 @@ impl InnerCommandBufferBuilder {
             self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
                 range_start: 0,     // FIXME:
                 range_size: b.size(),       // FIXME:
+                write: false,
                 expected_queue_family_owner: None,
                 queue_family_owner_transition: None,
             });
@@ -588,6 +595,7 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource(indices.buffer().clone(), BufferGpuAccessRange {
             range_start: indices.offset(),
             range_size: indices.size(),
+            write: false,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });

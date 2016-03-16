@@ -465,6 +465,9 @@ pub struct GpuAccessRange {
     pub range_start: usize,
     pub range_size: usize,
 
+    /// True if the range is being written by the command.
+    pub write: bool,
+
     /// If `Some`, this range is expected to being transitioned from the given family queue id to
     /// the family queue that will execute the command.
     pub expected_queue_family_owner: Option<u32>,
