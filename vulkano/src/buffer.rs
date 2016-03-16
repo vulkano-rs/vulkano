@@ -57,29 +57,7 @@ pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 
-    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
-    /// function should block if the memory is currently being accessed by the CPU.
-    ///
-    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
-    /// be written.
-    ///
-    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
-    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
-    /// beforehand. This behavior can be used for example to submit sparse binding commands.
-    ///
-    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
-    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
-    /// returned false, then this value will be `None`.
-    ///
-    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
-    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
-    /// `requires_semaphore` returned false, then this value will be `None`.
-    ///
-    /// The function can return a semaphore which will be waited up by the GPU before the
-    /// work starts.
-    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &Arc<Queue>,
-                         fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>;
+    fn memory(&self) -> &BufferMemorySourceChunk;
 
     /// True if the buffer can be used as a source for buffer transfers.
     fn usage_transfer_src(&self) -> bool;
@@ -319,20 +297,8 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: BufferMemoryS
     }
 
     #[inline]
-    unsafe fn gpu_access(&self, write: bool, offset: usize, size: usize, queue: &Arc<Queue>,
-                         fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>
-    {
-        // FIXME: wrong
-        let ranges = Some(GpuAccessRange {
-            range: offset .. offset + size,
-            expected_queue_family_owner: None,     // FIXME:
-            queue_family_owner_transition: None,       // FIXME:
-        }).into_iter();
-
-        self.inner.memory.gpu_access(queue, queue.device().fetch_submission_id(), ranges,
-                                     move || fence.as_ref().unwrap().clone(),
-                                     move || semaphore.as_ref().unwrap().clone())
+    fn memory(&self) -> &BufferMemorySourceChunk {
+        &self.inner.memory
     }
 
     #[inline]
@@ -482,10 +448,8 @@ pub unsafe trait BufferMemorySource {
 pub unsafe trait BufferMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
-    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
-                                    fence: Ff, semaphore: Fs) -> Option<Arc<Semaphore>>
-        where I: Iterator<Item = GpuAccessRange>,
-              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>;
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
+                         -> GpuAccessSynchronization;
 }
 
 // TODO: that's a draft
@@ -493,6 +457,12 @@ pub struct GpuAccessRange {
     pub range: Range<usize>,
     pub expected_queue_family_owner: Option<u32>,
     pub queue_family_owner_transition: Option<u32>,
+}
+
+pub struct GpuAccessSynchronization {
+    pub pre_semaphore: Option<Arc<Semaphore>>,
+    pub post_semaphore: Option<Arc<Semaphore>>,
+    pub post_fence: Option<Arc<Fence>>,
 }
 
 /// Describes how a buffer is going to be used. This is **not** an optimization.

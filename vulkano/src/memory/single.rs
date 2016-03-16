@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::TryLockError;
 
+use buffer::GpuAccessSynchronization as BufferGpuAccessSynchronization;
 use buffer::BufferMemorySource;
 use buffer::BufferMemorySourceChunk;
 use buffer::GpuAccessRange;
@@ -152,15 +153,19 @@ unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
         }
     }
 
-    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
-                                    fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
-        where I: Iterator<Item = GpuAccessRange>,
-              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange])
+                         -> BufferGpuAccessSynchronization
     {
-        let mut semaphore = Some(semaphore());
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
+
         let mut self_semaphore = self.semaphore.lock().unwrap();
         mem::swap(&mut *self_semaphore, &mut semaphore);
-        semaphore
+
+        BufferGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: self_semaphore.clone(),
+            post_fence: None,
+        }
     }
 }
 
@@ -292,19 +297,21 @@ unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
         MemorySourceChunk::properties(self)
     }
 
-    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
-                                    mut fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
-        where I: Iterator<Item = GpuAccessRange>,
-              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange])
+                         -> BufferGpuAccessSynchronization
     {
-        let fence = fence();
-        let mut semaphore = Some(semaphore());
+        let fence = Fence::new(queue.device()).unwrap();        // TODO: error
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
 
         let mut self_lock = self.lock.lock().unwrap();
         mem::swap(&mut self_lock.0, &mut semaphore);
-        self_lock.1 = Some(fence);
+        self_lock.1 = Some(fence.clone());
 
-        semaphore
+        BufferGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: self_lock.0.clone(),
+            post_fence: Some(fence),
+        }
     }
 }
 

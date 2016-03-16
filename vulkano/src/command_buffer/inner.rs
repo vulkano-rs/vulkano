@@ -851,6 +851,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     let mut pre_semaphores_ids = Vec::new();
     let mut pre_semaphores_stages = Vec::new();
 
+    let submission_id = queue.device().fetch_submission_id();
+
     for resource in me.buffer_resources.iter() {
         let post_semaphore = if resource.requires_semaphore() {
             let semaphore = try!(Semaphore::new(queue.device()));
@@ -865,7 +867,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
         let sem = unsafe {
-            resource.gpu_access(true, 0, 18, queue, Some(fence.clone()), post_semaphore)
+            resource.memory().gpu_access(queue, submission_id, &[]).post_semaphore     // FIXME: pass range and handle rest as well
         };
 
         if let Some(s) = sem {
