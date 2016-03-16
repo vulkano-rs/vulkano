@@ -10,12 +10,12 @@ use device::Queue;
 use format::FormatDesc;
 use image::Image;
 use image::ImagePrototype;
+use image::ImageMemorySource;
+use image::ImageMemorySourceChunk;
+use image::GpuAccessRange;
 use image::Type2d;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
-use memory::ChunkRange;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
@@ -293,11 +293,8 @@ impl From<Error> for AcquireError {
 /// "Dummy" object used for images that indicates that they were allocated as part of a swapchain.
 pub struct SwapchainAllocated;
 
-unsafe impl MemorySource for SwapchainAllocated {
+unsafe impl ImageMemorySource for SwapchainAllocated {
     type Chunk = SwapchainAllocatedChunk;
-
-    #[inline]
-    fn is_sparse(&self) -> bool { false }
 
     #[inline]
     fn allocate(self, _: &Arc<Device>, _: usize, _: usize, _: u32)
@@ -314,24 +311,18 @@ pub struct SwapchainAllocatedChunk {
 }
 
 // FIXME: needs correct synchronization as well
-unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
+unsafe impl ImageMemorySourceChunk for SwapchainAllocatedChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
         unreachable!()
     }
 
-    #[inline]
-    fn requires_fence(&self) -> bool { false }
-    #[inline]
-    fn requires_semaphore(&self) -> bool { true }
-    #[inline]
-    fn may_alias(&self) -> bool { false }
-
-    #[inline]
-    unsafe fn gpu_access(&self, _: bool, _: ChunkRange, _: &Arc<Queue>, _: Option<Arc<Fence>>,
-                         post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    _fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
     {
-        assert!(post_semaphore.is_some());
+        let post_semaphore = Some(semaphore());
         // FIXME: must also check that image has been acquired
         let mut semaphores = self.swapchain.images_semaphores.lock().unwrap();
         let pre_semaphore = mem::replace(&mut semaphores[self.id], post_semaphore);

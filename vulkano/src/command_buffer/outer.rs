@@ -24,7 +24,7 @@ use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
-use memory::MemorySource;
+use image::ImageMemorySource;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
@@ -129,7 +129,7 @@ impl PrimaryCommandBufferBuilder {
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>,
               F: StrongStorage + PossibleFloatOrCompressedFormatDesc + 'static,
               Ty: ImageTypeMarker + 'static, So: 'static, Sm: BufferMemorySource + 'static,
-              Im: MemorySource + 'static
+              Im: ImageMemorySource + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -142,7 +142,7 @@ impl PrimaryCommandBufferBuilder {
     /// Note that compressed formats are not supported.
     pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                            color: F::ClearValue) -> PrimaryCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: MemorySource
+        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: ImageMemorySource
     {
         unsafe {
             PrimaryCommandBufferBuilder {

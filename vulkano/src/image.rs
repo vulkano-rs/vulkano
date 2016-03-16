@@ -15,6 +15,7 @@
 //! buffers.
 //!
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
@@ -25,7 +26,6 @@ use device::Queue;
 use format::FormatDesc;
 use format::FormatTy;
 use memory::ChunkProperties;
-use memory::ChunkRange;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
@@ -209,7 +209,7 @@ impl From<u32> for MipmapsCount {
 }
 
 /// A storage for pixels or arbitrary data.
-pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     device: Arc<Device>,
     image: vk::Image,
     memory: M::Chunk,
@@ -236,7 +236,7 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
-    where M: MemorySource, Ty: ImageTypeMarker, F: FormatDesc
+    where M: ImageMemorySource, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Creates a new image and allocates memory for it.
     ///
@@ -254,8 +254,6 @@ impl<Ty, F, M> Image<Ty, F, M>
         let vk = device.pointers();
 
         let usage = usage.to_usage_bits();
-
-        assert!(!memory.is_sparse());       // not implemented
 
         let samples = Ty::num_samples(num_samples);
         assert!(samples >= 1);
@@ -386,7 +384,7 @@ impl<Ty, F, M> Image<Ty, F, M>
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     /// Returns the dimensions of this image.
     #[inline]
@@ -422,7 +420,7 @@ impl<Ty, F, M> Image<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     type Object = vk::Image;
 
@@ -433,16 +431,16 @@ unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn requires_fence(&self) -> bool {
-        self.memory.requires_fence()
+        true
     }
 
     #[inline]
     fn requires_semaphore(&self) -> bool {
-        self.memory.requires_semaphore()
+        true
     }
 
     #[inline]
@@ -452,7 +450,7 @@ unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn default_layout(&self) -> Layout {
@@ -464,12 +462,24 @@ unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
         // FIXME: if the image is in its initial transition phase, we need to a semaphore
-        self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
+        // FIXME: wrong
+        let ranges = Some(GpuAccessRange {
+            mipmap_level_range: 0 .. 1,     // FIXME:
+            array_layer_range: 0 .. 1,      // FIXME:
+            expected_queue_family_owner: None,     // FIXME:
+            queue_family_owner_transition: None,       // FIXME:
+            expected_layout: Layout::Undefined,     // FIXME:
+            layout_transition: Layout::Undefined,       // FIXME:
+        }).into_iter();
+
+        self.memory.gpu_access(queue, queue.device().fetch_submission_id(), ranges,
+                               move || fence.as_ref().unwrap().clone(),
+                               move || semaphore.as_ref().unwrap().clone())
     }
 }
 
 impl<Ty, F, M> Drop for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn drop(&mut self) {
@@ -487,12 +497,12 @@ impl<Ty, F, M> Drop for Image<Ty, F, M>
 /// Prototype of an image.
 ///
 /// Needs to be transitionned to a proper layout in order to be turned into a regular `Image`.
-pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     image: Image<Ty, F, M>,
 }
 
 impl<Ty, F, M> ImagePrototype<Ty, F, M>
-    where M: MemorySource, Ty: ImageTypeMarker, F: FormatDesc
+    where M: ImageMemorySource, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Returns the dimensions of this image.
     #[inline]
@@ -618,6 +628,34 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
     }
 }
 
+// TODO: that's a draft
+pub unsafe trait ImageMemorySource {
+    type Chunk: ImageMemorySourceChunk;
+
+    fn allocate(self, &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>;
+}
+
+// TODO: that's a draft
+pub unsafe trait ImageMemorySourceChunk {
+    fn properties(&self) -> ChunkProperties;
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    fence: Ff, semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>;
+}
+
+// TODO: that's a draft
+pub struct GpuAccessRange {
+    pub mipmap_level_range: Range<u32>,
+    pub array_layer_range: Range<u32>,
+    pub expected_queue_family_owner: Option<u32>,
+    pub queue_family_owner_transition: Option<u32>,
+    pub expected_layout: Layout,
+    pub layout_transition: Layout,
+}
+
 /// Describes how an image is going to be used. This is **not** an optimization.
 ///
 /// If you try to use an image in a way that you didn't declare, a panic will happen.
@@ -713,14 +751,14 @@ impl Usage {
 /// Accessing an image from within a shader can only be done through an `ImageView`. An `ImageView`
 /// represents a region of an image. You can also do things like creating a 2D view of a 3D
 /// image, swizzle the channels, or change the format of the texture (with some restrictions).
-pub struct ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     image: Arc<Image<Ty, F, M>>,
     view: vk::ImageView,
     /// The view was created with identity swizzling.
     identity_swizzle: bool,
 }
 
-impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     /// Creates a new view from an image.
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
@@ -784,14 +822,14 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
     }
 }
 
-impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     // TODO: hack, remove
     #[doc(hidden)]
     pub fn id(&self) -> u64 { self.view }
 }
 
 unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     type Object = vk::ImageView;
 
@@ -802,7 +840,7 @@ unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn requires_fence(&self) -> bool {
@@ -821,7 +859,7 @@ unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn default_layout(&self) -> Layout {
@@ -877,11 +915,11 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
 }
 
-impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -1258,7 +1296,7 @@ unsafe impl MultisampleType for TypeCubeArrayMultisample {
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
 pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     image: &'a Arc<Image<Ty, F, M>>,
     base_mip_level: u32,
@@ -1268,7 +1306,7 @@ pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
 }
 
 impl<'a, Ty: 'a, F: 'a, M: 'a> From<&'a Arc<Image<Ty, F, M>>> for ImageSubresourceRange<'a, Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     #[inline]
     fn from(image: &'a Arc<Image<Ty, F, M>>) -> ImageSubresourceRange<'a, Ty, F, M> {

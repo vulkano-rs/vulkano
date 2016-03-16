@@ -10,6 +10,9 @@ use std::sync::TryLockError;
 use buffer::BufferMemorySource;
 use buffer::BufferMemorySourceChunk;
 use buffer::GpuAccessRange;
+use image::ImageMemorySource;
+use image::ImageMemorySourceChunk;
+use image::GpuAccessRange as ImageAccessRange;
 use memory::ChunkProperties;
 use memory::Content;
 use memory::CpuAccessible;
@@ -88,6 +91,17 @@ unsafe impl BufferMemorySource for DeviceLocal {
     }
 }
 
+unsafe impl ImageMemorySource for DeviceLocal {
+    type Chunk = DeviceLocalChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
 /// A chunk allocated from a `DeviceLocal`.
 pub struct DeviceLocalChunk {
     mem: DeviceMemory,
@@ -150,6 +164,28 @@ unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
     }
 }
 
+unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        ChunkProperties::Regular {
+            memory: &self.mem,
+            offset: 0,
+            size: self.mem.size(),
+        }
+    }
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = ImageAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    {
+        let mut semaphore = Some(semaphore());
+        let mut self_semaphore = self.semaphore.lock().unwrap();
+        mem::swap(&mut *self_semaphore, &mut semaphore);
+        semaphore
+    }
+}
+
 /// Dummy marker whose strategy is to allocate a new chunk of memory for each allocation.
 ///
 /// Guaranteed to allocate from a host-visible memory type.
@@ -191,6 +227,17 @@ unsafe impl MemorySource for HostVisible {
 }
 
 unsafe impl BufferMemorySource for HostVisible {
+    type Chunk = HostVisibleChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
+unsafe impl ImageMemorySource for HostVisible {
     type Chunk = HostVisibleChunk;
 
     #[inline]
@@ -248,6 +295,28 @@ unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
     unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
                                     mut fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
         where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    {
+        let fence = fence();
+        let mut semaphore = Some(semaphore());
+
+        let mut self_lock = self.lock.lock().unwrap();
+        mem::swap(&mut self_lock.0, &mut semaphore);
+        self_lock.1 = Some(fence);
+
+        semaphore
+    }
+}
+
+unsafe impl ImageMemorySourceChunk for HostVisibleChunk {
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        MemorySourceChunk::properties(self)
+    }
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    mut fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = ImageAccessRange>,
               Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
     {
         let fence = fence();
