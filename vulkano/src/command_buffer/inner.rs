@@ -6,6 +6,7 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::AbstractBuffer;
+use buffer::BufferMemorySource;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
@@ -231,7 +232,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(mut self, buffer: B, data: &T)
                                                           -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: BufferMemorySource
     {
         let buffer = buffer.into();
 
@@ -272,7 +273,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn fill_buffer<T: 'static, M>(mut self, buffer: &Arc<Buffer<T, M>>, offset: usize,
                                              size: usize, data: u32) -> InnerCommandBufferBuilder
-        where M: MemorySource + 'static
+        where M: BufferMemorySource + 'static
     {
 
         assert!(self.pool.queue_family().supports_transfers());
@@ -314,7 +315,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn copy_buffer<T: ?Sized + 'static, Ms, Md>(mut self, source: &Arc<Buffer<T, Ms>>,
                                                            destination: &Arc<Buffer<T, Md>>)
                                                            -> InnerCommandBufferBuilder
-        where Ms: MemorySource + 'static, Md: MemorySource + 'static
+        where Ms: BufferMemorySource + 'static, Md: BufferMemorySource + 'static
     {
         assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
         assert!(source.usage_transfer_src());
@@ -388,7 +389,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized, Sm, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                                    -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker + 'static, Sm: MemorySource + 'static, So: 'static,
+              Ty: ImageTypeMarker + 'static, Sm: BufferMemorySource + 'static, So: 'static,
               Im: MemorySource + 'static
     {
         assert!(image.format().is_float_or_compressed());
@@ -487,7 +488,7 @@ impl InnerCommandBufferBuilder {
               Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
-              Ibm: MemorySource
+              Ibm: BufferMemorySource
     {
 
         // FIXME: add buffers to the resources

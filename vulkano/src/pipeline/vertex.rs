@@ -57,8 +57,8 @@ use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
 use buffer::AbstractBuffer;
+use buffer::BufferMemorySource;
 use format::Format;
-use memory::MemorySource;
 use vk;
 
 #[derive(Copy, Clone, Debug)]
@@ -129,7 +129,7 @@ unsafe impl<T> Definition for SingleBufferDefinition<T> where T: Vertex {
 }
 
 unsafe impl<'a, V, M> Source<&'a Arc<Buffer<[V], M>>> for SingleBufferDefinition<V>
-    where V: Vertex + 'static, M: MemorySource + 'static
+    where V: Vertex + 'static, M: BufferMemorySource + 'static
 {
     type Iter = OptionIntoIter<Arc<AbstractBuffer>>;
 
@@ -175,8 +175,8 @@ unsafe impl<T, U> Definition for TwoBuffersDefinition<T, U> where T: Vertex, U: 
 }
 
 unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for TwoBuffersDefinition<T, U>
-    where T: Vertex + 'static, Mt: MemorySource + 'static,
-          U: Vertex + 'static, Mu: MemorySource + 'static
+    where T: Vertex + 'static, Mt: BufferMemorySource + 'static,
+          U: Vertex + 'static, Mu: BufferMemorySource + 'static
 {
     type Iter = VecIntoIter<Arc<AbstractBuffer>>;
 
@@ -222,8 +222,8 @@ unsafe impl<T, U> Definition for OneVertexOneInstanceDefinition<T, U> where T: V
 }
 
 unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex + 'static, Mt: MemorySource + 'static,
-          U: Vertex + 'static, Mu: MemorySource + 'static
+    where T: Vertex + 'static, Mt: BufferMemorySource + 'static,
+          U: Vertex + 'static, Mu: BufferMemorySource + 'static
 {
     type Iter = VecIntoIter<Arc<AbstractBuffer>>;
 

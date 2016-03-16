@@ -29,6 +29,7 @@ use std::marker::PhantomData;
 use std::error;
 use std::fmt;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -38,7 +39,6 @@ use format::Data as FormatData;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
-use memory::ChunkRange;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
@@ -104,12 +104,12 @@ pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
 /// Data storage in a GPU-accessible location.
 ///
 /// See the module's documentation for more info.
-pub struct Buffer<T: ?Sized, M> where M: MemorySource {
+pub struct Buffer<T: ?Sized, M> where M: BufferMemorySource {
     marker: PhantomData<T>,
     inner: Inner<M>,
 }
 
-struct Inner<M> where M: MemorySource {
+struct Inner<M> where M: BufferMemorySource {
     device: Arc<Device>,
     memory: M::Chunk,
     buffer: vk::Buffer,
@@ -118,7 +118,7 @@ struct Inner<M> where M: MemorySource {
     sharing: SharingMode,
 }
 
-impl<T, M> Buffer<T, M> where M: MemorySource {
+impl<T, M> Buffer<T, M> where M: BufferMemorySource {
     /// Creates a new buffer.
     ///
     /// - `usage` indicates how the buffer is going to be used. Using the buffer in a way that
@@ -164,7 +164,7 @@ impl<T, M> Buffer<T, M> where M: MemorySource {
     }
 }
 
-impl<T, M> Buffer<[T], M> where M: MemorySource {
+impl<T, M> Buffer<[T], M> where M: BufferMemorySource {
     /// Creates a new buffer with a number of elements known at runtime.
     ///
     /// See `new` for more information about the parameters.
@@ -199,7 +199,7 @@ impl<T, M> Buffer<[T], M> where M: MemorySource {
     }
 }
 
-impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
+impl<T: ?Sized, M> Buffer<T, M> where M: BufferMemorySource {
     /// Creates a new buffer of the given size without checking whether there is enough memory
     /// to hold the type.
     ///
@@ -215,8 +215,6 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
 
         let usage = usage.to_usage_bits();
         let sharing = sharing.into();
-
-        assert!(!memory.is_sparse());       // not implemented
 
         let buffer = {
             let (sh_mode, sh_count, sh_indices) = match sharing {
@@ -275,7 +273,7 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
     }
 }
 
-impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
+impl<T: ?Sized, M> Buffer<T, M> where M: BufferMemorySource {
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -289,7 +287,7 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
     }
 }
 
-impl<T, M> Buffer<[T], M> where M: MemorySource {
+impl<T, M> Buffer<[T], M> where M: BufferMemorySource {
     /// Returns the number of elements in the buffer.
     #[inline]
     pub fn len(&self) -> usize {
@@ -297,15 +295,15 @@ impl<T, M> Buffer<[T], M> where M: MemorySource {
     }
 }
 
-unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySource {
+unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: BufferMemorySource {
     #[inline]
     fn requires_fence(&self) -> bool {
-        self.inner.memory.requires_fence()
+        true
     }
 
     #[inline]
     fn requires_semaphore(&self) -> bool {
-        self.inner.memory.requires_semaphore()
+        true
     }
 
     #[inline]
@@ -314,7 +312,7 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySource {
     }
 }
 
-unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySource {
+unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: BufferMemorySource {
     #[inline]
     fn size(&self) -> usize {
         self.inner.size
@@ -325,8 +323,16 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySource 
                          fence: Option<Arc<Fence>>, semaphore: Option<Arc<Semaphore>>)
                          -> Option<Arc<Semaphore>>
     {
-        self.inner.memory.gpu_access(write, ChunkRange::Range { offset: offset, size: size },
-                                     queue, fence, semaphore)
+        // FIXME: wrong
+        let ranges = Some(GpuAccessRange {
+            range: offset .. offset + size,
+            expected_queue_family_owner: None,     // FIXME:
+            queue_family_owner_transition: None,       // FIXME:
+        }).into_iter();
+
+        self.inner.memory.gpu_access(queue, queue.device().fetch_submission_id(), ranges,
+                                     move || fence.as_ref().unwrap().clone(),
+                                     move || semaphore.as_ref().unwrap().clone())
     }
 
     #[inline]
@@ -375,7 +381,7 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySource 
     }
 }
 
-impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuAccessible<'a, T> {
+impl<'a, T: ?Sized, M> Buffer<T, M> where M: BufferMemorySource, M::Chunk: CpuAccessible<'a, T> {
     /// Gives a read access to the content of the buffer.
     ///
     /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
@@ -394,7 +400,7 @@ impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuAccessib
     }
 }
 
-impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuWriteAccessible<'a, T> {
+impl<'a, T: ?Sized, M> Buffer<T, M> where M: BufferMemorySource, M::Chunk: CpuWriteAccessible<'a, T> {
     /// Gives a write access to the content of the buffer.
     ///
     /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
@@ -414,7 +420,7 @@ impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuWriteAcc
 }
 
 unsafe impl<'a, T: ?Sized, M> CpuAccessible<'a, T> for Buffer<T, M>
-    where M: MemorySource, M::Chunk: CpuAccessible<'a, T>
+    where M: BufferMemorySource, M::Chunk: CpuAccessible<'a, T>
 {
     type Read = <M::Chunk as CpuAccessible<'a, T>>::Read;
 
@@ -430,7 +436,7 @@ unsafe impl<'a, T: ?Sized, M> CpuAccessible<'a, T> for Buffer<T, M>
 }
 
 unsafe impl<'a, T: ?Sized, M> CpuWriteAccessible<'a, T> for Buffer<T, M>
-    where M: MemorySource, M::Chunk: CpuWriteAccessible<'a, T>
+    where M: BufferMemorySource, M::Chunk: CpuWriteAccessible<'a, T>
 {
     type Write = <M::Chunk as CpuWriteAccessible<'a, T>>::Write;
 
@@ -445,7 +451,7 @@ unsafe impl<'a, T: ?Sized, M> CpuWriteAccessible<'a, T> for Buffer<T, M>
     }
 }
 
-unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> where M: MemorySource {
+unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> where M: BufferMemorySource {
     type Object = vk::Buffer;
 
     #[inline]
@@ -454,7 +460,7 @@ unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> where M: MemorySource {
     }
 }
 
-impl<T: ?Sized, M> Drop for Buffer<T, M> where M: MemorySource {
+impl<T: ?Sized, M> Drop for Buffer<T, M> where M: BufferMemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -462,6 +468,31 @@ impl<T: ?Sized, M> Drop for Buffer<T, M> where M: MemorySource {
             vk.DestroyBuffer(self.inner.device.internal_object(), self.inner.buffer, ptr::null());
         }
     }
+}
+
+// TODO: that's a draft
+pub unsafe trait BufferMemorySource {
+    type Chunk: BufferMemorySourceChunk;
+
+    fn allocate(self, &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>;
+}
+
+// TODO: that's a draft
+pub unsafe trait BufferMemorySourceChunk {
+    fn properties(&self) -> ChunkProperties;
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    fence: Ff, semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>;
+}
+
+// TODO: that's a draft
+pub struct GpuAccessRange {
+    pub range: Range<usize>,
+    pub expected_queue_family_owner: Option<u32>,
+    pub queue_family_owner_transition: Option<u32>,
 }
 
 /// Describes how a buffer is going to be used. This is **not** an optimization.
@@ -628,14 +659,14 @@ impl Usage {
 /// ```
 ///
 #[derive(Clone)]
-pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> where M: MemorySource {
+pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> where M: BufferMemorySource {
     marker: PhantomData<T>,
     resource: &'a Arc<Buffer<O, M>>,
     offset: usize,
     size: usize,
 }
 
-impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> where M: MemorySource {
+impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> where M: BufferMemorySource {
     /// Returns the buffer that this slice belongs to.
     pub fn buffer(&self) -> &Arc<Buffer<O, M>> {
         &self.resource
@@ -654,7 +685,7 @@ impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> where M: MemorySource
     }
 }
 
-impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> where M: MemorySource {
+impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> where M: BufferMemorySource {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> usize {
@@ -663,7 +694,7 @@ impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> where M: MemorySource {
 }
 
 impl<'a, T: ?Sized, M> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, T, M>
-    where M: MemorySource
+    where M: BufferMemorySource
 {
     #[inline]
     fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<'a, T, T, M> {
@@ -677,7 +708,7 @@ impl<'a, T: ?Sized, M> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, T, M>
 }
 
 impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T], O, M>
-    where M: MemorySource
+    where M: BufferMemorySource
 {
     #[inline]
     fn from(r: BufferSlice<'a, T, O, M>) -> BufferSlice<'a, [T], O, M> {
@@ -694,13 +725,13 @@ impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T]
 ///
 /// Note that a buffer view is only required for some operations. For example using a buffer as a
 /// uniform buffer doesn't require creating a `BufferView`.
-pub struct BufferView<T, O: ?Sized, M> where M: MemorySource {
+pub struct BufferView<T, O: ?Sized, M> where M: BufferMemorySource {
     view: vk::BufferView,
     buffer: Arc<Buffer<O, M>>,
     marker: PhantomData<T>,
 }
 
-impl<T, O: ?Sized, M> BufferView<T, O, M> where M: MemorySource {
+impl<T, O: ?Sized, M> BufferView<T, O, M> where M: BufferMemorySource {
     /// Builds a new buffer view.
     ///
     /// The format of the view will be automatically determined by the `T` parameter.
@@ -710,7 +741,7 @@ impl<T, O: ?Sized, M> BufferView<T, O, M> where M: MemorySource {
     ///
     // FIXME: how to handle the fact that eg. `u8` can be either Unorm or Uint?
     pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, O, M>>, BufferViewCreationError>
-        where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: MemorySource + 'static,
+        where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: BufferMemorySource + 'static,
               O: 'static
     {
         let buffer = buffer.into();
@@ -751,7 +782,7 @@ impl<T, O: ?Sized, M> BufferView<T, O, M> where M: MemorySource {
     }
 }
 
-unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> where M: MemorySource {
+unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> where M: BufferMemorySource {
     type Object = vk::BufferView;
 
     #[inline]
@@ -760,7 +791,7 @@ unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> where M: Memor
     }
 }
 
-impl<T, O: ?Sized, M> Drop for BufferView<T, O, M> where M: MemorySource {
+impl<T, O: ?Sized, M> Drop for BufferView<T, O, M> where M: BufferMemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {

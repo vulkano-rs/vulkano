@@ -7,6 +7,9 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::TryLockError;
 
+use buffer::BufferMemorySource;
+use buffer::BufferMemorySourceChunk;
+use buffer::GpuAccessRange;
 use memory::ChunkProperties;
 use memory::Content;
 use memory::CpuAccessible;
@@ -74,6 +77,17 @@ unsafe impl MemorySource for DeviceLocal {
     }
 }
 
+unsafe impl BufferMemorySource for DeviceLocal {
+    type Chunk = DeviceLocalChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
 /// A chunk allocated from a `DeviceLocal`.
 pub struct DeviceLocalChunk {
     mem: DeviceMemory,
@@ -111,6 +125,28 @@ unsafe impl MemorySourceChunk for DeviceLocalChunk {
     #[inline]
     fn may_alias(&self) -> bool {
         false
+    }
+}
+
+unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        ChunkProperties::Regular {
+            memory: &self.mem,
+            offset: 0,
+            size: self.mem.size(),
+        }
+    }
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    {
+        let mut semaphore = Some(semaphore());
+        let mut self_semaphore = self.semaphore.lock().unwrap();
+        mem::swap(&mut *self_semaphore, &mut semaphore);
+        semaphore
     }
 }
 
@@ -154,6 +190,17 @@ unsafe impl MemorySource for HostVisible {
     }
 }
 
+unsafe impl BufferMemorySource for HostVisible {
+    type Chunk = HostVisibleChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
 /// A chunk allocated from a `HostVisible`.
 pub struct HostVisibleChunk {
     mem: MappedDeviceMemory,
@@ -189,6 +236,28 @@ unsafe impl MemorySourceChunk for HostVisibleChunk {
     #[inline]
     fn may_alias(&self) -> bool {
         false
+    }
+}
+
+unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
+    #[inline]
+    fn properties(&self) -> ChunkProperties {
+        MemorySourceChunk::properties(self)
+    }
+
+    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
+                                    mut fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
+        where I: Iterator<Item = GpuAccessRange>,
+              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    {
+        let fence = fence();
+        let mut semaphore = Some(semaphore());
+
+        let mut self_lock = self.lock.lock().unwrap();
+        mem::swap(&mut self_lock.0, &mut semaphore);
+        self_lock.1 = Some(fence);
+
+        semaphore
     }
 }
 
