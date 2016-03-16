@@ -594,8 +594,11 @@ pub unsafe trait ImageMemorySource {
 pub unsafe trait ImageMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
-                         -> GpuAccessSynchronization;
+    #[inline]
+    fn requires_fence(&self) -> bool { true }
+
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization;
 }
 
 // TODO: that's a draft
@@ -611,7 +614,6 @@ pub struct GpuAccessRange {
 pub struct GpuAccessSynchronization {
     pub pre_semaphore: Option<Arc<Semaphore>>,
     pub post_semaphore: Option<Arc<Semaphore>>,
-    pub post_fence: Option<Arc<Fence>>,
 }
 
 /// Describes how an image is going to be used. This is **not** an optimization.

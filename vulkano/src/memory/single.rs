@@ -154,8 +154,8 @@ unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
         }
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange])
-                         -> BufferGpuAccessSynchronization
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> BufferGpuAccessSynchronization
     {
         let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
 
@@ -165,7 +165,6 @@ unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
         BufferGpuAccessSynchronization {
             pre_semaphore: semaphore,
             post_semaphore: self_semaphore.clone(),
-            post_fence: None,
         }
     }
 }
@@ -180,8 +179,8 @@ unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
         }
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange])
-                         -> ImageGpuAccessSynchronization
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
+                         _fence: Option<&Arc<Fence>>) -> ImageGpuAccessSynchronization
     {
         let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());      // TODO: error
         let mut self_semaphore = self.semaphore.lock().unwrap();
@@ -190,7 +189,6 @@ unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
         ImageGpuAccessSynchronization {
             pre_semaphore: semaphore,
             post_semaphore: None,       // FIXME:
-            post_fence: None,
         }
     }
 }
@@ -301,20 +299,18 @@ unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
         MemorySourceChunk::properties(self)
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange])
-                         -> BufferGpuAccessSynchronization
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> BufferGpuAccessSynchronization
     {
-        let fence = Fence::new(queue.device()).unwrap();        // TODO: error
         let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
 
         let mut self_lock = self.lock.lock().unwrap();
         mem::swap(&mut self_lock.0, &mut semaphore);
-        self_lock.1 = Some(fence.clone());
+        self_lock.1 = Some(fence.unwrap().clone());
 
         BufferGpuAccessSynchronization {
             pre_semaphore: semaphore,
             post_semaphore: self_lock.0.clone(),
-            post_fence: Some(fence),
         }
     }
 }
@@ -325,20 +321,18 @@ unsafe impl ImageMemorySourceChunk for HostVisibleChunk {
         MemorySourceChunk::properties(self)
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange])
-                         -> ImageGpuAccessSynchronization
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
+                         fence: Option<&Arc<Fence>>) -> ImageGpuAccessSynchronization
     {
-        let fence = Fence::new(queue.device()).unwrap();      // TODO: error
         let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());      // TODO: error
 
         let mut self_lock = self.lock.lock().unwrap();
         mem::swap(&mut self_lock.0, &mut semaphore);
-        self_lock.1 = Some(fence.clone());
+        self_lock.1 = Some(fence.unwrap().clone());
 
         ImageGpuAccessSynchronization {
             pre_semaphore: semaphore,
             post_semaphore: self_lock.0.clone(),
-            post_fence: Some(fence),
         }
     }
 }

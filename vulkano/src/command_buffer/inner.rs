@@ -960,9 +960,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
         unsafe {
-            let result = resource.0.memory().gpu_access(queue, submission_id, ranges);
-
-            // FIXME: fence
+            let result = resource.0.memory().gpu_access(queue, submission_id, ranges, Some(&fence));
 
             if let Some(s) = result.pre_semaphore {
                 pre_semaphores_ids.push(s.internal_object());
@@ -990,7 +988,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         let sem = unsafe {
-            resource.memory().gpu_access(queue, submission_id, &[]).pre_semaphore     // FIXME: pass range and handle rest as well
+            resource.memory().gpu_access(queue, submission_id, &[], Some(&fence)).pre_semaphore     // FIXME: pass range and handle rest as well
         };
 
         if let Some(s) = sem {

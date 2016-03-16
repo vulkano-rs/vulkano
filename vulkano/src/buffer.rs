@@ -447,6 +447,9 @@ pub unsafe trait BufferMemorySource {
 pub unsafe trait BufferMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
+    #[inline]
+    fn requires_fence(&self) -> bool { true }
+
     /// Depending on the semantics of the memory management, it can be advantageous to align
     /// ranges.
     #[inline]
@@ -454,8 +457,8 @@ pub unsafe trait BufferMemorySourceChunk {
         range
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
-                         -> GpuAccessSynchronization;
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization;
 }
 
 // TODO: that's a draft
@@ -480,7 +483,6 @@ pub struct GpuAccessRange {
 pub struct GpuAccessSynchronization {
     pub pre_semaphore: Option<Arc<Semaphore>>,
     pub post_semaphore: Option<Arc<Semaphore>>,
-    pub post_fence: Option<Arc<Fence>>,
 }
 
 /// Describes how a buffer is going to be used. This is **not** an optimization.

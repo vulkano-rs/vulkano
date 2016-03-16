@@ -21,6 +21,7 @@ use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
+use sync::Fence;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -317,8 +318,8 @@ unsafe impl ImageMemorySourceChunk for SwapchainAllocatedChunk {
         unreachable!()
     }
 
-    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
-                         -> GpuAccessSynchronization
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
+                         _fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization
     {
         let post_semaphore = Some(Semaphore::new(queue.device()).unwrap());     // TODO: error
         // FIXME: must also check that image has been acquired
@@ -328,7 +329,6 @@ unsafe impl ImageMemorySourceChunk for SwapchainAllocatedChunk {
         GpuAccessSynchronization {
             pre_semaphore: pre_semaphore,
             post_semaphore: post_semaphore,
-            post_fence: None,
         }
     }
 }
