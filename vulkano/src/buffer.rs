@@ -104,21 +104,21 @@ pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
 /// Data storage in a GPU-accessible location.
 ///
 /// See the module's documentation for more info.
-pub struct Buffer<T: ?Sized, M> {
+pub struct Buffer<T: ?Sized, M> where M: MemorySource {
     marker: PhantomData<T>,
     inner: Inner<M>,
 }
 
-struct Inner<M> {
+struct Inner<M> where M: MemorySource {
     device: Arc<Device>,
-    memory: M,
+    memory: M::Chunk,
     buffer: vk::Buffer,
     size: usize,
     usage: vk::BufferUsageFlags,
     sharing: SharingMode,
 }
 
-impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
+impl<T, M> Buffer<T, M> where M: MemorySource {
     /// Creates a new buffer.
     ///
     /// - `usage` indicates how the buffer is going to be used. Using the buffer in a way that
@@ -154,9 +154,9 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
     /// let _buffer: Buffer<Data, _> = Buffer::new(&device, &usage, HostVisible, &queue).unwrap();
     /// ```
     ///
-    pub fn new<S, Sh>(device: &Arc<Device>, usage: &Usage, memory: S, sharing: Sh)
-                      -> Result<Arc<Buffer<T, M>>, OomError>
-        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
+    pub fn new<Sh>(device: &Arc<Device>, usage: &Usage, memory: M, sharing: Sh)
+                   -> Result<Arc<Buffer<T, M>>, OomError>
+        where Sh: Into<SharingMode>
     {
         unsafe {
             Buffer::raw(device, mem::size_of::<T>(), usage, memory, sharing)
@@ -164,7 +164,7 @@ impl<T, M> Buffer<T, M> where M: MemorySourceChunk {
     }
 }
 
-impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
+impl<T, M> Buffer<[T], M> where M: MemorySource {
     /// Creates a new buffer with a number of elements known at runtime.
     ///
     /// See `new` for more information about the parameters.
@@ -189,9 +189,9 @@ impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
     /// assert_eq!(buffer.len(), 1024);
     /// ```
     ///
-    pub fn array<S, Sh>(device: &Arc<Device>, len: usize, usage: &Usage, memory: S, sharing: Sh)
-                        -> Result<Arc<Buffer<[T], M>>, OomError>
-        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
+    pub fn array<Sh>(device: &Arc<Device>, len: usize, usage: &Usage, memory: M, sharing: Sh)
+                     -> Result<Arc<Buffer<[T], M>>, OomError>
+        where Sh: Into<SharingMode>
     {
         unsafe {
             Buffer::raw(device, len * mem::size_of::<T>(), usage, memory, sharing)
@@ -199,7 +199,7 @@ impl<T, M> Buffer<[T], M> where M: MemorySourceChunk {
     }
 }
 
-impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
+impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
     /// Creates a new buffer of the given size without checking whether there is enough memory
     /// to hold the type.
     ///
@@ -207,9 +207,9 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
     ///
     /// - Type safety is not checked.
     ///
-    pub unsafe fn raw<S, Sh>(device: &Arc<Device>, size: usize, usage: &Usage, memory: S,
-                             sharing: Sh) -> Result<Arc<Buffer<T, M>>, OomError>
-        where S: MemorySource<Chunk = M>, Sh: Into<SharingMode>
+    pub unsafe fn raw<Sh>(device: &Arc<Device>, size: usize, usage: &Usage, memory: M,
+                          sharing: Sh) -> Result<Arc<Buffer<T, M>>, OomError>
+        where Sh: Into<SharingMode>
     {
         let vk = device.pointers();
 
@@ -275,7 +275,7 @@ impl<T: ?Sized, M> Buffer<T, M> where M: MemorySourceChunk {
     }
 }
 
-impl<T: ?Sized, M> Buffer<T, M> {
+impl<T: ?Sized, M> Buffer<T, M> where M: MemorySource {
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -289,7 +289,7 @@ impl<T: ?Sized, M> Buffer<T, M> {
     }
 }
 
-impl<T, M> Buffer<[T], M> {
+impl<T, M> Buffer<[T], M> where M: MemorySource {
     /// Returns the number of elements in the buffer.
     #[inline]
     pub fn len(&self) -> usize {
@@ -297,7 +297,7 @@ impl<T, M> Buffer<[T], M> {
     }
 }
 
-unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
+unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySource {
     #[inline]
     fn requires_fence(&self) -> bool {
         self.inner.memory.requires_fence()
@@ -314,7 +314,7 @@ unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: MemorySourceChunk {
     }
 }
 
-unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySourceChunk {
+unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySource {
     #[inline]
     fn size(&self) -> usize {
         self.inner.size
@@ -375,13 +375,13 @@ unsafe impl<T: ?Sized, M> AbstractBuffer for Buffer<T, M> where M: MemorySourceC
     }
 }
 
-impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuAccessible<'a, T> {
+impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuAccessible<'a, T> {
     /// Gives a read access to the content of the buffer.
     ///
     /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
     /// has elapsed.
     #[inline]
-    pub fn read(&'a self, timeout_ns: u64) -> M::Read {
+    pub fn read(&'a self, timeout_ns: u64) -> <M::Chunk as CpuAccessible<'a, T>>::Read {
         self.inner.memory.read(timeout_ns)
     }
 
@@ -389,18 +389,18 @@ impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuAccessible<'a, T> {
     ///
     /// If the buffer is in use by the GPU, returns `None`.
     #[inline]
-    pub fn try_read(&'a self) -> Option<M::Read> {
+    pub fn try_read(&'a self) -> Option<<M::Chunk as CpuAccessible<'a, T>>::Read> {
         self.inner.memory.try_read()
     }
 }
 
-impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuWriteAccessible<'a, T> {
+impl<'a, T: ?Sized, M> Buffer<T, M> where M: MemorySource, M::Chunk: CpuWriteAccessible<'a, T> {
     /// Gives a write access to the content of the buffer.
     ///
     /// If the buffer is in use by the GPU, blocks until it is available or until the timeout
     /// has elapsed.
     #[inline]
-    pub fn write(&'a self, timeout_ns: u64) -> M::Write {
+    pub fn write(&'a self, timeout_ns: u64) -> <M::Chunk as CpuWriteAccessible<'a, T>>::Write {
         self.inner.memory.write(timeout_ns)
     }
 
@@ -408,44 +408,44 @@ impl<'a, T: ?Sized, M> Buffer<T, M> where M: CpuWriteAccessible<'a, T> {
     ///
     /// If the buffer is in use by the GPU, returns `None`.
     #[inline]
-    pub fn try_write(&'a self) -> Option<M::Write> {
+    pub fn try_write(&'a self) -> Option<<M::Chunk as CpuWriteAccessible<'a, T>>::Write> {
         self.inner.memory.try_write()
     }
 }
 
 unsafe impl<'a, T: ?Sized, M> CpuAccessible<'a, T> for Buffer<T, M>
-    where M: CpuAccessible<'a, T>
+    where M: MemorySource, M::Chunk: CpuAccessible<'a, T>
 {
-    type Read = M::Read;
+    type Read = <M::Chunk as CpuAccessible<'a, T>>::Read;
 
     #[inline]
-    fn read(&'a self, timeout_ns: u64) -> M::Read {
+    fn read(&'a self, timeout_ns: u64) -> <M::Chunk as CpuAccessible<'a, T>>::Read {
         self.read(timeout_ns)
     }
 
     #[inline]
-    fn try_read(&'a self) -> Option<M::Read> {
+    fn try_read(&'a self) -> Option<<M::Chunk as CpuAccessible<'a, T>>::Read> {
         self.try_read()
     }
 }
 
 unsafe impl<'a, T: ?Sized, M> CpuWriteAccessible<'a, T> for Buffer<T, M>
-    where M: CpuWriteAccessible<'a, T>
+    where M: MemorySource, M::Chunk: CpuWriteAccessible<'a, T>
 {
-    type Write = M::Write;
+    type Write = <M::Chunk as CpuWriteAccessible<'a, T>>::Write;
 
     #[inline]
-    fn write(&'a self, timeout_ns: u64) -> M::Write {
+    fn write(&'a self, timeout_ns: u64) -> <M::Chunk as CpuWriteAccessible<'a, T>>::Write {
         self.write(timeout_ns)
     }
 
     #[inline]
-    fn try_write(&'a self) -> Option<M::Write> {
+    fn try_write(&'a self) -> Option<<M::Chunk as CpuWriteAccessible<'a, T>>::Write> {
         self.try_write()
     }
 }
 
-unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> {
+unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> where M: MemorySource {
     type Object = vk::Buffer;
 
     #[inline]
@@ -454,7 +454,7 @@ unsafe impl<T: ?Sized, M> VulkanObject for Buffer<T, M> {
     }
 }
 
-impl<T: ?Sized, M> Drop for Buffer<T, M> {
+impl<T: ?Sized, M> Drop for Buffer<T, M> where M: MemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -628,14 +628,14 @@ impl Usage {
 /// ```
 ///
 #[derive(Clone)]
-pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> {
+pub struct BufferSlice<'a, T: ?Sized, O: ?Sized + 'a, M: 'a> where M: MemorySource {
     marker: PhantomData<T>,
     resource: &'a Arc<Buffer<O, M>>,
     offset: usize,
     size: usize,
 }
 
-impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> {
+impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> where M: MemorySource {
     /// Returns the buffer that this slice belongs to.
     pub fn buffer(&self) -> &Arc<Buffer<O, M>> {
         &self.resource
@@ -654,7 +654,7 @@ impl<'a, T: ?Sized, O: ?Sized, M> BufferSlice<'a, T, O, M> {
     }
 }
 
-impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> {
+impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> where M: MemorySource {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> usize {
@@ -663,7 +663,7 @@ impl<'a, T, O: ?Sized, M> BufferSlice<'a, [T], O, M> {
 }
 
 impl<'a, T: ?Sized, M> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, T, M>
-    where M: MemorySourceChunk
+    where M: MemorySource
 {
     #[inline]
     fn from(r: &'a Arc<Buffer<T, M>>) -> BufferSlice<'a, T, T, M> {
@@ -676,7 +676,9 @@ impl<'a, T: ?Sized, M> From<&'a Arc<Buffer<T, M>>> for BufferSlice<'a, T, T, M>
     }
 }
 
-impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T], O, M> {
+impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T], O, M>
+    where M: MemorySource
+{
     #[inline]
     fn from(r: BufferSlice<'a, T, O, M>) -> BufferSlice<'a, [T], O, M> {
         BufferSlice {
@@ -692,13 +694,13 @@ impl<'a, T, O: ?Sized, M> From<BufferSlice<'a, T, O, M>> for BufferSlice<'a, [T]
 ///
 /// Note that a buffer view is only required for some operations. For example using a buffer as a
 /// uniform buffer doesn't require creating a `BufferView`.
-pub struct BufferView<T, O: ?Sized, M> {
+pub struct BufferView<T, O: ?Sized, M> where M: MemorySource {
     view: vk::BufferView,
     buffer: Arc<Buffer<O, M>>,
     marker: PhantomData<T>,
 }
 
-impl<T, O: ?Sized, M> BufferView<T, O, M> {
+impl<T, O: ?Sized, M> BufferView<T, O, M> where M: MemorySource {
     /// Builds a new buffer view.
     ///
     /// The format of the view will be automatically determined by the `T` parameter.
@@ -708,7 +710,7 @@ impl<T, O: ?Sized, M> BufferView<T, O, M> {
     ///
     // FIXME: how to handle the fact that eg. `u8` can be either Unorm or Uint?
     pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, O, M>>, BufferViewCreationError>
-        where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: MemorySourceChunk + 'static,
+        where S: Into<BufferSlice<'a, [T], O, M>>, T: FormatData, M: MemorySource + 'static,
               O: 'static
     {
         let buffer = buffer.into();
@@ -749,7 +751,7 @@ impl<T, O: ?Sized, M> BufferView<T, O, M> {
     }
 }
 
-unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> {
+unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> where M: MemorySource {
     type Object = vk::BufferView;
 
     #[inline]
@@ -758,7 +760,7 @@ unsafe impl<T, O: ?Sized, M> VulkanObject for BufferView<T, O, M> {
     }
 }
 
-impl<T, O: ?Sized, M> Drop for BufferView<T, O, M> {
+impl<T, O: ?Sized, M> Drop for BufferView<T, O, M> where M: MemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {

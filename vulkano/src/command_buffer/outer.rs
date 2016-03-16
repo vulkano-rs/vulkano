@@ -23,6 +23,7 @@ use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
 use image::Image;
 use image::ImageTypeMarker;
+use memory::MemorySource;
 use memory::MemorySourceChunk;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -77,7 +78,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -104,7 +105,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
                                              size: usize, data: u32) -> PrimaryCommandBufferBuilder
-        where M: MemorySourceChunk + 'static
+        where M: MemorySource + 'static
     {
         PrimaryCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)
@@ -114,7 +115,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn copy_buffer<T: ?Sized + 'static, Ms, Md>(self, source: &Arc<Buffer<T, Ms>>,
                                                     destination: &Arc<Buffer<T, Md>>)
                                                     -> PrimaryCommandBufferBuilder
-        where Ms: MemorySourceChunk + 'static, Md: MemorySourceChunk + 'static
+        where Ms: MemorySource + 'static, Md: MemorySource + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -127,7 +128,7 @@ impl PrimaryCommandBufferBuilder {
                                                     -> PrimaryCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>,
               F: StrongStorage + PossibleFloatOrCompressedFormatDesc + 'static,
-              Ty: ImageTypeMarker + 'static, So: 'static, Sm: MemorySourceChunk + 'static,
+              Ty: ImageTypeMarker + 'static, So: 'static, Sm: MemorySource + 'static,
               Im: MemorySourceChunk + 'static
     {
         unsafe {
@@ -284,7 +285,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
-              Ibm: MemorySourceChunk
+              Ibm: MemorySource
     {
         // FIXME: check subpass
 
@@ -534,7 +535,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
               Rp: RenderPass + 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
               L: DescriptorSetsCollection + 'static,
-              Ibm: MemorySourceChunk
+              Ibm: MemorySource
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
@@ -608,7 +609,7 @@ impl SecondaryComputeCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySourceChunk
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {
@@ -635,7 +636,7 @@ impl SecondaryComputeCommandBufferBuilder {
     pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
                                              size: usize, data: u32)
                                              -> SecondaryComputeCommandBufferBuilder
-        where M: MemorySourceChunk + 'static
+        where M: MemorySource + 'static
     {
         SecondaryComputeCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)
