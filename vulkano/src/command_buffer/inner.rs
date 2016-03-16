@@ -867,7 +867,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
         let sem = unsafe {
-            resource.memory().gpu_access(queue, submission_id, &[]).post_semaphore     // FIXME: pass range and handle rest as well
+            resource.memory().gpu_access(queue, submission_id, &[]).pre_semaphore     // FIXME: pass range and handle rest as well
         };
 
         if let Some(s) = sem {
@@ -890,7 +890,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         let sem = unsafe {
-            resource.gpu_access(true, queue, Some(fence.clone()), post_semaphore)
+            resource.memory().gpu_access(queue, submission_id, &[]).pre_semaphore     // FIXME: pass range and handle rest as well
         };
 
         if let Some(s) = sem {

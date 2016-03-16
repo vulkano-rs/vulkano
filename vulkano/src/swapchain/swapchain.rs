@@ -13,6 +13,7 @@ use image::ImagePrototype;
 use image::ImageMemorySource;
 use image::ImageMemorySourceChunk;
 use image::GpuAccessRange;
+use image::GpuAccessSynchronization;
 use image::Type2d;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
@@ -20,7 +21,6 @@ use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
-use sync::Fence;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -317,15 +317,18 @@ unsafe impl ImageMemorySourceChunk for SwapchainAllocatedChunk {
         unreachable!()
     }
 
-    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
-                                    _fence: Ff, mut semaphore: Fs) -> Option<Arc<Semaphore>>
-        where I: Iterator<Item = GpuAccessRange>,
-              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
+                         -> GpuAccessSynchronization
     {
-        let post_semaphore = Some(semaphore());
+        let post_semaphore = Some(Semaphore::new(queue.device()).unwrap());     // TODO: error
         // FIXME: must also check that image has been acquired
         let mut semaphores = self.swapchain.images_semaphores.lock().unwrap();
-        let pre_semaphore = mem::replace(&mut semaphores[self.id], post_semaphore);
-        pre_semaphore
+        let pre_semaphore = mem::replace(&mut semaphores[self.id], post_semaphore.clone());
+
+        GpuAccessSynchronization {
+            pre_semaphore: pre_semaphore,
+            post_semaphore: post_semaphore,
+            post_fence: None,
+        }
     }
 }

@@ -41,33 +41,7 @@ use check_errors;
 use vk;
 
 pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
-    /// All images in vulkano must have a *default layout*. Whenever this image is used in a
-    /// command buffer, it is switched from this default layout to something else (if necessary),
-    /// then back again to the default.
-    fn default_layout(&self) -> Layout;
-    
-    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
-    /// function should block if the memory is currently being accessed by the CPU.
-    ///
-    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
-    /// be written.
-    ///
-    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
-    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
-    /// beforehand. This behavior can be used for example to submit sparse binding commands.
-    ///
-    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
-    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
-    /// returned false, then this value will be `None`.
-    ///
-    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
-    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
-    /// `requires_semaphore` returned false, then this value will be `None`.
-    ///
-    /// The function can return a semaphore which will be waited up by the GPU before the
-    /// work starts.
-    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
-                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+    fn memory(&self) -> &ImageMemorySourceChunk;
 }
 
 pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
@@ -453,28 +427,8 @@ unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
     where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
-    fn default_layout(&self) -> Layout {
-        self.layout
-    }
-
-    #[inline]
-    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
-                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
-    {
-        // FIXME: if the image is in its initial transition phase, we need to a semaphore
-        // FIXME: wrong
-        let ranges = Some(GpuAccessRange {
-            mipmap_level_range: 0 .. 1,     // FIXME:
-            array_layer_range: 0 .. 1,      // FIXME:
-            expected_queue_family_owner: None,     // FIXME:
-            queue_family_owner_transition: None,       // FIXME:
-            expected_layout: Layout::Undefined,     // FIXME:
-            layout_transition: Layout::Undefined,       // FIXME:
-        }).into_iter();
-
-        self.memory.gpu_access(queue, queue.device().fetch_submission_id(), ranges,
-                               move || fence.as_ref().unwrap().clone(),
-                               move || semaphore.as_ref().unwrap().clone())
+    fn memory(&self) -> &ImageMemorySourceChunk {
+        &self.memory
     }
 }
 
@@ -640,10 +594,8 @@ pub unsafe trait ImageMemorySource {
 pub unsafe trait ImageMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
-    unsafe fn gpu_access<I, Ff, Fs>(&self, queue: &Arc<Queue>, submission_id: u64, ranges: I,
-                                    fence: Ff, semaphore: Fs) -> Option<Arc<Semaphore>>
-        where I: Iterator<Item = GpuAccessRange>,
-              Ff: FnMut() -> Arc<Fence>, Fs: FnMut() -> Arc<Semaphore>;
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
+                         -> GpuAccessSynchronization;
 }
 
 // TODO: that's a draft
@@ -654,6 +606,12 @@ pub struct GpuAccessRange {
     pub queue_family_owner_transition: Option<u32>,
     pub expected_layout: Layout,
     pub layout_transition: Layout,
+}
+
+pub struct GpuAccessSynchronization {
+    pub pre_semaphore: Option<Arc<Semaphore>>,
+    pub post_semaphore: Option<Arc<Semaphore>>,
+    pub post_fence: Option<Arc<Fence>>,
 }
 
 /// Describes how an image is going to be used. This is **not** an optimization.
@@ -863,14 +821,14 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 {
     #[inline]
     fn default_layout(&self) -> Layout {
-        self.image.default_layout()
+        unimplemented!()
     }
 
     #[inline]
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        self.image.gpu_access(write, queue, fence, semaphore)
+        unimplemented!()
     }
 
     #[inline]
