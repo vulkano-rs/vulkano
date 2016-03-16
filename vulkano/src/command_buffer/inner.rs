@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::hash;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -5,6 +8,7 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::GpuAccessRange as BufferGpuAccessRange;
 use buffer::AbstractBuffer;
 use buffer::BufferMemorySource;
 use command_buffer::AbstractCommandBuffer;
@@ -67,7 +71,7 @@ pub struct InnerCommandBufferBuilder {
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
 
     // List of all resources that are used by this command buffer.
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
+    buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
 
     image_resources: Vec<Arc<AbstractImage>>,
 
@@ -88,6 +92,46 @@ pub struct InnerCommandBufferBuilder {
 
     // Current state of the dynamic state within the command buffer.
     dynamic_state: DynamicState,
+}
+
+#[derive(Clone)]
+struct AbstractBufferKey(Arc<AbstractBuffer>);
+
+impl PartialEq for AbstractBufferKey {
+    #[inline]
+    fn eq(&self, other: &AbstractBufferKey) -> bool {
+        &*self.0 as *const AbstractBuffer == &*other.0 as *const AbstractBuffer
+    }
+}
+
+impl Eq for AbstractBufferKey {}
+
+impl hash::Hash for AbstractBufferKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractBuffer as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
+
+#[derive(Clone)]
+struct AbstractImageKey(Arc<AbstractImage>);
+
+impl PartialEq for AbstractImageKey {
+    #[inline]
+    fn eq(&self, other: &AbstractImageKey) -> bool {
+        &*self.0 as *const AbstractImage == &*other.0 as *const AbstractImage
+    }
+}
+
+impl Eq for AbstractImageKey {}
+
+impl hash::Hash for AbstractImageKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractImage as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
 }
 
 impl InnerCommandBufferBuilder {
@@ -174,7 +218,7 @@ impl InnerCommandBufferBuilder {
             keep_alive_descriptor_sets: Vec::new(),
             keep_alive_framebuffers: framebuffers,
             keep_alive_renderpasses: renderpasses,
-            buffer_resources: Vec::new(),
+            buffer_resources: HashMap::new(),
             image_resources: Vec::new(),
             keep_alive_image_views_resources: Vec::new(),
             keep_alive_pipelines: Vec::new(),
@@ -194,7 +238,7 @@ impl InnerCommandBufferBuilder {
     {
         self.keep_alive_secondary_command_buffers.push(cb_arc);
 
-        for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+        for (k, v) in cb.buffer_resources.iter() { self.buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
         for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
 
         {
@@ -240,9 +284,12 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().usage_transfer_dest());
 
-        // FIXME: check queue family of the buffer
-
-        self.add_buffer_resource(buffer.buffer().clone(), true, buffer.offset(), buffer.size());
+        self.add_buffer_resource(buffer.buffer().clone(), BufferGpuAccessRange {
+            range_start: buffer.offset(),
+            range_size: buffer.size(),
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
 
         {
             let vk = self.device.pointers();
@@ -280,7 +327,12 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.usage_transfer_dest());
 
-        self.add_buffer_resource(buffer.clone(), true, offset, size);
+        self.add_buffer_resource(buffer.clone(), BufferGpuAccessRange {
+            range_start: offset,
+            range_size: size,
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -325,8 +377,19 @@ impl InnerCommandBufferBuilder {
             size: source.size() as u64,     // FIXME: what is destination is too small?
         };
 
-        self.add_buffer_resource(source.clone(), false, 0, source.size());
-        self.add_buffer_resource(destination.clone(), true, 0, source.size());
+        self.add_buffer_resource(source.clone(), BufferGpuAccessRange {
+            range_start: 0,
+            range_size: source.size(),
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
+
+        self.add_buffer_resource(destination.clone(), BufferGpuAccessRange {
+            range_start: 0,
+            range_size: destination.size(),
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
 
         {
             let vk = self.device.pointers();
@@ -393,7 +456,12 @@ impl InnerCommandBufferBuilder {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
-        self.add_buffer_resource(source.buffer().clone(), false, source.offset(), source.size());
+        self.add_buffer_resource(source.buffer().clone(), BufferGpuAccessRange {
+            range_start: source.offset(),
+            range_size: source.size(),
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
         self.add_image_resource(image.clone() as Arc<_>, true);
 
         let region = vk::BufferImageCopy {
@@ -462,7 +530,12 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
+                range_start: 0,
+                range_size: b.size(),
+                expected_queue_family_owner: None,
+                queue_family_owner_transition: None,
+            });
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -501,13 +574,23 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
+                range_start: 0,     // FIXME:
+                range_size: b.size(),       // FIXME:
+                expected_queue_family_owner: None,
+                queue_family_owner_transition: None,
+            });
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
-        self.add_buffer_resource(indices.buffer().clone(), false, indices.offset(), indices.size());
+        self.add_buffer_resource(indices.buffer().clone(), BufferGpuAccessRange {
+            range_start: indices.offset(),
+            range_size: indices.size(),
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+        });
 
         {
             let vk = self.device.pointers();
@@ -741,17 +824,6 @@ impl InnerCommandBufferBuilder {
             // ending the commands recording
             try!(check_errors(vk.EndCommandBuffer(cmd)));
 
-            // Computing the list of buffer resources by removing duplicates.
-            let buffer_resources = self.buffer_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.buffer_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractBuffer == &**elem as *const AbstractBuffer).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
-
             // Computing the list of image resources by removing duplicates.
             // TODO: image views as well
             let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
@@ -772,7 +844,7 @@ impl InnerCommandBufferBuilder {
                 keep_alive_descriptor_sets: mem::replace(&mut self.keep_alive_descriptor_sets, Vec::new()),
                 keep_alive_framebuffers: mem::replace(&mut self.keep_alive_framebuffers, Vec::new()),
                 keep_alive_renderpasses: mem::replace(&mut self.keep_alive_renderpasses, Vec::new()),
-                buffer_resources: buffer_resources,
+                buffer_resources: mem::replace(&mut self.buffer_resources, HashMap::new()),
                 image_resources: image_resources,
                 keep_alive_image_views_resources: mem::replace(&mut self.keep_alive_image_views_resources, Vec::new()),
                 keep_alive_pipelines: mem::replace(&mut self.keep_alive_pipelines, Vec::new()),
@@ -782,11 +854,34 @@ impl InnerCommandBufferBuilder {
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, write: bool, offset: usize,
-                           size: usize)
+    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, range: BufferGpuAccessRange)
     {
+        // Align the range and check for correctness with debug_assert!.
+        let range = {
+            let aligned = buffer.memory().align(range);
+            debug_assert!(aligned.range_start <= range.range_start);
+            debug_assert!(aligned.range_size >= range.range_size +
+                                                (range.range_start - aligned.range_start));
+            debug_assert_eq!(aligned.expected_queue_family_owner,
+                             range.expected_queue_family_owner);
+            debug_assert_eq!(aligned.queue_family_owner_transition,
+                             range.queue_family_owner_transition);
+            aligned
+        };
+
         // TODO: handle memory barriers
-        self.buffer_resources.push(buffer);
+
+        match self.buffer_resources.entry(AbstractBufferKey(buffer)) {
+            Entry::Occupied(mut e) => {
+                // FIXME: merge ranges correctly
+                e.get_mut().push(range);
+            },
+            Entry::Vacant(e) => {
+                let mut v = SmallVec::new();
+                v.push(range);
+                e.insert(v);
+            },
+        };
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
@@ -819,7 +914,7 @@ pub struct InnerCommandBuffer {
     keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
+    buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
     image_resources: Vec<Arc<AbstractImage>>,
     keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
     keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
@@ -853,27 +948,24 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
     let submission_id = queue.device().fetch_submission_id();
 
-    for resource in me.buffer_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
-
-        } else {
-            None
-        };
-
+    for (resource, ranges) in me.buffer_resources.iter() {
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
-        let sem = unsafe {
-            resource.memory().gpu_access(queue, submission_id, &[]).pre_semaphore     // FIXME: pass range and handle rest as well
-        };
+        unsafe {
+            let result = resource.0.memory().gpu_access(queue, submission_id, ranges);
 
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
+            // FIXME: fence
+
+            if let Some(s) = result.pre_semaphore {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
+
+            if let Some(s) = result.post_semaphore {
+                post_semaphores.push(s.clone());
+                post_semaphores_ids.push(s.internal_object());
+            }
         }
     }
 

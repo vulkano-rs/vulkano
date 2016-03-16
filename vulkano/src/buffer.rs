@@ -29,7 +29,6 @@ use std::marker::PhantomData;
 use std::error;
 use std::fmt;
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -448,14 +447,30 @@ pub unsafe trait BufferMemorySource {
 pub unsafe trait BufferMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
+    /// Depending on the semantics of the memory management, it can be advantageous to align
+    /// ranges.
+    #[inline]
+    fn align(&self, range: GpuAccessRange) -> GpuAccessRange {
+        range
+    }
+
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange])
                          -> GpuAccessSynchronization;
 }
 
 // TODO: that's a draft
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct GpuAccessRange {
-    pub range: Range<usize>,
+    // TODO: eventually use Range if it implements Copy
+    pub range_start: usize,
+    pub range_size: usize,
+
+    /// If `Some`, this range is expected to being transitioned from the given family queue id to
+    /// the family queue that will execute the command.
     pub expected_queue_family_owner: Option<u32>,
+
+    /// If `Some`, this range is being transitioned from the family queue that will execute the
+    /// command to the given family queue.
     pub queue_family_owner_transition: Option<u32>,
 }
 
