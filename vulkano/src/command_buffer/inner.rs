@@ -55,16 +55,16 @@ pub struct InnerCommandBufferBuilder {
     cmd: Option<vk::CommandBuffer>,
 
     // List of secondary command buffers.
-    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
 
     // List of descriptor sets used in this CB.
-    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+    keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
 
     // List of framebuffers used in this CB.
-    framebuffers: Vec<Arc<AbstractFramebuffer>>,
+    keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
 
     // List of renderpasses used in this CB.
-    renderpasses: Vec<Arc<RenderPass>>,
+    keep_alive_renderpasses: Vec<Arc<RenderPass>>,
 
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<AbstractBuffer>>,
@@ -73,12 +73,12 @@ pub struct InnerCommandBufferBuilder {
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
     // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
-    image_views_resources: Vec<Arc<AbstractImageView>>,
+    keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
 
     // List of pipelines that are used by this command buffer.
     //
     // These are stored just so that they don't get destroyed.
-    pipelines: Vec<Arc<GenericPipeline>>,
+    keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
     graphics_pipeline: Option<vk::Pipeline>,
@@ -170,14 +170,14 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
-            secondary_command_buffers: Vec::new(),
-            descriptor_sets: Vec::new(),
-            framebuffers: framebuffers,
-            renderpasses: renderpasses,
+            keep_alive_secondary_command_buffers: Vec::new(),
+            keep_alive_descriptor_sets: Vec::new(),
+            keep_alive_framebuffers: framebuffers,
+            keep_alive_renderpasses: renderpasses,
             buffer_resources: Vec::new(),
             image_resources: Vec::new(),
-            image_views_resources: Vec::new(),
-            pipelines: Vec::new(),
+            keep_alive_image_views_resources: Vec::new(),
+            keep_alive_pipelines: Vec::new(),
             graphics_pipeline: None,
             compute_pipeline: None,
             dynamic_state: DynamicState::none(),
@@ -192,11 +192,9 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<AbstractCommandBuffer>,
                                        cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
-        self.secondary_command_buffers.push(cb_arc);
+        self.keep_alive_secondary_command_buffers.push(cb_arc);
 
-        for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
         for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-        for r in cb.image_views_resources.iter() { self.image_views_resources.push(r.clone()); }
         for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
 
         {
@@ -537,12 +535,12 @@ impl InnerCommandBufferBuilder {
             if self.compute_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
                                    pipeline.internal_object());
-                self.pipelines.push(pipeline.clone());
+                self.keep_alive_pipelines.push(pipeline.clone());
                 self.compute_pipeline = Some(pipeline.internal_object());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
-            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            for d in descriptor_sets.iter() { self.keep_alive_descriptor_sets.push(d.clone()); }
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // TODO: shouldn't rebind everything every time
@@ -568,7 +566,7 @@ impl InnerCommandBufferBuilder {
             if self.graphics_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
                                    pipeline.internal_object());
-                self.pipelines.push(pipeline.clone());
+                self.keep_alive_pipelines.push(pipeline.clone());
                 self.graphics_pipeline = Some(pipeline.internal_object());
             }
 
@@ -607,7 +605,7 @@ impl InnerCommandBufferBuilder {
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
-            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            for d in descriptor_sets.iter() { self.keep_alive_descriptor_sets.push(d.clone()); }
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // FIXME: input attachments of descriptor sets have to be checked against input
@@ -642,8 +640,8 @@ impl InnerCommandBufferBuilder {
     {
         assert!(framebuffer.is_compatible_with(render_pass));
 
-        self.framebuffers.push(framebuffer.clone() as Arc<_>);
-        self.renderpasses.push(render_pass.clone() as Arc<_>);
+        self.keep_alive_framebuffers.push(framebuffer.clone() as Arc<_>);
+        self.keep_alive_renderpasses.push(render_pass.clone() as Arc<_>);
 
         let clear_values = clear_values.iter().map(|value| {
             match *value {
@@ -671,7 +669,7 @@ impl InnerCommandBufferBuilder {
         }*/
 
         for attachment in framebuffer.attachments() {
-            self.image_views_resources.push(attachment.clone());
+            self.keep_alive_image_views_resources.push(attachment.clone());
         }
 
         let infos = vk::RenderPassBeginInfo {
@@ -770,14 +768,14 @@ impl InnerCommandBufferBuilder {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
-                secondary_command_buffers: mem::replace(&mut self.secondary_command_buffers, Vec::new()),
-                descriptor_sets: mem::replace(&mut self.descriptor_sets, Vec::new()),
-                framebuffers: mem::replace(&mut self.framebuffers, Vec::new()),
-                renderpasses: mem::replace(&mut self.renderpasses, Vec::new()),
+                keep_alive_secondary_command_buffers: mem::replace(&mut self.keep_alive_secondary_command_buffers, Vec::new()),
+                keep_alive_descriptor_sets: mem::replace(&mut self.keep_alive_descriptor_sets, Vec::new()),
+                keep_alive_framebuffers: mem::replace(&mut self.keep_alive_framebuffers, Vec::new()),
+                keep_alive_renderpasses: mem::replace(&mut self.keep_alive_renderpasses, Vec::new()),
                 buffer_resources: buffer_resources,
                 image_resources: image_resources,
-                image_views_resources: mem::replace(&mut self.image_views_resources, Vec::new()),
-                pipelines: mem::replace(&mut self.pipelines, Vec::new()),
+                keep_alive_image_views_resources: mem::replace(&mut self.keep_alive_image_views_resources, Vec::new()),
+                keep_alive_pipelines: mem::replace(&mut self.keep_alive_pipelines, Vec::new()),
             })
         }
     }
@@ -817,14 +815,14 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
-    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
-    framebuffers: Vec<Arc<AbstractFramebuffer>>,
-    renderpasses: Vec<Arc<RenderPass>>,
+    keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+    keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
+    keep_alive_renderpasses: Vec<Arc<RenderPass>>,
     buffer_resources: Vec<Arc<AbstractBuffer>>,
     image_resources: Vec<Arc<AbstractImage>>,
-    image_views_resources: Vec<Arc<AbstractImageView>>,
-    pipelines: Vec<Arc<GenericPipeline>>,
+    keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
+    keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 }
 
 /// Submits the command buffer to a queue.
