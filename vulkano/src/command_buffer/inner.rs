@@ -27,7 +27,6 @@ use image::AbstractImageView;
 use image::Image;
 use image::ImageTypeMarker;
 use memory::MemorySource;
-use memory::MemorySourceChunk;
 use pipeline::GenericPipeline;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -340,7 +339,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                                   color: F::ClearValue) -> InnerCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc   // FIXME: should accept uint and int images too
+        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: MemorySource   // FIXME: should accept uint and int images too
     {
         assert!(image.format().is_float()); // FIXME: should accept uint and int images too
 
@@ -381,7 +380,7 @@ impl InnerCommandBufferBuilder {
                                                                    -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
               Ty: ImageTypeMarker + 'static, Sm: MemorySource + 'static, So: 'static,
-              Im: MemorySourceChunk + 'static
+              Im: MemorySource + 'static
     {
         assert!(image.format().is_float_or_compressed());
 

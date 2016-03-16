@@ -14,6 +14,7 @@ use image::Type2d;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
 use memory::ChunkRange;
+use memory::MemorySource;
 use memory::MemorySourceChunk;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
@@ -65,7 +66,7 @@ impl Swapchain {
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
+                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocated>>), OomError>
         where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
@@ -80,7 +81,7 @@ impl Swapchain {
     fn new_inner<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                        dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocatedChunk>>), OomError>
+                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocated>>), OomError>
         where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         // FIXME: check that the parameters are supported
@@ -286,6 +287,23 @@ impl From<Error> for AcquireError {
             Error::OutOfDate => AcquireError::OutOfDate,
             _ => panic!("unexpected error: {:?}", err)
         }
+    }
+}
+
+/// "Dummy" object used for images that indicates that they were allocated as part of a swapchain.
+pub struct SwapchainAllocated;
+
+unsafe impl MemorySource for SwapchainAllocated {
+    type Chunk = SwapchainAllocatedChunk;
+
+    #[inline]
+    fn is_sparse(&self) -> bool { false }
+
+    #[inline]
+    fn allocate(self, _: &Arc<Device>, _: usize, _: usize, _: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        panic!()
     }
 }
 
