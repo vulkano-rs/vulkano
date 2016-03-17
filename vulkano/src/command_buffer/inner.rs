@@ -502,14 +502,10 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            // FIXME:
-            /*self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
-                range_start: 0,
-                range_size: b.size(),
+            self.renderpass_buffer_resources.push((b.clone(), BufferInnerSync {
+                range: 0 .. b.size(),       // FIXME:
                 write: false,
-                expected_queue_family_owner: None,
-                queue_family_owner_transition: None,
-            });*/
+            }));
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -549,27 +545,19 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            // FIXME:
-            /*self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
-                range_start: 0,     // FIXME:
-                range_size: b.size(),       // FIXME:
+            self.renderpass_buffer_resources.push((b.clone(), BufferInnerSync {
+                range: 0 .. b.size(),       // FIXME:
                 write: false,
-                expected_queue_family_owner: None,
-                queue_family_owner_transition: None,
-            });*/
+            }));
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
-        // FIXME:
-        /*self.add_buffer_resource(indices.buffer().clone(), BufferGpuAccessRange {
-            range_start: indices.offset(),
-            range_size: indices.size(),
+        self.renderpass_buffer_resources.push((indices.buffer().clone(), BufferInnerSync {
+            range: indices.offset() .. indices.offset() + indices.size(),
             write: false,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
-        });*/
+        }));
 
         let indices_buffer_internal = indices.buffer().internal_object();
         let indices_offset = indices.offset();
@@ -744,13 +732,14 @@ impl InnerCommandBufferBuilder {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        // FIXME: change attachment image layouts if necessary, for both initial and final
-        /*for attachment in R::attachments() {
-
-        }*/
-
         for attachment in framebuffer.attachments() {
             self.keep_alive_image_views_resources.push(attachment.clone());
+            self.renderpass_image_resources.push((attachment.image(), ImageInnerSync {
+                mipmap_levels_range: 0 .. 1,        // FIXME:
+                array_layers_range: 0 .. 1,     // FIXME:
+                write: true,
+                layout: ImageLayout::PresentSrc,
+            }));
         }
 
         let content = if secondary_cmd_buffers {

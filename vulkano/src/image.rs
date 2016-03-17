@@ -42,10 +42,16 @@ pub unsafe trait AbstractImage: ::VulkanObjectU64 {
 }
 
 pub unsafe trait AbstractImageView: ::VulkanObjectU64 {
+    fn image(&self) -> Arc<AbstractImage>;
+
+    // TODO: remove
     fn default_layout(&self) -> Layout;
 
+    // TODO: remove
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+
+    // TODO: move things below to AbstractImage
 
     /// True if the image can be used as a source for transfers.
     fn usage_transfer_src(&self) -> bool;
@@ -819,8 +825,13 @@ unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: ImageMemorySource
+    where Ty: ImageTypeMarker + 'static, F: 'static, M: ImageMemorySource + 'static
 {
+    #[inline]
+    fn image(&self) -> Arc<AbstractImage> {
+        self.image.clone() as Arc<_>
+    }
+
     #[inline]
     fn default_layout(&self) -> Layout {
         unimplemented!()
@@ -875,7 +886,7 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
+    where Ty: ImageTypeMarker + 'static, F: FormatDesc + 'static, M: ImageMemorySource + 'static
 {
 }
 
