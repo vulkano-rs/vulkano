@@ -285,13 +285,13 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().usage_transfer_dest());
 
-        self.add_buffer_resource(buffer.buffer().clone(), BufferGpuAccessRange {
+        self.register_resources(Some((buffer.buffer().clone() as Arc<_>, BufferGpuAccessRange {
             range_start: buffer.offset(),
             range_size: buffer.size(),
             write: true,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
-        });
+        })), None);
 
         {
             let vk = self.device.pointers();
@@ -329,13 +329,13 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.usage_transfer_dest());
 
-        self.add_buffer_resource(buffer.clone(), BufferGpuAccessRange {
+        self.register_resources(Some((buffer.clone() as Arc<_>, BufferGpuAccessRange {
             range_start: offset,
             range_size: size,
             write: true,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
-        });
+        })), None);
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -374,27 +374,31 @@ impl InnerCommandBufferBuilder {
         assert!(source.usage_transfer_src());
         assert!(destination.usage_transfer_dest());
 
+        self.register_resources(
+            vec![
+                (source.clone() as Arc<_>, BufferGpuAccessRange {
+                    range_start: 0,
+                    range_size: source.size(),
+                    write: false,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                }),
+                (destination.clone() as Arc<_>, BufferGpuAccessRange {
+                    range_start: 0,
+                    range_size: destination.size(),
+                    write: true,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                })
+            ],
+            None
+        );
+
         let copy = vk::BufferCopy {
             srcOffset: 0,
             dstOffset: 0,
             size: source.size() as u64,     // FIXME: what is destination is too small?
         };
-
-        self.add_buffer_resource(source.clone(), BufferGpuAccessRange {
-            range_start: 0,
-            range_size: source.size(),
-            write: false,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
-        });
-
-        self.add_buffer_resource(destination.clone(), BufferGpuAccessRange {
-            range_start: 0,
-            range_size: destination.size(),
-            write: true,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
-        });
 
         {
             let vk = self.device.pointers();
@@ -437,7 +441,8 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
+            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(),
+                                  vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
                                   &color, 1, &range);
         }
 
@@ -462,25 +467,26 @@ impl InnerCommandBufferBuilder {
 
         let source = source.into();
 
-        self.add_buffer_resource(source.buffer().clone(), BufferGpuAccessRange {
-            range_start: source.offset(),
-            range_size: source.size(),
-            write: false,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
-        });
-
-        self.add_image_resource(image.clone() as Arc<_>, ImageGpuAccessRange {
-            mipmap_level_start: 0,      // FIXME:
-            mipmap_levels_count: 1,     // FIXME:
-            array_layer_start: 0,       // FIXME:
-            array_layers_count: 1,      // FIXME:
-            write: true,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
-            expected_layout: ImageLayout::TransferDstOptimal,       // TODO: can General as well
-            layout_transition: ImageLayout::TransferDstOptimal,     // TODO: can General as well
-        });
+        self.register_resources(
+            Some((source.buffer().clone() as Arc<_>, BufferGpuAccessRange {
+                range_start: source.offset(),
+                range_size: source.size(),
+                write: false,
+                expected_queue_family_owner: None,
+                queue_family_owner_transition: None,
+            })).into_iter(),
+            Some((image.clone() as Arc<_>, ImageGpuAccessRange {
+                mipmap_level_start: 0,      // FIXME:
+                mipmap_levels_count: 1,     // FIXME:
+                array_layer_start: 0,       // FIXME:
+                array_layers_count: 1,      // FIXME:
+                write: true,
+                expected_queue_family_owner: None,
+                queue_family_owner_transition: None,
+                expected_layout: ImageLayout::TransferDstOptimal,       // TODO: can General as well
+                layout_transition: ImageLayout::TransferDstOptimal,     // TODO: can General as well
+            })).into_iter()
+        );
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -548,13 +554,14 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
+            // FIXME:
+            /*self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
                 range_start: 0,
                 range_size: b.size(),
                 write: false,
                 expected_queue_family_owner: None,
                 queue_family_owner_transition: None,
-            });
+            });*/
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -593,25 +600,27 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
+            // FIXME:
+            /*self.add_buffer_resource(b.clone(), BufferGpuAccessRange {
                 range_start: 0,     // FIXME:
                 range_size: b.size(),       // FIXME:
                 write: false,
                 expected_queue_family_owner: None,
                 queue_family_owner_transition: None,
-            });
+            });*/
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
-        self.add_buffer_resource(indices.buffer().clone(), BufferGpuAccessRange {
+        // FIXME:
+        /*self.add_buffer_resource(indices.buffer().clone(), BufferGpuAccessRange {
             range_start: indices.offset(),
             range_size: indices.size(),
             write: false,
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
-        });
+        });*/
 
         {
             let vk = self.device.pointers();
@@ -861,71 +870,83 @@ impl InnerCommandBufferBuilder {
         }
     }
 
-    /// Adds a buffer resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, range: BufferGpuAccessRange) {
-        // Align the range and check for correctness with debug_assert!.
-        let range = {
-            let aligned = buffer.memory().align(range);
-            debug_assert!(aligned.range_start <= range.range_start);
-            debug_assert!(aligned.range_size >= range.range_size +
-                                                (range.range_start - aligned.range_start));
-            debug_assert_eq!(aligned.expected_queue_family_owner,
-                             range.expected_queue_family_owner);
-            debug_assert_eq!(aligned.queue_family_owner_transition,
-                             range.queue_family_owner_transition);
-            aligned
-        };
+    fn register_resources<Ib, Im>(&mut self, buffers: Ib, images: Im)
+        where Ib: IntoIterator<Item = (Arc<AbstractBuffer>, BufferGpuAccessRange)>,
+              Im: IntoIterator<Item = (Arc<AbstractImage>, ImageGpuAccessRange)>,
+    {
+        /*let mut buffer_barriers = SmallVec::<[_; 16]>::new();
+        let mut image_barriers = SmallVec::<[_; 16]>::new();*/
 
-        // TODO: handle memory barriers
+        for (buffer, range) in buffers {
+            // Align the range and check for correctness with debug_assert!.
+            let range = {
+                let aligned = buffer.memory().align(range);
+                debug_assert!(aligned.range_start <= range.range_start);
+                debug_assert!(aligned.range_size >= range.range_size +
+                                                    (range.range_start - aligned.range_start));
+                debug_assert_eq!(aligned.expected_queue_family_owner,
+                                 range.expected_queue_family_owner);
+                debug_assert_eq!(aligned.queue_family_owner_transition,
+                                 range.queue_family_owner_transition);
+                aligned
+            };
 
-        match self.buffer_resources.entry(AbstractBufferKey(buffer)) {
-            Entry::Occupied(mut e) => {
-                // FIXME: merge ranges correctly
-                e.get_mut().push(range);
-            },
-            Entry::Vacant(e) => {
-                let mut v = SmallVec::new();
-                v.push(range);
-                e.insert(v);
-            },
-        };
-    }
+            match self.buffer_resources.entry(AbstractBufferKey(buffer)) {
+                Entry::Occupied(mut e) => {
+                    // FIXME: merge ranges correctly
+                    e.get_mut().push(range);
+                },
+                Entry::Vacant(e) => {
+                    let mut v = SmallVec::new();
+                    v.push(range);
+                    e.insert(v);
+                },
+            };
+        }
 
-    /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self, image: Arc<AbstractImage>, range: ImageGpuAccessRange) {
-        // Align the range and check for correctness with debug_assert!.
-        let range = {
-            let aligned = image.memory().align(range);
-            debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
-            debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
+        for (image, range) in images {
+            // Align the range and check for correctness with debug_assert!.
+            let range = {
+                let aligned = image.memory().align(range);
+                debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
+                debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
                                           (range.mipmap_level_start - aligned.mipmap_level_start));
-            debug_assert!(aligned.array_layer_start <= range.array_layer_start);
-            debug_assert!(aligned.array_layers_count >= range.array_layers_count +
+                debug_assert!(aligned.array_layer_start <= range.array_layer_start);
+                debug_assert!(aligned.array_layers_count >= range.array_layers_count +
                                             (range.array_layer_start - aligned.array_layer_start));
-            debug_assert_eq!(aligned.write, range.write);
-            debug_assert_eq!(aligned.expected_queue_family_owner,
-                             range.expected_queue_family_owner);
-            debug_assert_eq!(aligned.queue_family_owner_transition,
-                             range.queue_family_owner_transition);
-            debug_assert_eq!(aligned.expected_layout, range.expected_layout);
-            debug_assert_eq!(aligned.layout_transition, range.layout_transition);
-            aligned
-        };
+                debug_assert_eq!(aligned.write, range.write);
+                debug_assert_eq!(aligned.expected_queue_family_owner,
+                                 range.expected_queue_family_owner);
+                debug_assert_eq!(aligned.queue_family_owner_transition,
+                                 range.queue_family_owner_transition);
+                debug_assert_eq!(aligned.expected_layout, range.expected_layout);
+                debug_assert_eq!(aligned.layout_transition, range.layout_transition);
+                aligned
+            };
 
-        // TODO: handle memory barriers
+            // TODO: handle memory barriers
 
-        match self.image_resources.entry(AbstractImageKey(image)) {
-            Entry::Occupied(mut e) => {
-                // FIXME: merge ranges correctly
-                e.get_mut().push(range);
-            },
-            Entry::Vacant(e) => {
-                let mut v = SmallVec::new();
-                v.push(range);
-                e.insert(v);
-            },
-        };
+            match self.image_resources.entry(AbstractImageKey(image)) {
+                Entry::Occupied(mut e) => {
+                    // FIXME: merge ranges correctly
+                    e.get_mut().push(range);
+                },
+                Entry::Vacant(e) => {
+                    let mut v = SmallVec::new();
+                    v.push(range);
+                    e.insert(v);
+                },
+            };
+        }
+
+        // TODO:
+        /*if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
+            let vk = self.device.pointers();
+            vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
+                                  0 /* TODO */, 0, ptr::null(),
+                                  buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                  image_barriers.len() as u32, image_barriers.as_ptr());
+        }*/
     }
 }
 
