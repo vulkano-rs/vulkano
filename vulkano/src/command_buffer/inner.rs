@@ -793,9 +793,59 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
 
-            // ending the commands recording
+            // We need to transition back queue ownership and image layouts.
+            {
+                let buffer_barriers: SmallVec<[vk::BufferMemoryBarrier; 8]> = SmallVec::new();     // TODO: infer VkBufferMemoryBarrier
+
+                let image_barriers: SmallVec<[_; 8]> = self.externsync_image_resources.iter_mut().flat_map(|(image, ranges)| {
+                    let image = image.clone();
+                    ranges.iter_mut().filter_map(move |range| {
+                        let mandatory_layout = image.0.memory().mandatory_layout(range.mipmap_level_start .. range.mipmap_level_start + range.mipmap_levels_count,
+                                                                                 range.array_layer_start .. range.array_layer_start + range.array_layers_count);
+
+                        if let Some(mandatory_layout) = mandatory_layout {
+                            if mandatory_layout != range.layout_transition {
+                                let barrier = vk::ImageMemoryBarrier {
+                                    sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                    pNext: ptr::null(),
+                                    srcAccessMask: 0x0001ffff,  // FIXME:
+                                    dstAccessMask: 0x0001ffff,  // FIXME:
+                                    oldLayout: range.layout_transition as u32,
+                                    newLayout: mandatory_layout as u32,
+                                    srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                    dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                    image: image.0.internal_object(),
+                                    subresourceRange: vk::ImageSubresourceRange {
+                                        aspectMask: 1,        // FIXME:
+                                        baseMipLevel: range.mipmap_level_start,
+                                        levelCount: range.mipmap_levels_count,
+                                        baseArrayLayer: range.array_layer_start,
+                                        layerCount: range.array_layers_count,
+                                    }
+                                };
+
+                                range.layout_transition = mandatory_layout;
+
+                                return Some(barrier);
+                            }
+                        }
+
+                        None
+                    })
+                }).collect();
+
+                if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
+                    vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
+                                          0 /* TODO */, 0, ptr::null(),
+                                          buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                          image_barriers.len() as u32, image_barriers.as_ptr());
+                }
+            }
+
+            // Ending the commands recording.
             try!(check_errors(vk.EndCommandBuffer(cmd)));
 
+            // Building the command buffer wrapper.
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
@@ -812,12 +862,19 @@ impl InnerCommandBufferBuilder {
         }
     }
 
+    /// Must be called before each command that uses resources. The parameter must indicate how
+    /// each resource is going to be used by the following command.
+    ///
+    /// The function ensures that the resources will be in the appropriate state.
     fn register_resources<Ib, Im>(&mut self, buffers: Ib, images: Im)
         where Ib: IntoIterator<Item = (Arc<AbstractBuffer>, BufferInnerSync)>,
               Im: IntoIterator<Item = (Arc<AbstractImage>, ImageInnerSync)>,
     {
-        /*let mut buffer_barriers = SmallVec::<[_; 16]>::new();
-        let mut image_barriers = SmallVec::<[_; 16]>::new();*/
+        // TODO: check that there's no overlap in the resources
+        // TODO: handle memory aliasing?
+
+        let mut buffer_barriers = SmallVec::<[vk::BufferMemoryBarrier; 16]>::new();     // TODO: infer VkBufferMemoryBarrier
+        let mut image_barriers = SmallVec::<[_; 16]>::new();
 
         for (buffer, inner_sync) in buffers {
             let buffer_memory = buffer.memory();
@@ -906,6 +963,9 @@ impl InnerCommandBufferBuilder {
                 aligned
             };
 
+            let mandatory_layout = image_memory.mandatory_layout(range.mipmap_level_start .. range.mipmap_level_start + range.mipmap_levels_count,
+                                                                 range.array_layer_start .. range.array_layer_start + range.array_layers_count);
+
             // TODO: handle memory barriers
 
             match self.externsync_image_resources.entry(AbstractImageKey(image.clone())) {
@@ -917,18 +977,42 @@ impl InnerCommandBufferBuilder {
                     let mut v = SmallVec::new();
                     v.push(range);
                     e.insert(v);
+
+                    if let Some(mandatory_layout) = mandatory_layout {
+                        if mandatory_layout != inner_sync.layout {
+                            image_barriers.push(vk::ImageMemoryBarrier {
+                                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                pNext: ptr::null(),
+                                srcAccessMask: 0x0001ffff,  // FIXME:
+                                dstAccessMask: 0x0001ffff,  // FIXME:
+                                oldLayout: mandatory_layout as u32,
+                                newLayout: inner_sync.layout as u32,
+                                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                image: image.internal_object(),
+                                subresourceRange: vk::ImageSubresourceRange {
+                                    aspectMask: 1,        // FIXME:
+                                    baseMipLevel: range.mipmap_level_start,
+                                    levelCount: range.mipmap_levels_count,
+                                    baseArrayLayer: range.array_layer_start,
+                                    layerCount: range.array_layers_count,
+                                }
+                            });
+                        }
+                    }
                 },
             };
         }
 
-        // TODO:
-        /*if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
-            let vk = self.device.pointers();
-            vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
-                                  0 /* TODO */, 0, ptr::null(),
-                                  buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
-                                  image_barriers.len() as u32, image_barriers.as_ptr());
-        }*/
+        if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
+            unsafe {
+                let vk = self.device.pointers();
+                vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
+                                      0 /* TODO */, 0, ptr::null(),
+                                      buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                      image_barriers.len() as u32, image_barriers.as_ptr());
+            }
+        }
     }
 }
 
