@@ -15,7 +15,6 @@
 //! buffers.
 //!
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
@@ -595,6 +594,9 @@ pub unsafe trait ImageMemorySourceChunk {
     fn properties(&self) -> ChunkProperties;
 
     #[inline]
+    fn align(&self, range: GpuAccessRange) -> GpuAccessRange { range }
+
+    #[inline]
     fn requires_fence(&self) -> bool { true }
 
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
@@ -602,9 +604,13 @@ pub unsafe trait ImageMemorySourceChunk {
 }
 
 // TODO: that's a draft
+#[derive(Copy, Clone, Debug)]
 pub struct GpuAccessRange {
-    pub mipmap_level_range: Range<u32>,
-    pub array_layer_range: Range<u32>,
+    pub mipmap_level_start: u32,
+    pub mipmap_levels_count: u32,       // TODO: use std::ops::Range once it implements Copy
+    pub array_layer_start: u32,
+    pub array_layers_count: u32,        // TODO: use std::ops::Range once it implements Copy
+    pub write: bool,
     pub expected_queue_family_owner: Option<u32>,
     pub queue_family_owner_transition: Option<u32>,
     pub expected_layout: Layout,

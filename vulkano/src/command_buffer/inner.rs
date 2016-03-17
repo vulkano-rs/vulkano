@@ -29,9 +29,11 @@ use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use image::AbstractImage;
 use image::AbstractImageView;
+use image::GpuAccessRange as ImageGpuAccessRange;
 use image::Image;
 use image::ImageTypeMarker;
 use image::ImageMemorySource;
+use image::Layout as ImageLayout;
 use pipeline::GenericPipeline;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -39,7 +41,6 @@ use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 
 use device::Device;
@@ -73,7 +74,7 @@ pub struct InnerCommandBufferBuilder {
     // List of all resources that are used by this command buffer.
     buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
 
-    image_resources: Vec<Arc<AbstractImage>>,
+    image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
     // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
@@ -219,7 +220,7 @@ impl InnerCommandBufferBuilder {
             keep_alive_framebuffers: framebuffers,
             keep_alive_renderpasses: renderpasses,
             buffer_resources: HashMap::new(),
-            image_resources: Vec::new(),
+            image_resources: HashMap::new(),
             keep_alive_image_views_resources: Vec::new(),
             keep_alive_pipelines: Vec::new(),
             graphics_pipeline: None,
@@ -239,7 +240,7 @@ impl InnerCommandBufferBuilder {
         self.keep_alive_secondary_command_buffers.push(cb_arc);
 
         for (k, v) in cb.buffer_resources.iter() { self.buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
-        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
+        for (k, v) in cb.image_resources.iter() { self.image_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
 
         {
             let vk = self.device.pointers();
@@ -460,6 +461,7 @@ impl InnerCommandBufferBuilder {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
+
         self.add_buffer_resource(source.buffer().clone(), BufferGpuAccessRange {
             range_start: source.offset(),
             range_size: source.size(),
@@ -467,7 +469,18 @@ impl InnerCommandBufferBuilder {
             expected_queue_family_owner: None,
             queue_family_owner_transition: None,
         });
-        self.add_image_resource(image.clone() as Arc<_>, true);
+
+        self.add_image_resource(image.clone() as Arc<_>, ImageGpuAccessRange {
+            mipmap_level_start: 0,      // FIXME:
+            mipmap_levels_count: 1,     // FIXME:
+            array_layer_start: 0,       // FIXME:
+            array_layers_count: 1,      // FIXME:
+            write: true,
+            expected_queue_family_owner: None,
+            queue_family_owner_transition: None,
+            expected_layout: ImageLayout::TransferDstOptimal,       // TODO: can General as well
+            layout_transition: ImageLayout::TransferDstOptimal,     // TODO: can General as well
+        });
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -832,18 +845,6 @@ impl InnerCommandBufferBuilder {
             // ending the commands recording
             try!(check_errors(vk.EndCommandBuffer(cmd)));
 
-            // Computing the list of image resources by removing duplicates.
-            // TODO: image views as well
-            let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.image_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractImage == &**elem as *const AbstractImage).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
-
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
@@ -853,7 +854,7 @@ impl InnerCommandBufferBuilder {
                 keep_alive_framebuffers: mem::replace(&mut self.keep_alive_framebuffers, Vec::new()),
                 keep_alive_renderpasses: mem::replace(&mut self.keep_alive_renderpasses, Vec::new()),
                 buffer_resources: mem::replace(&mut self.buffer_resources, HashMap::new()),
-                image_resources: image_resources,
+                image_resources: mem::replace(&mut self.image_resources, HashMap::new()),
                 keep_alive_image_views_resources: mem::replace(&mut self.keep_alive_image_views_resources, Vec::new()),
                 keep_alive_pipelines: mem::replace(&mut self.keep_alive_pipelines, Vec::new()),
             })
@@ -862,8 +863,7 @@ impl InnerCommandBufferBuilder {
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, range: BufferGpuAccessRange)
-    {
+    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, range: BufferGpuAccessRange) {
         // Align the range and check for correctness with debug_assert!.
         let range = {
             let aligned = buffer.memory().align(range);
@@ -893,8 +893,39 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self, image: Arc<AbstractImage>, _write: bool) {   // TODO:
-        self.image_resources.push(image);
+    fn add_image_resource(&mut self, image: Arc<AbstractImage>, range: ImageGpuAccessRange) {
+        // Align the range and check for correctness with debug_assert!.
+        let range = {
+            let aligned = image.memory().align(range);
+            debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
+            debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
+                                          (range.mipmap_level_start - aligned.mipmap_level_start));
+            debug_assert!(aligned.array_layer_start <= range.array_layer_start);
+            debug_assert!(aligned.array_layers_count >= range.array_layers_count +
+                                            (range.array_layer_start - aligned.array_layer_start));
+            debug_assert_eq!(aligned.write, range.write);
+            debug_assert_eq!(aligned.expected_queue_family_owner,
+                             range.expected_queue_family_owner);
+            debug_assert_eq!(aligned.queue_family_owner_transition,
+                             range.queue_family_owner_transition);
+            debug_assert_eq!(aligned.expected_layout, range.expected_layout);
+            debug_assert_eq!(aligned.layout_transition, range.layout_transition);
+            aligned
+        };
+
+        // TODO: handle memory barriers
+
+        match self.image_resources.entry(AbstractImageKey(image)) {
+            Entry::Occupied(mut e) => {
+                // FIXME: merge ranges correctly
+                e.get_mut().push(range);
+            },
+            Entry::Vacant(e) => {
+                let mut v = SmallVec::new();
+                v.push(range);
+                e.insert(v);
+            },
+        };
     }
 }
 
@@ -923,7 +954,7 @@ pub struct InnerCommandBuffer {
     keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
     buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
-    image_resources: Vec<Arc<AbstractImage>>,
+    image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
     keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
     keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 }
@@ -975,26 +1006,20 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         }
     }
 
-    for resource in me.image_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
+    for (resource, ranges) in me.image_resources.iter() {
+        unsafe {
+            let result = resource.0.memory().gpu_access(queue, submission_id, ranges, Some(&fence));
 
-        } else {
-            None
-        };
+            if let Some(s) = result.pre_semaphore {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
 
-        // FIXME: for the moment `write` is always true ; that shouldn't be the case
-        let sem = unsafe {
-            resource.memory().gpu_access(queue, submission_id, &[], Some(&fence)).pre_semaphore     // FIXME: pass range and handle rest as well
-        };
-
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
+            if let Some(s) = result.post_semaphore {
+                post_semaphores.push(s.clone());
+                post_semaphores_ids.push(s.internal_object());
+            }
         }
     }
 
