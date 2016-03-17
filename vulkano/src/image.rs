@@ -28,7 +28,6 @@ use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -39,11 +38,11 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractImage: ::VulkanObjectU64 {
     fn memory(&self) -> &ImageMemorySourceChunk;
 }
 
-pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractImageView: ::VulkanObjectU64 {
     fn default_layout(&self) -> Layout;
 
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
@@ -400,25 +399,6 @@ unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
     #[inline]
     fn internal_object(&self) -> vk::Image {
         self.image
-    }
-}
-
-unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: ImageMemorySource
-{
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        &self.sharing
     }
 }
 
@@ -802,25 +782,6 @@ unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
     #[inline]
     fn internal_object(&self) -> vk::ImageView {
         self.view
-    }
-}
-
-unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: ImageMemorySource
-{
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        self.image.requires_fence()
-    }
-
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        self.image.requires_semaphore()
-    }
-
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        self.image.sharing_mode()
     }
 }
 

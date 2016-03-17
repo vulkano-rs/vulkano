@@ -41,7 +41,6 @@ use memory::ChunkProperties;
 use memory::MemorySource;
 use memory::MemorySourceChunk;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -52,7 +51,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractBuffer: ::VulkanObjectU64 {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 
@@ -269,23 +268,6 @@ impl<T, M> Buffer<[T], M> where M: BufferMemorySource {
     #[inline]
     pub fn len(&self) -> usize {
         self.size() / mem::size_of::<T>()
-    }
-}
-
-unsafe impl<T: ?Sized, M> Resource for Buffer<T, M> where M: BufferMemorySource {
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        &self.inner.sharing
     }
 }
 
