@@ -204,6 +204,15 @@ impl InnerCommandBufferBuilder {
             vk.CmdExecuteCommands(self.cmd.unwrap(), 1, &cb.cmd);
         }
 
+        // Resetting the state of the command buffer.
+        // The specs actually don't say anything about this, but one of the speakers at the
+        // GDC 2016 conference said this was the case. Since keeping the state is purely an
+        // optimization, we disable it just in case. This might be removed when things get
+        // clarified.
+        self.graphics_pipeline = None;
+        self.compute_pipeline = None;
+        self.dynamic_state = DynamicState::none();
+
         self
     }
 
