@@ -15,6 +15,7 @@
 //! buffers.
 //!
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
@@ -25,11 +26,7 @@ use device::Queue;
 use format::FormatDesc;
 use format::FormatTy;
 use memory::ChunkProperties;
-use memory::ChunkRange;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -40,41 +37,21 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
-    /// All images in vulkano must have a *default layout*. Whenever this image is used in a
-    /// command buffer, it is switched from this default layout to something else (if necessary),
-    /// then back again to the default.
-    fn default_layout(&self) -> Layout;
-    
-    /// Instructs the resource that it is going to be used by the GPU soon in the future. The
-    /// function should block if the memory is currently being accessed by the CPU.
-    ///
-    /// `write` indicates whether the GPU will write to the memory. If `false`, then it will only
-    /// be written.
-    ///
-    /// `queue` is the queue where the command buffer that accesses the memory will be submitted.
-    /// If the `gpu_access` function submits something to that queue, it will thus be submitted
-    /// beforehand. This behavior can be used for example to submit sparse binding commands.
-    ///
-    /// `fence` is a fence that will be signaled when this GPU access will stop. It should be
-    /// waited upon whenever the user wants to read this memory from the CPU. If `requires_fence`
-    /// returned false, then this value will be `None`.
-    ///
-    /// `semaphore` is a semaphore that will be signaled when this GPU access will stop. This value
-    /// is intended to be returned later, in a follow-up call to `gpu_access`. If
-    /// `requires_semaphore` returned false, then this value will be `None`.
-    ///
-    /// The function can return a semaphore which will be waited up by the GPU before the
-    /// work starts.
-    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
-                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+pub unsafe trait AbstractImage: ::VulkanObjectU64 {
+    fn memory(&self) -> &ImageMemorySourceChunk;
 }
 
-pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
+pub unsafe trait AbstractImageView: ::VulkanObjectU64 {
+    fn image(&self) -> Arc<AbstractImage>;
+
+    // TODO: remove
     fn default_layout(&self) -> Layout;
 
+    // TODO: remove
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>;
+
+    // TODO: move things below to AbstractImage
 
     /// True if the image can be used as a source for transfers.
     fn usage_transfer_src(&self) -> bool;
@@ -209,7 +186,7 @@ impl From<u32> for MipmapsCount {
 }
 
 /// A storage for pixels or arbitrary data.
-pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     device: Arc<Device>,
     image: vk::Image,
     memory: M::Chunk,
@@ -236,7 +213,7 @@ pub struct Image<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
-    where M: MemorySource, Ty: ImageTypeMarker, F: FormatDesc
+    where M: ImageMemorySource, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Creates a new image and allocates memory for it.
     ///
@@ -254,8 +231,6 @@ impl<Ty, F, M> Image<Ty, F, M>
         let vk = device.pointers();
 
         let usage = usage.to_usage_bits();
-
-        assert!(!memory.is_sparse());       // not implemented
 
         let samples = Ty::num_samples(num_samples);
         assert!(samples >= 1);
@@ -386,7 +361,7 @@ impl<Ty, F, M> Image<Ty, F, M>
 }
 
 impl<Ty, F, M> Image<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     /// Returns the dimensions of this image.
     #[inline]
@@ -422,7 +397,7 @@ impl<Ty, F, M> Image<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     type Object = vk::Image;
 
@@ -432,44 +407,17 @@ unsafe impl<Ty, F, M> VulkanObject for Image<Ty, F, M>
     }
 }
 
-unsafe impl<Ty, F, M> Resource for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
-{
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        self.memory.requires_fence()
-    }
-
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        self.memory.requires_semaphore()
-    }
-
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        &self.sharing
-    }
-}
-
 unsafe impl<Ty, F, M> AbstractImage for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
-    fn default_layout(&self) -> Layout {
-        self.layout
-    }
-
-    #[inline]
-    unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
-                         semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
-    {
-        // FIXME: if the image is in its initial transition phase, we need to a semaphore
-        self.memory.gpu_access(write, ChunkRange::All, queue, fence, semaphore)
+    fn memory(&self) -> &ImageMemorySourceChunk {
+        &self.memory
     }
 }
 
 impl<Ty, F, M> Drop for Image<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     #[inline]
     fn drop(&mut self) {
@@ -487,12 +435,12 @@ impl<Ty, F, M> Drop for Image<Ty, F, M>
 /// Prototype of an image.
 ///
 /// Needs to be transitionned to a proper layout in order to be turned into a regular `Image`.
-pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct ImagePrototype<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     image: Image<Ty, F, M>,
 }
 
 impl<Ty, F, M> ImagePrototype<Ty, F, M>
-    where M: MemorySource, Ty: ImageTypeMarker, F: FormatDesc
+    where M: ImageMemorySource, Ty: ImageTypeMarker, F: FormatDesc
 {
     /// Returns the dimensions of this image.
     #[inline]
@@ -618,6 +566,81 @@ impl<Ty, F, M> ImagePrototype<Ty, F, M>
     }
 }
 
+// TODO: that's a draft
+pub unsafe trait ImageMemorySource {
+    type Chunk: ImageMemorySourceChunk;
+
+    fn allocate(self, &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>;
+}
+
+// TODO: that's a draft
+pub unsafe trait ImageMemorySourceChunk {
+    ///
+    /// # Safety
+    ///
+    /// Must always return the same values.
+    ///
+    fn properties(&self) -> ChunkProperties;
+
+    /// Asks the chunk whether the expected layout is constant for a given subresource.
+    /// Called at command buffer construction.
+    ///
+    /// If this function returns `Some`, then the command buffer **must** assume that the given
+    /// subresource has the returned layout at the start of the command buffer execution.
+    ///
+    /// Calling `gpu_access` with this range **must** use a `expected_layout` and a
+    /// `layout_transition` equal to what is returned by this function.
+    fn mandatory_layout(&self, mipmap_level: Range<u32>, array_layer: Range<u32>) -> Option<Layout>;
+
+    /// Called at command buffer construction.
+    ///
+    /// Depending on the semantics of the memory management, it can be advantageous to align
+    /// subresources.
+    #[inline]
+    fn align(&self, range: GpuAccessRange) -> GpuAccessRange { range }
+    
+    /// If returns `false`, then it is assumed that this chunk is only ever accessed immutably
+    /// and doesn't need any synchronization. The `gpu_access` function will not be called at all.
+    ///
+    /// You are allowed to return `false` at first, and then `true` afterwards. However if you
+    /// returned `true` once, then the chunk must never be modified ever again.
+    #[inline]
+    fn requires_synchronization(&self) -> bool { true }
+
+    #[inline]
+    fn requires_fence(&self, mipmap_level: Range<u32>, array_layer: Range<u32>) -> bool { true }
+
+    /// Called right before a command buffer that uses this chunk is submitted.
+    ///
+    /// # Safety
+    ///
+    /// The `fence` passed as parameter, if any, must be signalled after the command buffer has
+    /// finished execution.
+    ///
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization;
+}
+
+// TODO: that's a draft
+#[derive(Copy, Clone, Debug)]
+pub struct GpuAccessRange {
+    pub mipmap_level_start: u32,
+    pub mipmap_levels_count: u32,       // TODO: use std::ops::Range once it implements Copy
+    pub array_layer_start: u32,
+    pub array_layers_count: u32,        // TODO: use std::ops::Range once it implements Copy
+    pub write: bool,
+    pub expected_queue_family_owner: Option<u32>,
+    pub queue_family_owner_transition: Option<u32>,
+    pub expected_layout: Layout,
+    pub layout_transition: Layout,
+}
+
+pub struct GpuAccessSynchronization {
+    pub pre_semaphore: Option<Arc<Semaphore>>,
+    pub post_semaphore: Option<Arc<Semaphore>>,
+}
+
 /// Describes how an image is going to be used. This is **not** an optimization.
 ///
 /// If you try to use an image in a way that you didn't declare, a panic will happen.
@@ -713,14 +736,14 @@ impl Usage {
 /// Accessing an image from within a shader can only be done through an `ImageView`. An `ImageView`
 /// represents a region of an image. You can also do things like creating a 2D view of a 3D
 /// image, swizzle the channels, or change the format of the texture (with some restrictions).
-pub struct ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+pub struct ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     image: Arc<Image<Ty, F, M>>,
     view: vk::ImageView,
     /// The view was created with identity swizzling.
     identity_swizzle: bool,
 }
 
-impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     /// Creates a new view from an image.
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
@@ -784,14 +807,14 @@ impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
     }
 }
 
-impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     // TODO: hack, remove
     #[doc(hidden)]
     pub fn id(&self) -> u64 { self.view }
 }
 
 unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker, M: ImageMemorySource
 {
     type Object = vk::ImageView;
 
@@ -801,38 +824,24 @@ unsafe impl<Ty, F, M> VulkanObject for ImageView<Ty, F, M>
     }
 }
 
-unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
-{
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        self.image.requires_fence()
-    }
-
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        self.image.requires_semaphore()
-    }
-
-    #[inline]
-    fn sharing_mode(&self) -> &SharingMode {
-        self.image.sharing_mode()
-    }
-}
-
 unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker + 'static, F: 'static, M: ImageMemorySource + 'static
 {
+    #[inline]
+    fn image(&self) -> Arc<AbstractImage> {
+        self.image.clone() as Arc<_>
+    }
+
     #[inline]
     fn default_layout(&self) -> Layout {
-        self.image.default_layout()
+        unimplemented!()
     }
 
     #[inline]
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
                          semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
     {
-        self.image.gpu_access(write, queue, fence, semaphore)
+        unimplemented!()
     }
 
     #[inline]
@@ -877,11 +886,11 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker + 'static, F: FormatDesc + 'static, M: ImageMemorySource + 'static
 {
 }
 
-impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: MemorySource {
+impl<Ty, F, M> Drop for ImageView<Ty, F, M> where Ty: ImageTypeMarker, M: ImageMemorySource {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -1258,7 +1267,7 @@ unsafe impl MultisampleType for TypeCubeArrayMultisample {
 /// This object doesn't correspond to any Vulkan object. It exists for the programmer's
 /// convenience.
 pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     image: &'a Arc<Image<Ty, F, M>>,
     base_mip_level: u32,
@@ -1268,7 +1277,7 @@ pub struct ImageSubresourceRange<'a, Ty: 'a, F: 'a, M: 'a>
 }
 
 impl<'a, Ty: 'a, F: 'a, M: 'a> From<&'a Arc<Image<Ty, F, M>>> for ImageSubresourceRange<'a, Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker, F: FormatDesc, M: ImageMemorySource
 {
     #[inline]
     fn from(image: &'a Arc<Image<Ty, F, M>>) -> ImageSubresourceRange<'a, Ty, F, M> {

@@ -36,6 +36,7 @@ pub struct Device {
     vk: vk::DevicePointers,
     features: Features,
     extensions: DeviceExtensions,
+    submission_id: Mutex<u64>,      // TODO: use AtomicUsize on 64bits platforms
 }
 
 impl Device {
@@ -158,6 +159,7 @@ impl Device {
             vk: vk,
             features: requested_features.clone(),
             extensions: extensions.clone(),
+            submission_id: Mutex::new(1),
         });
 
         // querying the queues
@@ -206,6 +208,17 @@ impl Device {
     #[inline]
     pub fn loaded_extensions(&self) -> &DeviceExtensions {
         &self.extensions
+    }
+
+    /// Fetches a new unique identifier for a queue submission.
+    ///
+    /// Used for synchronization mechanisms.
+    #[inline]
+    pub fn fetch_submission_id(&self) -> u64 {
+        let mut id = self.submission_id.lock().unwrap();
+        let result = *id;
+        *id += 1;
+        result
     }
 }
 

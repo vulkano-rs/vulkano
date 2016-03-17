@@ -28,24 +28,6 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-/// Base trait for objects that can be used as resources and must be synchronized.
-pub unsafe trait Resource {
-    /// Returns in which queue family or families this resource can be used.
-    fn sharing_mode(&self) -> &SharingMode;
-
-    /// Returns true if the `gpu_access` function should be passed a fence.
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        true
-    }
-
-    /// Returns true if the `gpu_access` function should be passed a semaphore.
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        true
-    }
-}
-
 /// Declares in which queue(s) a resource can be used.
 ///
 /// When you create a buffer or an image, you have to tell the Vulkan library in which queue

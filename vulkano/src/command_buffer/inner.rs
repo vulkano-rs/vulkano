@@ -1,11 +1,17 @@
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::hash;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::GpuAccessRange as BufferGpuAccessRange;
 use buffer::AbstractBuffer;
+use buffer::BufferMemorySource;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
@@ -24,9 +30,11 @@ use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use image::AbstractImage;
 use image::AbstractImageView;
+use image::GpuAccessRange as ImageGpuAccessRange;
 use image::Image;
 use image::ImageTypeMarker;
-use memory::MemorySource;
+use image::ImageMemorySource;
+use image::Layout as ImageLayout;
 use pipeline::GenericPipeline;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -34,7 +42,6 @@ use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 
 use device::Device;
@@ -47,46 +54,50 @@ use vk;
 
 /// Actual implementation of all command buffer builders.
 ///
-/// Doesn't check whether the command type is appropriate for the command buffer type.
+/// Mostly safe, except that it doesn't check whether the command types are appropriate for the
+/// command buffer type.
 pub struct InnerCommandBufferBuilder {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
+
+    // Should always be `Some`, except after we call `build`. If this value is still `Some`
+    // in the builder's destructor, we assume that the command buffer is to be destroyed.
     cmd: Option<vk::CommandBuffer>,
 
-    // List of secondary command buffers.
-    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    // For each buffer and image used by this command buffer, stores the way the buffer or
+    // image's `gpu_access` method is going to be called when the CB is submitted.
+    externsync_buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
+    externsync_image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
 
-    // List of descriptor sets used in this CB.
-    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
-
-    // List of framebuffers used in this CB.
-    framebuffers: Vec<Arc<AbstractFramebuffer>>,
-
-    // List of renderpasses used in this CB.
-    renderpasses: Vec<Arc<RenderPass>>,
-
-    // List of all resources that are used by this command buffer.
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
-
-    image_resources: Vec<Arc<AbstractImage>>,
-
-    // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
-    image_views_resources: Vec<Arc<AbstractImageView>>,
-
-    // List of pipelines that are used by this command buffer.
+    // When we are inside a render pass (between `CmdBeginRenderPass` and `CmdEndRenderPass`),
+    // all commands go within `renderpass_staged` instead of being appended directly to the
+    // command buffer and all used resources go inside the `renderpass_*_resources` variables.
     //
-    // These are stored just so that they don't get destroyed.
-    pipelines: Vec<Arc<GenericPipeline>>,
+    // When `CmdEndRenderPass` is called, all the commands here are flushed.
+    //
+    // This allows us to know which image layout transitions and which pipeline barriers are needed
+    // before the real command buffer enters the render pass, so that we can call
+    // `CmdPipelineBarrier` before `CmdBeginRenderPass`.
+    renderpass_staged: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
+    renderpass_buffer_resources: Vec<(Arc<AbstractBuffer>, BufferInnerSync)>,
+    renderpass_image_resources: Vec<(Arc<AbstractImage>, ImageInnerSync)>,
+
+    // These variables exist to keep the objects that are used by this command buffer alive.
+    keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+    keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
+    keep_alive_renderpasses: Vec<Arc<RenderPass>>,
+    keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
+    keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
-    graphics_pipeline: Option<vk::Pipeline>,
+    current_graphics_pipeline: Option<vk::Pipeline>,
 
     // Current pipeline object binded to the compute bind point.
-    compute_pipeline: Option<vk::Pipeline>,
+    current_compute_pipeline: Option<vk::Pipeline>,
 
     // Current state of the dynamic state within the command buffer.
-    dynamic_state: DynamicState,
+    current_dynamic_state: DynamicState,
 }
 
 impl InnerCommandBufferBuilder {
@@ -122,8 +133,8 @@ impl InnerCommandBufferBuilder {
             output
         };
 
-        let mut renderpasses = Vec::new();
-        let mut framebuffers = Vec::new();
+        let mut keepalive_renderpasses = Vec::new();
+        let mut keepalive_framebuffers = Vec::new();
 
         unsafe {
             // TODO: one time submit
@@ -131,14 +142,14 @@ impl InnerCommandBufferBuilder {
                         if secondary_cont.is_some() { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
 
             let (rp, sp) = if let Some(ref sp) = secondary_cont {
-                renderpasses.push(sp.render_pass().clone() as Arc<_>);
+                keepalive_renderpasses.push(sp.render_pass().clone() as Arc<_>);
                 (sp.render_pass().render_pass().internal_object(), sp.index())
             } else {
                 (0, 0)
             };
 
             let framebuffer = if let Some(fb) = secondary_cont_fb {
-                framebuffers.push(fb.clone() as Arc<_>);
+                keepalive_framebuffers.push(fb.clone() as Arc<_>);
                 fb.internal_object()
             } else {
                 0
@@ -169,17 +180,20 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
-            secondary_command_buffers: Vec::new(),
-            descriptor_sets: Vec::new(),
-            framebuffers: framebuffers,
-            renderpasses: renderpasses,
-            buffer_resources: Vec::new(),
-            image_resources: Vec::new(),
-            image_views_resources: Vec::new(),
-            pipelines: Vec::new(),
-            graphics_pipeline: None,
-            compute_pipeline: None,
-            dynamic_state: DynamicState::none(),
+            externsync_buffer_resources: HashMap::new(),
+            externsync_image_resources: HashMap::new(),
+            renderpass_staged: Vec::new(),
+            renderpass_buffer_resources: Vec::new(),
+            renderpass_image_resources: Vec::new(),
+            keep_alive_secondary_command_buffers: Vec::new(),
+            keep_alive_descriptor_sets: Vec::new(),
+            keep_alive_framebuffers: keepalive_framebuffers,
+            keep_alive_renderpasses: keepalive_renderpasses,
+            keep_alive_image_views_resources: Vec::new(),
+            keep_alive_pipelines: Vec::new(),
+            current_graphics_pipeline: None,
+            current_compute_pipeline: None,
+            current_dynamic_state: DynamicState::none(),
         })
     }
 
@@ -191,17 +205,25 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<AbstractCommandBuffer>,
                                        cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
-        self.secondary_command_buffers.push(cb_arc);
+        // By keeping the secondary command buffer itself alive, we also keep alive the resources
+        // that it uses internally.
+        self.keep_alive_secondary_command_buffers.push(cb_arc);
 
-        for p in cb.pipelines.iter() { self.pipelines.push(p.clone()); }
-        for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-        for r in cb.image_views_resources.iter() { self.image_views_resources.push(r.clone()); }
-        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
+        // FIXME: also add to renderpass_*_resources
+        for (k, v) in cb.externsync_buffer_resources.iter() { self.externsync_buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
+        for (k, v) in cb.externsync_image_resources.iter() { self.externsync_image_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
 
-        {
+        // Add the actual command.
+        if self.renderpass_staged.is_empty() {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdExecuteCommands(self.cmd.unwrap(), 1, &cb.cmd);
+
+        } else {
+            let secondary_cb = cb.cmd;
+            self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                vk.CmdExecuteCommands(cmd, 1, &secondary_cb);
+            }));
         }
 
         // Resetting the state of the command buffer.
@@ -209,9 +231,9 @@ impl InnerCommandBufferBuilder {
         // GDC 2016 conference said this was the case. Since keeping the state is purely an
         // optimization, we disable it just in case. This might be removed when things get
         // clarified.
-        self.graphics_pipeline = None;
-        self.compute_pipeline = None;
-        self.dynamic_state = DynamicState::none();
+        self.current_graphics_pipeline = None;
+        self.current_compute_pipeline = None;
+        self.current_dynamic_state = DynamicState::none();
 
         self
     }
@@ -231,7 +253,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(mut self, buffer: B, data: &T)
                                                           -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
+        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: BufferMemorySource
     {
         let buffer = buffer.into();
 
@@ -241,9 +263,10 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().usage_transfer_dest());
 
-        // FIXME: check queue family of the buffer
-
-        self.add_buffer_resource(buffer.buffer().clone(), true, buffer.offset(), buffer.size());
+        self.register_resources(Some((buffer.buffer().clone() as Arc<_>, BufferInnerSync {
+            range: buffer.offset() .. buffer.offset() + buffer.size(),
+            write: true,
+        })), None);
 
         {
             let vk = self.device.pointers();
@@ -272,7 +295,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn fill_buffer<T: 'static, M>(mut self, buffer: &Arc<Buffer<T, M>>, offset: usize,
                                              size: usize, data: u32) -> InnerCommandBufferBuilder
-        where M: MemorySource + 'static
+        where M: BufferMemorySource + 'static
     {
 
         assert!(self.pool.queue_family().supports_transfers());
@@ -281,7 +304,10 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.usage_transfer_dest());
 
-        self.add_buffer_resource(buffer.clone(), true, offset, size);
+        self.register_resources(Some((buffer.clone() as Arc<_>, BufferInnerSync {
+            range: offset .. offset + size,
+            write: true,
+        })), None);
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -314,20 +340,31 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn copy_buffer<T: ?Sized + 'static, Ms, Md>(mut self, source: &Arc<Buffer<T, Ms>>,
                                                            destination: &Arc<Buffer<T, Md>>)
                                                            -> InnerCommandBufferBuilder
-        where Ms: MemorySource + 'static, Md: MemorySource + 'static
+        where Ms: BufferMemorySource + 'static, Md: BufferMemorySource + 'static
     {
         assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
         assert!(source.usage_transfer_src());
         assert!(destination.usage_transfer_dest());
+
+        self.register_resources(
+            vec![
+                (source.clone() as Arc<_>, BufferInnerSync {
+                    range: 0 .. source.size(),
+                    write: false,
+                }),
+                (destination.clone() as Arc<_>, BufferInnerSync {
+                    range: 0 .. destination.size(),
+                    write: true,
+                })
+            ],
+            None
+        );
 
         let copy = vk::BufferCopy {
             srcOffset: 0,
             dstOffset: 0,
             size: source.size() as u64,     // FIXME: what is destination is too small?
         };
-
-        self.add_buffer_resource(source.clone(), false, 0, source.size());
-        self.add_buffer_resource(destination.clone(), true, 0, source.size());
 
         {
             let vk = self.device.pointers();
@@ -348,7 +385,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
                                                   color: F::ClearValue) -> InnerCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: MemorySource   // FIXME: should accept uint and int images too
+        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: ImageMemorySource   // FIXME: should accept uint and int images too
     {
         assert!(image.format().is_float()); // FIXME: should accept uint and int images too
 
@@ -370,7 +407,8 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
+            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(),
+                                  vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
                                   &color, 1, &range);
         }
 
@@ -388,14 +426,25 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized, Sm, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                                    -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker + 'static, Sm: MemorySource + 'static, So: 'static,
-              Im: MemorySource + 'static
+              Ty: ImageTypeMarker + 'static, Sm: BufferMemorySource + 'static, So: 'static,
+              Im: ImageMemorySource + 'static
     {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
-        self.add_buffer_resource(source.buffer().clone(), false, source.offset(), source.size());
-        self.add_image_resource(image.clone() as Arc<_>, true);
+
+        self.register_resources(
+            Some((source.buffer().clone() as Arc<_>, BufferInnerSync {
+                range: source.offset() .. source.offset() + source.size(),
+                write: false,
+            })).into_iter(),
+            Some((image.clone() as Arc<_>, ImageInnerSync {
+                mipmap_levels_range: 0 .. 1,     // FIXME:
+                array_layers_range: 0 .. 1,      // FIXME:
+                write: true,
+                layout: ImageLayout::TransferDstOptimal,       // TODO: can be General as well
+            })).into_iter()
+        );
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -463,17 +512,21 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.renderpass_buffer_resources.push((b.clone(), BufferInnerSync {
+                range: 0 .. b.size(),       // FIXME:
+                write: false,
+            }));
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
+        let num_vertices = vertices.1 as u32;
+        let num_instances = vertices.2 as u32;
+
+        self.renderpass_staged.push(Box::new(move |vk, cmd| {
+            vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
-            vk.CmdDraw(self.cmd.unwrap(), vertices.1 as u32, vertices.2 as u32, 0, 0);  // FIXME: params
-        }
+            vk.CmdDraw(cmd, num_vertices, num_instances, 0, 0);  // FIXME: params
+        }));
 
         self
     }
@@ -487,7 +540,7 @@ impl InnerCommandBufferBuilder {
               Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
-              Ibm: MemorySource
+              Ibm: BufferMemorySource
     {
 
         // FIXME: add buffers to the resources
@@ -502,24 +555,32 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.renderpass_buffer_resources.push((b.clone(), BufferInnerSync {
+                range: 0 .. b.size(),       // FIXME:
+                write: false,
+            }));
             b.internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().usage_index_buffer());
 
-        self.add_buffer_resource(indices.buffer().clone(), false, indices.offset(), indices.size());
+        self.renderpass_buffer_resources.push((indices.buffer().clone(), BufferInnerSync {
+            range: indices.offset() .. indices.offset() + indices.size(),
+            write: false,
+        }));
 
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
-                                  indices.offset() as u64, I::ty() as u32);
-            vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
-                                    offsets.as_ptr());
-            vk.CmdDrawIndexed(self.cmd.unwrap(), indices.len() as u32, vertices.2 as u32,
+        let indices_buffer_internal = indices.buffer().internal_object();
+        let indices_offset = indices.offset();
+        let indices_len = indices.len();
+        let vertices_num = vertices.2 as u32;
+
+        self.renderpass_staged.push(Box::new(move |vk, cmd| {
+            vk.CmdBindIndexBuffer(cmd, indices_buffer_internal, indices_offset as u64,
+                                  I::ty() as u32);
+            vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
+            vk.CmdDrawIndexed(cmd, indices_len as u32, vertices_num as u32,
                               0, 0, 0);  // FIXME: params
-        }
+        }));
 
         self
     }
@@ -533,23 +594,28 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.compute_pipeline != Some(pipeline.internal_object()) {
-                vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
-                                   pipeline.internal_object());
-                self.pipelines.push(pipeline.clone());
-                self.compute_pipeline = Some(pipeline.internal_object());
+            if self.current_compute_pipeline != Some(pipeline.internal_object()) {
+                let pipeline_internal = pipeline.internal_object();
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_COMPUTE, pipeline_internal);
+                }));
+                self.keep_alive_pipelines.push(pipeline.clone());
+                self.current_compute_pipeline = Some(pipeline.internal_object());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
-            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            for d in descriptor_sets.iter() { self.keep_alive_descriptor_sets.push(d.clone()); }
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.is_empty() {
-                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
-                                         pipeline.layout().internal_object(), 0,
-                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
-                                         0, ptr::null());   // FIXME: dynamic offsets
+                let pipeline_layout_internal = pipeline.layout().internal_object();
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
+                                             pipeline_layout_internal, 0,
+                                             descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
+                                             0, ptr::null());   // FIXME: dynamic offsets
+                }));
             }
         }
     }
@@ -564,19 +630,23 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.graphics_pipeline != Some(pipeline.internal_object()) {
-                vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
-                                   pipeline.internal_object());
-                self.pipelines.push(pipeline.clone());
-                self.graphics_pipeline = Some(pipeline.internal_object());
+            if self.current_graphics_pipeline != Some(pipeline.internal_object()) {
+                let pipeline_internal = pipeline.internal_object();
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline_internal);
+                }));
+                self.keep_alive_pipelines.push(pipeline.clone());
+                self.current_graphics_pipeline = Some(pipeline.internal_object());
             }
 
             if let Some(line_width) = dynamic.line_width {
                 assert!(pipeline.has_dynamic_line_width());
                 // TODO: check limits
-                if self.dynamic_state.line_width != Some(line_width) {
-                    vk.CmdSetLineWidth(self.cmd.unwrap(), line_width);
-                    self.dynamic_state.line_width = Some(line_width);
+                if self.current_dynamic_state.line_width != Some(line_width) {
+                    self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                        vk.CmdSetLineWidth(cmd, line_width);
+                    }));
+                    self.current_dynamic_state.line_width = Some(line_width);
                 }
             } else {
                 assert!(!pipeline.has_dynamic_line_width());
@@ -588,7 +658,9 @@ impl InnerCommandBufferBuilder {
                 // TODO: check limits
                 // TODO: cache state?
                 let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetViewport(self.cmd.unwrap(), 0, viewports.len() as u32, viewports.as_ptr());
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
+                }));
             } else {
                 assert!(!pipeline.has_dynamic_viewports());
             }
@@ -600,13 +672,15 @@ impl InnerCommandBufferBuilder {
                 // TODO: cache state?
                 // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
                 let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetScissor(self.cmd.unwrap(), 0, scissors.len() as u32, scissors.as_ptr());
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
+                }));
             } else {
                 assert!(!pipeline.has_dynamic_scissors());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
-            for d in descriptor_sets.iter() { self.descriptor_sets.push(d.clone()); }
+            for d in descriptor_sets.iter() { self.keep_alive_descriptor_sets.push(d.clone()); }
             let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
 
             // FIXME: input attachments of descriptor sets have to be checked against input
@@ -614,10 +688,14 @@ impl InnerCommandBufferBuilder {
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.is_empty() {
-                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
-                                         pipeline.layout().internal_object(), 0,
-                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
-                                         0, ptr::null());   // FIXME: dynamic offsets
+                let pipeline_layout_internal = pipeline.layout().internal_object();
+
+                self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS,
+                                             pipeline_layout_internal, 0,
+                                             descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
+                                             0, ptr::null());   // FIXME: dynamic offsets
+                }));
             }
         }
     }
@@ -641,8 +719,8 @@ impl InnerCommandBufferBuilder {
     {
         assert!(framebuffer.is_compatible_with(render_pass));
 
-        self.framebuffers.push(framebuffer.clone() as Arc<_>);
-        self.renderpasses.push(render_pass.clone() as Arc<_>);
+        self.keep_alive_framebuffers.push(framebuffer.clone() as Arc<_>);
+        self.keep_alive_renderpasses.push(render_pass.clone() as Arc<_>);
 
         let clear_values = clear_values.iter().map(|value| {
             match *value {
@@ -664,70 +742,86 @@ impl InnerCommandBufferBuilder {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        // FIXME: change attachment image layouts if necessary, for both initial and final
-        /*for attachment in R::attachments() {
-
-        }*/
-
         for attachment in framebuffer.attachments() {
-            self.image_views_resources.push(attachment.clone());
+            self.keep_alive_image_views_resources.push(attachment.clone());
+            self.renderpass_image_resources.push((attachment.image(), ImageInnerSync {
+                mipmap_levels_range: 0 .. 1,        // FIXME:
+                array_layers_range: 0 .. 1,     // FIXME:
+                write: true,
+                layout: ImageLayout::PresentSrc,
+            }));
         }
 
-        let infos = vk::RenderPassBeginInfo {
-            sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            pNext: ptr::null(),
-            renderPass: render_pass.render_pass().internal_object(),
-            framebuffer: framebuffer.internal_object(),
-            renderArea: vk::Rect2D {                // TODO: let user customize
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: framebuffer.width(),
-                    height: framebuffer.height(),
+        let content = if secondary_cmd_buffers {
+            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+        } else {
+            vk::SUBPASS_CONTENTS_INLINE
+        };
+
+        let renderpass_internal = render_pass.render_pass().internal_object();
+        let framebuffer_internal = framebuffer.internal_object();
+        let framebuffer_width = framebuffer.width();
+        let framebuffer_height = framebuffer.height();
+
+        self.renderpass_staged.push(Box::new(move |vk, cmd| {
+            let infos = vk::RenderPassBeginInfo {
+                sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                pNext: ptr::null(),
+                renderPass: renderpass_internal,
+                framebuffer: framebuffer_internal,
+                renderArea: vk::Rect2D {                // TODO: let user customize
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: vk::Extent2D {
+                        width: framebuffer_width,
+                        height: framebuffer_height,
+                    },
                 },
-            },
-            clearValueCount: clear_values.len() as u32,
-            pClearValues: clear_values.as_ptr(),
-        };
+                clearValueCount: clear_values.len() as u32,
+                pClearValues: clear_values.as_ptr(),
+            };
 
+            vk.CmdBeginRenderPass(cmd, &infos, content);
+        }));
+
+        self
+    }
+
+    #[inline]
+    pub unsafe fn next_subpass(mut self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
         let content = if secondary_cmd_buffers {
             vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
         } else {
             vk::SUBPASS_CONTENTS_INLINE
         };
 
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBeginRenderPass(self.cmd.unwrap(), &infos, content);
-        }
+        self.renderpass_staged.push(Box::new(move |vk, cmd| {
+            vk.CmdNextSubpass(cmd, content);
+        }));
 
         self
     }
 
     #[inline]
-    pub unsafe fn next_subpass(self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
-        let content = if secondary_cmd_buffers {
-            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-        } else {
-            vk::SUBPASS_CONTENTS_INLINE
-        };
+    pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
+        {
+            let bufs = mem::replace(&mut self.renderpass_buffer_resources, Vec::new()).into_iter();
+            let img = mem::replace(&mut self.renderpass_image_resources, Vec::new()).into_iter();
+            self.register_resources(bufs, img);
+        }
 
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdNextSubpass(self.cmd.unwrap(), content);
+            let cmd = self.cmd.unwrap();
+
+            for mut command in mem::replace(&mut self.renderpass_staged, Vec::new()).into_iter() {
+                command(vk, cmd);
+            }
+
+            vk.CmdEndRenderPass(cmd);
         }
 
-        self
-    }
-
-    #[inline]
-    pub unsafe fn end_renderpass(self) -> InnerCommandBufferBuilder {
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdEndRenderPass(self.cmd.unwrap());
-        }
+        // FIXME: for each attachment, update externsync_image_resources with the layout transitions
 
         self
     }
@@ -735,64 +829,234 @@ impl InnerCommandBufferBuilder {
     /// Finishes building the command buffer.
     pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
         unsafe {
+            debug_assert!(self.renderpass_staged.is_empty());
+            debug_assert!(self.renderpass_buffer_resources.is_empty());
+            debug_assert!(self.renderpass_image_resources.is_empty());
+
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
 
-            // ending the commands recording
+            // We need to transition back queue ownership and image layouts.
+            {
+                let buffer_barriers: SmallVec<[vk::BufferMemoryBarrier; 8]> = SmallVec::new();     // TODO: infer VkBufferMemoryBarrier
+
+                let image_barriers: SmallVec<[_; 8]> = self.externsync_image_resources.iter_mut().flat_map(|(image, ranges)| {
+                    let image = image.clone();
+                    ranges.iter_mut().filter_map(move |range| {
+                        let mandatory_layout = image.0.memory().mandatory_layout(range.mipmap_level_start .. range.mipmap_level_start + range.mipmap_levels_count,
+                                                                                 range.array_layer_start .. range.array_layer_start + range.array_layers_count);
+
+                        if let Some(mandatory_layout) = mandatory_layout {
+                            if mandatory_layout != range.layout_transition {
+                                let barrier = vk::ImageMemoryBarrier {
+                                    sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                    pNext: ptr::null(),
+                                    srcAccessMask: 0x0001ffff,  // FIXME:
+                                    dstAccessMask: 0x0001ffff,  // FIXME:
+                                    oldLayout: range.layout_transition as u32,
+                                    newLayout: mandatory_layout as u32,
+                                    srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                    dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                    image: image.0.internal_object(),
+                                    subresourceRange: vk::ImageSubresourceRange {
+                                        aspectMask: 1,        // FIXME:
+                                        baseMipLevel: range.mipmap_level_start,
+                                        levelCount: range.mipmap_levels_count,
+                                        baseArrayLayer: range.array_layer_start,
+                                        layerCount: range.array_layers_count,
+                                    }
+                                };
+
+                                range.layout_transition = mandatory_layout;
+
+                                return Some(barrier);
+                            }
+                        }
+
+                        None
+                    })
+                }).collect();
+
+                if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
+                    vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
+                                          0 /* TODO */, 0, ptr::null(),
+                                          buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                          image_barriers.len() as u32, image_barriers.as_ptr());
+                }
+            }
+
+            // Ending the commands recording.
             try!(check_errors(vk.EndCommandBuffer(cmd)));
 
-            // Computing the list of buffer resources by removing duplicates.
-            let buffer_resources = self.buffer_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.buffer_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractBuffer == &**elem as *const AbstractBuffer).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
-
-            // Computing the list of image resources by removing duplicates.
-            // TODO: image views as well
-            let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.image_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractImage == &**elem as *const AbstractImage).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
-
+            // Building the command buffer wrapper.
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
-                secondary_command_buffers: mem::replace(&mut self.secondary_command_buffers, Vec::new()),
-                descriptor_sets: mem::replace(&mut self.descriptor_sets, Vec::new()),
-                framebuffers: mem::replace(&mut self.framebuffers, Vec::new()),
-                renderpasses: mem::replace(&mut self.renderpasses, Vec::new()),
-                buffer_resources: buffer_resources,
-                image_resources: image_resources,
-                image_views_resources: mem::replace(&mut self.image_views_resources, Vec::new()),
-                pipelines: mem::replace(&mut self.pipelines, Vec::new()),
+                externsync_buffer_resources: mem::replace(&mut self.externsync_buffer_resources, HashMap::new()),
+                externsync_image_resources: mem::replace(&mut self.externsync_image_resources, HashMap::new()),
+                keep_alive_secondary_command_buffers: mem::replace(&mut self.keep_alive_secondary_command_buffers, Vec::new()),
+                keep_alive_descriptor_sets: mem::replace(&mut self.keep_alive_descriptor_sets, Vec::new()),
+                keep_alive_framebuffers: mem::replace(&mut self.keep_alive_framebuffers, Vec::new()),
+                keep_alive_renderpasses: mem::replace(&mut self.keep_alive_renderpasses, Vec::new()),
+                keep_alive_image_views_resources: mem::replace(&mut self.keep_alive_image_views_resources, Vec::new()),
+                keep_alive_pipelines: mem::replace(&mut self.keep_alive_pipelines, Vec::new()),
             })
         }
     }
 
-    /// Adds a buffer resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, write: bool, offset: usize,
-                           size: usize)
+    /// Must be called before each command that uses resources. The parameter must indicate how
+    /// each resource is going to be used by the following command.
+    ///
+    /// The function ensures that the resources will be in the appropriate state.
+    fn register_resources<Ib, Im>(&mut self, buffers: Ib, images: Im)
+        where Ib: IntoIterator<Item = (Arc<AbstractBuffer>, BufferInnerSync)>,
+              Im: IntoIterator<Item = (Arc<AbstractImage>, ImageInnerSync)>,
     {
-        // TODO: handle memory barriers
-        self.buffer_resources.push(buffer);
-    }
+        // TODO: check that there's no overlap in the resources
+        // TODO: handle memory aliasing?
 
-    /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self, image: Arc<AbstractImage>, _write: bool) {   // TODO:
-        self.image_resources.push(image);
+        let mut buffer_barriers = SmallVec::<[vk::BufferMemoryBarrier; 16]>::new();     // TODO: infer VkBufferMemoryBarrier
+        let mut image_barriers = SmallVec::<[_; 16]>::new();
+
+        for (buffer, inner_sync) in buffers {
+            let buffer_memory = buffer.memory();
+
+            // Memory chunk implementations can just tell us to ignore any synchronization as an
+            // optimization.
+            if !buffer_memory.requires_synchronization() {
+                continue;
+            }
+
+            // Align the range and check for correctness with debug_assert!.
+            let range = {
+                let range = BufferGpuAccessRange {
+                    range_start: inner_sync.range.start,
+                    range_size: inner_sync.range.end - inner_sync.range.start,
+                    write: inner_sync.write,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                };
+
+                let aligned = buffer_memory.align(range);
+
+                debug_assert!(aligned.range_start <= range.range_start);
+                debug_assert!(aligned.range_size >= range.range_size +
+                                                    (range.range_start - aligned.range_start));
+                debug_assert_eq!(aligned.expected_queue_family_owner,
+                                 range.expected_queue_family_owner);
+                debug_assert_eq!(aligned.queue_family_owner_transition,
+                                 range.queue_family_owner_transition);
+                aligned
+            };
+
+            match self.externsync_buffer_resources.entry(AbstractBufferKey(buffer.clone())) {
+                Entry::Occupied(mut e) => {
+                    // FIXME: merge ranges correctly
+                    e.get_mut().push(range);
+                },
+                Entry::Vacant(e) => {
+                    let mut v = SmallVec::new();
+                    v.push(range);
+                    e.insert(v);
+                },
+            };
+        }
+
+        for (image, inner_sync) in images {
+            let image_memory = image.memory();
+
+            // Memory chunk implementations can just tell us to ignore any synchronization as an
+            // optimization.
+            if !image_memory.requires_synchronization() {
+                continue;
+            }
+
+            // Align the range and check for correctness with debug_assert!.
+            let range = {
+                let range = ImageGpuAccessRange {
+                    mipmap_level_start: inner_sync.mipmap_levels_range.start,
+                    mipmap_levels_count: inner_sync.mipmap_levels_range.end -
+                                         inner_sync.mipmap_levels_range.start,
+                    array_layer_start: inner_sync.array_layers_range.start,
+                    array_layers_count: inner_sync.array_layers_range.end -
+                                        inner_sync.array_layers_range.start,
+                    write: inner_sync.write,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                    expected_layout: inner_sync.layout,
+                    layout_transition: inner_sync.layout,
+                };
+
+                let aligned = image_memory.align(range);
+
+                debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
+                debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
+                                          (range.mipmap_level_start - aligned.mipmap_level_start));
+                debug_assert!(aligned.array_layer_start <= range.array_layer_start);
+                debug_assert!(aligned.array_layers_count >= range.array_layers_count +
+                                            (range.array_layer_start - aligned.array_layer_start));
+                debug_assert_eq!(aligned.write, range.write);
+                debug_assert_eq!(aligned.expected_queue_family_owner,
+                                 range.expected_queue_family_owner);
+                debug_assert_eq!(aligned.queue_family_owner_transition,
+                                 range.queue_family_owner_transition);
+                debug_assert_eq!(aligned.expected_layout, range.expected_layout);
+                debug_assert_eq!(aligned.layout_transition, range.layout_transition);
+                aligned
+            };
+
+            let mandatory_layout = image_memory.mandatory_layout(range.mipmap_level_start .. range.mipmap_level_start + range.mipmap_levels_count,
+                                                                 range.array_layer_start .. range.array_layer_start + range.array_layers_count);
+
+            // TODO: handle memory barriers
+
+            match self.externsync_image_resources.entry(AbstractImageKey(image.clone())) {
+                Entry::Occupied(mut e) => {
+                    // FIXME: merge ranges correctly
+                    e.get_mut().push(range);
+                },
+                Entry::Vacant(e) => {
+                    let mut v = SmallVec::new();
+                    v.push(range);
+                    e.insert(v);
+
+                    if let Some(mandatory_layout) = mandatory_layout {
+                        if mandatory_layout != inner_sync.layout {
+                            image_barriers.push(vk::ImageMemoryBarrier {
+                                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                                pNext: ptr::null(),
+                                srcAccessMask: 0x0001ffff,  // FIXME:
+                                dstAccessMask: 0x0001ffff,  // FIXME:
+                                oldLayout: mandatory_layout as u32,
+                                newLayout: inner_sync.layout as u32,
+                                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                                image: image.internal_object(),
+                                subresourceRange: vk::ImageSubresourceRange {
+                                    aspectMask: 1,        // FIXME:
+                                    baseMipLevel: range.mipmap_level_start,
+                                    levelCount: range.mipmap_levels_count,
+                                    baseArrayLayer: range.array_layer_start,
+                                    layerCount: range.array_layers_count,
+                                }
+                            });
+                        }
+                    }
+                },
+            };
+        }
+
+        if !buffer_barriers.is_empty() && !image_barriers.is_empty() {
+            unsafe {
+                let vk = self.device.pointers();
+                vk.CmdPipelineBarrier(self.cmd.unwrap(), 0x00010000 /* TODO */, 0x00010000 /* TODO */,
+                                      0 /* TODO */, 0, ptr::null(),
+                                      buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                      image_barriers.len() as u32, image_barriers.as_ptr());
+            }
+        }
     }
 }
 
@@ -816,14 +1080,14 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
-    descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
-    framebuffers: Vec<Arc<AbstractFramebuffer>>,
-    renderpasses: Vec<Arc<RenderPass>>,
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
-    image_resources: Vec<Arc<AbstractImage>>,
-    image_views_resources: Vec<Arc<AbstractImageView>>,
-    pipelines: Vec<Arc<GenericPipeline>>,
+    externsync_buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
+    externsync_image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
+    keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
+    keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
+    keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
+    keep_alive_renderpasses: Vec<Arc<RenderPass>>,
+    keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
+    keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 }
 
 /// Submits the command buffer to a queue.
@@ -852,50 +1116,41 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     let mut pre_semaphores_ids = Vec::new();
     let mut pre_semaphores_stages = Vec::new();
 
-    for resource in me.buffer_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
+    let submission_id = queue.device().fetch_submission_id();
 
-        } else {
-            None
-        };
-
+    for (resource, ranges) in me.externsync_buffer_resources.iter() {
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
-        let sem = unsafe {
-            resource.gpu_access(true, 0, 18, queue, Some(fence.clone()), post_semaphore)
-        };
+        unsafe {
+            let result = resource.0.memory().gpu_access(queue, submission_id, ranges, Some(&fence));
 
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
+            if let Some(s) = result.pre_semaphore {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
+
+            if let Some(s) = result.post_semaphore {
+                post_semaphores.push(s.clone());
+                post_semaphores_ids.push(s.internal_object());
+            }
         }
     }
 
-    for resource in me.image_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
+    for (resource, ranges) in me.externsync_image_resources.iter() {
+        unsafe {
+            let result = resource.0.memory().gpu_access(queue, submission_id, ranges, Some(&fence));
 
-        } else {
-            None
-        };
+            if let Some(s) = result.pre_semaphore {
+                pre_semaphores_ids.push(s.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(s);
+            }
 
-        // FIXME: for the moment `write` is always true ; that shouldn't be the case
-        let sem = unsafe {
-            resource.gpu_access(true, queue, Some(fence.clone()), post_semaphore)
-        };
-
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
+            if let Some(s) = result.post_semaphore {
+                post_semaphores.push(s.clone());
+                post_semaphores_ids.push(s.internal_object());
+            }
         }
     }
 
@@ -964,4 +1219,58 @@ impl Drop for Submission {
     fn drop(&mut self) {
         self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */).unwrap();
     }
+}
+
+#[derive(Clone)]
+struct AbstractBufferKey(Arc<AbstractBuffer>);
+
+impl PartialEq for AbstractBufferKey {
+    #[inline]
+    fn eq(&self, other: &AbstractBufferKey) -> bool {
+        &*self.0 as *const AbstractBuffer == &*other.0 as *const AbstractBuffer
+    }
+}
+
+impl Eq for AbstractBufferKey {}
+
+impl hash::Hash for AbstractBufferKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractBuffer as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
+
+#[derive(Clone)]
+struct AbstractImageKey(Arc<AbstractImage>);
+
+impl PartialEq for AbstractImageKey {
+    #[inline]
+    fn eq(&self, other: &AbstractImageKey) -> bool {
+        &*self.0 as *const AbstractImage == &*other.0 as *const AbstractImage
+    }
+}
+
+impl Eq for AbstractImageKey {}
+
+impl hash::Hash for AbstractImageKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractImage as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
+
+struct BufferInnerSync {
+    range: Range<usize>,
+    write: bool,
+    // TODO: access mask
+}
+
+struct ImageInnerSync {
+    mipmap_levels_range: Range<u32>,
+    array_layers_range: Range<u32>,
+    write: bool,
+    layout: ImageLayout,
+    // TODO: access mask
 }

@@ -2,20 +2,27 @@ use std::mem;
 use std::ptr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::TryLockError;
 
+use buffer::GpuAccessSynchronization as BufferGpuAccessSynchronization;
+use buffer::BufferMemorySource;
+use buffer::BufferMemorySourceChunk;
+use buffer::GpuAccessRange;
+use image::ImageMemorySource;
+use image::ImageMemorySourceChunk;
+use image::Layout as ImageLayout;
+use image::GpuAccessRange as ImageAccessRange;
+use image::GpuAccessSynchronization as ImageGpuAccessSynchronization;
 use memory::ChunkProperties;
 use memory::Content;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
-use memory::ChunkRange;
 use sync::Fence;
 use sync::Semaphore;
 
@@ -38,17 +45,12 @@ use vk;
 #[derive(Debug, Copy, Clone)]
 pub struct DeviceLocal;
 
-unsafe impl MemorySource for DeviceLocal {
+unsafe impl BufferMemorySource for DeviceLocal {
     type Chunk = DeviceLocalChunk;
 
     #[inline]
-    fn is_sparse(&self) -> bool {
-        false
-    }
-
-    #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<DeviceLocalChunk, OomError>
+                -> Result<Self::Chunk, OomError>
     {
         // We try to find a device-local memory type, but fall back to any memory type if we don't
         // find any.
@@ -74,31 +76,49 @@ unsafe impl MemorySource for DeviceLocal {
     }
 }
 
+unsafe impl ImageMemorySource for DeviceLocal {
+    type Chunk = DeviceLocalChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        BufferMemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
 /// A chunk allocated from a `DeviceLocal`.
 pub struct DeviceLocalChunk {
     mem: DeviceMemory,
     semaphore: Mutex<Option<Arc<Semaphore>>>,
 }
 
-unsafe impl MemorySourceChunk for DeviceLocalChunk {
+unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
     #[inline]
-    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &Arc<Queue>,
-                         _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>
+    fn properties(&self) -> ChunkProperties {
+        ChunkProperties::Regular {
+            memory: &self.mem,
+            offset: 0,
+            size: self.mem.size(),
+        }
+    }
+
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> BufferGpuAccessSynchronization
     {
-        assert!(semaphore.is_some());
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
 
         let mut self_semaphore = self.semaphore.lock().unwrap();
         mem::swap(&mut *self_semaphore, &mut semaphore);
 
-        semaphore
+        BufferGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: self_semaphore.clone(),
+        }
     }
+}
 
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        false
-    }
-
+unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
         ChunkProperties::Regular {
@@ -109,8 +129,21 @@ unsafe impl MemorySourceChunk for DeviceLocalChunk {
     }
 
     #[inline]
-    fn may_alias(&self) -> bool {
-        false
+    fn mandatory_layout(&self, _: Range<u32>, _: Range<u32>) -> Option<ImageLayout> {
+        None
+    }
+
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
+                         _fence: Option<&Arc<Fence>>) -> ImageGpuAccessSynchronization
+    {
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());      // TODO: error
+        let mut self_semaphore = self.semaphore.lock().unwrap();
+        mem::swap(&mut *self_semaphore, &mut semaphore);
+
+        ImageGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: None,       // FIXME:
+        }
     }
 }
 
@@ -125,17 +158,11 @@ unsafe impl MemorySourceChunk for DeviceLocalChunk {
 #[derive(Debug, Copy, Clone)]
 pub struct HostVisible;
 
-unsafe impl MemorySource for HostVisible {
+unsafe impl BufferMemorySource for HostVisible {
     type Chunk = HostVisibleChunk;
 
-    #[inline]
-    fn is_sparse(&self) -> bool {
-        false
-    }
-
-    #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<HostVisibleChunk, OomError>
+                -> Result<Self::Chunk, OomError>
     {
         let mem_ty = device.physical_device().memory_types()
                            .filter(|t| (memory_type_bits & (1 << t.id())) != 0)
@@ -154,6 +181,17 @@ unsafe impl MemorySource for HostVisible {
     }
 }
 
+unsafe impl ImageMemorySource for HostVisible {
+    type Chunk = HostVisibleChunk;
+
+    #[inline]
+    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
+                -> Result<Self::Chunk, OomError>
+    {
+        BufferMemorySource::allocate(self, device, size, alignment, memory_type_bits)
+    }
+}
+
 /// A chunk allocated from a `HostVisible`.
 pub struct HostVisibleChunk {
     mem: MappedDeviceMemory,
@@ -161,22 +199,7 @@ pub struct HostVisibleChunk {
     lock: Mutex<(Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
 }
 
-unsafe impl MemorySourceChunk for HostVisibleChunk {
-    #[inline]
-    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &Arc<Queue>,
-                         fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>
-    {
-        assert!(fence.is_some());
-        assert!(semaphore.is_some());
-
-        let mut self_lock = self.lock.lock().unwrap();
-        mem::swap(&mut self_lock.0, &mut semaphore);
-        self_lock.1 = fence;
-
-        semaphore
-    }
-
+unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
         ChunkProperties::Regular {
@@ -186,9 +209,46 @@ unsafe impl MemorySourceChunk for HostVisibleChunk {
         }
     }
 
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange],
+                         fence: Option<&Arc<Fence>>) -> BufferGpuAccessSynchronization
+    {
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());        // TODO: error
+
+        let mut self_lock = self.lock.lock().unwrap();
+        mem::swap(&mut self_lock.0, &mut semaphore);
+        self_lock.1 = Some(fence.unwrap().clone());
+
+        BufferGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: self_lock.0.clone(),
+        }
+    }
+}
+
+unsafe impl ImageMemorySourceChunk for HostVisibleChunk {
     #[inline]
-    fn may_alias(&self) -> bool {
-        false
+    fn properties(&self) -> ChunkProperties {
+        BufferMemorySourceChunk::properties(self)
+    }
+
+    #[inline]
+    fn mandatory_layout(&self, _: Range<u32>, _: Range<u32>) -> Option<ImageLayout> {
+        None
+    }
+
+    unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
+                         fence: Option<&Arc<Fence>>) -> ImageGpuAccessSynchronization
+    {
+        let mut semaphore = Some(Semaphore::new(queue.device()).unwrap());      // TODO: error
+
+        let mut self_lock = self.lock.lock().unwrap();
+        mem::swap(&mut self_lock.0, &mut semaphore);
+        self_lock.1 = Some(fence.unwrap().clone());
+
+        ImageGpuAccessSynchronization {
+            pre_semaphore: semaphore,
+            post_semaphore: self_lock.0.clone(),
+        }
     }
 }
 
