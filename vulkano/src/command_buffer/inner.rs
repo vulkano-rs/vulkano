@@ -811,6 +811,8 @@ impl InnerCommandBufferBuilder {
             vk.CmdEndRenderPass(cmd);
         }
 
+        // FIXME: for each attachment, update externsync_image_resources with the layout transitions
+
         self
     }
 
