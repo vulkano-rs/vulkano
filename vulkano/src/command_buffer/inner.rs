@@ -879,9 +879,17 @@ impl InnerCommandBufferBuilder {
         let mut image_barriers = SmallVec::<[_; 16]>::new();*/
 
         for (buffer, range) in buffers {
+            let buffer_memory = buffer.memory();
+
+            // Memory chunk implementations can just tell us to ignore any synchronization as an
+            // optimization.
+            if !buffer_memory.requires_synchronization() {
+                continue;
+            }
+
             // Align the range and check for correctness with debug_assert!.
             let range = {
-                let aligned = buffer.memory().align(range);
+                let aligned = buffer_memory.align(range);
                 debug_assert!(aligned.range_start <= range.range_start);
                 debug_assert!(aligned.range_size >= range.range_size +
                                                     (range.range_start - aligned.range_start));
@@ -892,7 +900,7 @@ impl InnerCommandBufferBuilder {
                 aligned
             };
 
-            match self.externsync_buffer_resources.entry(AbstractBufferKey(buffer)) {
+            match self.externsync_buffer_resources.entry(AbstractBufferKey(buffer.clone())) {
                 Entry::Occupied(mut e) => {
                     // FIXME: merge ranges correctly
                     e.get_mut().push(range);
@@ -906,9 +914,17 @@ impl InnerCommandBufferBuilder {
         }
 
         for (image, range) in images {
+            let image_memory = image.memory();
+
+            // Memory chunk implementations can just tell us to ignore any synchronization as an
+            // optimization.
+            if !image_memory.requires_synchronization() {
+                continue;
+            }
+
             // Align the range and check for correctness with debug_assert!.
             let range = {
-                let aligned = image.memory().align(range);
+                let aligned = image_memory.align(range);
                 debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
                 debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
                                           (range.mipmap_level_start - aligned.mipmap_level_start));
@@ -927,7 +943,7 @@ impl InnerCommandBufferBuilder {
 
             // TODO: handle memory barriers
 
-            match self.externsync_image_resources.entry(AbstractImageKey(image)) {
+            match self.externsync_image_resources.entry(AbstractImageKey(image.clone())) {
                 Entry::Occupied(mut e) => {
                     // FIXME: merge ranges correctly
                     e.get_mut().push(range);

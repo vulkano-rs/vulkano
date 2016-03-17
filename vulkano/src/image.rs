@@ -593,6 +593,14 @@ pub unsafe trait ImageMemorySourceChunk {
     /// subresources.
     #[inline]
     fn align(&self, range: GpuAccessRange) -> GpuAccessRange { range }
+    
+    /// If returns `false`, then it is assumed that this chunk is only ever accessed immutably
+    /// and doesn't need any synchronization. The `gpu_access` function will not be called at all.
+    ///
+    /// You are allowed to return `false` at first, and then `true` afterwards. However if you
+    /// returned `true` once, then the chunk must never be modified ever again.
+    #[inline]
+    fn requires_synchronization(&self) -> bool { true }
 
     #[inline]
     fn requires_fence(&self, mipmap_level: Range<u32>, array_layer: Range<u32>) -> bool { true }
