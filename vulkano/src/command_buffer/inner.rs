@@ -59,6 +59,12 @@ pub struct InnerCommandBufferBuilder {
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
 
+    // List of all resources that are used by this command buffer.
+    externsync_buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
+
+    externsync_image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
+
+
     // List of secondary command buffers.
     keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
 
@@ -71,11 +77,6 @@ pub struct InnerCommandBufferBuilder {
     // List of renderpasses used in this CB.
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
 
-    // List of all resources that are used by this command buffer.
-    buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
-
-    image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
-
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
     // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
     keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
@@ -86,13 +87,13 @@ pub struct InnerCommandBufferBuilder {
     keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
-    graphics_pipeline: Option<vk::Pipeline>,
+    current_graphics_pipeline: Option<vk::Pipeline>,
 
     // Current pipeline object binded to the compute bind point.
-    compute_pipeline: Option<vk::Pipeline>,
+    current_compute_pipeline: Option<vk::Pipeline>,
 
     // Current state of the dynamic state within the command buffer.
-    dynamic_state: DynamicState,
+    current_dynamic_state: DynamicState,
 }
 
 #[derive(Clone)]
@@ -215,17 +216,17 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
+            externsync_buffer_resources: HashMap::new(),
+            externsync_image_resources: HashMap::new(),
             keep_alive_secondary_command_buffers: Vec::new(),
             keep_alive_descriptor_sets: Vec::new(),
             keep_alive_framebuffers: framebuffers,
             keep_alive_renderpasses: renderpasses,
-            buffer_resources: HashMap::new(),
-            image_resources: HashMap::new(),
             keep_alive_image_views_resources: Vec::new(),
             keep_alive_pipelines: Vec::new(),
-            graphics_pipeline: None,
-            compute_pipeline: None,
-            dynamic_state: DynamicState::none(),
+            current_graphics_pipeline: None,
+            current_compute_pipeline: None,
+            current_dynamic_state: DynamicState::none(),
         })
     }
 
@@ -239,8 +240,8 @@ impl InnerCommandBufferBuilder {
     {
         self.keep_alive_secondary_command_buffers.push(cb_arc);
 
-        for (k, v) in cb.buffer_resources.iter() { self.buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
-        for (k, v) in cb.image_resources.iter() { self.image_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
+        for (k, v) in cb.externsync_buffer_resources.iter() { self.externsync_buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
+        for (k, v) in cb.externsync_image_resources.iter() { self.externsync_image_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
 
         {
             let vk = self.device.pointers();
@@ -253,9 +254,9 @@ impl InnerCommandBufferBuilder {
         // GDC 2016 conference said this was the case. Since keeping the state is purely an
         // optimization, we disable it just in case. This might be removed when things get
         // clarified.
-        self.graphics_pipeline = None;
-        self.compute_pipeline = None;
-        self.dynamic_state = DynamicState::none();
+        self.current_graphics_pipeline = None;
+        self.current_compute_pipeline = None;
+        self.current_dynamic_state = DynamicState::none();
 
         self
     }
@@ -645,11 +646,11 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.compute_pipeline != Some(pipeline.internal_object()) {
+            if self.current_compute_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
                                    pipeline.internal_object());
                 self.keep_alive_pipelines.push(pipeline.clone());
-                self.compute_pipeline = Some(pipeline.internal_object());
+                self.current_compute_pipeline = Some(pipeline.internal_object());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
@@ -676,19 +677,19 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.graphics_pipeline != Some(pipeline.internal_object()) {
+            if self.current_graphics_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
                                    pipeline.internal_object());
                 self.keep_alive_pipelines.push(pipeline.clone());
-                self.graphics_pipeline = Some(pipeline.internal_object());
+                self.current_graphics_pipeline = Some(pipeline.internal_object());
             }
 
             if let Some(line_width) = dynamic.line_width {
                 assert!(pipeline.has_dynamic_line_width());
                 // TODO: check limits
-                if self.dynamic_state.line_width != Some(line_width) {
+                if self.current_dynamic_state.line_width != Some(line_width) {
                     vk.CmdSetLineWidth(self.cmd.unwrap(), line_width);
-                    self.dynamic_state.line_width = Some(line_width);
+                    self.current_dynamic_state.line_width = Some(line_width);
                 }
             } else {
                 assert!(!pipeline.has_dynamic_line_width());
@@ -858,12 +859,12 @@ impl InnerCommandBufferBuilder {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
+                externsync_buffer_resources: mem::replace(&mut self.externsync_buffer_resources, HashMap::new()),
+                externsync_image_resources: mem::replace(&mut self.externsync_image_resources, HashMap::new()),
                 keep_alive_secondary_command_buffers: mem::replace(&mut self.keep_alive_secondary_command_buffers, Vec::new()),
                 keep_alive_descriptor_sets: mem::replace(&mut self.keep_alive_descriptor_sets, Vec::new()),
                 keep_alive_framebuffers: mem::replace(&mut self.keep_alive_framebuffers, Vec::new()),
                 keep_alive_renderpasses: mem::replace(&mut self.keep_alive_renderpasses, Vec::new()),
-                buffer_resources: mem::replace(&mut self.buffer_resources, HashMap::new()),
-                image_resources: mem::replace(&mut self.image_resources, HashMap::new()),
                 keep_alive_image_views_resources: mem::replace(&mut self.keep_alive_image_views_resources, Vec::new()),
                 keep_alive_pipelines: mem::replace(&mut self.keep_alive_pipelines, Vec::new()),
             })
@@ -891,7 +892,7 @@ impl InnerCommandBufferBuilder {
                 aligned
             };
 
-            match self.buffer_resources.entry(AbstractBufferKey(buffer)) {
+            match self.externsync_buffer_resources.entry(AbstractBufferKey(buffer)) {
                 Entry::Occupied(mut e) => {
                     // FIXME: merge ranges correctly
                     e.get_mut().push(range);
@@ -926,7 +927,7 @@ impl InnerCommandBufferBuilder {
 
             // TODO: handle memory barriers
 
-            match self.image_resources.entry(AbstractImageKey(image)) {
+            match self.externsync_image_resources.entry(AbstractImageKey(image)) {
                 Entry::Occupied(mut e) => {
                     // FIXME: merge ranges correctly
                     e.get_mut().push(range);
@@ -970,12 +971,12 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
+    externsync_buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
+    externsync_image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
     keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
     keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
-    buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
-    image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
     keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
     keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 }
@@ -1008,7 +1009,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
     let submission_id = queue.device().fetch_submission_id();
 
-    for (resource, ranges) in me.buffer_resources.iter() {
+    for (resource, ranges) in me.externsync_buffer_resources.iter() {
         // FIXME: for the moment `write` is always true ; that shouldn't be the case
         // FIXME: wrong offset and size
         unsafe {
@@ -1027,7 +1028,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         }
     }
 
-    for (resource, ranges) in me.image_resources.iter() {
+    for (resource, ranges) in me.externsync_image_resources.iter() {
         unsafe {
             let result = resource.0.memory().gpu_access(queue, submission_id, ranges, Some(&fence));
 
