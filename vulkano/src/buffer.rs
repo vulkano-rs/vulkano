@@ -425,6 +425,11 @@ pub unsafe trait BufferMemorySource {
 
 // TODO: that's a draft
 pub unsafe trait BufferMemorySourceChunk {
+    ///
+    /// # Safety
+    ///
+    /// Must always return the same values.
+    ///
     fn properties(&self) -> ChunkProperties;
 
     #[inline]

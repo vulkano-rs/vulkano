@@ -2,6 +2,7 @@ use std::mem;
 use std::ptr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -13,6 +14,7 @@ use buffer::BufferMemorySourceChunk;
 use buffer::GpuAccessRange;
 use image::ImageMemorySource;
 use image::ImageMemorySourceChunk;
+use image::Layout as ImageLayout;
 use image::GpuAccessRange as ImageAccessRange;
 use image::GpuAccessSynchronization as ImageGpuAccessSynchronization;
 use memory::ChunkProperties;
@@ -126,6 +128,11 @@ unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
         }
     }
 
+    #[inline]
+    fn mandatory_layout(&self, _: Range<u32>, _: Range<u32>) -> Option<ImageLayout> {
+        None
+    }
+
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
                          _fence: Option<&Arc<Fence>>) -> ImageGpuAccessSynchronization
     {
@@ -222,6 +229,11 @@ unsafe impl ImageMemorySourceChunk for HostVisibleChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
         BufferMemorySourceChunk::properties(self)
+    }
+
+    #[inline]
+    fn mandatory_layout(&self, _: Range<u32>, _: Range<u32>) -> Option<ImageLayout> {
+        None
     }
 
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],

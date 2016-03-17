@@ -15,6 +15,7 @@
 //! buffers.
 //!
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
@@ -569,14 +570,40 @@ pub unsafe trait ImageMemorySource {
 
 // TODO: that's a draft
 pub unsafe trait ImageMemorySourceChunk {
+    ///
+    /// # Safety
+    ///
+    /// Must always return the same values.
+    ///
     fn properties(&self) -> ChunkProperties;
 
+    /// Asks the chunk whether the expected layout is constant for a given subresource.
+    /// Called at command buffer construction.
+    ///
+    /// If this function returns `Some`, then the command buffer **must** assume that the given
+    /// subresource has the returned layout at the start of the command buffer execution.
+    ///
+    /// Calling `gpu_access` with this range **must** use a `expected_layout` and a
+    /// `layout_transition` equal to what is returned by this function.
+    fn mandatory_layout(&self, mipmap_level: Range<u32>, array_layer: Range<u32>) -> Option<Layout>;
+
+    /// Called at command buffer construction.
+    ///
+    /// Depending on the semantics of the memory management, it can be advantageous to align
+    /// subresources.
     #[inline]
     fn align(&self, range: GpuAccessRange) -> GpuAccessRange { range }
 
     #[inline]
-    fn requires_fence(&self) -> bool { true }
+    fn requires_fence(&self, mipmap_level: Range<u32>, array_layer: Range<u32>) -> bool { true }
 
+    /// Called right before a command buffer that uses this chunk is submitted.
+    ///
+    /// # Safety
+    ///
+    /// The `fence` passed as parameter, if any, must be signalled after the command buffer has
+    /// finished execution.
+    ///
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
                          fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization;
 }

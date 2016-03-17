@@ -1,6 +1,7 @@
 use std::error;
 use std::fmt;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -15,6 +16,7 @@ use image::ImageMemorySourceChunk;
 use image::GpuAccessRange;
 use image::GpuAccessSynchronization;
 use image::Type2d;
+use image::Layout as ImageLayout;
 use image::Usage as ImageUsage;
 use memory::ChunkProperties;
 use swapchain::CompositeAlpha;
@@ -318,9 +320,19 @@ unsafe impl ImageMemorySourceChunk for SwapchainAllocatedChunk {
         unreachable!()
     }
 
+    #[inline]
+    fn mandatory_layout(&self, _: Range<u32>, _: Range<u32>) -> Option<ImageLayout> {
+        Some(ImageLayout::PresentSrc)
+    }
+
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[GpuAccessRange],
                          _fence: Option<&Arc<Fence>>) -> GpuAccessSynchronization
     {
+        for range in ranges {
+            assert_eq!(range.expected_layout, ImageLayout::PresentSrc);
+            assert_eq!(range.layout_transition, ImageLayout::PresentSrc);
+        }
+
         let post_semaphore = Some(Semaphore::new(queue.device()).unwrap());     // TODO: error
         // FIXME: must also check that image has been acquired
         let mut semaphores = self.swapchain.images_semaphores.lock().unwrap();
