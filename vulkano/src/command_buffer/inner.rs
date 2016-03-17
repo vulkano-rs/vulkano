@@ -96,46 +96,6 @@ pub struct InnerCommandBufferBuilder {
     current_dynamic_state: DynamicState,
 }
 
-#[derive(Clone)]
-struct AbstractBufferKey(Arc<AbstractBuffer>);
-
-impl PartialEq for AbstractBufferKey {
-    #[inline]
-    fn eq(&self, other: &AbstractBufferKey) -> bool {
-        &*self.0 as *const AbstractBuffer == &*other.0 as *const AbstractBuffer
-    }
-}
-
-impl Eq for AbstractBufferKey {}
-
-impl hash::Hash for AbstractBufferKey {
-    #[inline]
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
-        let ptr = &*self.0 as *const AbstractBuffer as *const () as usize;
-        hash::Hash::hash(&ptr, state)
-    }
-}
-
-#[derive(Clone)]
-struct AbstractImageKey(Arc<AbstractImage>);
-
-impl PartialEq for AbstractImageKey {
-    #[inline]
-    fn eq(&self, other: &AbstractImageKey) -> bool {
-        &*self.0 as *const AbstractImage == &*other.0 as *const AbstractImage
-    }
-}
-
-impl Eq for AbstractImageKey {}
-
-impl hash::Hash for AbstractImageKey {
-    #[inline]
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
-        let ptr = &*self.0 as *const AbstractImage as *const () as usize;
-        hash::Hash::hash(&ptr, state)
-    }
-}
-
 impl InnerCommandBufferBuilder {
     /// Creates a new builder.
     pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>,
@@ -1125,5 +1085,45 @@ impl Drop for Submission {
     #[inline]
     fn drop(&mut self) {
         self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */).unwrap();
+    }
+}
+
+#[derive(Clone)]
+struct AbstractBufferKey(Arc<AbstractBuffer>);
+
+impl PartialEq for AbstractBufferKey {
+    #[inline]
+    fn eq(&self, other: &AbstractBufferKey) -> bool {
+        &*self.0 as *const AbstractBuffer == &*other.0 as *const AbstractBuffer
+    }
+}
+
+impl Eq for AbstractBufferKey {}
+
+impl hash::Hash for AbstractBufferKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractBuffer as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
+
+#[derive(Clone)]
+struct AbstractImageKey(Arc<AbstractImage>);
+
+impl PartialEq for AbstractImageKey {
+    #[inline]
+    fn eq(&self, other: &AbstractImageKey) -> bool {
+        &*self.0 as *const AbstractImage == &*other.0 as *const AbstractImage
+    }
+}
+
+impl Eq for AbstractImageKey {}
+
+impl hash::Hash for AbstractImageKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const AbstractImage as *const () as usize;
+        hash::Hash::hash(&ptr, state)
     }
 }
