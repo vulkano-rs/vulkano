@@ -54,40 +54,40 @@ use vk;
 
 /// Actual implementation of all command buffer builders.
 ///
-/// Doesn't check whether the command type is appropriate for the command buffer type.
+/// Mostly safe, except that it doesn't check whether the command types are appropriate for the
+/// command buffer type.
 pub struct InnerCommandBufferBuilder {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
+
+    // Should always be `Some`, except after we call `build`. If this value is still `Some`
+    // in the builder's destructor, we assume that the command buffer is to be destroyed.
     cmd: Option<vk::CommandBuffer>,
 
-    // List of all resources that are used by this command buffer.
+    // For each buffer and image used by this command buffer, stores the way the buffer or
+    // image's `gpu_access` method is going to be called when the CB is submitted.
     externsync_buffer_resources: HashMap<AbstractBufferKey, SmallVec<[BufferGpuAccessRange; 2]>>,
-
     externsync_image_resources: HashMap<AbstractImageKey, SmallVec<[ImageGpuAccessRange; 2]>>,
 
+    // When we are inside a render pass (between `CmdBeginRenderPass` and `CmdEndRenderPass`),
+    // all commands go within `renderpass_staged` instead of being appended directly to the
+    // command buffer and all used resources go inside the `renderpass_*_resources` variables.
+    //
+    // When `CmdEndRenderPass` is called, all the commands here are flushed.
+    //
+    // This allows us to know which image layout transitions and which pipeline barriers are needed
+    // before the real command buffer enters the render pass, so that we can call
+    // `CmdPipelineBarrier` before `CmdBeginRenderPass`.
     renderpass_staged: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
     renderpass_buffer_resources: Vec<(Arc<AbstractBuffer>, BufferInnerSync)>,
     renderpass_image_resources: Vec<(Arc<AbstractImage>, ImageInnerSync)>,
 
-    // List of secondary command buffers.
+    // These variables exist to keep the objects that are used by this command buffer alive.
     keep_alive_secondary_command_buffers: Vec<Arc<AbstractCommandBuffer>>,
-
-    // List of descriptor sets used in this CB.
     keep_alive_descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
-
-    // List of framebuffers used in this CB.
     keep_alive_framebuffers: Vec<Arc<AbstractFramebuffer>>,
-
-    // List of renderpasses used in this CB.
     keep_alive_renderpasses: Vec<Arc<RenderPass>>,
-
-    // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
     keep_alive_image_views_resources: Vec<Arc<AbstractImageView>>,
-
-    // List of pipelines that are used by this command buffer.
-    //
-    // These are stored just so that they don't get destroyed.
     keep_alive_pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
@@ -133,8 +133,8 @@ impl InnerCommandBufferBuilder {
             output
         };
 
-        let mut renderpasses = Vec::new();
-        let mut framebuffers = Vec::new();
+        let mut keepalive_renderpasses = Vec::new();
+        let mut keepalive_framebuffers = Vec::new();
 
         unsafe {
             // TODO: one time submit
@@ -142,14 +142,14 @@ impl InnerCommandBufferBuilder {
                         if secondary_cont.is_some() { vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT } else { 0 };
 
             let (rp, sp) = if let Some(ref sp) = secondary_cont {
-                renderpasses.push(sp.render_pass().clone() as Arc<_>);
+                keepalive_renderpasses.push(sp.render_pass().clone() as Arc<_>);
                 (sp.render_pass().render_pass().internal_object(), sp.index())
             } else {
                 (0, 0)
             };
 
             let framebuffer = if let Some(fb) = secondary_cont_fb {
-                framebuffers.push(fb.clone() as Arc<_>);
+                keepalive_framebuffers.push(fb.clone() as Arc<_>);
                 fb.internal_object()
             } else {
                 0
@@ -187,8 +187,8 @@ impl InnerCommandBufferBuilder {
             renderpass_image_resources: Vec::new(),
             keep_alive_secondary_command_buffers: Vec::new(),
             keep_alive_descriptor_sets: Vec::new(),
-            keep_alive_framebuffers: framebuffers,
-            keep_alive_renderpasses: renderpasses,
+            keep_alive_framebuffers: keepalive_framebuffers,
+            keep_alive_renderpasses: keepalive_renderpasses,
             keep_alive_image_views_resources: Vec::new(),
             keep_alive_pipelines: Vec::new(),
             current_graphics_pipeline: None,
