@@ -25,8 +25,6 @@ use device::Queue;
 use format::FormatDesc;
 use format::FormatTy;
 use memory::ChunkProperties;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use sync::Fence;
 use sync::Semaphore;
 use sync::SharingMode;

@@ -9,7 +9,6 @@ use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
-use memory::MemorySourceChunk;
 use swapchain::DisplayMode;
 use swapchain::DisplayPlane;
 

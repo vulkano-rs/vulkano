@@ -38,8 +38,6 @@ use format::Data as FormatData;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
 use memory::ChunkProperties;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use sync::Fence;
 use sync::Semaphore;
 use sync::SharingMode;

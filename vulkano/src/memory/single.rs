@@ -19,11 +19,8 @@ use memory::ChunkProperties;
 use memory::Content;
 use memory::CpuAccessible;
 use memory::CpuWriteAccessible;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
-use memory::ChunkRange;
 use sync::Fence;
 use sync::Semaphore;
 
@@ -46,17 +43,12 @@ use vk;
 #[derive(Debug, Copy, Clone)]
 pub struct DeviceLocal;
 
-unsafe impl MemorySource for DeviceLocal {
+unsafe impl BufferMemorySource for DeviceLocal {
     type Chunk = DeviceLocalChunk;
 
     #[inline]
-    fn is_sparse(&self) -> bool {
-        false
-    }
-
-    #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<DeviceLocalChunk, OomError>
+                -> Result<Self::Chunk, OomError>
     {
         // We try to find a device-local memory type, but fall back to any memory type if we don't
         // find any.
@@ -82,17 +74,6 @@ unsafe impl MemorySource for DeviceLocal {
     }
 }
 
-unsafe impl BufferMemorySource for DeviceLocal {
-    type Chunk = DeviceLocalChunk;
-
-    #[inline]
-    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<Self::Chunk, OomError>
-    {
-        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
-    }
-}
-
 unsafe impl ImageMemorySource for DeviceLocal {
     type Chunk = DeviceLocalChunk;
 
@@ -100,7 +81,7 @@ unsafe impl ImageMemorySource for DeviceLocal {
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
                 -> Result<Self::Chunk, OomError>
     {
-        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+        BufferMemorySource::allocate(self, device, size, alignment, memory_type_bits)
     }
 }
 
@@ -108,40 +89,6 @@ unsafe impl ImageMemorySource for DeviceLocal {
 pub struct DeviceLocalChunk {
     mem: DeviceMemory,
     semaphore: Mutex<Option<Arc<Semaphore>>>,
-}
-
-unsafe impl MemorySourceChunk for DeviceLocalChunk {
-    #[inline]
-    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &Arc<Queue>,
-                         _: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>
-    {
-        assert!(semaphore.is_some());
-
-        let mut self_semaphore = self.semaphore.lock().unwrap();
-        mem::swap(&mut *self_semaphore, &mut semaphore);
-
-        semaphore
-    }
-
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        false
-    }
-
-    #[inline]
-    fn properties(&self) -> ChunkProperties {
-        ChunkProperties::Regular {
-            memory: &self.mem,
-            offset: 0,
-            size: self.mem.size(),
-        }
-    }
-
-    #[inline]
-    fn may_alias(&self) -> bool {
-        false
-    }
 }
 
 unsafe impl BufferMemorySourceChunk for DeviceLocalChunk {
@@ -204,17 +151,11 @@ unsafe impl ImageMemorySourceChunk for DeviceLocalChunk {
 #[derive(Debug, Copy, Clone)]
 pub struct HostVisible;
 
-unsafe impl MemorySource for HostVisible {
+unsafe impl BufferMemorySource for HostVisible {
     type Chunk = HostVisibleChunk;
 
-    #[inline]
-    fn is_sparse(&self) -> bool {
-        false
-    }
-
-    #[inline]
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<HostVisibleChunk, OomError>
+                -> Result<Self::Chunk, OomError>
     {
         let mem_ty = device.physical_device().memory_types()
                            .filter(|t| (memory_type_bits & (1 << t.id())) != 0)
@@ -233,17 +174,6 @@ unsafe impl MemorySource for HostVisible {
     }
 }
 
-unsafe impl BufferMemorySource for HostVisible {
-    type Chunk = HostVisibleChunk;
-
-    #[inline]
-    fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
-                -> Result<Self::Chunk, OomError>
-    {
-        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
-    }
-}
-
 unsafe impl ImageMemorySource for HostVisible {
     type Chunk = HostVisibleChunk;
 
@@ -251,7 +181,7 @@ unsafe impl ImageMemorySource for HostVisible {
     fn allocate(self, device: &Arc<Device>, size: usize, alignment: usize, memory_type_bits: u32)
                 -> Result<Self::Chunk, OomError>
     {
-        MemorySource::allocate(self, device, size, alignment, memory_type_bits)
+        BufferMemorySource::allocate(self, device, size, alignment, memory_type_bits)
     }
 }
 
@@ -262,22 +192,7 @@ pub struct HostVisibleChunk {
     lock: Mutex<(Option<Arc<Semaphore>>, Option<Arc<Fence>>)>,
 }
 
-unsafe impl MemorySourceChunk for HostVisibleChunk {
-    #[inline]
-    unsafe fn gpu_access(&self, _write: bool, _range: ChunkRange, _: &Arc<Queue>,
-                         fence: Option<Arc<Fence>>, mut semaphore: Option<Arc<Semaphore>>)
-                         -> Option<Arc<Semaphore>>
-    {
-        assert!(fence.is_some());
-        assert!(semaphore.is_some());
-
-        let mut self_lock = self.lock.lock().unwrap();
-        mem::swap(&mut self_lock.0, &mut semaphore);
-        self_lock.1 = fence;
-
-        semaphore
-    }
-
+unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
         ChunkProperties::Regular {
@@ -285,18 +200,6 @@ unsafe impl MemorySourceChunk for HostVisibleChunk {
             offset: 0,
             size: self.mem.memory().size(),
         }
-    }
-
-    #[inline]
-    fn may_alias(&self) -> bool {
-        false
-    }
-}
-
-unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
-    #[inline]
-    fn properties(&self) -> ChunkProperties {
-        MemorySourceChunk::properties(self)
     }
 
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, _ranges: &[GpuAccessRange],
@@ -318,7 +221,7 @@ unsafe impl BufferMemorySourceChunk for HostVisibleChunk {
 unsafe impl ImageMemorySourceChunk for HostVisibleChunk {
     #[inline]
     fn properties(&self) -> ChunkProperties {
-        MemorySourceChunk::properties(self)
+        BufferMemorySourceChunk::properties(self)
     }
 
     unsafe fn gpu_access(&self, queue: &Arc<Queue>, submission_id: u64, ranges: &[ImageAccessRange],
