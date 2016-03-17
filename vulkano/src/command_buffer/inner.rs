@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -246,12 +247,9 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().usage_transfer_dest());
 
-        self.register_resources(Some((buffer.buffer().clone() as Arc<_>, BufferGpuAccessRange {
-            range_start: buffer.offset(),
-            range_size: buffer.size(),
+        self.register_resources(Some((buffer.buffer().clone() as Arc<_>, BufferInnerSync {
+            range: buffer.offset() .. buffer.offset() + buffer.size(),
             write: true,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
         })), None);
 
         {
@@ -290,12 +288,9 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.usage_transfer_dest());
 
-        self.register_resources(Some((buffer.clone() as Arc<_>, BufferGpuAccessRange {
-            range_start: offset,
-            range_size: size,
+        self.register_resources(Some((buffer.clone() as Arc<_>, BufferInnerSync {
+            range: offset .. offset + size,
             write: true,
-            expected_queue_family_owner: None,
-            queue_family_owner_transition: None,
         })), None);
 
         // FIXME: check that the queue family supports transfers
@@ -337,19 +332,13 @@ impl InnerCommandBufferBuilder {
 
         self.register_resources(
             vec![
-                (source.clone() as Arc<_>, BufferGpuAccessRange {
-                    range_start: 0,
-                    range_size: source.size(),
+                (source.clone() as Arc<_>, BufferInnerSync {
+                    range: 0 .. source.size(),
                     write: false,
-                    expected_queue_family_owner: None,
-                    queue_family_owner_transition: None,
                 }),
-                (destination.clone() as Arc<_>, BufferGpuAccessRange {
-                    range_start: 0,
-                    range_size: destination.size(),
+                (destination.clone() as Arc<_>, BufferInnerSync {
+                    range: 0 .. destination.size(),
                     write: true,
-                    expected_queue_family_owner: None,
-                    queue_family_owner_transition: None,
                 })
             ],
             None
@@ -429,23 +418,15 @@ impl InnerCommandBufferBuilder {
         let source = source.into();
 
         self.register_resources(
-            Some((source.buffer().clone() as Arc<_>, BufferGpuAccessRange {
-                range_start: source.offset(),
-                range_size: source.size(),
+            Some((source.buffer().clone() as Arc<_>, BufferInnerSync {
+                range: source.offset() .. source.offset() + source.size(),
                 write: false,
-                expected_queue_family_owner: None,
-                queue_family_owner_transition: None,
             })).into_iter(),
-            Some((image.clone() as Arc<_>, ImageGpuAccessRange {
-                mipmap_level_start: 0,      // FIXME:
-                mipmap_levels_count: 1,     // FIXME:
-                array_layer_start: 0,       // FIXME:
-                array_layers_count: 1,      // FIXME:
+            Some((image.clone() as Arc<_>, ImageInnerSync {
+                mipmap_levels_range: 0 .. 1,     // FIXME:
+                array_layers_range: 0 .. 1,      // FIXME:
                 write: true,
-                expected_queue_family_owner: None,
-                queue_family_owner_transition: None,
-                expected_layout: ImageLayout::TransferDstOptimal,       // TODO: can General as well
-                layout_transition: ImageLayout::TransferDstOptimal,     // TODO: can General as well
+                layout: ImageLayout::TransferDstOptimal,       // TODO: can be General as well
             })).into_iter()
         );
 
@@ -832,13 +813,13 @@ impl InnerCommandBufferBuilder {
     }
 
     fn register_resources<Ib, Im>(&mut self, buffers: Ib, images: Im)
-        where Ib: IntoIterator<Item = (Arc<AbstractBuffer>, BufferGpuAccessRange)>,
-              Im: IntoIterator<Item = (Arc<AbstractImage>, ImageGpuAccessRange)>,
+        where Ib: IntoIterator<Item = (Arc<AbstractBuffer>, BufferInnerSync)>,
+              Im: IntoIterator<Item = (Arc<AbstractImage>, ImageInnerSync)>,
     {
         /*let mut buffer_barriers = SmallVec::<[_; 16]>::new();
         let mut image_barriers = SmallVec::<[_; 16]>::new();*/
 
-        for (buffer, range) in buffers {
+        for (buffer, inner_sync) in buffers {
             let buffer_memory = buffer.memory();
 
             // Memory chunk implementations can just tell us to ignore any synchronization as an
@@ -849,7 +830,16 @@ impl InnerCommandBufferBuilder {
 
             // Align the range and check for correctness with debug_assert!.
             let range = {
+                let range = BufferGpuAccessRange {
+                    range_start: inner_sync.range.start,
+                    range_size: inner_sync.range.end - inner_sync.range.start,
+                    write: inner_sync.write,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                };
+
                 let aligned = buffer_memory.align(range);
+
                 debug_assert!(aligned.range_start <= range.range_start);
                 debug_assert!(aligned.range_size >= range.range_size +
                                                     (range.range_start - aligned.range_start));
@@ -873,7 +863,7 @@ impl InnerCommandBufferBuilder {
             };
         }
 
-        for (image, range) in images {
+        for (image, inner_sync) in images {
             let image_memory = image.memory();
 
             // Memory chunk implementations can just tell us to ignore any synchronization as an
@@ -884,7 +874,22 @@ impl InnerCommandBufferBuilder {
 
             // Align the range and check for correctness with debug_assert!.
             let range = {
+                let range = ImageGpuAccessRange {
+                    mipmap_level_start: inner_sync.mipmap_levels_range.start,
+                    mipmap_levels_count: inner_sync.mipmap_levels_range.end -
+                                         inner_sync.mipmap_levels_range.start,
+                    array_layer_start: inner_sync.array_layers_range.start,
+                    array_layers_count: inner_sync.array_layers_range.end -
+                                        inner_sync.array_layers_range.start,
+                    write: inner_sync.write,
+                    expected_queue_family_owner: None,
+                    queue_family_owner_transition: None,
+                    expected_layout: inner_sync.layout,
+                    layout_transition: inner_sync.layout,
+                };
+
                 let aligned = image_memory.align(range);
+
                 debug_assert!(aligned.mipmap_level_start <= range.mipmap_level_start);
                 debug_assert!(aligned.mipmap_levels_count >= range.mipmap_levels_count +
                                           (range.mipmap_level_start - aligned.mipmap_level_start));
@@ -1126,4 +1131,18 @@ impl hash::Hash for AbstractImageKey {
         let ptr = &*self.0 as *const AbstractImage as *const () as usize;
         hash::Hash::hash(&ptr, state)
     }
+}
+
+struct BufferInnerSync {
+    range: Range<usize>,
+    write: bool,
+    // TODO: access mask
+}
+
+struct ImageInnerSync {
+    mipmap_levels_range: Range<u32>,
+    array_layers_range: Range<u32>,
+    write: bool,
+    layout: ImageLayout,
+    // TODO: access mask
 }
