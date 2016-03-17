@@ -205,15 +205,25 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<AbstractCommandBuffer>,
                                        cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
+        // By keeping the secondary command buffer itself alive, we also keep alive the resources
+        // that it uses internally.
         self.keep_alive_secondary_command_buffers.push(cb_arc);
 
+        // FIXME: also add to renderpass_*_resources
         for (k, v) in cb.externsync_buffer_resources.iter() { self.externsync_buffer_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
         for (k, v) in cb.externsync_image_resources.iter() { self.externsync_image_resources.insert(k.clone(), v.clone()); }        // FIXME: merge properly
 
-        {
+        // Add the actual command.
+        if self.renderpass_staged.is_empty() {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             vk.CmdExecuteCommands(self.cmd.unwrap(), 1, &cb.cmd);
+
+        } else {
+            let secondary_cb = cb.cmd;
+            self.renderpass_staged.push(Box::new(move |vk, cmd| {
+                vk.CmdExecuteCommands(cmd, 1, &secondary_cb);
+            }));
         }
 
         // Resetting the state of the command buffer.
