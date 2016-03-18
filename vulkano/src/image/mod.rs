@@ -40,6 +40,8 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub mod sys;
+
 pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
     /// command buffer, it is switched from this default layout to something else (if necessary),
