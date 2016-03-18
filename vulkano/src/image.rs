@@ -71,6 +71,11 @@ pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
 }
 
 pub unsafe trait AbstractImageView: Resource + ::VulkanObjectU64 {
+    /// Returns the image associated to this view.
+    fn image(&self) -> Arc<AbstractImage>;
+
+    // TODO: remove what's below
+
     fn default_layout(&self) -> Layout;
 
     unsafe fn gpu_access(&self, write: bool, queue: &Arc<Queue>, fence: Option<Arc<Fence>>,
@@ -821,8 +826,13 @@ unsafe impl<Ty, F, M> Resource for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, M: MemorySource
+    where Ty: ImageTypeMarker + 'static, M: MemorySource + 'static, F: 'static
 {
+    #[inline]
+    fn image(&self) -> Arc<AbstractImage> {
+        self.image.clone() as Arc<_>
+    }
+
     #[inline]
     fn default_layout(&self) -> Layout {
         self.image.default_layout()
@@ -877,7 +887,7 @@ unsafe impl<Ty, F, M> AbstractImageView for ImageView<Ty, F, M>
 }
 
 unsafe impl<Ty, F, M> AbstractTypedImageView<Ty, F> for ImageView<Ty, F, M>
-    where Ty: ImageTypeMarker, F: FormatDesc, M: MemorySource
+    where Ty: ImageTypeMarker + 'static, F: FormatDesc + 'static, M: MemorySource + 'static
 {
 }
 
