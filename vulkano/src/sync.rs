@@ -168,6 +168,47 @@ impl Fence {
         }
     }
 
+    /// Waits for multiple fences at once.
+    ///
+    /// # Panic
+    ///
+    /// Panicks if not all fences belong to the same device.
+    pub fn multi_wait<'a, I>(iter: I, timeout_ns: u64) -> Result<(), OomError>      // FIXME: wrong error
+        where I: IntoIterator<Item = &'a Fence>
+    {
+        let mut device = None;
+
+        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().filter_map(|fence| {
+            match &mut device {
+                dev @ &mut None => *dev = Some(fence.device.clone()),
+                &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
+                _ => panic!("Tried to wait for  multiple fences that didn't belong to the same device"),
+            };
+
+            if fence.signaled.load(Ordering::Relaxed) {
+                None
+            } else {
+                Some(fence.fence)
+            }
+        }).collect();
+
+        let r = if let Some(device) = device {
+            unsafe {
+                let vk = device.pointers();
+                try!(check_errors(vk.WaitForFences(device.internal_object(), fences.len() as u32,
+                                                   fences.as_ptr(), vk::TRUE, timeout_ns)))
+            }
+        } else {
+            return Ok(());
+        };
+
+        match r {
+            Success::Success => Ok(()),
+            Success::Timeout => panic!(),        // FIXME:
+            _ => unreachable!()
+        }
+    }
+
     /// Resets the fence.
     // FIXME: must synchronize the fence
     #[inline]
