@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use device::Device;
 use format::Format;
+use format::FormatTy;
 use image::MipmapsCount;
 use memory::ChunkProperties;
 use sync::SharingMode;
@@ -22,6 +23,7 @@ pub struct UnsafeImage {
     format: Format,
 
     dimensions: [f32; 3],
+    array_layers: u32,
     samples: u32,
     mipmaps: u32,
 
@@ -38,10 +40,10 @@ impl UnsafeImage {
     /// - Panicks if the number of mipmaps is 0.
     /// - Panicks if the number of samples is 0.
     ///
-    pub fn new<'a, M, Mi, Sh>(device: &Arc<Device>, usage: &Usage, memory: M, format: Format,
-                              dimensions: Dimensions, num_samples: u32, mipmaps: Mi, sharing: Sh,
-                              linear_tiling: bool, preinitialized_layout: bool)
-                              -> Result<UnsafeImage, OomError>
+    pub unsafe fn new<'a, M, Mi, Sh>(device: &Arc<Device>, usage: &Usage, memory: M, format: Format,
+                                     dimensions: Dimensions, num_samples: u32, mipmaps: Mi, sharing: Sh,
+                                     linear_tiling: bool, preinitialized_layout: bool)
+                                     -> Result<UnsafeImage, OomError>
         where Mi: Into<MipmapsCount>, Sh: Into<SharingMode>,
               M: FnOnce(usize, usize, u32) -> ChunkProperties<'a>
     {
@@ -113,7 +115,7 @@ impl UnsafeImage {
             },
         };
 
-        let image = unsafe {
+        let image = {
             let (sh_mode, sh_count, sh_indices) = match sharing {
                 SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
                 SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
@@ -152,13 +154,13 @@ impl UnsafeImage {
             output
         };
 
-        let mem_reqs: vk::MemoryRequirements = unsafe {
+        let mem_reqs: vk::MemoryRequirements = {
             let mut output = mem::uninitialized();
             vk.GetImageMemoryRequirements(device.internal_object(), image, &mut output);
             output
         };
 
-        unsafe {
+        {
             match memory(mem_reqs.size as usize, mem_reqs.alignment as usize, mem_reqs.memoryTypeBits) {
                 ChunkProperties::Regular { memory, offset, .. } => {
                     try!(check_errors(vk.BindImageMemory(device.internal_object(), image,
@@ -175,6 +177,7 @@ impl UnsafeImage {
             usage: usage,
             format: format,
             dimensions: dims,
+            array_layers: array_layers,
             samples: num_samples,
             mipmaps: mipmaps,
             needs_destruction: true,
@@ -227,6 +230,71 @@ impl Drop for UnsafeImage {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyImage(self.device.internal_object(), self.image, ptr::null());
+        }
+    }
+}
+
+pub struct UnsafeImageView {
+    view: vk::ImageView,
+    device: Arc<Device>,
+    identity_swizzle: bool,
+}
+
+impl UnsafeImageView {
+    /// Creates a new view from an image.
+    ///
+    /// Note that you must create the view with identity swizzling if you want to use this view
+    /// as a framebuffer attachment.
+    pub unsafe fn new(image: &UnsafeImage) -> Result<UnsafeImageView, OomError> {
+        let vk = image.device.pointers();
+
+        let aspect_mask = match image.format.ty() {
+            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
+                vk::IMAGE_ASPECT_COLOR_BIT
+            },
+            FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
+            FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
+            FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+        };
+
+        let view = {
+            let infos = vk::ImageViewCreateInfo {
+                sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                image: image.internal_object(),
+                viewType: vk::IMAGE_VIEW_TYPE_2D,     // FIXME:
+                format: image.format as u32,
+                components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
+                subresourceRange: vk::ImageSubresourceRange {
+                    aspectMask: aspect_mask,
+                    baseMipLevel: 0,            // TODO:
+                    levelCount: image.mipmaps,          // TODO:
+                    baseArrayLayer: 0,          // TODO:
+                    layerCount: 1,          // TODO:
+                },
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateImageView(image.device.internal_object(), &infos,
+                                                 ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(UnsafeImageView {
+            view: view,
+            device: image.device.clone(),
+            identity_swizzle: true,     // FIXME:
+        })
+    }
+}
+
+impl Drop for UnsafeImageView {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyImageView(self.device.internal_object(), self.view, ptr::null());
         }
     }
 }
