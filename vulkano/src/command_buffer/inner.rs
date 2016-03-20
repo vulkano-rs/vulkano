@@ -852,6 +852,17 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     let mut pre_semaphores_ids = Vec::new();
     let mut pre_semaphores_stages = Vec::new();
 
+    {
+        let (semaphore, wait) = unsafe { try!(queue.dedicated_semaphore()) };
+        if wait {
+            pre_semaphores_ids.push(semaphore.internal_object());
+            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+            pre_semaphores.push(semaphore.clone());
+        }
+        post_semaphores_ids.push(semaphore.internal_object());
+        post_semaphores.push(semaphore);
+    }
+
     for resource in me.buffer_resources.iter() {
         let post_semaphore = if resource.requires_semaphore() {
             let semaphore = try!(Semaphore::new(queue.device()));
