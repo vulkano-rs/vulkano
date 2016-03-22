@@ -10,6 +10,7 @@ use buffer::unsafe_buffer::UnsafeBuffer;
 use buffer::unsafe_buffer::Usage;
 use command_buffer::Submission;
 use device::Device;
+use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
 use sync::Sharing;
 
@@ -36,18 +37,28 @@ impl<T: ?Sized> StagingBuffer<T> {
             .. Usage::none()
         };
 
-        /*try!(DeviceMemory::alloc_and_map(device, , ))
-    pub fn alloc_and_map(device: &Arc<Device>, memory_type: &MemoryType, size: usize)
-                         -> Result<MappedDeviceMemory, OomError>*/
-
         let (buffer, mem_reqs) = unsafe {
             try!(UnsafeBuffer::new(device, mem::size_of_val(data), &usage,
                                    Sharing::Exclusive::<Empty<u32>>))
         };
 
+        let mem_ty = device.physical_device().memory_types()
+                           .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                           .filter(|t| t.is_host_visible())
+                           .next().unwrap();    // Vk specs guarantee that this can't fail
+
+        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
+        //       fulfill any alignment requirement
+
+        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, mem_reqs.size));
+
+        unsafe { try!(buffer.bind_memory(mem.memory(), 0 .. mem_reqs.size)) };
+
+        // FIXME: write data in memory
+
         Ok(Arc::new(StagingBuffer {
             inner: buffer,
-            memory: unimplemented!(),
+            memory: mem,
             owner_queue_family: Mutex::new(None),
             latest_submission: Mutex::new(None),
             marker: PhantomData,

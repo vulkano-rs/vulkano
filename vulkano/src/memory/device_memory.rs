@@ -142,6 +142,7 @@ pub struct MappedDeviceMemory {
 
 impl MappedDeviceMemory {
     /// Returns the underlying `DeviceMemory`.
+    // TODO: impl AsRef instead
     #[inline]
     pub fn memory(&self) -> &DeviceMemory {
         &self.memory
