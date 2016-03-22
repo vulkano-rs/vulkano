@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
@@ -852,6 +853,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     let mut pre_semaphores_ids = Vec::new();
     let mut pre_semaphores_stages = Vec::new();
 
+    // Each queue has a dedicated semaphore which must be signalled and waited upon by each
+    // command buffer submission.
     {
         let (semaphore, wait) = unsafe { try!(queue.dedicated_semaphore()) };
         if wait {
@@ -862,6 +865,20 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         post_semaphores_ids.push(semaphore.internal_object());
         post_semaphores.push(semaphore);
     }
+
+    // Creating additional semaphores, one for each queue transition.
+    let queue_transitions_hint: u32 = 2;        // TODO: get as function parameter
+    // TODO: use a pool
+    let semaphores_to_signal = {
+        let mut list = SmallVec::new();
+        for _ in 0 .. queue_transitions_hint {
+            let sem = try!(Semaphore::new(queue.device()));
+            post_semaphores_ids.push(sem.internal_object());
+            post_semaphores.push(sem.clone());
+            list.push(sem);
+        }
+        list
+    };
 
     for resource in me.buffer_resources.iter() {
         let post_semaphore = if resource.requires_semaphore() {
@@ -910,6 +927,42 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         }
     }
 
+    // For each dependency, we either wait on one of its semaphores, or create a new one.
+    let dependencies = SmallVec::<[Arc<Submission>; 6]>::new();     // TODO: for now we assume that the list was computed above
+    for dependency in dependencies.iter() {
+        let mut guard = dependency.guarded.lock().unwrap();
+        let current_queue_id = (queue.family().id(), queue.id_within_family());
+
+        // If the current queue is in the list of already-signalled queue, we ignore the
+        // dependency.
+        if guard.signalled_queues.iter().find(|&&elem| elem == current_queue_id).is_some() {
+            continue;
+        }
+
+        // Otherwise, try to extract a semaphore from the semaphores that were signalled by the
+        // dependency.
+        let semaphore = guard.signalled_semaphores.pop();
+        guard.signalled_queues.push(current_queue_id);
+
+        let semaphore = if let Some(semaphore) = semaphore {
+            semaphore
+
+        } else {
+            // This path is the slow path in the case where the user gave the wrong hint about
+            // the number of queue transitions.
+            // The only thing left to do is submit a dummy command buffer and a dummy semaphore
+            // in the source queue.
+            unimplemented!()    // FIXME:
+        };
+
+        pre_semaphores_ids.push(semaphore.internal_object());
+        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+        pre_semaphores.push(semaphore);
+    }
+
+
+    debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
+
     let infos = vk::SubmitInfo {
         sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
         pNext: ptr::null(),
@@ -929,8 +982,13 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
     Ok(Submission {
         cmd: Some(me_arc),
-        semaphores: post_semaphores.iter().cloned().chain(pre_semaphores.iter().cloned()).collect(),
+        keep_alive_semaphores: post_semaphores.iter().cloned().chain(pre_semaphores.iter().cloned()).collect(),
         fence: fence,
+        queue: queue.clone(),
+        guarded: Mutex::new(SubmissionGuarded {
+            signalled_semaphores: semaphores_to_signal,
+            signalled_queues: SmallVec::new(),
+        })
     })
 }
 
@@ -948,21 +1006,30 @@ impl Drop for InnerCommandBuffer {
 #[must_use]
 pub struct Submission {
     cmd: Option<Arc<AbstractCommandBuffer>>,
-    semaphores: Vec<Arc<Semaphore>>,
+
+    // List of semaphores to keep alive while the submission hasn't finished execution.
+    keep_alive_semaphores: Vec<Arc<Semaphore>>,
+
     fence: Arc<Fence>,
+
+    // The queue on which this was submitted.
+    queue: Arc<Queue>,
+
+    // Additional variables that are behind a mutex.
+    guarded: Mutex<SubmissionGuarded>,
+}
+
+struct SubmissionGuarded {
+    // Reserve of semaphores that have been signalled by this submission and that must be
+    // waited upon.
+    signalled_semaphores: SmallVec<[Arc<Semaphore>; 4]>,
+
+    // Queue familiy index and queue index of each queue that got submitted a command buffer
+    // that was waiting on this submission to be complete.
+    signalled_queues: SmallVec<[(u32, u32); 4]>,
 }
 
 impl Submission {
-    #[doc(hidden)]
-    #[inline]
-    pub fn from_raw(semaphores: Vec<Arc<Semaphore>>, fence: Arc<Fence>) -> Submission {
-        Submission {
-            cmd: None,
-            semaphores: semaphores,
-            fence: fence,
-        }
-    }
-
     /// Returns `true` is destroying this `Submission` object would block the CPU for some time.
     #[inline]
     pub fn destroying_would_block(&self) -> bool {
@@ -974,5 +1041,7 @@ impl Drop for Submission {
     #[inline]
     fn drop(&mut self) {
         self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */).unwrap();
+
+        // TODO: return `signalled_semaphores` to the semaphore pools
     }
 }

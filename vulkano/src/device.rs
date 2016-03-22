@@ -314,6 +314,12 @@ impl Queue {
         self.device.physical_device().queue_family_by_id(self.family).unwrap()
     }
 
+    /// Returns the index of this queue within its family.
+    #[inline]
+    pub fn id_within_family(&self) -> u32 {
+        self.id
+    }
+
     /// Waits until all work on this queue has finished.
     ///
     /// Just like `Device::wait()`, you shouldn't have to call this function.
