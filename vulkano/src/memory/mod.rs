@@ -56,6 +56,7 @@ use device::Device;
 use device::Queue;
 
 use OomError;
+use vk;
 
 pub use self::device_memory::DeviceMemory;
 pub use self::device_memory::MappedDeviceMemory;
@@ -187,6 +188,25 @@ pub enum ChunkRange {
         offset: usize,
         /// Size in bytes of the part we want.
         size: usize,
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct MemoryRequirements {
+    pub size: usize,
+    pub alignment: usize,
+    pub memory_type_bits: u32,
+}
+
+#[doc(hidden)]
+impl From<vk::MemoryRequirements> for MemoryRequirements {
+    #[inline]
+    fn from(reqs: vk::MemoryRequirements) -> MemoryRequirements {
+        MemoryRequirements {
+            size: reqs.size as usize,
+            alignment: reqs.alignment as usize,
+            memory_type_bits: reqs.memoryTypeBits,
+        }
     }
 }
 

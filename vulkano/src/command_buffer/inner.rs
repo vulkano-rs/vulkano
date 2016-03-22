@@ -1035,6 +1035,12 @@ impl Submission {
     pub fn destroying_would_block(&self) -> bool {
         self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?
     }
+
+    /// Returns the `queue` the command buffers were submitted to.
+    #[inline]
+    pub fn queue(&self) -> &Arc<Queue> {
+        &self.queue
+    }
 }
 
 impl Drop for Submission {

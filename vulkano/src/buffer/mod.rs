@@ -53,6 +53,12 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub use self::unsafe_buffer::Usage;
+
+mod staging;
+mod traits;
+mod unsafe_buffer;
+
 pub unsafe trait AbstractBuffer: Resource + ::VulkanObjectU64 {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
@@ -461,141 +467,6 @@ impl<T: ?Sized, M> Drop for Buffer<T, M> where M: MemorySource {
             let vk = self.inner.device.pointers();
             vk.DestroyBuffer(self.inner.device.internal_object(), self.inner.buffer, ptr::null());
         }
-    }
-}
-
-/// Describes how a buffer is going to be used. This is **not** an optimization.
-///
-/// If you try to use a buffer in a way that you didn't declare, a panic will happen.
-///
-/// Some methods are provided to build `Usage` structs for some common situations. However
-/// there is no restriction in the combination of usages that can be enabled.
-#[derive(Debug, Copy, Clone)]
-pub struct Usage {
-    pub transfer_source: bool,
-    pub transfer_dest: bool,
-    pub uniform_texel_buffer: bool,
-    pub storage_texel_buffer: bool,
-    pub uniform_buffer: bool,
-    pub storage_buffer: bool,
-    pub index_buffer: bool,
-    pub vertex_buffer: bool,
-    pub indirect_buffer: bool,
-}
-
-impl Usage {
-    /// Builds a `Usage` with all values set to false.
-    #[inline]
-    pub fn none() -> Usage {
-        Usage {
-            transfer_source: false,
-            transfer_dest: false,
-            uniform_texel_buffer: false,
-            storage_texel_buffer: false,
-            uniform_buffer: false,
-            storage_buffer: false,
-            index_buffer: false,
-            vertex_buffer: false,
-            indirect_buffer: false,
-        }
-    }
-
-    /// Builds a `Usage` with all values set to true. Can be used for quick prototyping.
-    #[inline]
-    pub fn all() -> Usage {
-        Usage {
-            transfer_source: true,
-            transfer_dest: true,
-            uniform_texel_buffer: true,
-            storage_texel_buffer: true,
-            uniform_buffer: true,
-            storage_buffer: true,
-            index_buffer: true,
-            vertex_buffer: true,
-            indirect_buffer: true,
-        }
-    }
-
-    /// Builds a `Usage` with `transfer_source` set to true and the rest to false.
-    #[inline]
-    pub fn transfer_source() -> Usage {
-        Usage {
-            transfer_source: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `vertex_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn vertex_buffer() -> Usage {
-        Usage {
-            vertex_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `vertex_buffer` and `transfer_dest` set to true and the rest to false.
-    #[inline]
-    pub fn vertex_buffer_transfer_dest() -> Usage {
-        Usage {
-            vertex_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `index_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn index_buffer() -> Usage {
-        Usage {
-            index_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `index_buffer` and `transfer_dest` set to true and the rest to false.
-    #[inline]
-    pub fn index_buffer_transfer_dest() -> Usage {
-        Usage {
-            index_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `uniform_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn uniform_buffer() -> Usage {
-        Usage {
-            uniform_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `uniform_buffer` and `transfer_dest` set to true and the rest
-    /// to false.
-    #[inline]
-    pub fn uniform_buffer_transfer_dest() -> Usage {
-        Usage {
-            uniform_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    #[inline]
-    fn to_usage_bits(&self) -> vk::BufferUsageFlagBits {
-        let mut result = 0;
-        if self.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
-        if self.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
-        if self.uniform_texel_buffer { result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT; }
-        if self.storage_texel_buffer { result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT; }
-        if self.uniform_buffer { result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT; }
-        if self.storage_buffer { result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT; }
-        if self.index_buffer { result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT; }
-        if self.vertex_buffer { result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT; }
-        if self.indirect_buffer { result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT; }
-        result
     }
 }
 
