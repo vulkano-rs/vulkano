@@ -8,7 +8,6 @@ use image::traits::ImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
 use swapchain::Swapchain;
 
 use OomError;
@@ -17,13 +16,13 @@ pub struct SwapchainImage {
     image: UnsafeImage,
     view: UnsafeImageView,
     format: Format,
-    usage: Usage,
     swapchain: Arc<Swapchain>,
+    id: u32,
 }
 
 impl SwapchainImage {
-    pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>,
-                           usage: &Usage) -> Result<Arc<SwapchainImage>, OomError>
+    pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
+                           -> Result<Arc<SwapchainImage>, OomError>
     {
         let view = try!(UnsafeImageView::new(&image));
 
@@ -31,8 +30,8 @@ impl SwapchainImage {
             image: image,
             view: view,
             format: format,
-            usage: usage.clone(),
             swapchain: swapchain.clone(),
+            id: id,
         }))
     }
 }

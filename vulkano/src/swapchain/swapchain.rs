@@ -8,19 +8,14 @@ use std::sync::Mutex;
 use device::Device;
 use device::Queue;
 use format::FormatDesc;
-use image::Image;
-use image::ImagePrototype;
-use image::Type2d;
-use image::Usage as ImageUsage;
-use memory::ChunkProperties;
-use memory::ChunkRange;
-use memory::MemorySource;
-use memory::MemorySourceChunk;
+use image::sys::Dimensions;
+use image::sys::UnsafeImage;
+use image::sys::Usage as ImageUsage;
+use image::swapchain::SwapchainImage;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
-use sync::Fence;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -66,7 +61,7 @@ impl Swapchain {
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocated>>), OomError>
+                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
         where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
@@ -81,7 +76,7 @@ impl Swapchain {
     fn new_inner<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                        dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<ImagePrototype<Type2d, F, SwapchainAllocated>>), OomError>
+                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
         where F: FormatDesc + Clone, S: Into<SharingMode>
     {
         // FIXME: check that the parameters are supported
@@ -151,9 +146,9 @@ impl Swapchain {
         };
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
-            let mem = SwapchainAllocatedChunk { swapchain: swapchain.clone(), id: id };
-            Image::from_raw_unowned(&device, image, mem, sharing.clone(), usage, format.clone(),
-                                    dimensions, (), 1)
+            let unsafe_image = UnsafeImage::from_raw(device, image, usage, format.format(),
+                                                     Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1, 1);
+            SwapchainImage::from_raw(unsafe_image, format.format(), &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 
         {
@@ -287,54 +282,5 @@ impl From<Error> for AcquireError {
             Error::OutOfDate => AcquireError::OutOfDate,
             _ => panic!("unexpected error: {:?}", err)
         }
-    }
-}
-
-/// "Dummy" object used for images that indicates that they were allocated as part of a swapchain.
-pub struct SwapchainAllocated;
-
-unsafe impl MemorySource for SwapchainAllocated {
-    type Chunk = SwapchainAllocatedChunk;
-
-    #[inline]
-    fn is_sparse(&self) -> bool { false }
-
-    #[inline]
-    fn allocate(self, _: &Arc<Device>, _: usize, _: usize, _: u32)
-                -> Result<Self::Chunk, OomError>
-    {
-        panic!()
-    }
-}
-
-/// "Dummy" object used for images that indicates that they were allocated as part of a swapchain.
-pub struct SwapchainAllocatedChunk {
-    swapchain: Arc<Swapchain>,
-    id: usize,
-}
-
-// FIXME: needs correct synchronization as well
-unsafe impl MemorySourceChunk for SwapchainAllocatedChunk {
-    #[inline]
-    fn properties(&self) -> ChunkProperties {
-        unreachable!()
-    }
-
-    #[inline]
-    fn requires_fence(&self) -> bool { false }
-    #[inline]
-    fn requires_semaphore(&self) -> bool { true }
-    #[inline]
-    fn may_alias(&self) -> bool { false }
-
-    #[inline]
-    unsafe fn gpu_access(&self, _: bool, _: ChunkRange, _: &Arc<Queue>, _: Option<Arc<Fence>>,
-                         post_semaphore: Option<Arc<Semaphore>>) -> Option<Arc<Semaphore>>
-    {
-        assert!(post_semaphore.is_some());
-        // FIXME: must also check that image has been acquired
-        let mut semaphores = self.swapchain.images_semaphores.lock().unwrap();
-        let pre_semaphore = mem::replace(&mut semaphores[self.id], post_semaphore);
-        pre_semaphore
     }
 }

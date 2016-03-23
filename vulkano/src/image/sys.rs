@@ -181,26 +181,40 @@ impl UnsafeImage {
     /// Creates an image from a raw handle. The image won't be destroyed.
     ///
     /// This function is for example used at the swapchain's initialization.
-    pub unsafe fn from_raw_unowned<M>(device: &Arc<Device>, handle: u64, memory: M,
-                                      usage: u32, format: Format, dimensions: Dimensions,
-                                      samples: u32, mipmaps: u32) -> UnsafeImage
+    pub unsafe fn from_raw(device: &Arc<Device>, handle: u64, usage: u32, format: Format,
+                           dimensions: Dimensions, array_layers: u32, samples: u32, mipmaps: u32)
+                           -> UnsafeImage
     {
-        unimplemented!()/*
-        ImagePrototype{
-            image: Image {
-                device: device.clone(),
-                image: handle,
-                memory: memory,
-                usage: usage,
-                format: format,
-                dimensions: dimensions.clone(),
-                samples: samples,
-                mipmaps: mipmaps,
-                sharing: sharing,
-                needs_destruction: false,
-                layout: Layout::Undefined,
+        // TODO: DRY
+        let dims = match dimensions {
+            Dimensions::Dim1d { width } => {
+                [width as f32, 1.0, 1.0]
             },
-        }*/
+            Dimensions::Dim1dArray { width, array_layers } => {
+                [width as f32, 1.0, 1.0]
+            },
+            Dimensions::Dim2d { width, height } => {
+                [width as f32, height as f32, 1.0]
+            },
+            Dimensions::Dim2dArray { width, height, array_layers } => {
+                [width as f32, height as f32, 1.0]
+            },
+            Dimensions::Dim3d { width, height, depth } => {
+                [width as f32, height as f32, depth as f32]
+            },
+        };
+
+        UnsafeImage {
+            device: device.clone(),
+            image: handle,
+            usage: usage,
+            format: format,
+            dimensions: dims,
+            array_layers: array_layers,
+            samples: samples,
+            mipmaps: mipmaps,
+            needs_destruction: false,       // TODO: pass as parameter
+        }
     }
 
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, range: Range<usize>)
