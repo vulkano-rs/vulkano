@@ -14,7 +14,6 @@ use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
 use memory::DeviceMemory;
-use memory::MappedDeviceMemory;
 use sync::Sharing;
 
 use OomError;
@@ -23,7 +22,7 @@ pub struct ImmutableBuffer<T: ?Sized> {
     // Inner content.
     inner: UnsafeBuffer,
 
-    memory: MappedDeviceMemory,
+    memory: DeviceMemory,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -89,9 +88,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         // note: alignment doesn't need to be checked because allocating memory is guaranteed to
         //       fulfill any alignment requirement
 
-        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, mem_reqs.size));
+        let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
 
-        try!(buffer.bind_memory(mem.memory(), 0 .. mem_reqs.size));
+        try!(buffer.bind_memory(&mem, 0 .. mem_reqs.size));
 
         Ok(Arc::new(ImmutableBuffer {
             inner: buffer,
