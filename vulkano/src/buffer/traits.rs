@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use buffer::unsafe_buffer::UnsafeBuffer;
+use buffer::sys::UnsafeBuffer;
 use command_buffer::Submission;
 use memory::Content;
 

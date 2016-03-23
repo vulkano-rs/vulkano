@@ -41,15 +41,15 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub use self::sys::Usage;
 pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
-pub use self::unsafe_buffer::Usage;
 
 pub mod cpu_access;
 pub mod immutable;
 pub mod staging;
+pub mod sys;
 pub mod traits;
-pub mod unsafe_buffer;
 
 /// A subpart of a buffer.
 ///

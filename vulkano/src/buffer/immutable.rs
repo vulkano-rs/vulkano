@@ -7,10 +7,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
+use buffer::sys::UnsafeBuffer;
+use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
-use buffer::unsafe_buffer::UnsafeBuffer;
-use buffer::unsafe_buffer::Usage;
 use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
