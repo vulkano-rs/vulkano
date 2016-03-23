@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
-use buffer::AbstractBuffer;
+use buffer::TypedBuffer;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
@@ -67,12 +67,12 @@ pub struct InnerCommandBufferBuilder {
     renderpasses: Vec<Arc<RenderPass>>,
 
     // List of all resources that are used by this command buffer.
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
+    buffer_resources: Vec<Arc<Buffer>>,
 
     image_resources: Vec<Arc<AbstractImage>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<AbstractImageView>` into an `Arc<AbstractBuffer>`.
+    // `Arc<AbstractImageView>` into an `Arc<Buffer>`.
     image_views_resources: Vec<Arc<AbstractImageView>>,
 
     // List of pipelines that are used by this command buffer.
@@ -230,9 +230,9 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(mut self, buffer: B, data: &T)
-                                                          -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
+    pub unsafe fn update_buffer<'a, B, T, Bt>(mut self, buffer: B, data: &T)
+                                              -> InnerCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static
     {
         let buffer = buffer.into();
 
@@ -240,7 +240,7 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() <= 65536);
         assert!(buffer.offset() % 4 == 0);
         assert!(buffer.size() % 4 == 0);
-        assert!(buffer.buffer().usage_transfer_dest());
+        assert!(buffer.buffer().inner_buffer().usage_transfer_dest());
 
         // FIXME: check queue family of the buffer
 
@@ -249,7 +249,7 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().internal_object(),
+            vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().inner_buffer().internal_object(),
                                buffer.offset() as vk::DeviceSize,
                                buffer.size() as vk::DeviceSize, data as *const T as *const _);
         }
@@ -271,16 +271,15 @@ impl InnerCommandBufferBuilder {
     /// - Type safety is not enforced by the API.
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn fill_buffer<T: 'static, M>(mut self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                             size: usize, data: u32) -> InnerCommandBufferBuilder
-        where M: MemorySource + 'static
+    pub unsafe fn fill_buffer<B>(mut self, buffer: &Arc<B>, offset: usize,
+                                 size: usize, data: u32) -> InnerCommandBufferBuilder
+        where B: Buffer + 'static
     {
-
         assert!(self.pool.queue_family().supports_transfers());
         assert!(offset + size <= buffer.size());
         assert!(offset % 4 == 0);
         assert!(size % 4 == 0);
-        assert!(buffer.usage_transfer_dest());
+        assert!(buffer.inner_buffer().usage_transfer_dest());
 
         self.add_buffer_resource(buffer.clone(), true, offset, size);
 
@@ -290,7 +289,7 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdFillBuffer(self.cmd.unwrap(), buffer.internal_object(),
+            vk.CmdFillBuffer(self.cmd.unwrap(), buffer.inner_buffer().internal_object(),
                              offset as vk::DeviceSize, size as vk::DeviceSize, data);
         }
 
@@ -312,14 +311,15 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     // TODO: doesn't support slices
-    pub unsafe fn copy_buffer<T: ?Sized + 'static, Ms, Md>(mut self, source: &Arc<Buffer<T, Ms>>,
-                                                           destination: &Arc<Buffer<T, Md>>)
+    pub unsafe fn copy_buffer<T: ?Sized + 'static, Bs, Bd>(mut self, source: &Arc<Bs>,
+                                                           destination: &Arc<Bd>)
                                                            -> InnerCommandBufferBuilder
-        where Ms: MemorySource + 'static, Md: MemorySource + 'static
+        where Bs: TypedBuffer<Content = T> + 'static, Bd: TypedBuffer<Content = T> + 'static
     {
-        assert_eq!(&**source.device() as *const _, &**destination.device() as *const _);
-        assert!(source.usage_transfer_src());
-        assert!(destination.usage_transfer_dest());
+        assert_eq!(&**source.inner_buffer().device() as *const _,
+                   &**destination.inner_buffer().device() as *const _);
+        assert!(source.inner_buffer().usage_transfer_src());
+        assert!(destination.inner_buffer().usage_transfer_dest());
 
         let copy = vk::BufferCopy {
             srcOffset: 0,
@@ -333,8 +333,8 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdCopyBuffer(self.cmd.unwrap(), source.internal_object(),
-                             destination.internal_object(), 1, &copy);
+            vk.CmdCopyBuffer(self.cmd.unwrap(), source.inner_buffer().internal_object(),
+                             destination.inner_buffer().internal_object(), 1, &copy);
         }
 
         self
@@ -386,11 +386,10 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<'a, S, So: ?Sized, Sm, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
+    pub unsafe fn copy_buffer_to_color_image<'a, S, Sb, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
                                                                    -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker + 'static, Sm: MemorySource + 'static, So: 'static,
-              Im: MemorySource + 'static
+        where S: Into<BufferSlice<'a, [F::Pixel], Sb>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
+              Ty: ImageTypeMarker + 'static, Im: MemorySource + 'static, Sb: Buffer + 'static
     {
         assert!(image.format().is_float_or_compressed());
 
@@ -423,7 +422,7 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().internal_object(), image.internal_object(),
+            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().inner_buffer().internal_object(), image.internal_object(),
                                     vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
                                     1, &region);
         }
@@ -463,9 +462,9 @@ impl InnerCommandBufferBuilder {
 
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
-            assert!(b.usage_vertex_buffer());
+            assert!(b.inner_buffer().usage_vertex_buffer());
             self.add_buffer_resource(b.clone(), false, 0, b.size());
-            b.internal_object()
+            b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         {
@@ -481,14 +480,13 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+    pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibb>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
                                                           sets: L) -> InnerCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection,
               Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
-              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
-              Ibm: MemorySource
+              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
     {
 
         // FIXME: add buffers to the resources
@@ -502,19 +500,19 @@ impl InnerCommandBufferBuilder {
 
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
-            assert!(b.usage_vertex_buffer());
+            assert!(b.inner_buffer().usage_vertex_buffer());
             self.add_buffer_resource(b.clone(), false, 0, b.size());
-            b.internal_object()
+            b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
-        assert!(indices.buffer().usage_index_buffer());
+        assert!(indices.buffer().inner_buffer().usage_index_buffer());
 
         self.add_buffer_resource(indices.buffer().clone(), false, indices.offset(), indices.size());
 
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().internal_object(),
+            vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().inner_buffer().internal_object(),
                                   indices.offset() as u64, I::ty() as u32);
             vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
                                     offsets.as_ptr());
@@ -746,7 +744,7 @@ impl InnerCommandBufferBuilder {
             // Computing the list of buffer resources by removing duplicates.
             let buffer_resources = self.buffer_resources.iter().enumerate().filter_map(|(num, elem)| {
                 if self.buffer_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractBuffer == &**elem as *const AbstractBuffer).is_some()
+                                       .find(|e| &***e as *const Buffer == &**elem as *const Buffer).is_some()
                 {
                     None
                 } else {
@@ -784,7 +782,7 @@ impl InnerCommandBufferBuilder {
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<AbstractBuffer>, write: bool, offset: usize,
+    fn add_buffer_resource(&mut self, buffer: Arc<Buffer>, write: bool, offset: usize,
                            size: usize)
     {
         // TODO: handle memory barriers
@@ -821,7 +819,7 @@ pub struct InnerCommandBuffer {
     descriptor_sets: Vec<Arc<AbstractDescriptorSet>>,
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
     renderpasses: Vec<Arc<RenderPass>>,
-    buffer_resources: Vec<Arc<AbstractBuffer>>,
+    buffer_resources: Vec<Arc<Buffer>>,
     image_resources: Vec<Arc<AbstractImage>>,
     image_views_resources: Vec<Arc<AbstractImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
@@ -837,7 +835,7 @@ pub struct InnerCommandBuffer {
 /// - Panicks if the queue doesn't belong to the family the pool was created with.
 ///
 pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
-              queue: &Arc<Queue>) -> Result<Submission, OomError>   // TODO: wrong error type
+              queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type
 {
     // FIXME: the whole function should be checked
     let vk = me.device.pointers();
@@ -880,30 +878,33 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         list
     };
 
+    // We can now create the `Submission` object.
+    let submission = Arc::new(Submission {
+        cmd: Some(me_arc),
+        fence: fence.clone(),
+        queue: queue.clone(),
+        guarded: Mutex::new(SubmissionGuarded {
+            signalled_semaphores: semaphores_to_signal,
+            signalled_queues: SmallVec::new(),
+        }),
+        keep_alive_semaphores: Mutex::new(SmallVec::new()),
+    });
+
+    // Now we determine which earlier submissions we must depend upon.
+    let mut dependencies = SmallVec::<[Arc<Submission>; 6]>::new();
+
+    // Buffers first.
     for resource in me.buffer_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
-
-        } else {
-            None
+        let deps = unsafe {
+            // FIXME: for the moment `write` is always true ; that shouldn't be the case
+            // FIXME: wrong offset and size
+            resource.gpu_access(true, 0 .. 18, &submission)
         };
 
-        // FIXME: for the moment `write` is always true ; that shouldn't be the case
-        // FIXME: wrong offset and size
-        let sem = unsafe {
-            resource.gpu_access(true, 0, 18, queue, Some(fence.clone()), post_semaphore)
-        };
-
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
-        }
+        dependencies.extend(deps.into_iter());
     }
 
+    // Then images.
     for resource in me.image_resources.iter() {
         let post_semaphore = if resource.requires_semaphore() {
             let semaphore = try!(Semaphore::new(queue.device()));
@@ -928,7 +929,6 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     }
 
     // For each dependency, we either wait on one of its semaphores, or create a new one.
-    let dependencies = SmallVec::<[Arc<Submission>; 6]>::new();     // TODO: for now we assume that the list was computed above
     for dependency in dependencies.iter() {
         let mut guard = dependency.guarded.lock().unwrap();
         let current_queue_id = (queue.family().id(), queue.id_within_family());
@@ -960,6 +960,12 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         pre_semaphores.push(semaphore);
     }
 
+    // Don't forget to merge the semaphores into the submission.
+    {
+        let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
+        *keep_alive_semaphores = post_semaphores.into_iter()
+                                                .chain(pre_semaphores.into_iter()).collect();
+    }
 
     debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
 
@@ -980,16 +986,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
     }
 
-    Ok(Submission {
-        cmd: Some(me_arc),
-        keep_alive_semaphores: post_semaphores.iter().cloned().chain(pre_semaphores.iter().cloned()).collect(),
-        fence: fence,
-        queue: queue.clone(),
-        guarded: Mutex::new(SubmissionGuarded {
-            signalled_semaphores: semaphores_to_signal,
-            signalled_queues: SmallVec::new(),
-        })
-    })
+    Ok(submission)
 }
 
 impl Drop for InnerCommandBuffer {
@@ -1007,9 +1004,6 @@ impl Drop for InnerCommandBuffer {
 pub struct Submission {
     cmd: Option<Arc<AbstractCommandBuffer>>,
 
-    // List of semaphores to keep alive while the submission hasn't finished execution.
-    keep_alive_semaphores: Vec<Arc<Semaphore>>,
-
     fence: Arc<Fence>,
 
     // The queue on which this was submitted.
@@ -1017,6 +1011,9 @@ pub struct Submission {
 
     // Additional variables that are behind a mutex.
     guarded: Mutex<SubmissionGuarded>,
+
+    // List of semaphores to keep alive while the submission hasn't finished execution.
+    keep_alive_semaphores: Mutex<SmallVec<[Arc<Semaphore>; 8]>>,
 }
 
 struct SubmissionGuarded {

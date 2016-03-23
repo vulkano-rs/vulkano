@@ -103,47 +103,47 @@ impl UnsafeBuffer {
     }
 
     #[inline]
-    fn usage_transfer_src(&self) -> bool {
+    pub fn usage_transfer_src(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
     }
 
     #[inline]
-    fn usage_transfer_dest(&self) -> bool {
+    pub fn usage_transfer_dest(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
     }
 
     #[inline]
-    fn usage_uniform_texel_buffer(&self) -> bool {
+    pub fn usage_uniform_texel_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_storage_texel_buffer(&self) -> bool {
+    pub fn usage_storage_texel_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_uniform_buffer(&self) -> bool {
+    pub fn usage_uniform_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_storage_buffer(&self) -> bool {
+    pub fn usage_storage_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_index_buffer(&self) -> bool {
+    pub fn usage_index_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_INDEX_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_vertex_buffer(&self) -> bool {
+    pub fn usage_vertex_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0
     }
 
     #[inline]
-    fn usage_indirect_buffer(&self) -> bool {
+    pub fn usage_indirect_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
 }

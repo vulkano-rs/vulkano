@@ -68,7 +68,7 @@ impl<T: ?Sized> StagingBuffer<T> {
 
 unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
+    fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
     }
 

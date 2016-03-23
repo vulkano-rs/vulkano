@@ -3,6 +3,7 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::TypedBuffer;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
@@ -76,8 +77,8 @@ impl PrimaryCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
+    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -102,19 +103,18 @@ impl PrimaryCommandBufferBuilder {
     ///
     /// - Type safety is not enforced by the API.
     ///
-    pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                             size: usize, data: u32) -> PrimaryCommandBufferBuilder
-        where M: MemorySource + 'static
+    pub unsafe fn fill_buffer<B>(self, buffer: &Arc<B>, offset: usize,
+                                 size: usize, data: u32) -> PrimaryCommandBufferBuilder
+        where B: Buffer + 'static
     {
         PrimaryCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)
         }
     }
 
-    pub fn copy_buffer<T: ?Sized + 'static, Ms, Md>(self, source: &Arc<Buffer<T, Ms>>,
-                                                    destination: &Arc<Buffer<T, Md>>)
+    pub fn copy_buffer<T: ?Sized + 'static, Bs, Bd>(self, source: &Arc<Bs>, destination: &Arc<Bd>)
                                                     -> PrimaryCommandBufferBuilder
-        where Ms: MemorySource + 'static, Md: MemorySource + 'static
+        where Bs: TypedBuffer<Content = T> + 'static, Bd: TypedBuffer<Content = T> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -123,12 +123,11 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, So: ?Sized, Sm>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
+    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, Sb>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
                                                     -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [F::Pixel], So, Sm>>,
+        where S: Into<BufferSlice<'a, [F::Pixel], Sb>>, Sb: Buffer + 'static,
               F: StrongStorage + PossibleFloatOrCompressedFormatDesc + 'static,
-              Ty: ImageTypeMarker + 'static, So: 'static, Sm: MemorySource + 'static,
-              Im: MemorySource + 'static
+              Ty: ImageTypeMarker + 'static, Im: MemorySource + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -278,13 +277,12 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
-              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
-              L: DescriptorSetsCollection + 'static,
-              Ibm: MemorySource
+              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
+              L: DescriptorSetsCollection + 'static
     {
         // FIXME: check subpass
 
@@ -470,7 +468,9 @@ pub struct PrimaryCommandBuffer {
 /// - Panicks if the queue doesn't belong to the family the pool was created with.
 ///
 #[inline]
-pub fn submit(cmd: &Arc<PrimaryCommandBuffer>, queue: &Arc<Queue>) -> Result<Submission, OomError> {       // TODO: wrong error type
+pub fn submit(cmd: &Arc<PrimaryCommandBuffer>, queue: &Arc<Queue>)
+              -> Result<Arc<Submission>, OomError>
+{       // TODO: wrong error type
     inner_submit(&cmd.inner, cmd.clone() as Arc<_>, queue)
 }
 
@@ -527,14 +527,13 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     }
 
     /// Calls `vkCmdDrawIndexed`.
-    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibo: ?Sized + 'static, Ibm: 'static>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+    pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc,
               Rp: RenderPass + 'static,
-              Ib: Into<BufferSlice<'a, [I], Ibo, Ibm>>, I: 'static + Index,
-              L: DescriptorSetsCollection + 'static,
-              Ibm: MemorySource
+              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
+              L: DescriptorSetsCollection + 'static
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
@@ -607,8 +606,8 @@ impl SecondaryComputeCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T, Bo: ?Sized + 'static, Bm: 'static>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bo, Bm>>, Bm: MemorySource
+    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {
@@ -632,10 +631,9 @@ impl SecondaryComputeCommandBufferBuilder {
     /// # Safety
     ///
     /// - Type safety is not enforced by the API.
-    pub unsafe fn fill_buffer<T: 'static, M>(self, buffer: &Arc<Buffer<T, M>>, offset: usize,
-                                             size: usize, data: u32)
-                                             -> SecondaryComputeCommandBufferBuilder
-        where M: MemorySource + 'static
+    pub unsafe fn fill_buffer<B>(self, buffer: &Arc<B>, offset: usize, size: usize, data: u32)
+                                 -> SecondaryComputeCommandBufferBuilder
+        where B: Buffer + 'static
     {
         SecondaryComputeCommandBufferBuilder {
             inner: self.inner.fill_buffer(buffer, offset, size, data)

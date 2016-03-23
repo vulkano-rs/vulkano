@@ -3,7 +3,7 @@ use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::AbstractBuffer;
+use buffer::Buffer;
 use descriptor_set::layout_def::Layout;
 use descriptor_set::layout_def::SetLayout;
 use descriptor_set::layout_def::SetLayoutWrite;
@@ -32,7 +32,7 @@ pub struct DescriptorSet<S> {
     // TODO: for the moment even when a resource is overwritten it stays in these lists
     resources_samplers: Vec<Arc<Sampler>>,
     resources_image_views: Vec<Arc<AbstractImageView>>,
-    resources_buffers: Vec<Arc<AbstractBuffer>>,
+    resources_buffers: Vec<Arc<Buffer>>,
 }
 
 impl<S> DescriptorSet<S> where S: SetLayout {
@@ -123,20 +123,20 @@ impl<S> DescriptorSet<S> where S: SetLayout {
             match write.content {
                 DescriptorBind::UniformBuffer { ref buffer, offset, size } |
                 DescriptorBind::DynamicUniformBuffer { ref buffer, offset, size } => {
-                    assert!(buffer.usage_uniform_buffer());
+                    assert!(buffer.inner_buffer().usage_uniform_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
-                        buffer: buffer.internal_object(),
+                        buffer: buffer.inner_buffer().internal_object(),
                         offset: offset as u64,
                         range: size as u64,
                     })
                 },
                 DescriptorBind::StorageBuffer { ref buffer, offset, size } |
                 DescriptorBind::DynamicStorageBuffer { ref buffer, offset, size } => {
-                    assert!(buffer.usage_storage_buffer());
+                    assert!(buffer.inner_buffer().usage_storage_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
-                        buffer: buffer.internal_object(),
+                        buffer: buffer.inner_buffer().internal_object(),
                         offset: offset as u64,
                         range: size as u64,
                     })
