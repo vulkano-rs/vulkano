@@ -41,8 +41,9 @@ use check_errors;
 use vk;
 
 pub mod attachment;
-pub mod traits;
+pub mod swapchain;
 pub mod sys;
+pub mod traits;
 
 pub unsafe trait AbstractImage: Resource + ::VulkanObjectU64 {
     /// All images in vulkano must have a *default layout*. Whenever this image is used in a
