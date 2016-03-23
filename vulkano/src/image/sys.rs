@@ -1,4 +1,5 @@
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -6,8 +7,9 @@ use device::Device;
 use format::Format;
 use format::FormatTy;
 use image::MipmapsCount;
-use memory::ChunkProperties;
-use sync::SharingMode;
+use memory::DeviceMemory;
+use memory::MemoryRequirements;
+use sync::Sharing;
 
 use OomError;
 use VulkanObject;
@@ -40,12 +42,12 @@ impl UnsafeImage {
     /// - Panicks if the number of mipmaps is 0.
     /// - Panicks if the number of samples is 0.
     ///
-    pub unsafe fn new<'a, M, Mi, Sh>(device: &Arc<Device>, usage: &Usage, memory: M, format: Format,
-                                     dimensions: Dimensions, num_samples: u32, mipmaps: Mi, sharing: Sh,
-                                     linear_tiling: bool, preinitialized_layout: bool)
-                                     -> Result<UnsafeImage, OomError>
-        where Mi: Into<MipmapsCount>, Sh: Into<SharingMode>,
-              M: FnOnce(usize, usize, u32) -> ChunkProperties<'a>
+    pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &Usage, format: Format,
+                                 dimensions: Dimensions, num_samples: u32, mipmaps: Mi,
+                                 sharing: Sharing<I>, linear_tiling: bool,
+                                 preinitialized_layout: bool)
+                                 -> Result<(UnsafeImage, MemoryRequirements), OomError>
+        where Mi: Into<MipmapsCount>, I: Iterator<Item = u32>
     {
         // Preprocessing parameters.
         let sharing = sharing.into();
@@ -117,9 +119,9 @@ impl UnsafeImage {
 
         let image = {
             let (sh_mode, sh_count, sh_indices) = match sharing {
-                SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
-                SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
-                                                     ids.as_ptr()),
+                Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                Sharing::Concurrent(ref ids) => unimplemented!() /*(vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
+                                                     ids.as_ptr())*/,
             };
 
             let infos = vk::ImageCreateInfo {
@@ -157,21 +159,11 @@ impl UnsafeImage {
         let mem_reqs: vk::MemoryRequirements = {
             let mut output = mem::uninitialized();
             vk.GetImageMemoryRequirements(device.internal_object(), image, &mut output);
+            debug_assert!(output.memoryTypeBits != 0);
             output
         };
 
-        {
-            match memory(mem_reqs.size as usize, mem_reqs.alignment as usize, mem_reqs.memoryTypeBits) {
-                ChunkProperties::Regular { memory, offset, .. } => {
-                    try!(check_errors(vk.BindImageMemory(device.internal_object(), image,
-                                                         memory.internal_object(),
-                                                         offset as vk::DeviceSize)));
-                },
-                _ => unimplemented!()
-            }
-        }
-
-        Ok(UnsafeImage {
+        let image = UnsafeImage {
             device: device.clone(),
             image: image,
             usage: usage,
@@ -181,16 +173,17 @@ impl UnsafeImage {
             samples: num_samples,
             mipmaps: mipmaps,
             needs_destruction: true,
-        })
+        };
+
+        Ok((image, mem_reqs.into()))
     }
 
     /// Creates an image from a raw handle. The image won't be destroyed.
     ///
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw_unowned<M>(device: &Arc<Device>, handle: u64, memory: M,
-                                      sharing: SharingMode, usage: u32, format: Format,
-                                      dimensions: Dimensions, samples: u32, mipmaps: u32)
-                                      -> UnsafeImage
+                                      usage: u32, format: Format, dimensions: Dimensions,
+                                      samples: u32, mipmaps: u32) -> UnsafeImage
     {
         unimplemented!()/*
         ImagePrototype{
@@ -208,6 +201,16 @@ impl UnsafeImage {
                 layout: Layout::Undefined,
             },
         }*/
+    }
+
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, range: Range<usize>)
+                              -> Result<(), OomError>
+    {
+        let vk = self.device.pointers();
+        try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
+                                             memory.internal_object(),
+                                             range.start as vk::DeviceSize)));
+        Ok(())
     }
 }
 
