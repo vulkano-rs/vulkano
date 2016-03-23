@@ -13,18 +13,14 @@ use command_buffer::inner::submit as inner_submit;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
-use format::PossibleFloatOrCompressedFormatDesc;
-use format::PossibleFloatFormatDesc;
-use format::StrongStorage;
 use framebuffer::Framebuffer;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
-use image::Image;
-use image::ImageTypeMarker;
-use memory::MemorySource;
+use image::traits::ImageClearValue;
+use image::traits::ImageContent;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
@@ -123,11 +119,10 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<'a, S, Ty, F, Im, Sb>(self, source: S, destination: &Arc<Image<Ty, F, Im>>)
+    pub fn copy_buffer_to_color_image<'a, P, S, Img, Sb>(self, source: S, destination: &Arc<Img>)
                                                     -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [F::Pixel], Sb>>, Sb: Buffer + 'static,
-              F: StrongStorage + PossibleFloatOrCompressedFormatDesc + 'static,
-              Ty: ImageTypeMarker + 'static, Im: MemorySource + 'static
+        where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
+              Img: ImageContent<P> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -138,9 +133,9 @@ impl PrimaryCommandBufferBuilder {
 
     ///
     /// Note that compressed formats are not supported.
-    pub fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
-                                           color: F::ClearValue) -> PrimaryCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: MemorySource
+    pub fn clear_color_image<'a, I, V>(self, image: &Arc<I>, color: V)
+                                       -> PrimaryCommandBufferBuilder
+        where I: ImageClearValue<V> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {

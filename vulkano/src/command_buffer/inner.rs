@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
-use buffer::traits::AccessRange;
+use buffer::traits::AccessRange as BufferAccessRange;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
@@ -19,16 +19,15 @@ use format::ClearValue;
 use format::FormatDesc;
 use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
-use format::StrongStorage;
 use framebuffer::AbstractFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
-use image::AbstractImage;
-use image::AbstractImageView;
 use image::Image;
-use image::ImageTypeMarker;
-use memory::MemorySource;
+use image::ImageView;
+use image::traits::ImageClearValue;
+use image::traits::ImageContent;
+use image::traits::AccessRange as ImageAccessRange;
 use pipeline::GenericPipeline;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -36,7 +35,6 @@ use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
-use sync::Resource;
 use sync::Semaphore;
 
 use device::Device;
@@ -70,11 +68,11 @@ pub struct InnerCommandBufferBuilder {
     // List of all resources that are used by this command buffer.
     buffer_resources: Vec<Arc<Buffer>>,
 
-    image_resources: Vec<Arc<AbstractImage>>,
+    image_resources: Vec<Arc<Image>>,
 
     // Same as `resources`. Should be merged with `resources` once Rust allows turning a
-    // `Arc<AbstractImageView>` into an `Arc<Buffer>`.
-    image_views_resources: Vec<Arc<AbstractImageView>>,
+    // `Arc<ImageView>` into an `Arc<Buffer>`.
+    image_views_resources: Vec<Arc<ImageView>>,
 
     // List of pipelines that are used by this command buffer.
     //
@@ -348,13 +346,13 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn clear_color_image<'a, Ty, F, M>(self, image: &Arc<Image<Ty, F, M>>,
-                                                  color: F::ClearValue) -> InnerCommandBufferBuilder
-        where Ty: ImageTypeMarker, F: PossibleFloatFormatDesc, M: MemorySource   // FIXME: should accept uint and int images too
+    pub unsafe fn clear_color_image<'a, I, V>(self, image: &Arc<I>, color: V)
+                                              -> InnerCommandBufferBuilder
+        where I: ImageClearValue<V> + 'static   // FIXME: should accept uint and int images too
     {
         assert!(image.format().is_float()); // FIXME: should accept uint and int images too
 
-        let color = match image.format().decode_clear_value(color) {
+        let color = match image.decode(color).unwrap() /* FIXME: error */ {
             ClearValue::Float(data) => vk::ClearColorValue::float32(data),
             ClearValue::Int(data) => vk::ClearColorValue::int32(data),
             ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
@@ -372,7 +370,8 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdClearColorImage(self.cmd.unwrap(), image.internal_object(), vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
+            vk.CmdClearColorImage(self.cmd.unwrap(), image.inner_image().internal_object(),
+                                  vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
                                   &color, 1, &range);
         }
 
@@ -387,10 +386,10 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<'a, S, Sb, Ty, F, Im>(mut self, source: S, image: &Arc<Image<Ty, F, Im>>)
-                                                                   -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [F::Pixel], Sb>>, F: StrongStorage + 'static + PossibleFloatOrCompressedFormatDesc,     // FIXME: wrong trait
-              Ty: ImageTypeMarker + 'static, Im: MemorySource + 'static, Sb: Buffer + 'static
+    pub unsafe fn copy_buffer_to_color_image<'a, P, S, Sb, Img>(mut self, source: S, image: &Arc<Img>)
+                                                             -> InnerCommandBufferBuilder
+        where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
+              Sb: Buffer + 'static
     {
         assert!(image.format().is_float_or_compressed());
 
@@ -423,7 +422,8 @@ impl InnerCommandBufferBuilder {
         {
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().inner_buffer().internal_object(), image.internal_object(),
+            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().inner_buffer().internal_object(),
+                                    image.inner_image().internal_object(),
                                     vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
                                     1, &region);
         }
@@ -757,7 +757,7 @@ impl InnerCommandBufferBuilder {
             // TODO: image views as well
             let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
                 if self.image_resources.iter().take(num)
-                                       .find(|e| &***e as *const AbstractImage == &**elem as *const AbstractImage).is_some()
+                                       .find(|e| &***e as *const Image == &**elem as *const Image).is_some()
                 {
                     None
                 } else {
@@ -791,7 +791,7 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self, image: Arc<AbstractImage>, _write: bool) {   // TODO:
+    fn add_image_resource(&mut self, image: Arc<Image>, _write: bool) {   // TODO:
         self.image_resources.push(image);
     }
 }
@@ -821,8 +821,8 @@ pub struct InnerCommandBuffer {
     framebuffers: Vec<Arc<AbstractFramebuffer>>,
     renderpasses: Vec<Arc<RenderPass>>,
     buffer_resources: Vec<Arc<Buffer>>,
-    image_resources: Vec<Arc<AbstractImage>>,
-    image_views_resources: Vec<Arc<AbstractImageView>>,
+    image_resources: Vec<Arc<Image>>,
+    image_views_resources: Vec<Arc<ImageView>>,
     pipelines: Vec<Arc<GenericPipeline>>,
 }
 
@@ -898,7 +898,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     for resource in me.buffer_resources.iter() {
         let deps = unsafe {
             // FIXME: wrong ranges
-            let range = AccessRange {
+            let range = BufferAccessRange {
                 range: 0 .. 18,
                 write: true,
             };
@@ -911,26 +911,18 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
 
     // Then images.
     for resource in me.image_resources.iter() {
-        let post_semaphore = if resource.requires_semaphore() {
-            let semaphore = try!(Semaphore::new(queue.device()));
-            post_semaphores.push(semaphore.clone());
-            post_semaphores_ids.push(semaphore.internal_object());
-            Some(semaphore)
+        let deps = unsafe {
+            // FIXME: wrong ranges
+            let range = ImageAccessRange {
+                mipmap_levels_range: 0 .. 1,
+                array_layers_range: 0 .. 1,
+                write: true,
+            };
 
-        } else {
-            None
+            resource.gpu_access(&mut Some(range).into_iter(), &submission)
         };
 
-        // FIXME: for the moment `write` is always true ; that shouldn't be the case
-        let sem = unsafe {
-            resource.gpu_access(true, queue, Some(fence.clone()), post_semaphore)
-        };
-
-        if let Some(s) = sem {
-            pre_semaphores_ids.push(s.internal_object());
-            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(s);
-        }
+        dependencies.extend(deps.into_iter());
     }
 
     // For each dependency, we either wait on one of its semaphores, or create a new one.

@@ -71,11 +71,7 @@ fn main() {
                                                   .expect("failed to create command buffer pool");
 
 
-    let depth_buffer = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
-                                                  vulkano::memory::DeviceLocal, &queue,
-                                                  vulkano::format::D16Unorm, images[0].dimensions(), (), 1).unwrap();
-    let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &queue).unwrap();
-    let depth_buffer = vulkano::image::ImageView::new(&depth_buffer).expect("failed to create image view");
+    let depth_buffer = vulkano::image::attachment::AttachmentImage::new(&device, images[0].dimensions().width_height(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                ::array(&device, teapot::VERTICES.len(),
@@ -115,7 +111,7 @@ fn main() {
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
-    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
+    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d.width() as f32 / d.height() as f32 }, 0.01, 100.0);
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
@@ -130,12 +126,6 @@ fn main() {
 
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
-
-    let images = images.into_iter().map(|image| {
-        let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool,
-                                     &queue).unwrap();
-        vulkano::image::ImageView::new(&image).expect("failed to create image view")
-    }).collect::<Vec<_>>();
 
     mod renderpass {
         single_pass_renderpass!{
@@ -199,7 +189,7 @@ fn main() {
     };
 
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image.clone() as std::sync::Arc<_>, depth_buffer.clone() as std::sync::Arc<_>)).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), vec![image.clone() as std::sync::Arc<_>, depth_buffer.clone() as std::sync::Arc<_>]).unwrap()
     }).collect::<Vec<_>>();
 
 

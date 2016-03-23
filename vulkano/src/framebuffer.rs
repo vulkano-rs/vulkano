@@ -74,8 +74,8 @@ use device::Device;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
-use image::AbstractImageView;
 use image::Layout as ImageLayout;
+use image::traits::ImageView;
 
 use Error;
 use OomError;
@@ -104,7 +104,7 @@ pub unsafe trait RenderPass {
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.
-    type AttachmentsIter: ExactSizeIterator<Item = Arc<AbstractImageView>>;
+    type AttachmentsIter: ExactSizeIterator<Item = Arc<ImageView>>;
 
     /// Decodes a `A` into a list of attachments.
     fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
@@ -294,7 +294,7 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
 }
 
 unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<Arc<AbstractImageView>>;
+    type AttachmentsIter = EmptyIter<Arc<ImageView>>;
 
     #[inline]
     fn convert_attachments_list(&self, _: ()) -> Self::AttachmentsIter {
@@ -464,17 +464,15 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        pub type AList = ($(      // FIXME: should not use a trait
-            Arc<$crate::image::AbstractTypedImageView<$crate::image::Type2d, $crate::format::$format>>,
-        )*);
+        pub type AList = Vec<Arc<$crate::image::ImageView>>;      // FIXME: better type
 
         unsafe impl $crate::framebuffer::RenderPassAttachmentsList<AList> for CustomRenderPass {
             // TODO: shouldn't build a Vec
-            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::AbstractImageView>>;
+            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::ImageView>>;
 
             #[inline]
             fn convert_attachments_list(&self, l: AList) -> Self::AttachmentsIter {
-                $crate::image::AbstractTypedImageViewsTuple::iter(l)
+                l.into_iter()
             }
         }
 
@@ -880,7 +878,7 @@ pub struct Framebuffer<L> {
     render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
-    resources: Vec<Arc<AbstractImageView>>,
+    resources: Vec<Arc<ImageView>>,
 }
 
 impl<L> Framebuffer<L> {
@@ -916,8 +914,8 @@ impl<L> Framebuffer<L> {
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let ids = attachments.iter().map(|a| {
-            //assert!(a.is_identity_swizzled());
-            a.internal_object()
+            assert!(a.identity_swizzle());
+            a.inner_view().internal_object()
         }).collect::<Vec<_>>();
 
         let framebuffer = unsafe {
@@ -992,7 +990,7 @@ impl<L> Framebuffer<L> {
 
     /// Returns all the resources attached to that framebuffer.
     #[inline]
-    pub fn attachments(&self) -> &[Arc<AbstractImageView>] {
+    pub fn attachments(&self) -> &[Arc<ImageView>] {
         &self.resources
     }
 }

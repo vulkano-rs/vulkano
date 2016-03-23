@@ -4,14 +4,15 @@ use std::sync::Arc;
 use command_buffer::Submission;
 use device::Device;
 use format::FormatDesc;
-use image::traits::AccessRange;
-use image::traits::Image;
-use image::traits::ImageView;
 use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
+use image::traits::AccessRange;
+use image::traits::Image;
+use image::traits::ImageContent;
+use image::traits::ImageView;
 use memory::DeviceMemory;
 use sync::Sharing;
 
@@ -69,6 +70,11 @@ impl<F> AttachmentImage<F> {
             format: format,
         }))
     }
+
+    #[inline]
+    pub fn dimensions(&self) -> Dimensions {
+        self.image.dimensions()
+    }
 }
 
 unsafe impl<F> Image for AttachmentImage<F> {
@@ -85,6 +91,13 @@ unsafe impl<F> Image for AttachmentImage<F> {
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {
         vec![]
+    }
+}
+
+unsafe impl<P, F> ImageContent<P> for AttachmentImage<F> {
+    #[inline]
+    fn matches_format(&self) -> bool {
+        true        // FIXME:
     }
 }
 

@@ -147,7 +147,7 @@ impl Swapchain {
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
             let unsafe_image = UnsafeImage::from_raw(device, image, usage, format.format(),
-                                                     Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1, 1);
+                                                     Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1);
             SwapchainImage::from_raw(unsafe_image, format.format(), &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 

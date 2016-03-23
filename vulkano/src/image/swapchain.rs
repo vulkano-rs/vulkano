@@ -4,7 +4,9 @@ use command_buffer::Submission;
 use format::Format;
 use image::traits::AccessRange;
 use image::traits::Image;
+use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -34,6 +36,11 @@ impl SwapchainImage {
             id: id,
         }))
     }
+
+    #[inline]
+    pub fn dimensions(&self) -> Dimensions {
+        self.image.dimensions()
+    }
 }
 
 unsafe impl Image for SwapchainImage {
@@ -50,6 +57,13 @@ unsafe impl Image for SwapchainImage {
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {
         vec![]
+    }
+}
+
+unsafe impl<P> ImageContent<P> for SwapchainImage {
+    #[inline]
+    fn matches_format(&self) -> bool {
+        true        // FIXME:
     }
 }
 

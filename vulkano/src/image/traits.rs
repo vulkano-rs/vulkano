@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use command_buffer::Submission;
 use format::ClearValue;
+use format::Format;
+use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -15,6 +17,18 @@ pub unsafe trait Image {
 
     //fn align(&self, subresource_range: ) -> ;
 
+    /// Returns the format of this image.
+    #[inline]
+    fn format(&self) -> Format {
+        self.inner_image().format()
+    }
+
+    /// Returns the dimensions of the image.
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        self.inner_image().dimensions()
+    }
+
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
 
@@ -23,7 +37,12 @@ pub unsafe trait Image {
 }
 
 pub unsafe trait ImageClearValue<T>: Image {
-    fn decode(&self, T) -> ClearValue;
+    fn decode(&self, T) -> Option<ClearValue>;
+}
+
+pub unsafe trait ImageContent<P>: Image {
+    /// Checks whether pixels of type `P` match the format of the image.
+    fn matches_format(&self) -> bool;
 }
 
 pub unsafe trait ImageView {
@@ -32,6 +51,12 @@ pub unsafe trait ImageView {
     /// Returns the inner unsafe image view object used by this image view.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_view(&self) -> &UnsafeImageView;
+
+    /// Returns the format of this view. This can be different from the parent's format.
+    #[inline]
+    fn format(&self) -> Format {
+        self.inner_view().format()
+    }
 
     /// Returns the image layout to use in a descriptor with the given subresource.
     fn descriptor_set_storage_image_layout(&self, AccessRange) -> Layout;

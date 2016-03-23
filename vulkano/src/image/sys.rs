@@ -24,8 +24,7 @@ pub struct UnsafeImage {
     usage: vk::ImageUsageFlagBits,
     format: Format,
 
-    dimensions: [f32; 3],
-    array_layers: u32,
+    dimensions: Dimensions,
     samples: u32,
     mipmaps: u32,
 
@@ -89,31 +88,26 @@ impl UnsafeImage {
         let vk = device.pointers();
 
         // TODO: check for limits
-        let (ty, extent, array_layers, dims) = match dimensions {
+        let (ty, extent, array_layers) = match dimensions {
             Dimensions::Dim1d { width } => {
                 let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
-                let dims = [width as f32, 1.0, 1.0];
-                (vk::IMAGE_TYPE_1D, extent, 1, dims)
+                (vk::IMAGE_TYPE_1D, extent, 1)
             },
             Dimensions::Dim1dArray { width, array_layers } => {
                 let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
-                let dims = [width as f32, 1.0, 1.0];
-                (vk::IMAGE_TYPE_1D, extent, array_layers, dims)
+                (vk::IMAGE_TYPE_1D, extent, array_layers)
             },
             Dimensions::Dim2d { width, height } => {
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
-                let dims = [width as f32, height as f32, 1.0];
-                (vk::IMAGE_TYPE_2D, extent, 1, dims)
+                (vk::IMAGE_TYPE_2D, extent, 1)
             },
             Dimensions::Dim2dArray { width, height, array_layers } => {
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
-                let dims = [width as f32, height as f32, 1.0];
-                (vk::IMAGE_TYPE_2D, extent, array_layers, dims)
+                (vk::IMAGE_TYPE_2D, extent, array_layers)
             },
             Dimensions::Dim3d { width, height, depth } => {
                 let extent = vk::Extent3D { width: width, height: height, depth: depth };
-                let dims = [width as f32, height as f32, depth as f32];
-                (vk::IMAGE_TYPE_3D, extent, 1, dims)
+                (vk::IMAGE_TYPE_3D, extent, 1)
             },
         };
 
@@ -168,8 +162,7 @@ impl UnsafeImage {
             image: image,
             usage: usage,
             format: format,
-            dimensions: dims,
-            array_layers: array_layers,
+            dimensions: dimensions,
             samples: num_samples,
             mipmaps: mipmaps,
             needs_destruction: true,
@@ -182,35 +175,15 @@ impl UnsafeImage {
     ///
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw(device: &Arc<Device>, handle: u64, usage: u32, format: Format,
-                           dimensions: Dimensions, array_layers: u32, samples: u32, mipmaps: u32)
+                           dimensions: Dimensions, samples: u32, mipmaps: u32)
                            -> UnsafeImage
     {
-        // TODO: DRY
-        let dims = match dimensions {
-            Dimensions::Dim1d { width } => {
-                [width as f32, 1.0, 1.0]
-            },
-            Dimensions::Dim1dArray { width, array_layers } => {
-                [width as f32, 1.0, 1.0]
-            },
-            Dimensions::Dim2d { width, height } => {
-                [width as f32, height as f32, 1.0]
-            },
-            Dimensions::Dim2dArray { width, height, array_layers } => {
-                [width as f32, height as f32, 1.0]
-            },
-            Dimensions::Dim3d { width, height, depth } => {
-                [width as f32, height as f32, depth as f32]
-            },
-        };
-
         UnsafeImage {
             device: device.clone(),
             image: handle,
             usage: usage,
             format: format,
-            dimensions: dims,
-            array_layers: array_layers,
+            dimensions: dimensions,
             samples: samples,
             mipmaps: mipmaps,
             needs_destruction: false,       // TODO: pass as parameter
@@ -225,6 +198,16 @@ impl UnsafeImage {
                                              memory.internal_object(),
                                              range.start as vk::DeviceSize)));
         Ok(())
+    }
+
+    #[inline]
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
+    #[inline]
+    pub fn dimensions(&self) -> Dimensions {
+        self.dimensions
     }
 }
 
@@ -254,7 +237,9 @@ impl Drop for UnsafeImage {
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
+    usage: vk::ImageUsageFlagBits,
     identity_swizzle: bool,
+    format: Format,
 }
 
 impl UnsafeImageView {
@@ -301,8 +286,64 @@ impl UnsafeImageView {
         Ok(UnsafeImageView {
             view: view,
             device: image.device.clone(),
+            usage: image.usage,
             identity_swizzle: true,     // FIXME:
+            format: image.format,
         })
+    }
+
+    #[inline]
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
+    #[inline]
+    pub fn usage_transfer_src(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_dest(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_sampled(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_storage(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_color_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transient_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_input_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    }
+}
+
+unsafe impl VulkanObject for UnsafeImageView {
+    type Object = vk::ImageView;
+
+    #[inline]
+    fn internal_object(&self) -> vk::ImageView {
+        self.view
     }
 }
 
@@ -316,12 +357,42 @@ impl Drop for UnsafeImageView {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Dimensions {
     Dim1d { width: u32 },
     Dim1dArray { width: u32, array_layers: u32 },
     Dim2d { width: u32, height: u32 },
     Dim2dArray { width: u32, height: u32, array_layers: u32 },
     Dim3d { width: u32, height: u32, depth: u32 }
+}
+
+impl Dimensions {
+    #[inline]
+    pub fn width(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { width } => width,
+            Dimensions::Dim1dArray { width, .. } => width,
+            Dimensions::Dim2d { width, .. } => width,
+            Dimensions::Dim2dArray { width, .. } => width,
+            Dimensions::Dim3d { width, .. }  => width,
+        }
+    }
+
+    #[inline]
+    pub fn height(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { .. } => 1,
+            Dimensions::Dim2d { height, .. } => height,
+            Dimensions::Dim2dArray { height, .. } => height,
+            Dimensions::Dim3d { height, .. }  => height,
+        }
+    }
+
+    #[inline]
+    pub fn width_height(&self) -> [u32; 2] {
+        [self.width(), self.height()]
+    }
 }
 
 /// Describes how an image is going to be used. This is **not** an optimization.

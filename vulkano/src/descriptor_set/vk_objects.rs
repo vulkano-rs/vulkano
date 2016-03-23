@@ -12,7 +12,7 @@ use descriptor_set::layout_def::DescriptorWrite;
 use descriptor_set::layout_def::DescriptorBind;
 use descriptor_set::pool::DescriptorPool;
 use device::Device;
-use image::AbstractImageView;
+use image::ImageView;
 use sampler::Sampler;
 
 use OomError;
@@ -31,7 +31,7 @@ pub struct DescriptorSet<S> {
     // Here we store the resources used by the descriptor set.
     // TODO: for the moment even when a resource is overwritten it stays in these lists
     resources_samplers: Vec<Arc<Sampler>>,
-    resources_image_views: Vec<Arc<AbstractImageView>>,
+    resources_image_views: Vec<Arc<ImageView>>,
     resources_buffers: Vec<Arc<Buffer>>,
 }
 
@@ -156,39 +156,39 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                     })
                 },
                 DescriptorBind::CombinedImageSampler(ref sampler, ref image, layout) => {
-                    assert!(image.usage_sampled());
+                    assert!(image.inner_view().usage_sampled());
                     self_resources_samplers.push(sampler.clone());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: sampler.internal_object(),
-                        imageView: image.internal_object(),
+                        imageView: image.inner_view().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorBind::StorageImage(ref image, layout) => {
-                    assert!(image.usage_storage());
+                    assert!(image.inner_view().usage_storage());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: image.internal_object(),
+                        imageView: image.inner_view().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorBind::SampledImage(ref image, layout) => {
-                    assert!(image.usage_sampled());
+                    assert!(image.inner_view().usage_sampled());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: image.internal_object(),
+                        imageView: image.inner_view().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorBind::InputAttachment(ref image, layout) => {
-                    assert!(image.usage_input_attachment());
+                    assert!(image.inner_view().usage_input_attachment());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: image.internal_object(),
+                        imageView: image.inner_view().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
