@@ -55,6 +55,7 @@ use vk;
 
 pub use self::unsafe_buffer::Usage;
 
+mod immutable;
 mod staging;
 mod traits;
 mod unsafe_buffer;
