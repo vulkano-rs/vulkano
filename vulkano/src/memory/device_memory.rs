@@ -1,10 +1,13 @@
 use std::mem;
 use std::ptr;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
 use instance::MemoryType;
 use device::Device;
+use memory::Content;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -82,6 +85,8 @@ impl DeviceMemory {
         assert!(memory_type.is_host_visible());
         let mem = try!(DeviceMemory::alloc(device, memory_type, size));
 
+        let coherent = memory_type.is_host_coherent();
+
         let ptr = unsafe {
             let mut output = mem::uninitialized();
             try!(check_errors(vk.MapMemory(device.internal_object(), mem.memory, 0,
@@ -93,6 +98,7 @@ impl DeviceMemory {
         Ok(MappedDeviceMemory {
             memory: mem,
             pointer: ptr,
+            coherent: coherent,
         })
     }
 
@@ -138,6 +144,7 @@ impl Drop for DeviceMemory {
 pub struct MappedDeviceMemory {
     memory: DeviceMemory,
     pointer: *mut c_void,
+    coherent: bool,
 }
 
 impl MappedDeviceMemory {
@@ -148,11 +155,40 @@ impl MappedDeviceMemory {
         &self.memory
     }
 
-    /// Returns a pointer to the mapping.
-    ///
-    /// Note that access to this pointer is not safe at all.
+    // TODO: remove
+    #[inline]
     pub fn mapping_pointer(&self) -> *mut c_void {
         self.pointer
+    }
+
+    #[inline]
+    pub unsafe fn read<T>(&self) -> CpuAccess<T> where T: Content + 'static {
+        self.write()
+    }
+
+    #[inline]
+    pub unsafe fn write<T>(&self) -> CpuAccess<T> where T: Content + 'static {
+        let vk = self.memory.device().pointers();
+        let pointer = T::ref_from_ptr(self.pointer, self.memory.size()).unwrap();       // TODO: error
+
+        if !self.coherent {
+            let range = vk::MappedMemoryRange {
+                sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                pNext: ptr::null(),
+                memory: self.memory.internal_object(),
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            };
+
+            // TODO: check result?
+            vk.InvalidateMappedMemoryRanges(self.memory.device().internal_object(), 1, &range);
+        }
+
+        CpuAccess {
+            mem: self,
+            coherent: self.coherent,
+            pointer: pointer,
+        }
     }
 }
 
@@ -162,6 +198,55 @@ impl Drop for MappedDeviceMemory {
         unsafe {
             let vk = self.memory.device.pointers();
             vk.UnmapMemory(self.memory.device.internal_object(), self.memory.memory);
+        }
+    }
+}
+
+/// Object that can be used to read or write the content of a `MappedDeviceMemory`.
+///
+/// Note that this object holds a mutex guard on the chunk. If another thread tries to access
+/// this memory's content or tries to submit a GPU command that uses this memory, it will block.
+pub struct CpuAccess<'a, T: ?Sized + 'a> {
+    pointer: *mut T,
+    mem: &'a MappedDeviceMemory,
+    coherent: bool,
+}
+
+impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        unsafe { &*self.pointer }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> DerefMut for CpuAccess<'a, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.pointer }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
+    #[inline]
+    fn drop(&mut self) {
+        if !self.coherent {
+            let vk = self.mem.memory().device().pointers();
+
+            let range = vk::MappedMemoryRange {
+                sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                pNext: ptr::null(),
+                memory: self.mem.memory().internal_object(),
+                offset: 0,
+                size: vk::WHOLE_SIZE,
+            };
+
+            // TODO: check result?
+            unsafe {
+                vk.FlushMappedMemoryRanges(self.mem.memory().device().internal_object(),
+                                           1, &range);
+            }
         }
     }
 }
