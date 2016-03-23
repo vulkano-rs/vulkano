@@ -13,8 +13,8 @@ pub unsafe trait Buffer {
     /// Returns whether accessing a range of this buffer should signal a fence.
     fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
 
-    unsafe fn gpu_access(&self, write: bool, Range<usize>, submission: &Arc<Submission>)
-                         -> Vec<Arc<Submission>>;
+    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
+                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>;
 
     #[inline]
     fn size(&self) -> usize {
@@ -29,4 +29,10 @@ pub unsafe trait TypedBuffer: Buffer {
     fn len(&self) -> usize where Self::Content: Content {
         self.size() / <Self::Content as Content>::indiv_size()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct AccessRange {
+    pub range: Range<usize>,
+    pub write: bool
 }

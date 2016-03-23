@@ -7,6 +7,7 @@ use smallvec::SmallVec;
 
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
+use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
@@ -130,7 +131,7 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
         Some(true)
     }
 
-    unsafe fn gpu_access(&self, write: bool, _: Range<usize>, submission: &Arc<Submission>)
+    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>, submission: &Arc<Submission>)
                          -> Vec<Arc<Submission>>
     {
         let queue_id = submission.queue().family().id();

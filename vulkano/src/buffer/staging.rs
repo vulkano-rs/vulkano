@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
+use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
@@ -77,7 +78,7 @@ unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
         Some(true)
     }
 
-    unsafe fn gpu_access(&self, _: bool, _: Range<usize>, submission: &Arc<Submission>)
+    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>, submission: &Arc<Submission>)
                          -> Vec<Arc<Submission>>
     {
         {

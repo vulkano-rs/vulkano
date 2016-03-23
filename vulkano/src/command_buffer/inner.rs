@@ -7,6 +7,7 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
+use buffer::traits::AccessRange;
 use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
@@ -896,9 +897,13 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     // Buffers first.
     for resource in me.buffer_resources.iter() {
         let deps = unsafe {
-            // FIXME: for the moment `write` is always true ; that shouldn't be the case
-            // FIXME: wrong offset and size
-            resource.gpu_access(true, 0 .. 18, &submission)
+            // FIXME: wrong ranges
+            let range = AccessRange {
+                range: 0 .. 18,
+                write: true,
+            };
+
+            resource.gpu_access(&mut Some(range).into_iter(), &submission)
         };
 
         dependencies.extend(deps.into_iter());
