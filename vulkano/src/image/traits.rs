@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use command_buffer::Submission;
 use format::ClearValue;
-use image::Layout;
+use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
@@ -29,7 +29,9 @@ pub unsafe trait ImageClearValue<T>: Image {
 pub unsafe trait ImageView {
     fn parent(&self) -> &Image;
 
-    fn inner(&self) -> &UnsafeImageView;
+    /// Returns the inner unsafe image view object used by this image view.
+    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
+    fn inner_view(&self) -> &UnsafeImageView;
 
     /// Returns the image layout to use in a descriptor with the given subresource.
     fn descriptor_set_storage_image_layout(&self, AccessRange) -> Layout;

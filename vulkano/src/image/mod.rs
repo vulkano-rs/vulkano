@@ -40,7 +40,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub mod color_attachment;
+pub mod attachment;
 pub mod traits;
 pub mod sys;
 
