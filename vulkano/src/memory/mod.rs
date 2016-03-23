@@ -228,6 +228,9 @@ pub unsafe trait Content {
 
     /// Returns true if the size is suitable to store a type like this.
     fn is_size_suitable(usize) -> bool;
+
+    /// Returns the size of an individual element.
+    fn indiv_size() -> usize;
 }
 
 unsafe impl<T> Content for T {
@@ -244,6 +247,11 @@ unsafe impl<T> Content for T {
     fn is_size_suitable(size: usize) -> bool {
         size == mem::size_of::<T>()
     }
+
+    #[inline]
+    fn indiv_size() -> usize {
+        mem::size_of::<T>()
+    }
 }
 
 unsafe impl<T> Content for [T] {
@@ -257,6 +265,11 @@ unsafe impl<T> Content for [T] {
     #[inline]
     fn is_size_suitable(size: usize) -> bool {
         size % mem::size_of::<T>() == 0
+    }
+
+    #[inline]
+    fn indiv_size() -> usize {
+        mem::size_of::<T>()
     }
 }
 

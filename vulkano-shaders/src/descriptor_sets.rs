@@ -47,7 +47,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
-                        "::std::sync::Arc<::vulkano::buffer::AbstractBuffer>",
+                        "::std::sync::Arc<::vulkano::buffer::Buffer>",
                         "::vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: data, offset: 0, size: 128 /* FIXME */ }"
                     ))
                 },

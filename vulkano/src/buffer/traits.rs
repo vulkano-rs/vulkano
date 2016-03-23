@@ -1,9 +1,9 @@
-use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
 use buffer::unsafe_buffer::UnsafeBuffer;
 use command_buffer::Submission;
+use memory::Content;
 
 pub unsafe trait Buffer {
     /// Returns the inner buffer.
@@ -26,7 +26,7 @@ pub unsafe trait TypedBuffer: Buffer {
     type Content: ?Sized + 'static;
 
     #[inline]
-    fn len(&self) -> usize where Self::Content: Sized {
-        self.size() / mem::size_of::<Self::Content>()
+    fn len(&self) -> usize where Self::Content: Content {
+        self.size() / <Self::Content as Content>::indiv_size()
     }
 }

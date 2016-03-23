@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use buffer::traits::Buffer;
+use buffer::traits::TypedBuffer;
 use buffer::unsafe_buffer::UnsafeBuffer;
 use buffer::unsafe_buffer::Usage;
 use command_buffer::Submission;
@@ -99,4 +100,8 @@ unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
             vec![]
         }
     }
+}
+
+unsafe impl<T: ?Sized + 'static> TypedBuffer for StagingBuffer<T> {
+    type Content = T;
 }

@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use buffer::traits::Buffer;
+use buffer::traits::TypedBuffer;
 use buffer::unsafe_buffer::UnsafeBuffer;
 use buffer::unsafe_buffer::Usage;
 use command_buffer::Submission;
@@ -147,4 +148,8 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
             vec![]
         }
     }
+}
+
+unsafe impl<T: ?Sized + 'static> TypedBuffer for ImmutableBuffer<T> {
+    type Content = T;
 }

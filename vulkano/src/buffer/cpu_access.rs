@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use buffer::traits::Buffer;
+use buffer::traits::TypedBuffer;
 use buffer::unsafe_buffer::UnsafeBuffer;
 use buffer::unsafe_buffer::Usage;
 use command_buffer::Submission;
@@ -48,7 +49,7 @@ impl<T> CpuAccessibleBuffer<T> {
 impl<T> CpuAccessibleBuffer<[T]> {
     #[inline]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                      -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
@@ -98,22 +99,22 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
 }
 
 impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
-    fn read(&self, timeout_ns: u64) -> CpuAccess<T> {       // FIXME: error
+    pub fn read(&self, timeout_ns: u64) -> CpuAccess<T> {       // FIXME: error
         // FIXME: correct implementation
         unsafe { self.memory.read() }
     }
 
-    fn try_read(&self) -> Option<CpuAccess<T>> {
+    pub fn try_read(&self) -> Option<CpuAccess<T>> {
         // FIXME: correct implementation
         unsafe { Some(self.memory.read()) }
     }
 
-    fn write(&self, timeout_ns: u64) -> CpuAccess<T> {      // FIXME: error
+    pub fn write(&self, timeout_ns: u64) -> CpuAccess<T> {      // FIXME: error
         // FIXME: correct implementation
         unsafe { self.memory.write() }
     }
 
-    fn try_write(&self) -> Option<CpuAccess<T>> {
+    pub fn try_write(&self) -> Option<CpuAccess<T>> {
         // FIXME: correct implementation
         unsafe { Some(self.memory.write()) }
     }
@@ -148,4 +149,8 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
             vec![]
         }
     }
+}
+
+unsafe impl<T: ?Sized + 'static> TypedBuffer for CpuAccessibleBuffer<T> {
+    type Content = T;
 }

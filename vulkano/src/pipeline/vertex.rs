@@ -128,7 +128,7 @@ unsafe impl<T> Definition for SingleBufferDefinition<T> where T: Vertex {
 }
 
 unsafe impl<'a, B, V> Source<&'a Arc<B>> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = V> + 'static, V: Vertex + 'static
+    where B: TypedBuffer<Content = [V]> + 'static, V: Vertex + 'static
 {
     type Iter = OptionIntoIter<Arc<Buffer>>;
 
@@ -172,8 +172,8 @@ unsafe impl<T, U> Definition for TwoBuffersDefinition<T, U> where T: Vertex, U: 
 }
 
 unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for TwoBuffersDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = T> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = U> + 'static, T: 'static
+    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
+          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, T: 'static
 {
     type Iter = VecIntoIter<Arc<Buffer>>;
 
@@ -219,8 +219,8 @@ unsafe impl<T, U> Definition for OneVertexOneInstanceDefinition<T, U> where T: V
 }
 
 unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = T> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = U> + 'static, U: 'static
+    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
+          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, U: 'static
 {
     type Iter = VecIntoIter<Arc<Buffer>>;
 

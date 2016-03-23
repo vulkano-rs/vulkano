@@ -14,6 +14,7 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
+use std::sync::Arc;
 
 mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
 mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
@@ -76,10 +77,9 @@ fn main() {
     let depth_buffer = depth_buffer.transition(vulkano::image::Layout::DepthStencilAttachmentOptimal, &cb_pool, &queue).unwrap();
     let depth_buffer = vulkano::image::ImageView::new(&depth_buffer).expect("failed to create image view");
 
-    let vertex_buffer = vulkano::buffer::Buffer
+    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                ::array(&device, teapot::VERTICES.len(),
-                                       &vulkano::buffer::Usage::all(),
-                                       vulkano::memory::HostVisible, &queue)
+                                       &vulkano::buffer::Usage::all(), Some(queue.family()))
                                        .expect("failed to create buffer");
 
     {
@@ -89,10 +89,9 @@ fn main() {
         }
     }
 
-    let normals_buffer = vulkano::buffer::Buffer
+    let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                 ::array(&device, teapot::NORMALS.len(),
-                                        &vulkano::buffer::Usage::all(),
-                                        vulkano::memory::HostVisible, &queue)
+                                        &vulkano::buffer::Usage::all(), Some(queue.family()))
                                         .expect("failed to create buffer");
 
     {
@@ -102,10 +101,9 @@ fn main() {
         }
     }
 
-    let index_buffer = vulkano::buffer::Buffer
+    let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                               ::array(&device, teapot::INDICES.len(),
-                                      &vulkano::buffer::Usage::all(),
-                                      vulkano::memory::HostVisible, &queue)
+                                      &vulkano::buffer::Usage::all(), Some(queue.family()))
                                       .expect("failed to create buffer");
 
     {
@@ -121,9 +119,8 @@ fn main() {
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
-    let uniform_buffer = vulkano::buffer::Buffer::<vs::ty::Data, _>
-                               ::new(&device, &vulkano::buffer::Usage::all(),
-                                     vulkano::memory::HostVisible, &queue)
+    let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
+                               ::new(&device, &vulkano::buffer::Usage::all(), Some(queue.family()))
                                .expect("failed to create buffer");
     {
         let mut mapping = uniform_buffer.try_write().unwrap();
@@ -217,7 +214,7 @@ fn main() {
             .build().unwrap()
     }).collect::<Vec<_>>();
 
-    let mut submissions: Vec<vulkano::command_buffer::Submission> = Vec::new();
+    let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();
 
     loop {
         submissions.retain(|s| !s.destroying_would_block());
