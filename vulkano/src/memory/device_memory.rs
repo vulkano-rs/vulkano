@@ -162,12 +162,12 @@ impl MappedDeviceMemory {
     }
 
     #[inline]
-    pub unsafe fn read<T>(&self) -> CpuAccess<T> where T: Content + 'static {
+    pub unsafe fn read<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
         self.write()
     }
 
     #[inline]
-    pub unsafe fn write<T>(&self) -> CpuAccess<T> where T: Content + 'static {
+    pub unsafe fn write<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
         let vk = self.memory.device().pointers();
         let pointer = T::ref_from_ptr(self.pointer, self.memory.size()).unwrap();       // TODO: error
 

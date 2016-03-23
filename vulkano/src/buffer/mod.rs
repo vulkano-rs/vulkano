@@ -45,6 +45,7 @@ pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
 pub use self::unsafe_buffer::Usage;
 
+pub mod cpu_access;
 pub mod immutable;
 pub mod staging;
 pub mod traits;
