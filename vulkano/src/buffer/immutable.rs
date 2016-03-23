@@ -36,6 +36,30 @@ pub struct ImmutableBuffer<T: ?Sized> {
 }
 
 impl<T> ImmutableBuffer<T> {
+    #[inline]
+    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+                      -> Result<Arc<ImmutableBuffer<T>>, OomError>
+        where I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        unsafe {
+            ImmutableBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
+        }
+    }
+}
+
+impl<T> ImmutableBuffer<[T]> {
+    #[inline]
+    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
+                      -> Result<Arc<ImmutableBuffer<T>>, OomError>
+        where I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        unsafe {
+            ImmutableBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
+        }
+    }
+}
+
+impl<T: ?Sized> ImmutableBuffer<T> {
     pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
                              -> Result<Arc<ImmutableBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
