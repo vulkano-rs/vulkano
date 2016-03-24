@@ -9,6 +9,8 @@
 //! But don't worry ; this is automatically enforced by this library (as long as you don't use
 //! any unsafe function). See the `memory` module for more info.
 //!
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -20,6 +22,7 @@ use smallvec::SmallVec;
 
 use device::Device;
 use device::Queue;
+use Error;
 use OomError;
 use Success;
 use SynchronizedVulkanObject;
@@ -149,7 +152,7 @@ impl Fence {
     /// timeout has elapsed.
     ///
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
-    pub fn wait(&self, timeout_ns: u64) -> Result<(), OomError> {       // FIXME: wrong error
+    pub fn wait(&self, timeout_ns: u64) -> Result<(), FenceWaitError> {
         unsafe {
             if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
 
@@ -162,7 +165,9 @@ impl Fence {
                     self.signaled.store(true, Ordering::Relaxed);
                     Ok(())
                 },
-                Success::Timeout => panic!(),        // FIXME:
+                Success::Timeout => {
+                    Err(FenceWaitError::Timeout)
+                },
                 _ => unreachable!()
             }
         }
@@ -173,7 +178,7 @@ impl Fence {
     /// # Panic
     ///
     /// Panicks if not all fences belong to the same device.
-    pub fn multi_wait<'a, I>(iter: I, timeout_ns: u64) -> Result<(), OomError>      // FIXME: wrong error
+    pub fn multi_wait<'a, I>(iter: I, timeout_ns: u64) -> Result<(), FenceWaitError>
         where I: IntoIterator<Item = &'a Fence>
     {
         let mut device = None;
@@ -204,7 +209,7 @@ impl Fence {
 
         match r {
             Success::Success => Ok(()),
-            Success::Timeout => panic!(),        // FIXME:
+            Success::Timeout => Err(FenceWaitError::Timeout),
             _ => unreachable!()
         }
     }
@@ -268,6 +273,58 @@ impl Drop for Fence {
         }
     }
 }
+
+/// Error that can be returned when waiting on a fence.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FenceWaitError {
+    /// Not enough memory to complete the wait.
+    OomError(OomError),
+
+    /// The specified timeout wasn't long enough.
+    Timeout,
+
+    /// The device has been lost.
+    DeviceLostError,
+}
+
+impl error::Error for FenceWaitError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            FenceWaitError::OomError(_) => "no memory available",
+            FenceWaitError::Timeout => "the timeout has been reached",
+            FenceWaitError::DeviceLostError => "the device was lost",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            FenceWaitError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for FenceWaitError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for FenceWaitError {
+    #[inline]
+    fn from(err: Error) -> FenceWaitError {
+        match err {
+            Error::OutOfHostMemory => FenceWaitError::OomError(From::from(err)),
+            Error::OutOfDeviceMemory => FenceWaitError::OomError(From::from(err)),
+            Error::DeviceLost => FenceWaitError::DeviceLostError,
+            _ => panic!("Unexpected error value: {}", err as i32)
+        }
+    }
+}
+
 
 /// Used to provide synchronization between command buffers during their execution.
 /// 
