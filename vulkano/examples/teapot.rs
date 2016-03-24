@@ -172,13 +172,10 @@ fn main() {
             data: vec![(
                 vulkano::pipeline::viewport::Viewport {
                     origin: [0.0, 0.0],
-                    dimensions: [1244.0, 699.0],
+                    dimensions: [images[0].dimensions().width() as f32, images[0].dimensions().height() as f32],
                     depth_range: 0.0 .. 1.0
                 },
-                vulkano::pipeline::viewport::Scissor {
-                    origin: [0, 0],
-                    dimensions: [1244, 699],
-                }
+                vulkano::pipeline::viewport::Scissor::irrelevant()
             )],
         };
 
