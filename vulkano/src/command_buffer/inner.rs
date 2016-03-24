@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::hash;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -47,15 +49,51 @@ use vk;
 /// Actual implementation of all command buffer builders.
 ///
 /// Doesn't check whether the command type is appropriate for the command buffer type.
+//
+// Implementation notes.
+//
+// Adding a command to an `InnerCommandBufferBuilder` does not immediately add it to the
+// `vk::CommandBuffer`. Instead the command is added to a list of staging commands. The reason
+// for this design is that we want to minimize the number of pipeline barriers. In order to know
+// what must be in a pipeline barrier, we have to be ahead of the actual commands.
+//
 pub struct InnerCommandBufferBuilder {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
 
-    // List of all resources that are used by this command buffer.
-    buffer_resources: Vec<Arc<Buffer>>,
+    // List of commands that are waiting to be submitted to the Vulkan command buffer. Doesn't
+    // include commands that were submitted within a render pass.
+    staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
 
-    image_resources: Vec<Arc<Image>>,
+    // List of barriers required by the current staging commands compared to what's before
+    // the staging commands. Doesn't include state set by the current render pass.
+    staging_required_buffer_barriers: HashMap<BufferKey, InternalBufferAccess>,
+    staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
+
+    // State of buffers and images, including the staging commands but exluding the current render
+    // pass.
+    // If a buffer/image is missing in this list, that means it hasn't been used by this command
+    // buffer yet and is still in its default state.
+    buffers_state: HashMap<BufferKey, InternalBufferAccess>,
+    images_state: HashMap<ImageKey, InternalImageAccess>,
+
+    // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
+    // inside a render pass. Flushed when `end_renderpass` is called.
+    render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
+
+    // List of barriers required by the current render pass compared to what's before the render
+    // pass. Flushed when `end_renderpass` is called.
+    render_pass_staging_required_buffer_barriers: HashMap<BufferKey, InternalBufferAccess>,
+    render_pass_staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
+
+    // List of buffers and images used by this command buffer, and how they must be synchronized
+    // when this command buffer is submitted.
+    //
+    // This list is updated at each command submitted by the user, even if that command is not
+    // immediately transferred to the underlying command buffer.
+    extern_buffers_sync: HashMap<BufferKey, SmallVec<[BufferAccessRange; 8]>>,
+    extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -149,8 +187,16 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
-            buffer_resources: Vec::new(),
-            image_resources: Vec::new(),
+            staging_commands: Vec::new(),
+            staging_required_buffer_barriers: HashMap::new(),
+            staging_required_image_barriers: HashMap::new(),
+            buffers_state: HashMap::new(),
+            images_state: HashMap::new(),
+            render_pass_staging_commands: Vec::new(),
+            render_pass_staging_required_buffer_barriers: HashMap::new(),
+            render_pass_staging_required_image_barriers: HashMap::new(),
+            extern_buffers_sync: HashMap::new(),
+            extern_images_sync: HashMap::new(),
             keep_alive: keep_alive,
             current_graphics_pipeline: None,
             current_compute_pipeline: None,
@@ -169,8 +215,9 @@ impl InnerCommandBufferBuilder {
         self.keep_alive.push(cb_arc);
         for p in cb.keep_alive.iter() { self.keep_alive.push(p.clone()); }
 
-        for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }
+        // FIXME: merge resources
+        /*for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
+        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }*/
 
         {
             let vk = self.device.pointers();
@@ -217,7 +264,8 @@ impl InnerCommandBufferBuilder {
 
         // FIXME: check queue family of the buffer
 
-        self.add_buffer_resource(buffer.buffer().clone(), true, buffer.offset(), buffer.size());
+        self.add_buffer_resource(buffer.buffer(), true,
+                                 buffer.offset() .. buffer.offset() + buffer.size());
 
         {
             let vk = self.device.pointers();
@@ -254,7 +302,7 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.inner_buffer().usage_transfer_dest());
 
-        self.add_buffer_resource(buffer.clone(), true, offset, size);
+        self.add_buffer_resource(buffer, true, offset .. offset + size);
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -300,8 +348,8 @@ impl InnerCommandBufferBuilder {
             size: source.size() as u64,     // FIXME: what is destination is too small?
         };
 
-        self.add_buffer_resource(source.clone(), false, 0, source.size());
-        self.add_buffer_resource(destination.clone(), true, 0, source.size());
+        self.add_buffer_resource(source, false, 0 .. source.size());
+        self.add_buffer_resource(destination, true, 0 .. source.size());
 
         {
             let vk = self.device.pointers();
@@ -368,8 +416,9 @@ impl InnerCommandBufferBuilder {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
-        self.add_buffer_resource(source.buffer().clone(), false, source.offset(), source.size());
-        self.add_image_resource(image.clone() as Arc<_>, true);
+        self.add_buffer_resource(source.buffer(), false,
+                                 source.offset() .. source.offset() + source.size());
+        self.add_image_resource(image, 0 .. 1, 0 .. 1, true);
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -438,7 +487,7 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.add_buffer_resource(&b, false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -476,13 +525,14 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource(b.clone(), false, 0, b.size());
+            self.add_buffer_resource(&b, false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().inner_buffer().usage_index_buffer());
 
-        self.add_buffer_resource(indices.buffer().clone(), false, indices.offset(), indices.size());
+        self.add_buffer_resource(indices.buffer(), false,
+                                 indices.offset() .. indices.offset() + indices.size());
 
         {
             let vk = self.device.pointers();
@@ -713,38 +763,17 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
 
-            // ending the commands recording
+            // Ending the commands recording.
             try!(check_errors(vk.EndCommandBuffer(cmd)));
-
-            // Computing the list of buffer resources by removing duplicates.
-            let buffer_resources = self.buffer_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.buffer_resources.iter().take(num)
-                                       .find(|e| &***e as *const Buffer == &**elem as *const Buffer).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
-
-            // Computing the list of image resources by removing duplicates.
-            // TODO: image views as well
-            let image_resources = self.image_resources.iter().enumerate().filter_map(|(num, elem)| {
-                if self.image_resources.iter().take(num)
-                                       .find(|e| &***e as *const Image == &**elem as *const Image).is_some()
-                {
-                    None
-                } else {
-                    Some(elem.clone())
-                }
-            }).collect::<Vec<_>>();
 
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
-                buffer_resources: buffer_resources,
-                image_resources: image_resources,
+                buffers_state: mem::replace(&mut self.buffers_state, HashMap::new()),
+                images_state: mem::replace(&mut self.images_state, HashMap::new()),
+                extern_buffers_sync: mem::replace(&mut self.extern_buffers_sync, HashMap::new()),
+                extern_images_sync: mem::replace(&mut self.extern_images_sync, HashMap::new()),
                 keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
             })
         }
@@ -752,16 +781,80 @@ impl InnerCommandBufferBuilder {
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_buffer_resource(&mut self, buffer: Arc<Buffer>, write: bool, offset: usize,
-                           size: usize)
+    fn add_buffer_resource<B: ?Sized>(&mut self, buffer: &Arc<B>, write: bool, range: Range<usize>)
+        where B: Buffer
     {
         // TODO: handle memory barriers
-        self.buffer_resources.push(buffer);
+        //self.buffers_state.push(buffer);
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    fn add_image_resource(&mut self, image: Arc<Image>, _write: bool) {   // TODO:
-        self.image_resources.push(image);
+    // FIXME: add access flags
+    fn add_image_resource<I: ?Sized>(&mut self, image: &Arc<I>, mipmap_levels_range: Range<u32>,
+                                     array_layers_range: Range<u32>, write: bool)
+        where I: Image
+    {
+        //self.image_resources.push(image);
+    }
+
+    /// Flush the staging commands.
+    fn flush(&mut self) {
+        let cmd = self.cmd.unwrap();
+        let vk = self.device.pointers();
+
+        // Determining the list of barriers that are required.
+        let mut buffer_barriers: SmallVec<[_; 8]> = SmallVec::new();
+        let mut image_barriers: SmallVec<[_; 8]> = SmallVec::new();
+
+        for (buffer, reqs) in self.staging_required_buffer_barriers.drain() {
+            buffer_barriers.push(vk::BufferMemoryBarrier {
+                sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                pNext: ptr::null(),
+                srcAccessMask: 0x0001ffff,      // TODO: suboptimal
+                dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                buffer: buffer.0.inner_buffer().internal_object(),
+                offset: reqs.range.start as vk::DeviceSize,
+                size: (reqs.range.end - reqs.range.start) as vk::DeviceSize,
+            });
+        }
+
+        for (image, reqs) in self.staging_required_image_barriers.drain() {
+            image_barriers.push(vk::ImageMemoryBarrier {
+                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                pNext: ptr::null(),
+                srcAccessMask: 0x0001ffff,      // TODO: suboptimal
+                dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                oldLayout: vk::IMAGE_LAYOUT_GENERAL,        // FIXME:
+                newLayout: vk::IMAGE_LAYOUT_GENERAL,        // FIXME:
+                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                image: image.0.inner_image().internal_object(),
+                subresourceRange: vk::ImageSubresourceRange {
+                    aspectMask: reqs.aspect,
+                    baseMipLevel: reqs.mipmap_levels_range.start,
+                    levelCount: reqs.mipmap_levels_range.end - reqs.mipmap_levels_range.start,
+                    baseArrayLayer: reqs.array_layers_range.start,
+                    layerCount: reqs.array_layers_range.end,
+                },
+            });
+        }
+
+        // Adding the pipeline barrier.
+        if !buffer_barriers.is_empty() || !image_barriers.is_empty() {
+            unsafe {
+                vk.CmdPipelineBarrier(cmd, 0x0001ffff /* TODO */, 0x0001ffff /* TODO */,
+                                      vk::DEPENDENCY_BY_REGION_BIT, 0, ptr::null(),
+                                      buffer_barriers.len() as u32, buffer_barriers.as_ptr(),
+                                      image_barriers.len() as u32, image_barriers.as_ptr());
+            }
+        }
+
+        // Now flushing all commands.
+        for mut command in self.staging_commands.drain(..) {
+            command(&vk, cmd);
+        }
     }
 }
 
@@ -785,8 +878,10 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    buffer_resources: Vec<Arc<Buffer>>,
-    image_resources: Vec<Arc<Image>>,
+    buffers_state: HashMap<BufferKey, InternalBufferAccess>,
+    images_state: HashMap<ImageKey, InternalImageAccess>,
+    extern_buffers_sync: HashMap<BufferKey, SmallVec<[BufferAccessRange; 8]>>,
+    extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
     keep_alive: Vec<Arc<KeepAlive>>,
 }
 
@@ -860,33 +955,14 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     let mut dependencies = SmallVec::<[Arc<Submission>; 6]>::new();
 
     // Buffers first.
-    for resource in me.buffer_resources.iter() {
-        let deps = unsafe {
-            // FIXME: wrong ranges
-            let range = BufferAccessRange {
-                range: 0 .. 18,
-                write: true,
-            };
-
-            resource.gpu_access(&mut Some(range).into_iter(), &submission)
-        };
-
+    for (resource, ranges) in me.extern_buffers_sync.iter() {
+        let deps = unsafe { resource.0.gpu_access(&mut ranges.iter().cloned(), &submission) };
         dependencies.extend(deps.into_iter());
     }
 
     // Then images.
-    for resource in me.image_resources.iter() {
-        let deps = unsafe {
-            // FIXME: wrong ranges
-            let range = ImageAccessRange {
-                mipmap_levels_range: 0 .. 1,
-                array_layers_range: 0 .. 1,
-                write: true,
-            };
-
-            resource.gpu_access(&mut Some(range).into_iter(), &submission)
-        };
-
+    for (resource, ranges) in me.extern_images_sync.iter() {
+        let deps = unsafe { resource.0.gpu_access(&mut ranges.iter().cloned(), &submission) };
         dependencies.extend(deps.into_iter());
     }
 
@@ -1058,6 +1134,11 @@ impl hash::Hash for BufferKey {
     }
 }
 
+struct InternalBufferAccess {
+    range: Range<usize>,
+    write: bool,
+}
+
 #[derive(Clone)]
 struct ImageKey(Arc<Image>);
 
@@ -1076,4 +1157,11 @@ impl hash::Hash for ImageKey {
         let ptr = &*self.0 as *const Image as *const () as usize;
         hash::Hash::hash(&ptr, state)
     }
+}
+
+struct InternalImageAccess {
+    mipmap_levels_range: Range<u32>,
+    array_layers_range: Range<u32>,
+    write: bool,
+    aspect: vk::ImageAspectFlags,
 }

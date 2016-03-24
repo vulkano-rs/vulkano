@@ -83,6 +83,7 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
+#[derive(Debug, Clone)]
 pub struct AccessRange {
     pub mipmap_levels_range: Range<u32>,
     pub array_layers_range: Range<u32>,
