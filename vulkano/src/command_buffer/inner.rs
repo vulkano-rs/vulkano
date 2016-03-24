@@ -805,10 +805,44 @@ impl InnerCommandBufferBuilder {
     fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
                                    range: Range<usize>)
     {
-        self.add_buffer_resource_external(buffer, write, range);
+        self.add_buffer_resource_external(buffer.clone(), write, range.clone());
 
-        // TODO: handle memory barriers
-        //self.buffers_state.push(buffer);
+        // Flushing if required.
+        let mut conflict = false;
+        for block in buffer.blocks(range.clone()) {
+            let key = (BufferKey(buffer.clone()), block);
+            if let Some(&entry) = self.staging_required_buffer_barriers.get(&key) {
+                if entry.write || write {
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if conflict {
+            self.flush();
+        }
+
+        // Computing the diff between what's required and `buffers_state`, and putting it in
+        // `staging_required_buffer_barriers`.
+        for block in buffer.blocks(range.clone()) {
+            let key = (BufferKey(buffer.clone()), block);
+
+            if let Some(&entry) = self.buffers_state.get(&key) {
+                if entry.write || write {
+                    let access = InternalBufferAccess {
+                        write: write,
+                    };
+
+                    self.staging_required_buffer_barriers.insert(key, access);
+                }
+            } else {
+                let access = InternalBufferAccess {
+                    write: write,
+                };
+
+                self.staging_required_buffer_barriers.insert(key, access);
+            }
+        }
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
@@ -849,7 +883,7 @@ impl InnerCommandBufferBuilder {
         let cmd = self.cmd.unwrap();
         let vk = self.device.pointers();
 
-        // Determining the list of barriers that are required.
+        // Determining the list of barriers that are required and updating the resources states.
         let mut buffer_barriers: SmallVec<[_; 8]> = SmallVec::new();
         let mut image_barriers: SmallVec<[_; 8]> = SmallVec::new();
 
@@ -865,6 +899,8 @@ impl InnerCommandBufferBuilder {
                 offset: 0,      // FIXME:
                 size: 10,       // FIXME:
             });
+
+            self.buffers_state.insert(buffer, reqs);
         }
 
         for (image, reqs) in self.staging_required_image_barriers.drain() {
@@ -1181,6 +1217,7 @@ impl hash::Hash for BufferKey {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 struct InternalBufferAccess {
     write: bool,
 }
