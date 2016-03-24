@@ -1,3 +1,4 @@
+use std::hash;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -1036,3 +1037,43 @@ impl Drop for Submission {
 
 pub trait KeepAlive {}
 impl<T> KeepAlive for T {}
+
+#[derive(Clone)]
+struct BufferKey(Arc<Buffer>);
+
+impl PartialEq for BufferKey {
+    #[inline]
+    fn eq(&self, other: &BufferKey) -> bool {
+        &*self.0 as *const Buffer == &*other.0 as *const Buffer
+    }
+}
+
+impl Eq for BufferKey {}
+
+impl hash::Hash for BufferKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const Buffer as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
+
+#[derive(Clone)]
+struct ImageKey(Arc<Image>);
+
+impl PartialEq for ImageKey {
+    #[inline]
+    fn eq(&self, other: &ImageKey) -> bool {
+        &*self.0 as *const Image == &*other.0 as *const Image
+    }
+}
+
+impl Eq for ImageKey {}
+
+impl hash::Hash for ImageKey {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+        let ptr = &*self.0 as *const Image as *const () as usize;
+        hash::Hash::hash(&ptr, state)
+    }
+}
