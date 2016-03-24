@@ -35,6 +35,7 @@ use pipeline::input_assembly::Index;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
+use sync::FenceWaitError;
 use sync::Semaphore;
 
 use device::Device;
@@ -1060,7 +1061,12 @@ impl Submission {
 impl Drop for Submission {
     #[inline]
     fn drop(&mut self) {
-        self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */).unwrap();
+        match self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */) {
+            Ok(_) => (),
+            Err(FenceWaitError::DeviceLostError) => (),
+            Err(FenceWaitError::Timeout) => panic!(),   // The driver has some sort of problem.
+            Err(FenceWaitError::OomError) => panic!(),  // What else to do here?
+        }
 
         // TODO: return `signalled_semaphores` to the semaphore pools
     }
