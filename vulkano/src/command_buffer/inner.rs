@@ -880,14 +880,15 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
     };
 
     // We can now create the `Submission` object.
+    // We need to create it early because we pass it when calling `gpu_access`.
     let submission = Arc::new(Submission {
-        cmd: Some(me_arc),
         fence: fence.clone(),
         queue: queue.clone(),
         guarded: Mutex::new(SubmissionGuarded {
             signalled_semaphores: semaphores_to_signal,
             signalled_queues: SmallVec::new(),
         }),
+        keep_alive_cb: Some(me_arc),
         keep_alive_semaphores: Mutex::new(SmallVec::new()),
     });
 
@@ -930,8 +931,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         let mut guard = dependency.guarded.lock().unwrap();
         let current_queue_id = (queue.family().id(), queue.id_within_family());
 
-        // If the current queue is in the list of already-signalled queue, we ignore the
-        // dependency.
+        // If the current queue is in the list of already-signalled queue of the dependency, we
+        // ignore it.
         if guard.signalled_queues.iter().find(|&&elem| elem == current_queue_id).is_some() {
             continue;
         }
@@ -955,9 +956,17 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<AbstractCommandBuffer>,
         pre_semaphores_ids.push(semaphore.internal_object());
         pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
         pre_semaphores.push(semaphore);
+
+        // Note that it may look dangerous to unlock the dependency's mutex here, because the
+        // queue has already been added to the list of signalled queues but the command that
+        // signals the semaphore hasn't been sent yet.
+        //
+        // However submitting to a queue must lock the queue, which guarantees that no other
+        // parallel queue submission should happen on this same queue. This means that the problem
+        // is non-existing.
     }
 
-    // Don't forget to merge the semaphores into the submission.
+    // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
     {
         let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
         *keep_alive_semaphores = post_semaphores.into_iter()
@@ -999,8 +1008,6 @@ impl Drop for InnerCommandBuffer {
 
 #[must_use]
 pub struct Submission {
-    cmd: Option<Arc<AbstractCommandBuffer>>,
-
     fence: Arc<Fence>,
 
     // The queue on which this was submitted.
@@ -1009,17 +1016,30 @@ pub struct Submission {
     // Additional variables that are behind a mutex.
     guarded: Mutex<SubmissionGuarded>,
 
+    // The command buffer that was submitted and that needs to be kept alive until the submission
+    // is complete by the GPU.
+    keep_alive_cb: Option<Arc<AbstractCommandBuffer>>,
+
     // List of semaphores to keep alive while the submission hasn't finished execution.
+    //
+    // The fact that it is behind a `Mutex` is a hack. The list of semaphores can only be known
+    // after the `Submission` has been created and put in an `Arc`. Therefore we need a `Mutex`
+    // in order to write this list. The list isn't accessed anymore afterwards, so it shouldn't
+    // slow things down too much. TODO: consider an UnsafeCell
     keep_alive_semaphores: Mutex<SmallVec<[Arc<Semaphore>; 8]>>,
 }
 
 struct SubmissionGuarded {
-    // Reserve of semaphores that have been signalled by this submission and that must be
-    // waited upon.
+    // Reserve of semaphores that have been signalled by this submission and that can be
+    // waited upon. The semaphore must be removed from the list if it is going to be waiting upon.
     signalled_semaphores: SmallVec<[Arc<Semaphore>; 4]>,
 
     // Queue familiy index and queue index of each queue that got submitted a command buffer
     // that was waiting on this submission to be complete.
+    //
+    // If a queue is in this list, that means that all side-effects of this submission are going
+    // to be visible to any further command buffer submitted to this queue. Note that this is only
+    // true due to the fact that we have a per-queue semaphore (see `Queue::dedicated_semaphore`).
     signalled_queues: SmallVec<[(u32, u32); 4]>,
 }
 
