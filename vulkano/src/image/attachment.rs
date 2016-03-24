@@ -1,4 +1,5 @@
 use std::iter::Empty;
+use std::ops::Range;
 use std::sync::Arc;
 
 use command_buffer::Submission;
@@ -81,6 +82,11 @@ unsafe impl<F> Image for AttachmentImage<F> {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
+    }
+
+    #[inline]
+    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
+        vec![(0, 0)]
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {

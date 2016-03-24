@@ -29,6 +29,15 @@ pub unsafe trait Image {
         self.inner_image().dimensions()
     }
 
+    /// Given a range, returns the list of blocks which each range is contained in.
+    ///
+    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
+    /// mipmap and array layer.
+    /// Calling this function multiple times with the same parameter must always return the same
+    /// value.
+    /// The return value must not be empty.
+    fn blocks(&self, mipmap_levels: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)>;
+
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
 
@@ -85,7 +94,6 @@ pub unsafe trait ImageView {
 
 #[derive(Debug, Clone)]
 pub struct AccessRange {
-    pub mipmap_levels_range: Range<u32>,
-    pub array_layers_range: Range<u32>,
+    pub block: (u32, u32),
     pub write: bool,
 }

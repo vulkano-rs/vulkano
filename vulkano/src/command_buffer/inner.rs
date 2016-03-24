@@ -70,13 +70,13 @@ pub struct InnerCommandBufferBuilder {
     // List of barriers required by the current staging commands compared to what's before
     // the staging commands. Doesn't include state set by the current render pass.
     staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
+    staging_required_image_barriers: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
 
     // State of buffers and images, exclusing the staging commands and the current render pass.
     // If a buffer/image is missing in this list, that means it hasn't been used by this command
     // buffer yet and is still in its default state.
     buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    images_state: HashMap<ImageKey, InternalImageAccess>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
     // inside a render pass. Flushed when `end_renderpass` is called.
@@ -85,7 +85,7 @@ pub struct InnerCommandBufferBuilder {
     // List of barriers required by the current render pass compared to what's before the render
     // pass. Flushed when `end_renderpass` is called.
     render_pass_staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    render_pass_staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
+    render_pass_staging_required_image_barriers: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
 
     // List of buffers and images used by this command buffer, and how they must be synchronized
     // when this command buffer is submitted.
@@ -93,7 +93,7 @@ pub struct InnerCommandBufferBuilder {
     // This list is updated at each command submitted by the user, even if that command is not
     // immediately transferred to the underlying command buffer.
     extern_buffers_sync: HashMap<(BufferKey, usize), bool>,
-    extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
+    extern_images_sync: HashMap<(ImageKey, (u32, u32)), bool>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -418,7 +418,7 @@ impl InnerCommandBufferBuilder {
         let source = source.into();
         self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,
                                  source.offset() .. source.offset() + source.size());
-        self.add_image_resource_outside(image, 0 .. 1, 0 .. 1, true);
+        self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true);
 
         let region = vk::BufferImageCopy {
             bufferOffset: source.offset() as vk::DeviceSize,
@@ -794,7 +794,28 @@ impl InnerCommandBufferBuilder {
 
                     map.into_iter().map(|(buf, val)| (buf.0, val)).collect()
                 },
-                extern_images_sync: mem::replace(&mut self.extern_images_sync, HashMap::new()),
+                extern_images_sync: {
+                    let mut map = HashMap::new();
+                    for ((img, bl), write) in self.extern_images_sync.drain() {
+                        let value = ImageAccessRange {
+                            block: bl,
+                            write: write,
+                        };
+
+                        match map.entry(img) {
+                            Entry::Vacant(e) => {
+                                let mut v = SmallVec::new();
+                                v.push(value);
+                                e.insert(v);
+                            },
+                            Entry::Occupied(mut e) => {
+                                e.get_mut().push(value);
+                            },
+                        }
+                    }
+
+                    map.into_iter().map(|(img, val)| (img.0, val)).collect()
+                },
                 keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
             })
         }
@@ -847,13 +868,11 @@ impl InnerCommandBufferBuilder {
 
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_image_resource_outside<I: ?Sized>(&mut self, image: &Arc<I>,
-                                             mipmap_levels_range: Range<u32>,
-                                             array_layers_range: Range<u32>, write: bool)
-        where I: Image
+    fn add_image_resource_outside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
+                                  array_layers_range: Range<u32>, write: bool)
     {
-        /*self.add_image_resource_external(image, mipmap_levels_range.clone(),
-                                         array_layers_range.clone(), write);*/
+        self.add_image_resource_external(image, mipmap_levels_range.clone(),
+                                         array_layers_range.clone(), write);
 
         //self.image_resources.push(image);
     }
@@ -872,10 +891,18 @@ impl InnerCommandBufferBuilder {
         }
     }
 
-    fn add_image_resource_external(&mut self, image: &Arc<Image>, mipmap_levels_range: Range<u32>,
+    fn add_image_resource_external(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
                                    array_layers_range: Range<u32>, write: bool)
     {
-
+        for block in image.blocks(mipmap_levels_range, array_layers_range) {
+            match self.extern_images_sync.entry((ImageKey(image.clone()), block)) {
+                Entry::Vacant(entry) => { entry.insert(write); },
+                Entry::Occupied(mut entry) => {
+                    let old = *entry.get();
+                    entry.insert(old || write);
+                },
+            }
+        }
     }
 
     /// Flush the staging commands.
@@ -913,13 +940,13 @@ impl InnerCommandBufferBuilder {
                 newLayout: vk::IMAGE_LAYOUT_GENERAL,        // FIXME:
                 srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                image: image.0.inner_image().internal_object(),
+                image: (image.0).0.inner_image().internal_object(),
                 subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: reqs.aspect,
-                    baseMipLevel: reqs.mipmap_levels_range.start,
-                    levelCount: reqs.mipmap_levels_range.end - reqs.mipmap_levels_range.start,
-                    baseArrayLayer: reqs.array_layers_range.start,
-                    layerCount: reqs.array_layers_range.end,
+                    aspectMask: 1,      // FIXME: 
+                    baseMipLevel: 0,        // FIXME: 
+                    levelCount: 1,      // FIXME: 
+                    baseArrayLayer: 0,      // FIXME: 
+                    layerCount: 1,      // FIXME: 
                 },
             });
         }
@@ -962,9 +989,9 @@ pub struct InnerCommandBuffer {
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
     buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    images_state: HashMap<ImageKey, InternalImageAccess>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
     extern_buffers_sync: SmallVec<[(Arc<Buffer>, SmallVec<[BufferAccessRange; 4]>); 32]>,
-    extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
+    extern_images_sync: SmallVec<[(Arc<Image>, SmallVec<[ImageAccessRange; 8]>); 32]>,
     keep_alive: Vec<Arc<KeepAlive>>,
 }
 
@@ -1044,8 +1071,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     }
 
     // Then images.
-    for (resource, ranges) in me.extern_images_sync.iter() {
-        let deps = unsafe { resource.0.gpu_access(&mut ranges.iter().cloned(), &submission) };
+    for &(ref resource, ref ranges) in me.extern_images_sync.iter() {
+        let deps = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
         dependencies.extend(deps.into_iter());
     }
 
@@ -1243,8 +1270,6 @@ impl hash::Hash for ImageKey {
 }
 
 struct InternalImageAccess {
-    mipmap_levels_range: Range<u32>,
-    array_layers_range: Range<u32>,
     write: bool,
     aspect: vk::ImageAspectFlags,
 }

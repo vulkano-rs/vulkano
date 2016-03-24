@@ -19,6 +19,7 @@ pub unsafe trait Buffer {
     /// block.
     /// Calling this function multiple times with the same parameter must always return the same
     /// value.
+    /// The return value must not be empty.
     fn blocks(&self, range: Range<usize>) -> Vec<usize>;
 
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
