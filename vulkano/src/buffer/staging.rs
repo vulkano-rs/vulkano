@@ -74,6 +74,11 @@ unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
         &self.inner
     }
 
+    #[inline]
+    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
+        vec![0]
+    }
+
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
         Some(true)
     }

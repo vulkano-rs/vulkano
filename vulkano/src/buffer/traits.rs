@@ -13,6 +13,14 @@ pub unsafe trait Buffer {
     /// Returns whether accessing a range of this buffer should signal a fence.
     fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
 
+    /// Given a range, returns the list of blocks which each range is contained in.
+    ///
+    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
+    /// block.
+    /// Calling this function multiple times with the same parameter must always return the same
+    /// value.
+    fn blocks(&self, range: Range<usize>) -> Vec<usize>;
+
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>;
 
@@ -33,6 +41,6 @@ pub unsafe trait TypedBuffer: Buffer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessRange {
-    pub range: Range<usize>,
-    pub write: bool
+    pub block: usize,
+    pub write: bool,
 }

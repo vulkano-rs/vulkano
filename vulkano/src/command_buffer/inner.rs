@@ -69,13 +69,13 @@ pub struct InnerCommandBufferBuilder {
 
     // List of barriers required by the current staging commands compared to what's before
     // the staging commands. Doesn't include state set by the current render pass.
-    staging_required_buffer_barriers: HashMap<BufferKey, InternalBufferAccess>,
+    staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
     staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
 
     // State of buffers and images, exclusing the staging commands and the current render pass.
     // If a buffer/image is missing in this list, that means it hasn't been used by this command
     // buffer yet and is still in its default state.
-    buffers_state: HashMap<BufferKey, InternalBufferAccess>,
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
     images_state: HashMap<ImageKey, InternalImageAccess>,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
@@ -84,7 +84,7 @@ pub struct InnerCommandBufferBuilder {
 
     // List of barriers required by the current render pass compared to what's before the render
     // pass. Flushed when `end_renderpass` is called.
-    render_pass_staging_required_buffer_barriers: HashMap<BufferKey, InternalBufferAccess>,
+    render_pass_staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
     render_pass_staging_required_image_barriers: HashMap<ImageKey, InternalImageAccess>,
 
     // List of buffers and images used by this command buffer, and how they must be synchronized
@@ -92,7 +92,7 @@ pub struct InnerCommandBufferBuilder {
     //
     // This list is updated at each command submitted by the user, even if that command is not
     // immediately transferred to the underlying command buffer.
-    extern_buffers_sync: HashMap<BufferKey, SmallVec<[BufferAccessRange; 8]>>,
+    extern_buffers_sync: HashMap<(BufferKey, usize), bool>,
     extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
@@ -264,7 +264,7 @@ impl InnerCommandBufferBuilder {
 
         // FIXME: check queue family of the buffer
 
-        self.add_buffer_resource_outside(buffer.buffer(), true,
+        self.add_buffer_resource_outside(buffer.buffer().clone() as Arc<_>, true,
                                  buffer.offset() .. buffer.offset() + buffer.size());
 
         {
@@ -302,7 +302,7 @@ impl InnerCommandBufferBuilder {
         assert!(size % 4 == 0);
         assert!(buffer.inner_buffer().usage_transfer_dest());
 
-        self.add_buffer_resource_outside(buffer, true, offset .. offset + size);
+        self.add_buffer_resource_outside(buffer.clone() as Arc<_>, true, offset .. offset + size);
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -348,8 +348,8 @@ impl InnerCommandBufferBuilder {
             size: source.size() as u64,     // FIXME: what is destination is too small?
         };
 
-        self.add_buffer_resource_outside(source, false, 0 .. source.size());
-        self.add_buffer_resource_outside(destination, true, 0 .. source.size());
+        self.add_buffer_resource_outside(source.clone() as Arc<_>, false, 0 .. source.size());
+        self.add_buffer_resource_outside(destination.clone() as Arc<_>, true, 0 .. source.size());
 
         {
             let vk = self.device.pointers();
@@ -416,7 +416,7 @@ impl InnerCommandBufferBuilder {
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
-        self.add_buffer_resource_outside(source.buffer(), false,
+        self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,
                                  source.offset() .. source.offset() + source.size());
         self.add_image_resource_outside(image, 0 .. 1, 0 .. 1, true);
 
@@ -487,7 +487,7 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource_outside(&b, false, 0 .. b.size());
+            self.add_buffer_resource_outside(b.clone(), false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -525,13 +525,13 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource_outside(&b, false, 0 .. b.size());
+            self.add_buffer_resource_outside(b.clone(), false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().inner_buffer().usage_index_buffer());
 
-        self.add_buffer_resource_outside(indices.buffer(), false,
+        self.add_buffer_resource_outside(indices.buffer().clone() as Arc<_>, false,
                                  indices.offset() .. indices.offset() + indices.size());
 
         {
@@ -772,7 +772,28 @@ impl InnerCommandBufferBuilder {
                 cmd: cmd,
                 buffers_state: mem::replace(&mut self.buffers_state, HashMap::new()),
                 images_state: mem::replace(&mut self.images_state, HashMap::new()),
-                extern_buffers_sync: mem::replace(&mut self.extern_buffers_sync, HashMap::new()),
+                extern_buffers_sync: {
+                    let mut map = HashMap::new();
+                    for ((buf, bl), write) in self.extern_buffers_sync.drain() {
+                        let value = BufferAccessRange {
+                            block: bl,
+                            write: write,
+                        };
+
+                        match map.entry(buf) {
+                            Entry::Vacant(e) => {
+                                let mut v = SmallVec::new();
+                                v.push(value);
+                                e.insert(v);
+                            },
+                            Entry::Occupied(mut e) => {
+                                e.get_mut().push(value);
+                            },
+                        }
+                    }
+
+                    map.into_iter().map(|(buf, val)| (buf.0, val)).collect()
+                },
                 extern_images_sync: mem::replace(&mut self.extern_images_sync, HashMap::new()),
                 keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
             })
@@ -781,11 +802,10 @@ impl InnerCommandBufferBuilder {
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
-    fn add_buffer_resource_outside<B: ?Sized>(&mut self, buffer: &Arc<B>, write: bool,
-                                              range: Range<usize>)
-        where B: Buffer
+    fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
+                                   range: Range<usize>)
     {
-        //self.add_buffer_resource_external(buffer, write, range);
+        self.add_buffer_resource_external(buffer, write, range);
 
         // TODO: handle memory barriers
         //self.buffers_state.push(buffer);
@@ -804,30 +824,17 @@ impl InnerCommandBufferBuilder {
         //self.image_resources.push(image);
     }
 
-    fn add_buffer_resource_external(&mut self, buffer: &Arc<Buffer>, write: bool,
+    fn add_buffer_resource_external(&mut self, buffer: Arc<Buffer>, write: bool,
                                     range: Range<usize>)
     {
-        match self.extern_buffers_sync.entry(BufferKey(buffer.clone())) {
-            Entry::Vacant(e) => {
-                let mut l = SmallVec::new();
-                l.push(BufferAccessRange {
-                    range: range,
-                    write: write,
-                });
-                e.insert(l);
-            },
-
-            Entry::Occupied(mut old_list) => {
-                let old_list = old_list.get_mut();
-
-                let to_insert = BufferAccessRange {
-                    range: range,
-                    write: write,
-                };
-
-                let new_list = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-                *old_list = new_list;
-            },
+        for block in buffer.blocks(range) {
+            match self.extern_buffers_sync.entry((BufferKey(buffer.clone()), block)) {
+                Entry::Vacant(entry) => { entry.insert(write); },
+                Entry::Occupied(mut entry) => {
+                    let old = *entry.get();
+                    entry.insert(old || write);
+                },
+            }
         }
     }
 
@@ -854,9 +861,9 @@ impl InnerCommandBufferBuilder {
                 dstAccessMask: 0x0001ffff,      // TODO: suboptimal
                 srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                 dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                buffer: buffer.0.inner_buffer().internal_object(),
-                offset: reqs.range.start as vk::DeviceSize,
-                size: (reqs.range.end - reqs.range.start) as vk::DeviceSize,
+                buffer: (buffer.0).0.inner_buffer().internal_object(),
+                offset: 0,      // FIXME:
+                size: 10,       // FIXME:
             });
         }
 
@@ -918,9 +925,9 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    buffers_state: HashMap<BufferKey, InternalBufferAccess>,
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
     images_state: HashMap<ImageKey, InternalImageAccess>,
-    extern_buffers_sync: HashMap<BufferKey, SmallVec<[BufferAccessRange; 8]>>,
+    extern_buffers_sync: SmallVec<[(Arc<Buffer>, SmallVec<[BufferAccessRange; 4]>); 32]>,
     extern_images_sync: HashMap<ImageKey, SmallVec<[ImageAccessRange; 8]>>,
     keep_alive: Vec<Arc<KeepAlive>>,
 }
@@ -995,8 +1002,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     let mut dependencies = SmallVec::<[Arc<Submission>; 6]>::new();
 
     // Buffers first.
-    for (resource, ranges) in me.extern_buffers_sync.iter() {
-        let deps = unsafe { resource.0.gpu_access(&mut ranges.iter().cloned(), &submission) };
+    for &(ref resource, ref ranges) in me.extern_buffers_sync.iter() {
+        let deps = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
         dependencies.extend(deps.into_iter());
     }
 
@@ -1175,7 +1182,6 @@ impl hash::Hash for BufferKey {
 }
 
 struct InternalBufferAccess {
-    range: Range<usize>,
     write: bool,
 }
 
@@ -1204,200 +1210,4 @@ struct InternalImageAccess {
     array_layers_range: Range<u32>,
     write: bool,
     aspect: vk::ImageAspectFlags,
-}
-
-fn merge_extern_buffer_access<I>(old_list: I, to_insert: BufferAccessRange)
-                                 -> SmallVec<[BufferAccessRange; 8]>
-    where I: ExactSizeIterator<Item = BufferAccessRange> + Clone
-{
-    fn merge_elems(elem1: BufferAccessRange, elem2: BufferAccessRange)
-                   -> SmallVec<[BufferAccessRange; 3]>
-    {
-        let mut out = SmallVec::new();
-
-        debug_assert!(elem1.range.start <= elem2.range.start);
-
-        if elem1.range.start <= elem2.range.start && elem1.range.end >= elem2.range.end {
-            if elem1.write || elem1.write == elem2.write {
-                out.push(elem1);
-            } else {
-                out.push(BufferAccessRange {
-                    range: elem1.range.start .. elem2.range.start,
-                    write: elem1.write,
-                });
-                out.push(elem2.clone());
-                out.push(BufferAccessRange {
-                    range: elem2.range.end .. elem1.range.end,
-                    write: elem1.write,
-                });
-            }
-
-        } else if elem1.range.start < elem2.range.start && elem1.range.end >= elem2.range.start {
-            if elem1.write == elem2.write {
-                out.push(BufferAccessRange {
-                    range: elem1.range.start .. elem2.range.end,
-                    write: elem1.write,
-                });
-            } else if elem1.write && !elem2.write {
-                out.push(BufferAccessRange {
-                    range: elem1.range.start .. elem1.range.end,
-                    write: elem1.write,
-                });
-                out.push(BufferAccessRange {
-                    range: elem1.range.end .. elem2.range.end,
-                    write: elem2.write,
-                });
-            } else {
-                out.push(BufferAccessRange {
-                    range: elem1.range.start .. elem2.range.start,
-                    write: elem1.write,
-                });
-                out.push(elem2);
-            }
-
-        } else {
-            out.push(elem1);
-            out.push(elem2);
-        }
-
-        out
-    }
-
-    let insert_position = old_list.clone()
-                                  .position(|elem| elem.range.start >= to_insert.range.start)
-                                  .unwrap_or(old_list.len());
-
-    let mut new_list = SmallVec::new();
-
-    // Copy all elements before insert_position - 1.
-    new_list.extend(old_list.clone()
-                            .take(if insert_position >= 1 { insert_position - 1 } else { 0 }));
-
-    {
-        let prev_elem = if insert_position != 0 {
-            let mut l = merge_elems(old_list.clone().nth(insert_position - 1).unwrap(), to_insert);
-            let prev_elem = l.pop().unwrap();
-            new_list.extend(l.into_iter());
-            prev_elem
-        } else {
-            to_insert
-        };
-
-        if let Some(next_elem) = old_list.clone().nth(insert_position) {
-            let mut l = merge_elems(prev_elem, next_elem);
-            new_list.extend(l.into_iter());
-        } else {
-            new_list.push(prev_elem);
-        }
-    }
-
-    // Copy all elements after insert_position + 1.
-    new_list.extend(old_list.skip(insert_position + 1));
-
-    new_list
-}
-
-#[cfg(test)]
-mod tests {
-    use super::merge_extern_buffer_access;
-    use buffer::traits::AccessRange as BufferAccessRange;
-
-    #[test]
-    fn buffer_externsync_simple_merge_end() {
-        let old_list = [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 5, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 12 .. 21, write: false };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 5, write: false },
-            BufferAccessRange { range: 12 .. 21, write: false }
-        ]);
-    }
-
-    #[test]
-    fn buffer_externsync_simple_merge_start() {
-        let old_list = [
-            BufferAccessRange { range: 2 .. 5, write: false },
-            BufferAccessRange { range: 12 .. 21, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 0 .. 1, write: false };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 5, write: false },
-            BufferAccessRange { range: 12 .. 21, write: false }
-        ]);
-    }
-
-    #[test]
-    fn buffer_externsync_simple_merge_between() {
-        let old_list = [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 12 .. 21, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 2 .. 5, write: false };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 5, write: false },
-            BufferAccessRange { range: 12 .. 21, write: false }
-        ]);
-    }
-
-    #[test]
-    fn buffer_externsync_merge_three_in_one() {
-        let old_list = [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 3, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 1 .. 2, write: false };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 3, write: false }
-        ]);
-    }
-
-    #[test]
-    fn buffer_externsync_merge_three_in_one_not_write() {
-        let old_list = [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 2 .. 3, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 1 .. 2, write: true };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 1, write: false },
-            BufferAccessRange { range: 1 .. 2, write: true },
-            BufferAccessRange { range: 2 .. 3, write: false }
-        ]);
-    }
-
-    #[test]
-    fn buffer_externsync_merge_split_elem() {
-        let old_list = [
-            BufferAccessRange { range: 0 .. 5, write: false }
-        ];
-
-        let to_insert = BufferAccessRange { range: 2 .. 3, write: true };
-        let result = merge_extern_buffer_access(old_list.iter().cloned(), to_insert);
-
-        assert_eq!(&*result, [
-            BufferAccessRange { range: 0 .. 2, write: false },
-            BufferAccessRange { range: 2 .. 3, write: true },
-            BufferAccessRange { range: 3 .. 5, write: false }
-        ]);
-    }
 }

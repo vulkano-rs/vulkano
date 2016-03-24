@@ -126,6 +126,11 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
     fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
     }
+    
+    #[inline]
+    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
+        vec![0]
+    }
 
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
         Some(true)
