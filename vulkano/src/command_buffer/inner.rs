@@ -1064,8 +1064,8 @@ impl Drop for Submission {
         match self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */) {
             Ok(_) => (),
             Err(FenceWaitError::DeviceLostError) => (),
-            Err(FenceWaitError::Timeout) => panic!(),   // The driver has some sort of problem.
-            Err(FenceWaitError::OomError) => panic!(),  // What else to do here?
+            Err(FenceWaitError::Timeout) => panic!(),       // The driver has some sort of problem.
+            Err(FenceWaitError::OomError(_)) => panic!(),   // What else to do here?
         }
 
         // TODO: return `signalled_semaphores` to the semaphore pools
