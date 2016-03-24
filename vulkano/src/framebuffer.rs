@@ -1014,10 +1014,6 @@ impl<L> Drop for Framebuffer<L> {
     }
 }
 
-/// Trait implemented on all framebuffers.
-pub trait AbstractFramebuffer {}
-impl<L> AbstractFramebuffer for Framebuffer<L> {}
-
 /// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]

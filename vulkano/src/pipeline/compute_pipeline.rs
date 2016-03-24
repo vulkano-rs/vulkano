@@ -5,7 +5,6 @@ use std::sync::Arc;
 use descriptor_set::Layout;
 use descriptor_set::LayoutPossibleSuperset;
 use descriptor_set::PipelineLayout;
-use pipeline::GenericPipeline;
 use shader::ComputeShaderEntryPoint;
 
 use device::Device;
@@ -91,9 +90,6 @@ impl<Pl> ComputePipeline<Pl> {
     pub fn layout(&self) -> &Arc<PipelineLayout<Pl>> {
         &self.pipeline_layout
     }
-}
-
-impl<Pl> GenericPipeline for ComputePipeline<Pl> {
 }
 
 unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {

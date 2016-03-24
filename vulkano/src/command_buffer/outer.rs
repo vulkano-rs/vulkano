@@ -4,7 +4,6 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
-use command_buffer::AbstractCommandBuffer;
 use command_buffer::CommandBufferPool;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
@@ -469,8 +468,6 @@ pub fn submit(cmd: &Arc<PrimaryCommandBuffer>, queue: &Arc<Queue>)
     inner_submit(&cmd.inner, cmd.clone() as Arc<_>, queue)
 }
 
-impl AbstractCommandBuffer for PrimaryCommandBuffer {}
-
 /// A prototype of a secondary compute command buffer.
 pub struct SecondaryGraphicsCommandBufferBuilder<R> {
     inner: InnerCommandBufferBuilder,
@@ -569,8 +566,6 @@ pub struct SecondaryGraphicsCommandBuffer<R> {
     render_pass_subpass: u32,
 }
 
-impl<R> AbstractCommandBuffer for SecondaryGraphicsCommandBuffer<R> {}
-
 /// A prototype of a secondary compute command buffer.
 pub struct SecondaryComputeCommandBufferBuilder {
     inner: InnerCommandBufferBuilder,
@@ -650,8 +645,6 @@ impl SecondaryComputeCommandBufferBuilder {
 pub struct SecondaryComputeCommandBuffer {
     inner: InnerCommandBuffer,
 }
-
-impl AbstractCommandBuffer for SecondaryComputeCommandBuffer {}
 
 /// The dynamic state to use for a draw command.
 #[derive(Debug, Clone)]
