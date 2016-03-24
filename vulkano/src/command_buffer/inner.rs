@@ -2,6 +2,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::u64;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
@@ -1061,7 +1062,7 @@ impl Submission {
 impl Drop for Submission {
     #[inline]
     fn drop(&mut self) {
-        match self.fence.wait(5 * 1000 * 1000 * 1000 /* 5 seconds */) {
+        match self.fence.wait(u64::MAX) {
             Ok(_) => (),
             Err(FenceWaitError::DeviceLostError) => (),
             Err(FenceWaitError::Timeout) => panic!(),       // The driver has some sort of problem.
