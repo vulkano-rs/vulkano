@@ -31,7 +31,7 @@ pub unsafe trait TypedBuffer: Buffer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessRange {
     pub range: Range<usize>,
     pub write: bool
