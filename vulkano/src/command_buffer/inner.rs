@@ -82,13 +82,13 @@ pub struct InnerCommandBufferBuilder {
     pipelines: Vec<Arc<GenericPipeline>>,
 
     // Current pipeline object binded to the graphics bind point.
-    graphics_pipeline: Option<vk::Pipeline>,
+    current_graphics_pipeline: Option<vk::Pipeline>,
 
     // Current pipeline object binded to the compute bind point.
-    compute_pipeline: Option<vk::Pipeline>,
+    current_compute_pipeline: Option<vk::Pipeline>,
 
     // Current state of the dynamic state within the command buffer.
-    dynamic_state: DynamicState,
+    current_dynamic_state: DynamicState,
 }
 
 impl InnerCommandBufferBuilder {
@@ -179,9 +179,9 @@ impl InnerCommandBufferBuilder {
             image_resources: Vec::new(),
             image_views_resources: Vec::new(),
             pipelines: Vec::new(),
-            graphics_pipeline: None,
-            compute_pipeline: None,
-            dynamic_state: DynamicState::none(),
+            current_graphics_pipeline: None,
+            current_compute_pipeline: None,
+            current_dynamic_state: DynamicState::none(),
         })
     }
 
@@ -211,9 +211,9 @@ impl InnerCommandBufferBuilder {
         // GDC 2016 conference said this was the case. Since keeping the state is purely an
         // optimization, we disable it just in case. This might be removed when things get
         // clarified.
-        self.graphics_pipeline = None;
-        self.compute_pipeline = None;
-        self.dynamic_state = DynamicState::none();
+        self.current_graphics_pipeline = None;
+        self.current_compute_pipeline = None;
+        self.current_dynamic_state = DynamicState::none();
 
         self
     }
@@ -535,11 +535,11 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.compute_pipeline != Some(pipeline.internal_object()) {
+            if self.current_compute_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
                                    pipeline.internal_object());
                 self.pipelines.push(pipeline.clone());
-                self.compute_pipeline = Some(pipeline.internal_object());
+                self.current_compute_pipeline = Some(pipeline.internal_object());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
@@ -566,19 +566,19 @@ impl InnerCommandBufferBuilder {
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
-            if self.graphics_pipeline != Some(pipeline.internal_object()) {
+            if self.current_graphics_pipeline != Some(pipeline.internal_object()) {
                 vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
                                    pipeline.internal_object());
                 self.pipelines.push(pipeline.clone());
-                self.graphics_pipeline = Some(pipeline.internal_object());
+                self.current_graphics_pipeline = Some(pipeline.internal_object());
             }
 
             if let Some(line_width) = dynamic.line_width {
                 assert!(pipeline.has_dynamic_line_width());
                 // TODO: check limits
-                if self.dynamic_state.line_width != Some(line_width) {
+                if self.current_dynamic_state.line_width != Some(line_width) {
                     vk.CmdSetLineWidth(self.cmd.unwrap(), line_width);
-                    self.dynamic_state.line_width = Some(line_width);
+                    self.current_dynamic_state.line_width = Some(line_width);
                 }
             } else {
                 assert!(!pipeline.has_dynamic_line_width());
