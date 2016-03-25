@@ -5,6 +5,7 @@ use std::sync::Arc;
 use command_buffer::Submission;
 use device::Device;
 use format::FormatDesc;
+use format::FormatTy;
 use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -24,6 +25,10 @@ pub struct AttachmentImage<F> {
     view: UnsafeImageView,
     memory: DeviceMemory,
     format: F,
+
+    // Layout to use when the image is used as a framebuffer attachment.
+    // Should be either "depth-stencil optimal" or "color optimal".
+    attachment_layout: Layout,
 }
 
 impl<F> AttachmentImage<F> {
@@ -31,11 +36,18 @@ impl<F> AttachmentImage<F> {
                -> Result<Arc<AttachmentImage<F>>, OomError>
         where F: FormatDesc
     {
+        let is_depth = match format.format().ty() {
+            FormatTy::Depth => true,
+            FormatTy::DepthStencil => true,
+            FormatTy::Compressed => panic!(),
+            _ => false
+        };
+
         let usage = Usage {
             transfer_source: true,
             sampled: true,
-            color_attachment: true,
-            depth_stencil_attachment: true,
+            color_attachment: !is_depth,
+            depth_stencil_attachment: is_depth,
             .. Usage::none()
         };
 
@@ -69,6 +81,8 @@ impl<F> AttachmentImage<F> {
             view: view,
             memory: mem,
             format: format,
+            attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
+                               else { Layout::ColorAttachmentOptimal },
         }))
     }
 
@@ -90,13 +104,13 @@ unsafe impl<F> Image for AttachmentImage<F> {
     }
 
     #[inline]
-    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout {
-        Layout::ColorAttachmentOptimal      // FIXME:
+    fn initial_layout(&self, _: (u32, u32), _: Layout) -> Layout {
+        self.attachment_layout
     }
 
     #[inline]
-    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> Layout {
-        Layout::ColorAttachmentOptimal      // FIXME:
+    fn final_layout(&self, _: (u32, u32), _: Layout) -> Layout {
+        self.attachment_layout
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
