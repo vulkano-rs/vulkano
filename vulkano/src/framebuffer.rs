@@ -531,6 +531,8 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Self::AttachmentsIter {
+                #![allow(unused_assignments)]
+
                 let mut result = Vec::new();
 
                 let mut num = 0;
