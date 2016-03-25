@@ -212,17 +212,17 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<KeepAlive>,
                                        cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
+        // By keeping alive the secondary command buffer itself, we also keep alive all
+        // the resources stored by it.
         self.keep_alive.push(cb_arc);
-        for p in cb.keep_alive.iter() { self.keep_alive.push(p.clone()); }
 
         // FIXME: merge resources
-        /*for r in cb.buffer_resources.iter() { self.buffer_resources.push(r.clone()); }
-        for r in cb.image_resources.iter() { self.image_resources.push(r.clone()); }*/
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdExecuteCommands(self.cmd.unwrap(), 1, &cb.cmd);
+            let cb_cmd = cb.cmd;
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                vk.CmdExecuteCommands(cmd, 1, &cb_cmd);
+            }));
         }
 
         // Resetting the state of the command buffer.
@@ -252,7 +252,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn update_buffer<'a, B, T, Bt>(mut self, buffer: B, data: &T)
                                               -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static
+        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + 'static
     {
         let buffer = buffer.into();
 
@@ -268,11 +268,16 @@ impl InnerCommandBufferBuilder {
                                  buffer.offset() .. buffer.offset() + buffer.size());
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdUpdateBuffer(self.cmd.unwrap(), buffer.buffer().inner_buffer().internal_object(),
-                               buffer.offset() as vk::DeviceSize,
-                               buffer.size() as vk::DeviceSize, data as *const T as *const _);
+            let buffer_offset = buffer.offset() as vk::DeviceSize;
+            let buffer_size = buffer.size() as vk::DeviceSize;
+            let buffer = buffer.buffer().inner_buffer().internal_object();
+            let mut data = Some(data.clone());        // TODO: meh for Cloning, but I guess there's no other choice
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let data = data.take().unwrap();
+                vk.CmdUpdateBuffer(cmd, buffer, buffer_offset, buffer_size,
+                                   &data as *const T as *const _);
+            }));
         }
 
         self
@@ -308,10 +313,11 @@ impl InnerCommandBufferBuilder {
         // FIXME: check queue family of the buffer
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdFillBuffer(self.cmd.unwrap(), buffer.inner_buffer().internal_object(),
-                             offset as vk::DeviceSize, size as vk::DeviceSize, data);
+            let buffer = buffer.clone();
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                vk.CmdFillBuffer(cmd, buffer.inner_buffer().internal_object(),
+                                 offset as vk::DeviceSize, size as vk::DeviceSize, data);
+            }));
         }
 
         self
@@ -342,20 +348,23 @@ impl InnerCommandBufferBuilder {
         assert!(source.inner_buffer().usage_transfer_src());
         assert!(destination.inner_buffer().usage_transfer_dest());
 
-        let copy = vk::BufferCopy {
-            srcOffset: 0,
-            dstOffset: 0,
-            size: source.size() as u64,     // FIXME: what is destination is too small?
-        };
-
         self.add_buffer_resource_outside(source.clone() as Arc<_>, false, 0 .. source.size());
         self.add_buffer_resource_outside(destination.clone() as Arc<_>, true, 0 .. source.size());
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdCopyBuffer(self.cmd.unwrap(), source.inner_buffer().internal_object(),
-                             destination.inner_buffer().internal_object(), 1, &copy);
+            let source_size = source.size() as u64;     // FIXME: what is destination is too small?
+            let source = source.inner_buffer().internal_object();
+            let destination = destination.inner_buffer().internal_object();
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let copy = vk::BufferCopy {
+                    srcOffset: 0,
+                    dstOffset: 0,
+                    size: source_size,
+                };
+
+                vk.CmdCopyBuffer(cmd, source, destination, 1, &copy);
+            }));
         }
 
         self
@@ -368,33 +377,36 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn clear_color_image<'a, I, V>(self, image: &Arc<I>, color: V)
+    pub unsafe fn clear_color_image<'a, I, V>(mut self, image: &Arc<I>, color: V)
                                               -> InnerCommandBufferBuilder
         where I: ImageClearValue<V> + 'static   // FIXME: should accept uint and int images too
     {
         assert!(image.format().is_float()); // FIXME: should accept uint and int images too
 
-        let color = match image.decode(color).unwrap() /* FIXME: error */ {
-            ClearValue::Float(data) => vk::ClearColorValue::float32(data),
-            ClearValue::Int(data) => vk::ClearColorValue::int32(data),
-            ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
-            _ => unreachable!()   // PossibleFloatFormatDesc has been improperly implemented
-        };
-
-        let range = vk::ImageSubresourceRange {
-            aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-            baseMipLevel: 0,        // FIXME:
-            levelCount: 1,      // FIXME:
-            baseArrayLayer: 0,      // FIXME:
-            layerCount: 1,      // FIXME:
-        };
+        let color = image.decode(color).unwrap(); /* FIXME: error */
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdClearColorImage(self.cmd.unwrap(), image.inner_image().internal_object(),
-                                  vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
-                                  &color, 1, &range);
+            let image = image.inner_image().internal_object();
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let color = match color {
+                    ClearValue::Float(data) => vk::ClearColorValue::float32(data),
+                    ClearValue::Int(data) => vk::ClearColorValue::int32(data),
+                    ClearValue::Uint(data) => vk::ClearColorValue::uint32(data),
+                    _ => unreachable!()   // PossibleFloatFormatDesc has been improperly implemented
+                };
+
+                let range = vk::ImageSubresourceRange {
+                    aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                    baseMipLevel: 0,        // FIXME:
+                    levelCount: 1,      // FIXME:
+                    baseArrayLayer: 0,      // FIXME:
+                    layerCount: 1,      // FIXME:
+                };
+
+                vk.CmdClearColorImage(cmd, image, vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME: */,
+                                      &color, 1, &range);
+            }));
         }
 
         self
@@ -420,35 +432,38 @@ impl InnerCommandBufferBuilder {
                                  source.offset() .. source.offset() + source.size());
         self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true);
 
-        let region = vk::BufferImageCopy {
-            bufferOffset: source.offset() as vk::DeviceSize,
-            bufferRowLength: 0,
-            bufferImageHeight: 0,
-            imageSubresource: vk::ImageSubresourceLayers {
-                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                mipLevel: 0,            // FIXME:
-                baseArrayLayer: 0,          // FIXME:
-                layerCount: 1,          // FIXME:
-            },
-            imageOffset: vk::Offset3D {
-                x: 0,           // FIXME:
-                y: 0,           // FIXME:
-                z: 0,           // FIXME:
-            },
-            imageExtent: vk::Extent3D {
-                width: 93,         // FIXME:
-                height: 93,            // FIXME:
-                depth: 1,         // FIXME:
-            },
-        };
-
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdCopyBufferToImage(self.cmd.unwrap(), source.buffer().inner_buffer().internal_object(),
-                                    image.inner_image().internal_object(),
-                                    vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
-                                    1, &region);
+            let source_offset = source.offset() as vk::DeviceSize;
+            let source = source.buffer().inner_buffer().internal_object();
+            let image = image.inner_image().internal_object();
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let region = vk::BufferImageCopy {
+                    bufferOffset: source_offset,
+                    bufferRowLength: 0,
+                    bufferImageHeight: 0,
+                    imageSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                        mipLevel: 0,            // FIXME:
+                        baseArrayLayer: 0,          // FIXME:
+                        layerCount: 1,          // FIXME:
+                    },
+                    imageOffset: vk::Offset3D {
+                        x: 0,           // FIXME:
+                        y: 0,           // FIXME:
+                        z: 0,           // FIXME:
+                    },
+                    imageExtent: vk::Extent3D {
+                        width: 93,         // FIXME:
+                        height: 93,            // FIXME:
+                        depth: 1,         // FIXME:
+                    },
+                };
+
+                vk.CmdCopyBufferToImage(cmd, source, image,
+                                        vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
+                                        1, &region);
+            }));
         }
 
         self
@@ -461,11 +476,9 @@ impl InnerCommandBufferBuilder {
     {
         self.bind_compute_pipeline_state(pipeline, sets);
 
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdDispatch(self.cmd.unwrap(), x, y, z);
-        }
+        self.staging_commands.push(Box::new(move |vk, cmd| {
+            vk.CmdDispatch(cmd, x, y, z);
+        }));
 
         self
     }
@@ -487,16 +500,23 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource_outside(b.clone(), false, 0 .. b.size());
+            self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
-                                    offsets.as_ptr());
-            vk.CmdDraw(self.cmd.unwrap(), vertices.1 as u32, vertices.2 as u32, 0, 0);  // FIXME: params
+            let mut ids = Some(ids);
+            let mut offsets = Some(offsets);
+            let num_vertices = vertices.1 as u32;
+            let num_instances = vertices.2 as u32;
+
+            self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                let ids = ids.take().unwrap();
+                let offsets = offsets.take().unwrap();
+
+                vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
+                vk.CmdDraw(cmd, num_vertices, num_instances, 0, 0);  // FIXME: params
+            }));
         }
 
         self
@@ -525,24 +545,32 @@ impl InnerCommandBufferBuilder {
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
-            self.add_buffer_resource_outside(b.clone(), false, 0 .. b.size());
+            self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size());
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         assert!(indices.buffer().inner_buffer().usage_index_buffer());
 
-        self.add_buffer_resource_outside(indices.buffer().clone() as Arc<_>, false,
+        self.add_buffer_resource_inside(indices.buffer().clone() as Arc<_>, false,
                                  indices.offset() .. indices.offset() + indices.size());
 
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBindIndexBuffer(self.cmd.unwrap(), indices.buffer().inner_buffer().internal_object(),
-                                  indices.offset() as u64, I::ty() as u32);
-            vk.CmdBindVertexBuffers(self.cmd.unwrap(), 0, ids.len() as u32, ids.as_ptr(),
-                                    offsets.as_ptr());
-            vk.CmdDrawIndexed(self.cmd.unwrap(), indices.len() as u32, vertices.2 as u32,
-                              0, 0, 0);  // FIXME: params
+            let mut ids = Some(ids);
+            let mut offsets = Some(offsets);
+            let indices_offset = indices.offset() as u64;
+            let indices_len = indices.len() as u32;
+            let indices_ty = I::ty() as u32;
+            let indices = indices.buffer().inner_buffer().internal_object();
+            let num_instances = vertices.2 as u32;
+
+            self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                let ids = ids.take().unwrap();
+                let offsets = offsets.take().unwrap();
+
+                vk.CmdBindIndexBuffer(cmd, indices, indices_offset, indices_ty);
+                vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
+                vk.CmdDrawIndexed(cmd, indices_len, num_instances, 0, 0, 0);  // FIXME: params
+            }));
         }
 
         self
@@ -553,27 +581,31 @@ impl InnerCommandBufferBuilder {
               Pl: 'static + PipelineLayoutDesc
     {
         unsafe {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.current_compute_pipeline != Some(pipeline.internal_object()) {
-                vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
-                                   pipeline.internal_object());
                 self.keep_alive.push(pipeline.clone());
-                self.current_compute_pipeline = Some(pipeline.internal_object());
+                let pipeline = pipeline.internal_object();
+                self.staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
+                                       pipeline);
+                }));
+                self.current_compute_pipeline = Some(pipeline);
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
 
             // TODO: shouldn't rebind everything every time
-            if !descriptor_sets.is_empty() {
-                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_COMPUTE,
-                                         pipeline.layout().internal_object(), 0,
-                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
-                                         0, ptr::null());   // FIXME: dynamic offsets
+            if !descriptor_sets.as_ref().unwrap().is_empty() {
+                let playout = pipeline.layout().internal_object();
+                self.staging_commands.push(Box::new(move |vk, cmd| {
+                    let descriptor_sets = descriptor_sets.take().unwrap();
+                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
+                                             playout, 0, descriptor_sets.len() as u32,
+                                             descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
+                }));
             }
         }
     }
@@ -584,22 +616,24 @@ impl InnerCommandBufferBuilder {
               Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
         unsafe {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.current_graphics_pipeline != Some(pipeline.internal_object()) {
-                vk.CmdBindPipeline(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
-                                   pipeline.internal_object());
                 self.keep_alive.push(pipeline.clone());
-                self.current_graphics_pipeline = Some(pipeline.internal_object());
+                let pipeline = pipeline.internal_object();
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                }));
+                self.current_graphics_pipeline = Some(pipeline);
             }
 
             if let Some(line_width) = dynamic.line_width {
                 assert!(pipeline.has_dynamic_line_width());
                 // TODO: check limits
                 if self.current_dynamic_state.line_width != Some(line_width) {
-                    vk.CmdSetLineWidth(self.cmd.unwrap(), line_width);
+                    self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                        vk.CmdSetLineWidth(cmd, line_width);
+                    }));
                     self.current_dynamic_state.line_width = Some(line_width);
                 }
             } else {
@@ -611,8 +645,11 @@ impl InnerCommandBufferBuilder {
                 assert_eq!(viewports.len(), pipeline.num_viewports() as usize);
                 // TODO: check limits
                 // TODO: cache state?
-                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetViewport(self.cmd.unwrap(), 0, viewports.len() as u32, viewports.as_ptr());
+                let mut viewports = Some(viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>());
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    let viewports = viewports.take().unwrap();
+                    vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
+                }));
             } else {
                 assert!(!pipeline.has_dynamic_viewports());
             }
@@ -623,25 +660,31 @@ impl InnerCommandBufferBuilder {
                 // TODO: check limits
                 // TODO: cache state?
                 // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetScissor(self.cmd.unwrap(), 0, scissors.len() as u32, scissors.as_ptr());
+                let mut scissors = Some(scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>());
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    let scissors = scissors.take().unwrap();
+                    vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
+                }));
             } else {
                 assert!(!pipeline.has_dynamic_scissors());
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let descriptor_sets = descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>();
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
 
             // FIXME: input attachments of descriptor sets have to be checked against input
             //        attachments of the render pass
 
             // TODO: shouldn't rebind everything every time
-            if !descriptor_sets.is_empty() {
-                vk.CmdBindDescriptorSets(self.cmd.unwrap(), vk::PIPELINE_BIND_POINT_GRAPHICS,
-                                         pipeline.layout().internal_object(), 0,
-                                         descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
-                                         0, ptr::null());   // FIXME: dynamic offsets
+            if !descriptor_sets.as_ref().unwrap().is_empty() {
+                let playout = pipeline.layout().internal_object();
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    let descriptor_sets = descriptor_sets.take().unwrap();
+                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, playout,
+                                             0, descriptor_sets.len() as u32,
+                                             descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
+                }));
             }
         }
     }
@@ -697,60 +740,112 @@ impl InnerCommandBufferBuilder {
             self.keep_alive.push(mem::transmute(attachment.clone()) /* FIXME: */);
         }
 
-        let infos = vk::RenderPassBeginInfo {
-            sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            pNext: ptr::null(),
-            renderPass: render_pass.render_pass().internal_object(),
-            framebuffer: framebuffer.internal_object(),
-            renderArea: vk::Rect2D {                // TODO: let user customize
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: framebuffer.width(),
-                    height: framebuffer.height(),
-                },
-            },
-            clearValueCount: clear_values.len() as u32,
-            pClearValues: clear_values.as_ptr(),
-        };
-
-        let content = if secondary_cmd_buffers {
-            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-        } else {
-            vk::SUBPASS_CONTENTS_INLINE
-        };
-
         {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdBeginRenderPass(self.cmd.unwrap(), &infos, content);
+            let mut clear_values = Some(clear_values);
+            let render_pass = render_pass.render_pass().internal_object();
+            let (fw, fh) = (framebuffer.width(), framebuffer.height());
+            let framebuffer = framebuffer.internal_object();
+
+            self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                let clear_values = clear_values.take().unwrap();
+
+                let infos = vk::RenderPassBeginInfo {
+                    sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                    pNext: ptr::null(),
+                    renderPass: render_pass,
+                    framebuffer: framebuffer,
+                    renderArea: vk::Rect2D {                // TODO: let user customize
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: vk::Extent2D {
+                            width: fw,
+                            height: fh,
+                        },
+                    },
+                    clearValueCount: clear_values.len() as u32,
+                    pClearValues: clear_values.as_ptr(),
+                };
+
+                let content = if secondary_cmd_buffers {
+                    vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+                } else {
+                    vk::SUBPASS_CONTENTS_INLINE
+                };
+
+                vk.CmdBeginRenderPass(cmd, &infos, content);
+            }));
         }
 
         self
     }
 
     #[inline]
-    pub unsafe fn next_subpass(self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
+    pub unsafe fn next_subpass(mut self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
         let content = if secondary_cmd_buffers {
             vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
         } else {
             vk::SUBPASS_CONTENTS_INLINE
         };
 
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdNextSubpass(self.cmd.unwrap(), content);
-        }
+        self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+            vk.CmdNextSubpass(cmd, content);
+        }));
 
         self
     }
 
     #[inline]
-    pub unsafe fn end_renderpass(self) -> InnerCommandBufferBuilder {
-        {
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            vk.CmdEndRenderPass(self.cmd.unwrap());
+    pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
+        debug_assert!(!self.render_pass_staging_commands.is_empty());
+
+        self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+            vk.CmdEndRenderPass(cmd);
+        }));
+
+        // Determine whether there's a conflict between the required barriers within the
+        // render pass and the required barriers from before the render pass.
+        let mut conflict = false;
+        for ((buffer, block), access) in self.render_pass_staging_required_buffer_barriers.drain() {
+            if let Some(ex_acc) = self.staging_required_buffer_barriers.get(&(buffer, block)) {
+                if access.write || ex_acc.write {
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if !conflict {
+            for ((image, block), access) in self.render_pass_staging_required_image_barriers.drain() {
+                if let Some(ex_acc) = self.staging_required_image_barriers.get(&(image, block)) {
+                    if access.write || ex_acc.write ||
+                       (ex_acc.aspect & access.aspect) != ex_acc.aspect
+                    {
+                        conflict = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if conflict {
+            // Inserts a `vkCmdPipelineBarrier` right before the `vkCmdBeginRenderPass`.
+            self.flush();
+        }
+
+        // Now merging the render pass barriers with the outter barriers.
+        for ((buffer, block), access) in self.render_pass_staging_required_buffer_barriers.drain() {
+            match self.staging_required_buffer_barriers.entry((buffer.clone(), block)) {
+                Entry::Vacant(e) => { e.insert(access); },
+                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
+            }
+        }
+        for ((image, block), access) in self.render_pass_staging_required_image_barriers.drain() {
+            match self.staging_required_image_barriers.entry((image.clone(), block)) {
+                Entry::Vacant(e) => { e.insert(access); },
+                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
+            }
+        }
+
+        // Merging the commands as well.
+        for command in self.render_pass_staging_commands.drain(..) {
+            self.staging_commands.push(command);
         }
 
         self
@@ -759,6 +854,11 @@ impl InnerCommandBufferBuilder {
     /// Finishes building the command buffer.
     pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
         unsafe {
+            self.flush();
+
+            debug_assert!(self.staging_required_buffer_barriers.is_empty());
+            debug_assert!(self.staging_required_image_barriers.is_empty());
+
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
@@ -877,6 +977,45 @@ impl InnerCommandBufferBuilder {
         //self.image_resources.push(image);
     }
 
+    /// Adds a buffer resource to the list of resources used by this command buffer.
+    // FIXME: add access flags
+    fn add_buffer_resource_inside(&mut self, buffer: Arc<Buffer>, write: bool,
+                                  range: Range<usize>)
+    {
+        self.add_buffer_resource_external(buffer.clone(), write, range.clone());
+
+        for block in buffer.blocks(range.clone()) {
+            let key = (BufferKey(buffer.clone()), block);
+
+            if let Some(&entry) = self.buffers_state.get(&key) {
+                if entry.write || write {
+                    let access = InternalBufferAccess {
+                        write: true,
+                    };
+
+                    self.render_pass_staging_required_buffer_barriers.insert(key, access);
+                }
+            } else {
+                let access = InternalBufferAccess {
+                    write: write,
+                };
+
+                self.render_pass_staging_required_buffer_barriers.insert(key, access);
+            }
+        }
+    }
+
+    /// Adds an image resource to the list of resources used by this command buffer.
+    // FIXME: add access flags
+    fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
+                                 array_layers_range: Range<u32>, write: bool)
+    {
+        self.add_image_resource_external(image, mipmap_levels_range.clone(),
+                                         array_layers_range.clone(), write);
+
+        //self.image_resources.push(image);
+    }
+
     fn add_buffer_resource_external(&mut self, buffer: Arc<Buffer>, write: bool,
                                     range: Range<usize>)
     {
@@ -974,7 +1113,7 @@ impl Drop for InnerCommandBufferBuilder {
         if let Some(cmd) = self.cmd {
             unsafe {
                 let vk = self.device.pointers();
-                vk.EndCommandBuffer(cmd);
+                vk.EndCommandBuffer(cmd);       // TODO: really needed?
 
                 let pool = self.pool.internal_object_guard();
                 vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &cmd);

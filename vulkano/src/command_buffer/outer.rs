@@ -73,7 +73,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -597,7 +597,7 @@ impl SecondaryComputeCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {
