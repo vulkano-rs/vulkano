@@ -373,6 +373,7 @@ macro_rules! ordered_passes_renderpass {
 
         impl CustomRenderPass {
             pub fn new(device: &Arc<Device>) -> Result<Arc<CustomRenderPass>, OomError> {
+                #![allow(unsafe_code)]
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
 
