@@ -21,6 +21,7 @@ pub use self::traits::Image;
 pub use self::traits::ImageView;
 
 pub mod attachment;
+pub mod immutable;
 pub mod swapchain;
 pub mod sys;
 pub mod traits;
