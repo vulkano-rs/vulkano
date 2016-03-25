@@ -52,6 +52,16 @@ pub unsafe trait Image {
     /// `first_required_layout`, then a layout transition will be performed by the command buffer.
     fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout;
 
+    /// Called when a command buffer that uses this image is being built. Given a block, this
+    /// function should return the layout that the block must have when the command buffer is
+    /// end.
+    ///
+    /// The `last_required_layout` is provided as a hint and corresponds to the last layout
+    /// that the image will be in at the end of the command buffer. If this function returns a
+    /// value different from `last_required_layout`, then a layout transition will be performed
+    /// by the command buffer.
+    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> Layout;
+
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
 

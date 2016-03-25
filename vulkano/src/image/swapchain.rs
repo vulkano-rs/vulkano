@@ -60,6 +60,11 @@ unsafe impl Image for SwapchainImage {
         Layout::PresentSrc
     }
 
+    #[inline]
+    fn final_layout(&self, _: (u32, u32), _: Layout) -> Layout {
+        Layout::PresentSrc
+    }
+
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
         Some(false)
     }

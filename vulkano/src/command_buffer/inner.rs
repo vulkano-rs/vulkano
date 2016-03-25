@@ -877,9 +877,22 @@ impl InnerCommandBufferBuilder {
         unsafe {
             self.flush();
 
-            // Querying each image for its final layout.
-            for (image, access) in self.buffers_state.iter_mut() {
+            // Ensuring that each image is in its final layout. We do so by inserting elements
+            // in `staging_required_image_accesses` and flushing again.
+            // TODO: ideally things that don't collide should be added before the first flush,
+            //       and things that collide done here
+            for (image, access) in self.images_state.iter_mut() {
+                let final_layout = (image.0).0.final_layout(image.1, access.new_layout);
+                if final_layout != access.new_layout {
+                    self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
+                        write: false,
+                        aspect: access.aspect,
+                        old_layout: final_layout,
+                        new_layout: final_layout,
+                    });
 
+                    access.new_layout = final_layout;
+                }
             }
 
             self.flush();

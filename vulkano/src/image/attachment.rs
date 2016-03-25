@@ -94,6 +94,11 @@ unsafe impl<F> Image for AttachmentImage<F> {
         unimplemented!()
     }
 
+    #[inline]
+    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> Layout {
+        unimplemented!()
+    }
+
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
         Some(false)
     }
