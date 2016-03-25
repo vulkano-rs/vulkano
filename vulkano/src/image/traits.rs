@@ -23,6 +23,11 @@ pub unsafe trait Image {
         self.inner_image().format()
     }
 
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.inner_image().samples()
+    }
+
     /// Returns the dimensions of the image.
     #[inline]
     fn dimensions(&self) -> Dimensions {
@@ -37,6 +42,15 @@ pub unsafe trait Image {
     /// value.
     /// The return value must not be empty.
     fn blocks(&self, mipmap_levels: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)>;
+
+    /// Called when a command buffer that uses this image is being built. Given a block, this
+    /// function should return the layout that the block will have when the command buffer is
+    /// submitted.
+    ///
+    /// The `first_required_layout` is provided as a hint and corresponds to the first layout
+    /// that the image will be used for. If this function returns a value different from
+    /// `first_required_layout`, then a layout transition will be performed by the command buffer.
+    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout;
 
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
@@ -67,6 +81,11 @@ pub unsafe trait ImageView {
         self.inner_view().format()
     }
 
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.parent().samples()
+    }
+
     /// Returns the image layout to use in a descriptor with the given subresource.
     fn descriptor_set_storage_image_layout(&self, AccessRange) -> Layout;
     /// Returns the image layout to use in a descriptor with the given subresource.
@@ -92,8 +111,14 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
+pub unsafe trait AttachmentImageView: ImageView {
+    fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
+}
+
 #[derive(Debug, Clone)]
 pub struct AccessRange {
     pub block: (u32, u32),
     pub write: bool,
+    pub initial_layout: Layout,
+    pub final_layout: Layout,
 }

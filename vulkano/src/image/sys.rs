@@ -209,6 +209,11 @@ impl UnsafeImage {
     pub fn dimensions(&self) -> Dimensions {
         self.dimensions
     }
+
+    #[inline]
+    pub fn samples(&self) -> u32 {
+        self.samples
+    }
 }
 
 unsafe impl VulkanObject for UnsafeImage {

@@ -89,6 +89,11 @@ unsafe impl<F> Image for AttachmentImage<F> {
         vec![(0, 0)]
     }
 
+    #[inline]
+    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout {
+        unimplemented!()
+    }
+
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
         Some(false)
     }

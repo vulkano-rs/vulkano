@@ -27,6 +27,7 @@ use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use image::Image;
 use image::ImageView;
+use image::sys::Layout as ImageLayout;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::AccessRange as ImageAccessRange;
@@ -63,37 +64,34 @@ pub struct InnerCommandBufferBuilder {
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
 
+    // List of accesses made by this command buffer to buffers and images, exclusing the staging
+    // commands and the staging render pass.
+    //
+    // If a buffer/image is missing in this list, that means it hasn't been used by this command
+    // buffer yet and is still in its default state.
+    //
+    // This list is only updated by the `flush()` function.
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
+
     // List of commands that are waiting to be submitted to the Vulkan command buffer. Doesn't
     // include commands that were submitted within a render pass.
     staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
 
-    // List of barriers required by the current staging commands compared to what's before
-    // the staging commands. Doesn't include state set by the current render pass.
-    staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    staging_required_image_barriers: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
-
-    // State of buffers and images, exclusing the staging commands and the current render pass.
-    // If a buffer/image is missing in this list, that means it hasn't been used by this command
-    // buffer yet and is still in its default state.
-    buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
+    // List of resources accesses made by the comands in `staging_commands`. Doesn't include
+    // commands added to the current render pass.
+    staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
+    staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
     // inside a render pass. Flushed when `end_renderpass` is called.
     render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
 
-    // List of barriers required by the current render pass compared to what's before the render
-    // pass. Flushed when `end_renderpass` is called.
-    render_pass_staging_required_buffer_barriers: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    render_pass_staging_required_image_barriers: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
-
-    // List of buffers and images used by this command buffer, and how they must be synchronized
-    // when this command buffer is submitted.
-    //
-    // This list is updated at each command submitted by the user, even if that command is not
-    // immediately transferred to the underlying command buffer.
-    extern_buffers_sync: HashMap<(BufferKey, usize), bool>,
-    extern_images_sync: HashMap<(ImageKey, (u32, u32)), bool>,
+    // List of resources accesses made by the current render pass. Merged with
+    // `staging_required_buffer_accesses` and `staging_required_image_accesses` when
+    // `end_renderpass` is called.
+    render_pass_staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
+    render_pass_staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -187,16 +185,14 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
-            staging_commands: Vec::new(),
-            staging_required_buffer_barriers: HashMap::new(),
-            staging_required_image_barriers: HashMap::new(),
             buffers_state: HashMap::new(),
             images_state: HashMap::new(),
+            staging_commands: Vec::new(),
+            staging_required_buffer_accesses: HashMap::new(),
+            staging_required_image_accesses: HashMap::new(),
             render_pass_staging_commands: Vec::new(),
-            render_pass_staging_required_buffer_barriers: HashMap::new(),
-            render_pass_staging_required_image_barriers: HashMap::new(),
-            extern_buffers_sync: HashMap::new(),
-            extern_images_sync: HashMap::new(),
+            render_pass_staging_required_buffer_accesses: HashMap::new(),
+            render_pass_staging_required_image_accesses: HashMap::new(),
             keep_alive: keep_alive,
             current_graphics_pipeline: None,
             current_compute_pipeline: None,
@@ -254,6 +250,8 @@ impl InnerCommandBufferBuilder {
                                               -> InnerCommandBufferBuilder
         where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + 'static
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         let buffer = buffer.into();
 
         assert_eq!(buffer.size(), mem::size_of_val(data));
@@ -301,6 +299,8 @@ impl InnerCommandBufferBuilder {
                                  size: usize, data: u32) -> InnerCommandBufferBuilder
         where B: Buffer + 'static
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         assert!(self.pool.queue_family().supports_transfers());
         assert!(offset + size <= buffer.size());
         assert!(offset % 4 == 0);
@@ -343,6 +343,8 @@ impl InnerCommandBufferBuilder {
                                                            -> InnerCommandBufferBuilder
         where Bs: TypedBuffer<Content = T> + 'static, Bd: TypedBuffer<Content = T> + 'static
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         assert_eq!(&**source.inner_buffer().device() as *const _,
                    &**destination.inner_buffer().device() as *const _);
         assert!(source.inner_buffer().usage_transfer_src());
@@ -381,6 +383,8 @@ impl InnerCommandBufferBuilder {
                                               -> InnerCommandBufferBuilder
         where I: ImageClearValue<V> + 'static   // FIXME: should accept uint and int images too
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         assert!(image.format().is_float()); // FIXME: should accept uint and int images too
 
         let color = image.decode(color).unwrap(); /* FIXME: error */
@@ -425,12 +429,16 @@ impl InnerCommandBufferBuilder {
         where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
               Sb: Buffer + 'static
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
         self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,
                                  source.offset() .. source.offset() + source.size());
-        self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true);
+        self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true,
+                                        ImageLayout::TransferDstOptimal,
+                                        ImageLayout::TransferDstOptimal);
 
         {
             let source_offset = source.offset() as vk::DeviceSize;
@@ -474,6 +482,8 @@ impl InnerCommandBufferBuilder {
         where L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
         self.bind_compute_pipeline_state(pipeline, sets);
 
         self.staging_commands.push(Box::new(move |vk, cmd| {
@@ -491,6 +501,8 @@ impl InnerCommandBufferBuilder {
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
+        debug_assert!(!self.render_pass_staging_commands.is_empty());
+
         // FIXME: add buffers to the resources
 
         self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
@@ -532,6 +544,7 @@ impl InnerCommandBufferBuilder {
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
     {
+        debug_assert!(!self.render_pass_staging_commands.is_empty());
 
         // FIXME: add buffers to the resources
 
@@ -706,6 +719,10 @@ impl InnerCommandBufferBuilder {
                                          clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
         where R: RenderPass + 'static, F: RenderPass + 'static
     {
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+        debug_assert!(self.render_pass_staging_required_buffer_accesses.is_empty());
+        debug_assert!(self.render_pass_staging_required_image_accesses.is_empty());
+
         assert!(framebuffer.is_compatible_with(render_pass));
 
         self.keep_alive.push(framebuffer.clone() as Arc<_>);
@@ -780,6 +797,8 @@ impl InnerCommandBufferBuilder {
 
     #[inline]
     pub unsafe fn next_subpass(mut self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
+        debug_assert!(!self.render_pass_staging_commands.is_empty());
+
         let content = if secondary_cmd_buffers {
             vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
         } else {
@@ -797,15 +816,11 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
         debug_assert!(!self.render_pass_staging_commands.is_empty());
 
-        self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
-            vk.CmdEndRenderPass(cmd);
-        }));
-
         // Determine whether there's a conflict between the required barriers within the
         // render pass and the required barriers from before the render pass.
         let mut conflict = false;
-        for ((buffer, block), access) in self.render_pass_staging_required_buffer_barriers.drain() {
-            if let Some(ex_acc) = self.staging_required_buffer_barriers.get(&(buffer, block)) {
+        for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
+            if let Some(ex_acc) = self.staging_required_buffer_accesses.get(&(buffer, block)) {
                 if access.write || ex_acc.write {
                     conflict = true;
                     break;
@@ -813,8 +828,8 @@ impl InnerCommandBufferBuilder {
             }
         }
         if !conflict {
-            for ((image, block), access) in self.render_pass_staging_required_image_barriers.drain() {
-                if let Some(ex_acc) = self.staging_required_image_barriers.get(&(image, block)) {
+            for ((image, block), access) in self.render_pass_staging_required_image_accesses.drain() {
+                if let Some(ex_acc) = self.staging_required_image_accesses.get(&(image, block)) {
                     if access.write || ex_acc.write ||
                        (ex_acc.aspect & access.aspect) != ex_acc.aspect
                     {
@@ -825,19 +840,21 @@ impl InnerCommandBufferBuilder {
             }
         }
         if conflict {
-            // Inserts a `vkCmdPipelineBarrier` right before the `vkCmdBeginRenderPass`.
+            // Prepares for inserting a `vkCmdPipelineBarrier` right before
+            // the `vkCmdBeginRenderPass`.
             self.flush();
         }
 
-        // Now merging the render pass barriers with the outter barriers.
-        for ((buffer, block), access) in self.render_pass_staging_required_buffer_barriers.drain() {
-            match self.staging_required_buffer_barriers.entry((buffer.clone(), block)) {
+        // Now merging the render pass accesses with the outter accesses.
+        // Conflicts are checked again with `debug_assert`s.
+        for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
+            match self.staging_required_buffer_accesses.entry((buffer.clone(), block)) {
                 Entry::Vacant(e) => { e.insert(access); },
                 Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
             }
         }
-        for ((image, block), access) in self.render_pass_staging_required_image_barriers.drain() {
-            match self.staging_required_image_barriers.entry((image.clone(), block)) {
+        for ((image, block), access) in self.render_pass_staging_required_image_accesses.drain() {
+            match self.staging_required_image_accesses.entry((image.clone(), block)) {
                 Entry::Vacant(e) => { e.insert(access); },
                 Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
             }
@@ -848,6 +865,10 @@ impl InnerCommandBufferBuilder {
             self.staging_commands.push(command);
         }
 
+        self.staging_commands.push(Box::new(move |vk, cmd| {
+            vk.CmdEndRenderPass(cmd);
+        }));
+
         self
     }
 
@@ -856,8 +877,15 @@ impl InnerCommandBufferBuilder {
         unsafe {
             self.flush();
 
-            debug_assert!(self.staging_required_buffer_barriers.is_empty());
-            debug_assert!(self.staging_required_image_barriers.is_empty());
+            // Querying each image for its final layout.
+            for (image, access) in self.buffers_state.iter_mut() {
+
+            }
+
+            self.flush();
+
+            debug_assert!(self.staging_required_buffer_accesses.is_empty());
+            debug_assert!(self.staging_required_image_accesses.is_empty());
 
             let vk = self.device.pointers();
             let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
@@ -870,14 +898,14 @@ impl InnerCommandBufferBuilder {
                 device: self.device.clone(),
                 pool: self.pool.clone(),
                 cmd: cmd,
-                buffers_state: mem::replace(&mut self.buffers_state, HashMap::new()),
-                images_state: mem::replace(&mut self.images_state, HashMap::new()),
+                buffers_state: self.buffers_state.clone(),      // TODO: meh
+                images_state: self.images_state.clone(),        // TODO: meh
                 extern_buffers_sync: {
                     let mut map = HashMap::new();
-                    for ((buf, bl), write) in self.extern_buffers_sync.drain() {
+                    for ((buf, bl), access) in self.buffers_state.drain() {
                         let value = BufferAccessRange {
                             block: bl,
-                            write: write,
+                            write: access.write,
                         };
 
                         match map.entry(buf) {
@@ -896,10 +924,12 @@ impl InnerCommandBufferBuilder {
                 },
                 extern_images_sync: {
                     let mut map = HashMap::new();
-                    for ((img, bl), write) in self.extern_images_sync.drain() {
+                    for ((img, bl), access) in self.images_state.drain() {
                         let value = ImageAccessRange {
                             block: bl,
-                            write: write,
+                            write: access.write,
+                            initial_layout: access.old_layout,
+                            final_layout: access.new_layout,
                         };
 
                         match map.entry(img) {
@@ -926,13 +956,11 @@ impl InnerCommandBufferBuilder {
     fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
                                    range: Range<usize>)
     {
-        self.add_buffer_resource_external(buffer.clone(), write, range.clone());
-
         // Flushing if required.
         let mut conflict = false;
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
-            if let Some(&entry) = self.staging_required_buffer_barriers.get(&key) {
+            if let Some(&entry) = self.staging_required_buffer_accesses.get(&key) {
                 if entry.write || write {
                     conflict = true;
                     break;
@@ -944,24 +972,27 @@ impl InnerCommandBufferBuilder {
         }
 
         // Computing the diff between what's required and `buffers_state`, and putting it in
-        // `staging_required_buffer_barriers`.
+        // `staging_required_buffer_accesses`.
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
 
             if let Some(&entry) = self.buffers_state.get(&key) {
                 if entry.write || write {
-                    let access = InternalBufferAccess {
+                    let access = InternalBufferBlockAccess {
                         write: write,
                     };
 
-                    self.staging_required_buffer_barriers.insert(key, access);
+                    self.staging_required_buffer_accesses.insert(key, access);
+
+                } else {
+                    // no barrier necessary for read after read
                 }
             } else {
-                let access = InternalBufferAccess {
+                let access = InternalBufferBlockAccess {
                     write: write,
                 };
 
-                self.staging_required_buffer_barriers.insert(key, access);
+                self.staging_required_buffer_accesses.insert(key, access);
             }
         }
     }
@@ -969,12 +1000,9 @@ impl InnerCommandBufferBuilder {
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_image_resource_outside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                  array_layers_range: Range<u32>, write: bool)
+                                  array_layers_range: Range<u32>, write: bool, in_l: ImageLayout,
+                                  out_l: ImageLayout)
     {
-        self.add_image_resource_external(image, mipmap_levels_range.clone(),
-                                         array_layers_range.clone(), write);
-
-        //self.image_resources.push(image);
     }
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
@@ -982,25 +1010,23 @@ impl InnerCommandBufferBuilder {
     fn add_buffer_resource_inside(&mut self, buffer: Arc<Buffer>, write: bool,
                                   range: Range<usize>)
     {
-        self.add_buffer_resource_external(buffer.clone(), write, range.clone());
-
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
 
             if let Some(&entry) = self.buffers_state.get(&key) {
                 if entry.write || write {
-                    let access = InternalBufferAccess {
+                    let access = InternalBufferBlockAccess {
                         write: true,
                     };
 
-                    self.render_pass_staging_required_buffer_barriers.insert(key, access);
+                    self.render_pass_staging_required_buffer_accesses.insert(key, access);
                 }
             } else {
-                let access = InternalBufferAccess {
+                let access = InternalBufferBlockAccess {
                     write: write,
                 };
 
-                self.render_pass_staging_required_buffer_barriers.insert(key, access);
+                self.render_pass_staging_required_buffer_accesses.insert(key, access);
             }
         }
     }
@@ -1008,40 +1034,9 @@ impl InnerCommandBufferBuilder {
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                 array_layers_range: Range<u32>, write: bool)
+                                 array_layers_range: Range<u32>, write: bool, in_l: ImageLayout,
+                                 out_l: ImageLayout)
     {
-        self.add_image_resource_external(image, mipmap_levels_range.clone(),
-                                         array_layers_range.clone(), write);
-
-        //self.image_resources.push(image);
-    }
-
-    fn add_buffer_resource_external(&mut self, buffer: Arc<Buffer>, write: bool,
-                                    range: Range<usize>)
-    {
-        for block in buffer.blocks(range) {
-            match self.extern_buffers_sync.entry((BufferKey(buffer.clone()), block)) {
-                Entry::Vacant(entry) => { entry.insert(write); },
-                Entry::Occupied(mut entry) => {
-                    let old = *entry.get();
-                    entry.insert(old || write);
-                },
-            }
-        }
-    }
-
-    fn add_image_resource_external(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                   array_layers_range: Range<u32>, write: bool)
-    {
-        for block in image.blocks(mipmap_levels_range, array_layers_range) {
-            match self.extern_images_sync.entry((ImageKey(image.clone()), block)) {
-                Entry::Vacant(entry) => { entry.insert(write); },
-                Entry::Occupied(mut entry) => {
-                    let old = *entry.get();
-                    entry.insert(old || write);
-                },
-            }
-        }
     }
 
     /// Flush the staging commands.
@@ -1049,11 +1044,14 @@ impl InnerCommandBufferBuilder {
         let cmd = self.cmd.unwrap();
         let vk = self.device.pointers();
 
-        // Determining the list of barriers that are required and updating the resources states.
+        // Merging the `staging_access` variables to the `state` variables,
+        // and determining the list of barriers that are required and updating the resources states.
+        // TODO: inefficient because multiple entries for contiguous blocks should be merged
+        //       into one
         let mut buffer_barriers: SmallVec<[_; 8]> = SmallVec::new();
         let mut image_barriers: SmallVec<[_; 8]> = SmallVec::new();
 
-        for (buffer, reqs) in self.staging_required_buffer_barriers.drain() {
+        for (buffer, access) in self.staging_required_buffer_accesses.drain() {
             buffer_barriers.push(vk::BufferMemoryBarrier {
                 sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                 pNext: ptr::null(),
@@ -1066,28 +1064,56 @@ impl InnerCommandBufferBuilder {
                 size: 10,       // FIXME:
             });
 
-            self.buffers_state.insert(buffer, reqs);
+            match self.buffers_state.entry(buffer.clone()) {
+                Entry::Vacant(entry) => { entry.insert(access); },
+                Entry::Occupied(mut entry) => {
+                    let entry = entry.get_mut();
+                    entry.write = entry.write || access.write;
+                },
+            }
         }
 
-        for (image, reqs) in self.staging_required_image_barriers.drain() {
-            image_barriers.push(vk::ImageMemoryBarrier {
-                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                pNext: ptr::null(),
-                srcAccessMask: 0x0001ffff,      // TODO: suboptimal
-                dstAccessMask: 0x0001ffff,      // TODO: suboptimal
-                oldLayout: vk::IMAGE_LAYOUT_GENERAL,        // FIXME:
-                newLayout: vk::IMAGE_LAYOUT_GENERAL,        // FIXME:
-                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                image: (image.0).0.inner_image().internal_object(),
-                subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: 1,      // FIXME: 
-                    baseMipLevel: 0,        // FIXME: 
-                    levelCount: 1,      // FIXME: 
-                    baseArrayLayer: 0,      // FIXME: 
-                    layerCount: 1,      // FIXME: 
+        for (image, access) in self.staging_required_image_accesses.drain() {
+            match self.images_state.entry(image.clone()) {
+                Entry::Vacant(e) => {
+                    // This is the first ever use of this image block in this command buffer.
+                    // Therefore we need to query the image for the layout that it is going to
+                    // have at the entry of this command buffer.
+                    let extern_layout = (image.0).0.initial_layout(image.1, access.old_layout);
+
+                    e.insert(InternalImageBlockAccess {
+                        write: access.write,
+                        aspect: access.aspect,
+                        old_layout: extern_layout,
+                        new_layout: access.new_layout,
+                    });
+
+                    if extern_layout != access.old_layout {
+                        image_barriers.push(vk::ImageMemoryBarrier {
+                            sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                            pNext: ptr::null(),
+                            srcAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            oldLayout: extern_layout as u32,
+                            newLayout: access.old_layout as u32,
+                            srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            image: (image.0).0.inner_image().internal_object(),
+                            subresourceRange: vk::ImageSubresourceRange {
+                                aspectMask: access.aspect,
+                                baseMipLevel: 0,        // FIXME: 
+                                levelCount: 1,      // FIXME: 
+                                baseArrayLayer: 0,      // FIXME: 
+                                layerCount: 1,      // FIXME: 
+                            },
+                        });
+                    }
                 },
-            });
+
+                Entry::Occupied(e) => {
+                    unimplemented!()
+                },
+            };
         }
 
         // Adding the pipeline barrier.
@@ -1127,8 +1153,8 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    buffers_state: HashMap<(BufferKey, usize), InternalBufferAccess>,
-    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageAccess>,
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
     extern_buffers_sync: SmallVec<[(Arc<Buffer>, SmallVec<[BufferAccessRange; 4]>); 32]>,
     extern_images_sync: SmallVec<[(Arc<Image>, SmallVec<[ImageAccessRange; 8]>); 32]>,
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -1384,7 +1410,7 @@ impl hash::Hash for BufferKey {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct InternalBufferAccess {
+struct InternalBufferBlockAccess {
     write: bool,
 }
 
@@ -1408,7 +1434,10 @@ impl hash::Hash for ImageKey {
     }
 }
 
-struct InternalImageAccess {
+#[derive(Copy, Clone, Debug)]
+struct InternalImageBlockAccess {
     write: bool,
     aspect: vk::ImageAspectFlags,
+    old_layout: ImageLayout,
+    new_layout: ImageLayout,
 }
