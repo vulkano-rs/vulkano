@@ -77,9 +77,9 @@ fn main() {
     // The buffer that we created contains uninitialized data.
     // In order to fill it with data, we have to *map* it.
     {
-        // The `try_write` function would return `None` if the buffer was in use by the GPU. This
+        // The `write` function would return `Err` if the buffer was in use by the GPU. This
         // obviously can't happen here, since we haven't ask the GPU to do anything yet.
-        let mut mapping = vertex_buffer.try_write().unwrap();
+        let mut mapping = vertex_buffer.write(0).unwrap();
         mapping[0].position = [-0.5, -0.5];
         mapping[1].position = [-0.5,  0.5];
         mapping[2].position = [ 0.5, -0.5];
@@ -125,7 +125,7 @@ fn main() {
                                            Some(queue.family())).expect("failed to create buffer");
 
         {
-            let mut mapping = pixel_buffer.try_write().unwrap();
+            let mut mapping = pixel_buffer.write(0).unwrap();
             for (o, i) in mapping.iter_mut().zip(image_data.chunks(4)) {
                 o[0] = i[0];
                 o[1] = i[1];

@@ -29,6 +29,10 @@ pub unsafe trait Buffer {
     /// The return value must not be empty.
     fn blocks(&self, range: Range<usize>) -> Vec<usize>;
 
+    ///
+    ///
+    /// If the host is still accessing the buffer, this function implementation should block
+    /// until it is no longer the case.
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>;
 

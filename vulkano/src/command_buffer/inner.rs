@@ -1543,10 +1543,22 @@ struct SubmissionGuarded {
 }
 
 impl Submission {
-    /// Returns `true` is destroying this `Submission` object would block the CPU for some time.
+    /// Returns `true` if destroying this `Submission` object would block the CPU for some time.
     #[inline]
     pub fn destroying_would_block(&self) -> bool {
-        self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?
+        self.finished()
+    }
+
+    /// Returns `true` if the GPU has finished executing this submission.
+    #[inline]
+    pub fn finished(&self) -> bool {
+        self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?   
+    }
+
+    /// Waits until the submission has finished being executed by the device.
+    #[inline]
+    pub fn wait(&self, timeout_ns: u64) -> Result<(), FenceWaitError> {
+        self.fence.wait(timeout_ns)
     }
 
     /// Returns the `queue` the command buffers were submitted to.

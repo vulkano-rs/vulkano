@@ -79,7 +79,7 @@ fn main() {
                                        .expect("failed to create buffer");
 
     {
-        let mut mapping = vertex_buffer.try_write().unwrap();
+        let mut mapping = vertex_buffer.write(0).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::VERTICES.iter()) {
             *o = *i;
         }
@@ -91,7 +91,7 @@ fn main() {
                                         .expect("failed to create buffer");
 
     {
-        let mut mapping = normals_buffer.try_write().unwrap();
+        let mut mapping = normals_buffer.write(0).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::NORMALS.iter()) {
             *o = *i;
         }
@@ -103,7 +103,7 @@ fn main() {
                                       .expect("failed to create buffer");
 
     {
-        let mut mapping = index_buffer.try_write().unwrap();
+        let mut mapping = index_buffer.write(0).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::INDICES.iter()) {
             *o = *i;
         }
@@ -119,7 +119,7 @@ fn main() {
                                ::new(&device, &vulkano::buffer::Usage::all(), Some(queue.family()))
                                .expect("failed to create buffer");
     {
-        let mut mapping = uniform_buffer.try_write().unwrap();
+        let mut mapping = uniform_buffer.write(0).unwrap();
         mapping.worldview = (view * scale).into();
         mapping.proj = proj.into();
     }

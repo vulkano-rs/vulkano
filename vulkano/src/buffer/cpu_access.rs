@@ -1,8 +1,11 @@
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use smallvec::SmallVec;
 
 use buffer::sys::UnsafeBuffer;
@@ -14,9 +17,10 @@ use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
 use memory::Content;
-use memory::CpuAccess;
+use memory::CpuAccess as MemCpuAccess;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
+use sync::FenceWaitError;
 use sync::Sharing;
 
 use OomError;
@@ -100,24 +104,23 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
 }
 
 impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
-    pub fn read(&self, timeout_ns: u64) -> CpuAccess<T> {       // FIXME: error
-        // FIXME: correct implementation
-        unsafe { self.memory.read() }
+    #[inline]
+    pub fn read(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
+        self.write(timeout_ns)
     }
 
-    pub fn try_read(&self) -> Option<CpuAccess<T>> {
-        // FIXME: correct implementation
-        unsafe { Some(self.memory.read()) }
-    }
+    #[inline]
+    pub fn write(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
+        let submission = self.latest_submission.lock().unwrap();
 
-    pub fn write(&self, timeout_ns: u64) -> CpuAccess<T> {      // FIXME: error
-        // FIXME: correct implementation
-        unsafe { self.memory.write() }
-    }
+        if let Some(submission) = submission.as_ref() {
+            try!(submission.wait(timeout_ns));
+        }
 
-    pub fn try_write(&self) -> Option<CpuAccess<T>> {
-        // FIXME: correct implementation
-        unsafe { Some(self.memory.write()) }
+        Ok(CpuAccess {
+            inner: unsafe { self.memory.write() },
+            lock: submission,
+        })
     }
 }
 
@@ -164,4 +167,29 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
 
 unsafe impl<T: ?Sized + 'static> TypedBuffer for CpuAccessibleBuffer<T> {
     type Content = T;
+}
+
+/// Object that can be used to read or write the content of a `CpuAccessBuffer`.
+///
+/// Note that this object holds a mutex guard on the chunk. If another thread tries to access
+/// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
+pub struct CpuAccess<'a, T: ?Sized + 'a> {
+    inner: MemCpuAccess<'a, T>,
+    lock: MutexGuard<'a, Option<Arc<Submission>>>,
+}
+
+impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        self.inner.deref()
+    }
+}
+
+impl<'a, T: ?Sized + 'a> DerefMut for CpuAccess<'a, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut T {
+        self.inner.deref_mut()
+    }
 }
