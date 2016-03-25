@@ -835,7 +835,7 @@ impl InnerCommandBufferBuilder {
             for (key, access) in self.render_pass_staging_required_image_accesses.iter() {
                 if let Some(ex_acc) = self.staging_required_image_accesses.get(&key) {
                     if access.write || ex_acc.write ||
-                       (ex_acc.aspect & access.aspect) != ex_acc.aspect
+                       (ex_acc.aspects & access.aspects) != ex_acc.aspects
                     {
                         conflict = true;
                         break;
@@ -891,7 +891,7 @@ impl InnerCommandBufferBuilder {
                 if final_layout != access.new_layout {
                     self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
                         write: false,
-                        aspect: access.aspect,
+                        aspects: access.aspects,
                         old_layout: final_layout,
                         new_layout: final_layout,
                     });
@@ -1022,7 +1022,7 @@ impl InnerCommandBufferBuilder {
             let key = (ImageKey(image.clone()), block);
             self.staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 write: write,
-                aspect: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
                 old_layout: layout,
                 new_layout: layout,
             });
@@ -1052,7 +1052,7 @@ impl InnerCommandBufferBuilder {
             let key = (ImageKey(image.clone()), block);
             self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 write: write,
-                aspect: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
                 old_layout: initial_layout,
                 new_layout: final_layout,
             });
@@ -1106,7 +1106,7 @@ impl InnerCommandBufferBuilder {
 
                     e.insert(InternalImageBlockAccess {
                         write: access.write,
-                        aspect: access.aspect,
+                        aspects: access.aspects,
                         old_layout: extern_layout,
                         new_layout: access.new_layout,
                     });
@@ -1123,7 +1123,7 @@ impl InnerCommandBufferBuilder {
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             image: (image.0).0.inner_image().internal_object(),
                             subresourceRange: vk::ImageSubresourceRange {
-                                aspectMask: access.aspect,
+                                aspectMask: access.aspects,
                                 baseMipLevel: 0,        // FIXME: 
                                 levelCount: 1,      // FIXME: 
                                 baseArrayLayer: 0,      // FIXME: 
@@ -1146,7 +1146,7 @@ impl InnerCommandBufferBuilder {
                         dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                         image: (image.0).0.inner_image().internal_object(),
                         subresourceRange: vk::ImageSubresourceRange {
-                            aspectMask: access.aspect,
+                            aspectMask: access.aspects,
                             baseMipLevel: 0,        // FIXME: 
                             levelCount: 1,      // FIXME: 
                             baseArrayLayer: 0,      // FIXME: 
@@ -1481,7 +1481,7 @@ impl hash::Hash for ImageKey {
 #[derive(Copy, Clone, Debug)]
 struct InternalImageBlockAccess {
     write: bool,
-    aspect: vk::ImageAspectFlags,
+    aspects: vk::ImageAspectFlags,
     old_layout: ImageLayout,
     new_layout: ImageLayout,
 }
