@@ -846,7 +846,7 @@ impl InnerCommandBufferBuilder {
         if conflict {
             // Calling `flush` here means that a `vkCmdPipelineBarrier` will be inserted right
             // before the `vkCmdBeginRenderPass`.
-            self.flush();
+            self.flush(false);
         }
 
         // Now merging the render pass accesses with the outter accesses.
@@ -894,7 +894,7 @@ impl InnerCommandBufferBuilder {
             }
         }
         if conflict {
-            self.flush();
+            self.flush(false);
         }
 
         // Inserting in `staging_required_buffer_accesses`.
@@ -924,7 +924,7 @@ impl InnerCommandBufferBuilder {
             }
         }
         if conflict {
-            self.flush();
+            self.flush(false);
         }
 
         // Inserting in `staging_required_image_accesses`.
@@ -970,9 +970,21 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Flush the staging commands.
-    fn flush(&mut self) {
+    fn flush(&mut self, ignore_empty_staging_commands: bool) {
         let cmd = self.cmd.unwrap();
         let vk = self.device.pointers();
+
+        // If `staging_commands` is empty, that means we are doing two flushes in a row. This
+        // means that a command conflicts with itself, for example a buffer reading and writing
+        // simultaneously the same block.
+        //
+        // The `ignore_empty_staging_commands` parameter is here to ignore that check, because
+        // in some situations it is legitimate to have two flushes in a row.
+        //
+        // TODO: handle error better
+        if !ignore_empty_staging_commands {
+            assert!(!self.staging_commands.is_empty(), "Invalid command detected");
+        }
 
         // Merging the `staging_access` variables to the `state` variables,
         // and determining the list of barriers that are required and updating the resources states.
@@ -1089,7 +1101,7 @@ impl InnerCommandBufferBuilder {
     /// Finishes building the command buffer.
     pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
         unsafe {
-            self.flush();
+            self.flush(true);
 
             // Ensuring that each image is in its final layout. We do so by inserting elements
             // in `staging_required_image_accesses` and flushing again.
@@ -1107,7 +1119,7 @@ impl InnerCommandBufferBuilder {
                 }
             }
 
-            self.flush();
+            self.flush(true);
 
             debug_assert!(self.staging_required_buffer_accesses.is_empty());
             debug_assert!(self.staging_required_image_accesses.is_empty());
