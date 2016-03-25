@@ -437,7 +437,6 @@ impl InnerCommandBufferBuilder {
         self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,
                                  source.offset() .. source.offset() + source.size());
         self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true,
-                                        ImageLayout::TransferDstOptimal,
                                         ImageLayout::TransferDstOptimal);
 
         {
@@ -984,38 +983,46 @@ impl InnerCommandBufferBuilder {
             self.flush();
         }
 
-        // Computing the diff between what's required and `buffers_state`, and putting it in
-        // `staging_required_buffer_accesses`.
+        // Inserting in `staging_required_buffer_accesses`.
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
-
-            if let Some(&entry) = self.buffers_state.get(&key) {
-                if entry.write || write {
-                    let access = InternalBufferBlockAccess {
-                        write: write,
-                    };
-
-                    self.staging_required_buffer_accesses.insert(key, access);
-
-                } else {
-                    // no barrier necessary for read after read
-                }
-            } else {
-                let access = InternalBufferBlockAccess {
-                    write: write,
-                };
-
-                self.staging_required_buffer_accesses.insert(key, access);
-            }
+            self.staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
+                write: write,
+            });
         }
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_image_resource_outside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                  array_layers_range: Range<u32>, write: bool, in_l: ImageLayout,
-                                  out_l: ImageLayout)
+                                  array_layers_range: Range<u32>, write: bool, layout: ImageLayout)
     {
+        // Flushing if required.
+        let mut conflict = false;
+        for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
+            let key = (ImageKey(image.clone()), block);
+            if let Some(entry) = self.staging_required_image_accesses.get(&key) {
+                // TODO: should be reviewed
+                if entry.write || write || entry.new_layout != layout {
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if conflict {
+            self.flush();
+        }
+
+        // Inserting in `staging_required_image_accesses`.
+        for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
+            let key = (ImageKey(image.clone()), block);
+            self.staging_required_image_accesses.insert(key, InternalImageBlockAccess {
+                write: write,
+                aspect: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                old_layout: layout,
+                new_layout: layout,
+            });
+        }
     }
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
@@ -1025,31 +1032,26 @@ impl InnerCommandBufferBuilder {
     {
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
-
-            if let Some(&entry) = self.buffers_state.get(&key) {
-                if entry.write || write {
-                    let access = InternalBufferBlockAccess {
-                        write: true,
-                    };
-
-                    self.render_pass_staging_required_buffer_accesses.insert(key, access);
-                }
-            } else {
-                let access = InternalBufferBlockAccess {
-                    write: write,
-                };
-
-                self.render_pass_staging_required_buffer_accesses.insert(key, access);
-            }
+            self.render_pass_staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
+                write: write,
+            });
         }
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                 array_layers_range: Range<u32>, write: bool, in_l: ImageLayout,
-                                 out_l: ImageLayout)
+                                 array_layers_range: Range<u32>, write: bool, layout: ImageLayout)
     {
+        for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
+            let key = (ImageKey(image.clone()), block);
+            self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
+                write: write,
+                aspect: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                old_layout: layout,
+                new_layout: layout,
+            });
+        }
     }
 
     /// Flush the staging commands.
