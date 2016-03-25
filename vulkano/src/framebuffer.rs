@@ -484,7 +484,7 @@ macro_rules! ordered_passes_renderpass {
                         }
                         final_layout = Some($crate::image::Layout::ColorAttachmentOptimal);
                     }
-                ),*
+                )*
 
                 $(
                     if $input_atch == num {
@@ -493,8 +493,8 @@ macro_rules! ordered_passes_renderpass {
                         }
                         final_layout = Some($crate::image::Layout::ShaderReadOnlyOptimal);
                     }
-                ),*
-            }),*
+                )*
+            })*
 
             (initial_layout.unwrap(), final_layout.unwrap())
         }
