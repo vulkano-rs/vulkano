@@ -17,6 +17,7 @@ use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
+use sync::Semaphore;
 
 use Error;
 use OomError;
@@ -170,6 +171,7 @@ impl Device {
                     device: device.clone(),
                     family: family,
                     id: id,
+                    dedicated_semaphore: Mutex::new(None),
                 })
             }
         }).collect();
@@ -289,6 +291,14 @@ pub struct Queue {
     device: Arc<Device>,
     family: u32,
     id: u32,    // id within family
+
+    // For safety purposes, each command buffer submitted to a queue has to both wait on and
+    // signal the semaphore specified here.
+    //
+    // If this is `None`, then that means we haven't used the semaphore yet.
+    //
+    // For more infos, see TODO: see what?
+    dedicated_semaphore: Mutex<Option<Arc<Semaphore>>>,
 }
 
 impl Queue {
@@ -304,6 +314,12 @@ impl Queue {
         self.device.physical_device().queue_family_by_id(self.family).unwrap()
     }
 
+    /// Returns the index of this queue within its family.
+    #[inline]
+    pub fn id_within_family(&self) -> u32 {
+        self.id
+    }
+
     /// Waits until all work on this queue has finished.
     ///
     /// Just like `Device::wait()`, you shouldn't have to call this function.
@@ -315,6 +331,21 @@ impl Queue {
             try!(check_errors(vk.QueueWaitIdle(*queue)));
             Ok(())
         }
+    }
+
+    // TODO: document
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn dedicated_semaphore(&self) -> Result<(Arc<Semaphore>, bool), OomError> {
+        let mut sem = self.dedicated_semaphore.lock().unwrap();
+
+        if let Some(ref semaphore) = *sem {
+            return Ok((semaphore.clone(), true));
+        }
+
+        let semaphore = try!(Semaphore::new(&self.device));
+        *sem = Some(semaphore.clone());
+        Ok((semaphore, false))
     }
 }
 

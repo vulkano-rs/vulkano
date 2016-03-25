@@ -55,6 +55,7 @@ pub unsafe trait Resource {
 /// families it will be used. The vulkano library requires you to tell in which queue famiily
 /// the resource will be used, even for exclusive mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
+// TODO: remove
 pub enum SharingMode {
     /// The resource is used is only one queue family.
     Exclusive(u32),
@@ -76,6 +77,15 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
             queue.family().id()
         }).collect())
     }
+}
+
+/// Declares in which queue(s) a resource can be used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sharing<I> where I: Iterator<Item = u32> {
+    /// The resource is used is only one queue family.
+    Exclusive,
+    /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
+    Concurrent(I),
 }
 
 /// A fence is used to know when a command buffer submission has finished its execution.

@@ -48,5 +48,3 @@ pub use self::pool::CommandBufferPool;
 mod inner;
 mod outer;
 mod pool;
-
-pub trait AbstractCommandBuffer {}

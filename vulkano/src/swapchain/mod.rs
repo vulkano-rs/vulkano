@@ -35,7 +35,6 @@ use std::vec::IntoIter;
 
 use instance::Instance;
 use instance::PhysicalDevice;
-use memory::MemorySourceChunk;
 
 use check_errors;
 use OomError;
@@ -50,8 +49,6 @@ pub use self::surface::SurfaceTransform;
 pub use self::surface::CompositeAlpha;
 pub use self::surface::ColorSpace;
 pub use self::swapchain::Swapchain;
-pub use self::swapchain::SwapchainAllocated;
-pub use self::swapchain::SwapchainAllocatedChunk;
 pub use self::swapchain::AcquireError;
 
 mod surface;

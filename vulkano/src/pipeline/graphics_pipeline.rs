@@ -17,7 +17,6 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-use pipeline::GenericPipeline;
 use pipeline::blend::Blend;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::multisample::Multisample;
@@ -394,9 +393,6 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     pub fn has_dynamic_scissors(&self) -> bool {
         self.dynamic_scissor
     }
-}
-
-impl<Mv, L, Rp> GenericPipeline for GraphicsPipeline<Mv, L, Rp> {
 }
 
 unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {

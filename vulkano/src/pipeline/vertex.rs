@@ -56,9 +56,8 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
-use buffer::AbstractBuffer;
+use buffer::TypedBuffer;
 use format::Format;
-use memory::MemorySource;
 use vk;
 
 #[derive(Copy, Clone, Debug)]
@@ -100,7 +99,7 @@ pub unsafe trait Definition {
 /// vertex definition.
 pub unsafe trait Source<L>: Definition {
     /// Iterator used by `decode`.
-    type Iter: ExactSizeIterator<Item = Arc<AbstractBuffer>>;
+    type Iter: ExactSizeIterator<Item = Arc<Buffer>>;
 
     /// Checks and returns the list of buffers, number of vertices and number of instances.
     fn decode(&self, L) -> (Self::Iter, usize, usize);
@@ -128,15 +127,13 @@ unsafe impl<T> Definition for SingleBufferDefinition<T> where T: Vertex {
     }
 }
 
-unsafe impl<'a, V, M> Source<&'a Arc<Buffer<[V], M>>> for SingleBufferDefinition<V>
-    where V: Vertex + 'static, M: MemorySource + 'static
+unsafe impl<'a, B, V> Source<&'a Arc<B>> for SingleBufferDefinition<V>
+    where B: TypedBuffer<Content = [V]> + 'static, V: Vertex + 'static
 {
-    type Iter = OptionIntoIter<Arc<AbstractBuffer>>;
+    type Iter = OptionIntoIter<Arc<Buffer>>;
 
     #[inline]
-    fn decode(&self, source: &'a Arc<Buffer<[V], M>>)
-              -> (OptionIntoIter<Arc<AbstractBuffer>>, usize, usize)
-    {
+    fn decode(&self, source: &'a Arc<B>) -> (OptionIntoIter<Arc<Buffer>>, usize, usize) {
         let iter = Some(source.clone() as Arc<_>).into_iter();
         (iter, source.len(), 1)
     }
@@ -174,15 +171,15 @@ unsafe impl<T, U> Definition for TwoBuffersDefinition<T, U> where T: Vertex, U: 
     }
 }
 
-unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for TwoBuffersDefinition<T, U>
-    where T: Vertex + 'static, Mt: MemorySource + 'static,
-          U: Vertex + 'static, Mu: MemorySource + 'static
+unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for TwoBuffersDefinition<T, U>
+    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
+          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, T: 'static
 {
-    type Iter = VecIntoIter<Arc<AbstractBuffer>>;
+    type Iter = VecIntoIter<Arc<Buffer>>;
 
     #[inline]
-    fn decode(&self, source: (&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>))
-              -> (VecIntoIter<Arc<AbstractBuffer>>, usize, usize)
+    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
+              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
     {
         let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
         (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
@@ -221,18 +218,18 @@ unsafe impl<T, U> Definition for OneVertexOneInstanceDefinition<T, U> where T: V
     }
 }
 
-unsafe impl<'a, T, U, Mt, Mu> Source<(&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex + 'static, Mt: MemorySource + 'static,
-          U: Vertex + 'static, Mu: MemorySource + 'static
+unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOneInstanceDefinition<T, U>
+    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
+          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, U: 'static
 {
-    type Iter = VecIntoIter<Arc<AbstractBuffer>>;
+    type Iter = VecIntoIter<Arc<Buffer>>;
 
     #[inline]
-    fn decode(&self, source: (&'a Arc<Buffer<[T], Mt>>, &'a Arc<Buffer<[U], Mu>>))
-              -> (VecIntoIter<Arc<AbstractBuffer>>, usize, usize)
+    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
+              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
     {
         let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, source.0.len(), source.1.len())
+        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
     }
 }
 
