@@ -1,6 +1,8 @@
+use std::mem;
 use std::iter::Empty;
 use std::ops::Range;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use command_buffer::Submission;
 use device::Device;
@@ -29,6 +31,8 @@ pub struct AttachmentImage<F> {
     // Layout to use when the image is used as a framebuffer attachment.
     // Should be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
+
+    latest_submission: Mutex<Option<Arc<Submission>>>,
 }
 
 impl<F> AttachmentImage<F> {
@@ -84,6 +88,7 @@ impl<F> AttachmentImage<F> {
             format: format,
             attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
                                else { Layout::ColorAttachmentOptimal },
+            latest_submission: Mutex::new(None),
         }))
     }
 
@@ -118,10 +123,17 @@ unsafe impl<F> Image for AttachmentImage<F> {
         Some(false)
     }
 
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
+    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {
-        vec![]
+        let mut latest_submission = self.latest_submission.lock().unwrap();
+
+        let dependency = mem::replace(&mut *latest_submission, Some(submission.clone()));
+        if let Some(dependency) = dependency {
+            vec![dependency]
+        } else {
+            vec![]
+        }
     }
 }
 
