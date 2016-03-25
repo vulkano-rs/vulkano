@@ -877,96 +877,6 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    /// Finishes building the command buffer.
-    pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
-        unsafe {
-            self.flush();
-
-            // Ensuring that each image is in its final layout. We do so by inserting elements
-            // in `staging_required_image_accesses` and flushing again.
-            // TODO: ideally things that don't collide should be added before the first flush,
-            //       and things that collide done here
-            for (image, access) in self.images_state.iter() {
-                let final_layout = (image.0).0.final_layout(image.1, access.new_layout);
-                if final_layout != access.new_layout {
-                    self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
-                        write: false,
-                        aspects: access.aspects,
-                        old_layout: final_layout,
-                        new_layout: final_layout,
-                    });
-                }
-            }
-
-            self.flush();
-
-            debug_assert!(self.staging_required_buffer_accesses.is_empty());
-            debug_assert!(self.staging_required_image_accesses.is_empty());
-
-            let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
-            let cmd = self.cmd.take().unwrap();
-
-            // Ending the commands recording.
-            try!(check_errors(vk.EndCommandBuffer(cmd)));
-
-            Ok(InnerCommandBuffer {
-                device: self.device.clone(),
-                pool: self.pool.clone(),
-                cmd: cmd,
-                buffers_state: self.buffers_state.clone(),      // TODO: meh
-                images_state: self.images_state.clone(),        // TODO: meh
-                extern_buffers_sync: {
-                    let mut map = HashMap::new();
-                    for ((buf, bl), access) in self.buffers_state.drain() {
-                        let value = BufferAccessRange {
-                            block: bl,
-                            write: access.write,
-                        };
-
-                        match map.entry(buf) {
-                            Entry::Vacant(e) => {
-                                let mut v = SmallVec::new();
-                                v.push(value);
-                                e.insert(v);
-                            },
-                            Entry::Occupied(mut e) => {
-                                e.get_mut().push(value);
-                            },
-                        }
-                    }
-
-                    map.into_iter().map(|(buf, val)| (buf.0, val)).collect()
-                },
-                extern_images_sync: {
-                    let mut map = HashMap::new();
-                    for ((img, bl), access) in self.images_state.drain() {
-                        let value = ImageAccessRange {
-                            block: bl,
-                            write: access.write,
-                            initial_layout: access.old_layout,
-                            final_layout: access.new_layout,
-                        };
-
-                        match map.entry(img) {
-                            Entry::Vacant(e) => {
-                                let mut v = SmallVec::new();
-                                v.push(value);
-                                e.insert(v);
-                            },
-                            Entry::Occupied(mut e) => {
-                                e.get_mut().push(value);
-                            },
-                        }
-                    }
-
-                    map.into_iter().map(|(img, val)| (img.0, val)).collect()
-                },
-                keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
-            })
-        }
-    }
-
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
@@ -1173,6 +1083,96 @@ impl InnerCommandBufferBuilder {
         // Now flushing all commands.
         for mut command in self.staging_commands.drain(..) {
             command(&vk, cmd);
+        }
+    }
+
+    /// Finishes building the command buffer.
+    pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
+        unsafe {
+            self.flush();
+
+            // Ensuring that each image is in its final layout. We do so by inserting elements
+            // in `staging_required_image_accesses` and flushing again.
+            // TODO: ideally things that don't collide should be added before the first flush,
+            //       and things that collide done here
+            for (image, access) in self.images_state.iter() {
+                let final_layout = (image.0).0.final_layout(image.1, access.new_layout);
+                if final_layout != access.new_layout {
+                    self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
+                        write: false,
+                        aspects: access.aspects,
+                        old_layout: final_layout,
+                        new_layout: final_layout,
+                    });
+                }
+            }
+
+            self.flush();
+
+            debug_assert!(self.staging_required_buffer_accesses.is_empty());
+            debug_assert!(self.staging_required_image_accesses.is_empty());
+
+            let vk = self.device.pointers();
+            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
+            let cmd = self.cmd.take().unwrap();
+
+            // Ending the commands recording.
+            try!(check_errors(vk.EndCommandBuffer(cmd)));
+
+            Ok(InnerCommandBuffer {
+                device: self.device.clone(),
+                pool: self.pool.clone(),
+                cmd: cmd,
+                buffers_state: self.buffers_state.clone(),      // TODO: meh
+                images_state: self.images_state.clone(),        // TODO: meh
+                extern_buffers_sync: {
+                    let mut map = HashMap::new();
+                    for ((buf, bl), access) in self.buffers_state.drain() {
+                        let value = BufferAccessRange {
+                            block: bl,
+                            write: access.write,
+                        };
+
+                        match map.entry(buf) {
+                            Entry::Vacant(e) => {
+                                let mut v = SmallVec::new();
+                                v.push(value);
+                                e.insert(v);
+                            },
+                            Entry::Occupied(mut e) => {
+                                e.get_mut().push(value);
+                            },
+                        }
+                    }
+
+                    map.into_iter().map(|(buf, val)| (buf.0, val)).collect()
+                },
+                extern_images_sync: {
+                    let mut map = HashMap::new();
+                    for ((img, bl), access) in self.images_state.drain() {
+                        let value = ImageAccessRange {
+                            block: bl,
+                            write: access.write,
+                            initial_layout: access.old_layout,
+                            final_layout: access.new_layout,
+                        };
+
+                        match map.entry(img) {
+                            Entry::Vacant(e) => {
+                                let mut v = SmallVec::new();
+                                v.push(value);
+                                e.insert(v);
+                            },
+                            Entry::Occupied(mut e) => {
+                                e.get_mut().push(value);
+                            },
+                        }
+                    }
+
+                    map.into_iter().map(|(img, val)| (img.0, val)).collect()
+                },
+                keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
+            })
         }
     }
 }
