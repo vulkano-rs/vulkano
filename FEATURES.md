@@ -79,38 +79,3 @@ Cleaning the objects that are no longer needed can be done like this:
 ```rust
 submissions.retain(|s| !s.destroying_would_block());
 ```
-
-## Buffers and images queue ownership
-
-Whenver you create a buffer or an image with Vulkan, you have to explicitely tell the driver
-whether the buffer or image is in *exclusive mode* or in *shared mode*.
-
-Exclusive mode means that one queue family will have ownership of the image or buffer. You
-don't need to tell Vulkan which queue family it is, as the first queue that uses the resource
-will be considered as having the ownership. The ownership of a resource can be changed by
-submitting a command buffer with a barrier command to both the old owner and the new owner.
-
-Shared mode means that the resource can be used simultaneously by multiple queue families.
-If you use this mode, you have to tell Vulkano which queue families can use it.
-
-In vulkano you can also choose between exclusive and shared, but in exclusive mode you have
-to specify which queue family is the owner.
-
-## Image layouts
-
-In the Vulkan API, each subresource (ie. mipmap or array level) of an image has a specific
-layout: color-attachment-optimal, transfer-source-optimal, shader-read-only-optimal, etc.
-Despite the fact that their names contain `optimal`, switching to the correct layout is
-mandatory. For example, you must transition an image to the color attachment layout before
-using an image as a color attachment. Transitionning an image must be done with a barrier
-command in a command buffer.
-
-This is handled automatically by vulkano. Vulkano, however, has no way of knowing in which
-order the command buffers you build will be submitted. To solve this problem it has to use a
-trick: images have a default layout.
-
-Whenever you create an image, you have to specify in which layout it is going to be used the
-most. If then you use that image in a way that corresponds to the layout you specified, vulkano
-won't perform any layout transition. However if you use the image in another way, vulkano
-will perform a layout transition to the required layout, then back to the default layout at
-the end of the command buffer.
