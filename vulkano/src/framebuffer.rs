@@ -376,18 +376,22 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
 
-                let attachments = vec![
-                    $(
+                let attachments = {
+                    let mut num = 0;
+                    vec![$({
+                        let (initial_layout, final_layout) = attachment_layouts(num);
+                        num += 1;
+
                         $crate::framebuffer::LayoutAttachmentDescription {
                             format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
                             samples: 1,                         // FIXME:
                             load: $crate::framebuffer::LoadOp::$load,
                             store: $crate::framebuffer::StoreOp::$store,
-                            initial_layout: $crate::image::Layout::PresentSrc,       // FIXME:
-                            final_layout: $crate::image::Layout::PresentSrc,       // FIXME:
-                        },
-                    )*
-                ];
+                            initial_layout: initial_layout,
+                            final_layout: final_layout,
+                        }
+                    }),*]
+                };
 
                 let passes = {
                     let mut attachment_num = 0;
@@ -449,6 +453,51 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        fn attachment_layouts(num: u32) -> ($crate::image::Layout, $crate::image::Layout) {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+
+            let mut attachment_num = 0;
+            $(
+                let $atch_name = attachment_num;
+                attachment_num += 1;
+            )*
+
+            let mut initial_layout = None;
+            let mut final_layout = None;
+
+            $({
+                $(
+                    if $depth_atch == num {
+                        if initial_layout.is_none() {
+                            initial_layout = Some($crate::image::Layout::DepthStencilAttachmentOptimal);
+                        }
+                        final_layout = Some($crate::image::Layout::DepthStencilAttachmentOptimal);
+                    }
+                )*
+
+                $(
+                    if $color_atch == num {
+                        if initial_layout.is_none() {
+                            initial_layout = Some($crate::image::Layout::ColorAttachmentOptimal);
+                        }
+                        final_layout = Some($crate::image::Layout::ColorAttachmentOptimal);
+                    }
+                ),*
+
+                $(
+                    if $input_atch == num {
+                        if initial_layout.is_none() {
+                            initial_layout = Some($crate::image::Layout::ShaderReadOnlyOptimal);
+                        }
+                        final_layout = Some($crate::image::Layout::ShaderReadOnlyOptimal);
+                    }
+                ),*
+            }),*
+
+            (initial_layout.unwrap(), final_layout.unwrap())
+        }
+
         unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
             #[inline]
             fn render_pass(&self) -> &UnsafeRenderPass {
@@ -483,9 +532,12 @@ macro_rules! ordered_passes_renderpass {
             fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Self::AttachmentsIter {
                 let mut result = Vec::new();
 
-                $(
-                    result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), $crate::image::Layout::PresentSrc, $crate::image::Layout::PresentSrc));       // FIXME:
-                )*
+                let mut num = 0;
+                $({
+                    let (initial_layout, final_layout) = attachment_layouts(num);
+                    num += 1;
+                    result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), initial_layout, final_layout));
+                })*
 
                 result.into_iter()
             }
