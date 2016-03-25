@@ -811,15 +811,21 @@ impl InnerCommandBufferBuilder {
         self
     }
 
+    /// Ends the current render pass by calling `vkCmdEndRenderPass`.
+    ///
+    /// # Safety
+    ///
+    /// Assumes that you're inside a render pass and that all subpasses have been processed.
+    ///
     #[inline]
     pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
         debug_assert!(!self.render_pass_staging_commands.is_empty());
 
-        // Determine whether there's a conflict between the required barriers within the
-        // render pass and the required barriers from before the render pass.
+        // Determine whether there's a conflict between the accesses done within the
+        // render pass and the accesses from before the render pass.
         let mut conflict = false;
-        for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
-            if let Some(ex_acc) = self.staging_required_buffer_accesses.get(&(buffer, block)) {
+        for (key, access) in self.render_pass_staging_required_buffer_accesses.iter() {
+            if let Some(ex_acc) = self.staging_required_buffer_accesses.get(&key) {
                 if access.write || ex_acc.write {
                     conflict = true;
                     break;
@@ -827,8 +833,8 @@ impl InnerCommandBufferBuilder {
             }
         }
         if !conflict {
-            for ((image, block), access) in self.render_pass_staging_required_image_accesses.drain() {
-                if let Some(ex_acc) = self.staging_required_image_accesses.get(&(image, block)) {
+            for (key, access) in self.render_pass_staging_required_image_accesses.iter() {
+                if let Some(ex_acc) = self.staging_required_image_accesses.get(&key) {
                     if access.write || ex_acc.write ||
                        (ex_acc.aspect & access.aspect) != ex_acc.aspect
                     {
@@ -839,13 +845,14 @@ impl InnerCommandBufferBuilder {
             }
         }
         if conflict {
-            // Prepares for inserting a `vkCmdPipelineBarrier` right before
-            // the `vkCmdBeginRenderPass`.
+            // Calling `flush` here means that a `vkCmdPipelineBarrier` will be inserted right
+            // before the `vkCmdBeginRenderPass`.
             self.flush();
         }
 
         // Now merging the render pass accesses with the outter accesses.
-        // Conflicts are checked again with `debug_assert`s.
+        // Conflicts shouldn't happen since we checked above, but they are partly checked again
+        // with `debug_assert`s.
         for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
             match self.staging_required_buffer_accesses.entry((buffer.clone(), block)) {
                 Entry::Vacant(e) => { e.insert(access); },
