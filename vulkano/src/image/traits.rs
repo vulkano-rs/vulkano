@@ -81,6 +81,8 @@ pub unsafe trait ImageContent<P>: Image {
 pub unsafe trait ImageView {
     fn parent(&self) -> &Image;
 
+    fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
+
     /// Returns the inner unsafe image view object used by this image view.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_view(&self) -> &UnsafeImageView;

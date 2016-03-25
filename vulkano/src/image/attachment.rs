@@ -91,12 +91,12 @@ unsafe impl<F> Image for AttachmentImage<F> {
 
     #[inline]
     fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout {
-        unimplemented!()
+        Layout::ColorAttachmentOptimal      // FIXME:
     }
 
     #[inline]
     fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> Layout {
-        unimplemented!()
+        Layout::ColorAttachmentOptimal      // FIXME:
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
@@ -117,10 +117,15 @@ unsafe impl<P, F> ImageContent<P> for AttachmentImage<F> {
     }
 }
 
-unsafe impl<F> ImageView for AttachmentImage<F> {
+unsafe impl<F: 'static> ImageView for AttachmentImage<F> {
     #[inline]
     fn parent(&self) -> &Image {
         self
+    }
+
+    #[inline]
+    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
+        me.clone() as Arc<_>
     }
 
     #[inline]

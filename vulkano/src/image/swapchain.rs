@@ -90,6 +90,11 @@ unsafe impl ImageView for SwapchainImage {
     }
 
     #[inline]
+    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
+        me.clone() as Arc<_>
+    }
+
+    #[inline]
     fn inner_view(&self) -> &UnsafeImageView {
         &self.view
     }

@@ -186,7 +186,12 @@ fn main() {
     };
 
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), vec![image.clone() as std::sync::Arc<_>, depth_buffer.clone() as std::sync::Arc<_>]).unwrap()
+        let attachments = renderpass::AList {
+            color: &image,
+            depth: &depth_buffer,
+        };
+
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), attachments).unwrap()
     }).collect::<Vec<_>>();
 
 

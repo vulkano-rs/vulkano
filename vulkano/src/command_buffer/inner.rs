@@ -747,13 +747,12 @@ impl InnerCommandBufferBuilder {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        // FIXME: change attachment image layouts if necessary, for both initial and final
-        /*for attachment in R::attachments() {
-
-        }*/
-
-        for attachment in framebuffer.attachments() {
+        for &(ref attachment, ref image, initial_layout, final_layout) in framebuffer.attachments() {
             self.keep_alive.push(mem::transmute(attachment.clone()) /* FIXME: */);
+
+            // FIXME: parameters
+            self.add_image_resource_inside(image.clone(), 0 .. 1, 0 .. 1, true,
+                                           initial_layout, final_layout);
         }
 
         {
@@ -1048,15 +1047,16 @@ impl InnerCommandBufferBuilder {
     /// Adds an image resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
-                                 array_layers_range: Range<u32>, write: bool, layout: ImageLayout)
+                                 array_layers_range: Range<u32>, write: bool,
+                                 initial_layout: ImageLayout, final_layout: ImageLayout)
     {
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
             self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 write: write,
                 aspect: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
-                old_layout: layout,
-                new_layout: layout,
+                old_layout: initial_layout,
+                new_layout: final_layout,
             });
         }
     }
@@ -1132,8 +1132,29 @@ impl InnerCommandBufferBuilder {
                     }
                 },
 
-                Entry::Occupied(e) => {
-                    unimplemented!()
+                Entry::Occupied(mut e) => {
+                    // TODO: not always necessary
+                    image_barriers.push(vk::ImageMemoryBarrier {
+                        sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        pNext: ptr::null(),
+                        srcAccessMask: 0x0001ffff,      // TODO: suboptimal
+                        dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                        oldLayout: e.get().new_layout as u32,
+                        newLayout: access.old_layout as u32,
+                        srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                        dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                        image: (image.0).0.inner_image().internal_object(),
+                        subresourceRange: vk::ImageSubresourceRange {
+                            aspectMask: access.aspect,
+                            baseMipLevel: 0,        // FIXME: 
+                            levelCount: 1,      // FIXME: 
+                            baseArrayLayer: 0,      // FIXME: 
+                            layerCount: 1,      // FIXME: 
+                        },
+                    });
+
+                    // TODO: incomplete
+                    e.get_mut().new_layout = access.new_layout;
                 },
             };
         }

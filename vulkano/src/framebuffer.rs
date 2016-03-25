@@ -75,6 +75,7 @@ use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
 use image::Layout as ImageLayout;
+use image::traits::Image;
 use image::traits::ImageView;
 
 use Error;
@@ -104,7 +105,7 @@ pub unsafe trait RenderPass {
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.
-    type AttachmentsIter: ExactSizeIterator<Item = Arc<ImageView>>;
+    type AttachmentsIter: ExactSizeIterator<Item = (Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
 
     /// Decodes a `A` into a list of attachments.
     fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
@@ -294,7 +295,7 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
 }
 
 unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<Arc<ImageView>>;
+    type AttachmentsIter = EmptyIter<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
 
     #[inline]
     fn convert_attachments_list(&self, _: ()) -> Self::AttachmentsIter {
@@ -363,6 +364,8 @@ macro_rules! ordered_passes_renderpass {
         use $crate::device::Device;
         use $crate::format::ClearValue;
         use $crate::framebuffer::UnsafeRenderPass;
+        use $crate::image::traits::Image;
+        use $crate::image::traits::ImageView;
 
         pub struct CustomRenderPass {
             render_pass: UnsafeRenderPass
@@ -464,15 +467,27 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        pub type AList = Vec<Arc<$crate::image::ImageView>>;      // FIXME: better type
+        #[allow(non_camel_case_types)]
+        pub struct AList<'a, $($atch_name: 'a),*> {
+            $(
+                pub $atch_name: &'a Arc<$atch_name>,
+            )*
+        }
 
-        unsafe impl $crate::framebuffer::RenderPassAttachmentsList<AList> for CustomRenderPass {
+        #[allow(non_camel_case_types)]
+        unsafe impl<'a, $($atch_name: 'static + ImageView),*> $crate::framebuffer::RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
             // TODO: shouldn't build a Vec
-            type AttachmentsIter = std::vec::IntoIter<std::sync::Arc<$crate::image::ImageView>>;
+            type AttachmentsIter = std::vec::IntoIter<(Arc<ImageView>, Arc<Image>, $crate::image::Layout, $crate::image::Layout)>;
 
             #[inline]
-            fn convert_attachments_list(&self, l: AList) -> Self::AttachmentsIter {
-                l.into_iter()
+            fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Self::AttachmentsIter {
+                let mut result = Vec::new();
+
+                $(
+                    result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), $crate::image::Layout::PresentSrc, $crate::image::Layout::PresentSrc));       // FIXME:
+                )*
+
+                result.into_iter()
             }
         }
 
@@ -878,7 +893,7 @@ pub struct Framebuffer<L> {
     render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
-    resources: Vec<Arc<ImageView>>,
+    resources: Vec<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>,
 }
 
 impl<L> Framebuffer<L> {
@@ -913,7 +928,7 @@ impl<L> Framebuffer<L> {
         }
 
         // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-        let ids = attachments.iter().map(|a| {
+        let ids = attachments.iter().map(|&(ref a, _, _, _)| {
             assert!(a.identity_swizzle());
             a.inner_view().internal_object()
         }).collect::<Vec<_>>();
@@ -990,7 +1005,7 @@ impl<L> Framebuffer<L> {
 
     /// Returns all the resources attached to that framebuffer.
     #[inline]
-    pub fn attachments(&self) -> &[Arc<ImageView>] {
+    pub fn attachments(&self) -> &[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)] {
         &self.resources
     }
 }
