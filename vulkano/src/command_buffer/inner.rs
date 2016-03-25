@@ -1051,7 +1051,26 @@ impl InnerCommandBufferBuilder {
 
         for (buffer, access) in self.staging_required_buffer_accesses.drain() {
             match self.buffers_state.entry(buffer.clone()) {
-                Entry::Vacant(entry) => { entry.insert(access); },
+                Entry::Vacant(entry) => {
+                    if (buffer.0).0.host_accesses() {
+                        src_stages |= vk::PIPELINE_STAGE_HOST_BIT;
+                        dst_stages |= access.stages;
+
+                        buffer_barriers.push(vk::BufferMemoryBarrier {
+                            sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                            pNext: ptr::null(),
+                            srcAccessMask: vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT,
+                            dstAccessMask: access.accesses,
+                            srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            buffer: (buffer.0).0.inner_buffer().internal_object(),
+                            offset: 0,      // FIXME:
+                            size: 10,       // FIXME:
+                        });
+                    }
+
+                    entry.insert(access);
+                },
                 Entry::Occupied(mut entry) => {
                     let entry = entry.get_mut();
 
@@ -1213,6 +1232,19 @@ impl InnerCommandBufferBuilder {
                         new_layout: final_layout,
                     });
                 }
+            }
+
+            // Checking each buffer to see if it must be flushed to the host.
+            for (buffer, access) in self.buffers_state.iter() {
+                if !(buffer.0).0.host_accesses() {
+                    continue;
+                }
+
+                self.staging_required_buffer_accesses.insert(buffer.clone(), InternalBufferBlockAccess {
+                    stages: vk::PIPELINE_STAGE_HOST_BIT,
+                    accesses: vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT,
+                    write: false,
+                });
             }
 
             self.flush(true);

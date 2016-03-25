@@ -13,6 +13,13 @@ pub unsafe trait Buffer {
     /// Returns whether accessing a range of this buffer should signal a fence.
     fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
 
+    /// Called when a command buffer that uses this buffer is being built.
+    ///
+    /// Must return true if the command buffer should include a pipeline barrier at the start,
+    /// to read from what the host wrote, and a pipeline barrier at the end, to flush caches and
+    /// allows the host to read the data.
+    fn host_accesses(&self) -> bool;
+
     /// Given a range, returns the list of blocks which each range is contained in.
     ///
     /// Each block must have a unique number. Hint: it can simply be the offset of the start of the

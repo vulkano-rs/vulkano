@@ -120,6 +120,11 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
         Some(true)
     }
 
+    #[inline]
+    fn host_accesses(&self) -> bool {
+        false
+    }
+
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {

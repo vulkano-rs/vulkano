@@ -83,6 +83,11 @@ unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
         Some(true)
     }
 
+    #[inline]
+    fn host_accesses(&self) -> bool {
+        true
+    }
+
     unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>, submission: &Arc<Submission>)
                          -> Vec<Arc<Submission>>
     {
