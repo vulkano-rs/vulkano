@@ -48,6 +48,7 @@ impl<F> AttachmentImage<F> {
             sampled: true,
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
+            input_attachment: true,
             .. Usage::none()
         };
 
