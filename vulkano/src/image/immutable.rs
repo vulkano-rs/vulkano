@@ -102,17 +102,19 @@ unsafe impl<F> Image for ImmutableImage<F> {
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), first_usage: Layout) -> Layout {
-        if first_usage == Layout::TransferDstOptimal {
+    fn initial_layout(&self, _: (u32, u32), first_usage: Layout) -> (Layout, bool, bool) {
+        let l = if first_usage == Layout::TransferDstOptimal {
             Layout::Undefined
         } else {
             Layout::ShaderReadOnlyOptimal
-        }
+        };
+
+        (l, false, false)
     }
 
     #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
+        (Layout::ShaderReadOnlyOptimal, false, false)
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {

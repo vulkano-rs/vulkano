@@ -263,8 +263,9 @@ impl InnerCommandBufferBuilder {
         // FIXME: check queue family of the buffer
 
         self.add_buffer_resource_outside(buffer.buffer().clone() as Arc<_>, true,
-                                 buffer.offset() .. buffer.offset() + buffer.size(),
-                                 vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                         buffer.offset() .. buffer.offset() + buffer.size(),
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_WRITE_BIT);
 
         {
             let buffer_offset = buffer.offset() as vk::DeviceSize;
@@ -309,7 +310,8 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.inner_buffer().usage_transfer_dest());
 
         self.add_buffer_resource_outside(buffer.clone() as Arc<_>, true, offset .. offset + size,
-                                         vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_WRITE_BIT);
 
         // FIXME: check that the queue family supports transfers
         // FIXME: check queue family of the buffer
@@ -353,9 +355,11 @@ impl InnerCommandBufferBuilder {
         assert!(destination.inner_buffer().usage_transfer_dest());
 
         self.add_buffer_resource_outside(source.clone() as Arc<_>, false, 0 .. source.size(),
-                                         vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_READ_BIT);
         self.add_buffer_resource_outside(destination.clone() as Arc<_>, true, 0 .. source.size(),
-                                         vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_WRITE_BIT);
 
         {
             let source_size = source.size() as u64;     // FIXME: what is destination is too small?
@@ -439,11 +443,13 @@ impl InnerCommandBufferBuilder {
 
         let source = source.into();
         self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,
-                                 source.offset() .. source.offset() + source.size(),
-                                 vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                         source.offset() .. source.offset() + source.size(),
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_READ_BIT);
         self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true,
                                         ImageLayout::TransferDstOptimal,
-                                        vk::PIPELINE_STAGE_TRANSFER_BIT);
+                                        vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                        vk::ACCESS_TRANSFER_WRITE_BIT);
 
         {
             let source_offset = source.offset() as vk::DeviceSize;
@@ -516,7 +522,8 @@ impl InnerCommandBufferBuilder {
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
             self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
-                                            vk::PIPELINE_STAGE_VERTEX_INPUT_BIT);
+                                            vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                            vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -561,7 +568,8 @@ impl InnerCommandBufferBuilder {
         let ids = vertices.0.map(|b| {
             assert!(b.inner_buffer().usage_vertex_buffer());
             self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
-                                            vk::PIPELINE_STAGE_VERTEX_INPUT_BIT);
+                                            vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                            vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
             b.inner_buffer().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -569,7 +577,8 @@ impl InnerCommandBufferBuilder {
 
         self.add_buffer_resource_inside(indices.buffer().clone() as Arc<_>, false,
                                         indices.offset() .. indices.offset() + indices.size(),
-                                        vk::PIPELINE_STAGE_VERTEX_INPUT_BIT);
+                                        vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                        vk::ACCESS_INDEX_READ_BIT);
 
         {
             let mut ids = Some(ids);
@@ -755,12 +764,20 @@ impl InnerCommandBufferBuilder {
         for &(ref attachment, ref image, initial_layout, final_layout) in framebuffer.attachments() {
             self.keep_alive.push(mem::transmute(attachment.clone()) /* FIXME: */);
 
-            // FIXME: parameters
-            let stages = vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            let stages = vk::PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                         vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
                          vk::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                          vk::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT; // FIXME:
+
+            let accesses = vk::ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                           vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                           vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                           vk::ACCESS_INPUT_ATTACHMENT_READ_BIT;       // FIXME:
+
+            // FIXME: parameters
             self.add_image_resource_inside(image.clone(), 0 .. 1, 0 .. 1, true,
-                                           initial_layout, final_layout, stages);
+                                           initial_layout, final_layout, stages, accesses);
         }
 
         {
@@ -837,7 +854,8 @@ impl InnerCommandBufferBuilder {
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
-                                   range: Range<usize>, stages: vk::PipelineStageFlagBits)
+                                   range: Range<usize>, stages: vk::PipelineStageFlagBits,
+                                   accesses: vk::AccessFlagBits)
     {
         // Flushing if required.
         let mut conflict = false;
@@ -859,6 +877,7 @@ impl InnerCommandBufferBuilder {
             let key = (BufferKey(buffer.clone()), block);
             self.staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
                 stages: stages,
+                accesses: accesses,
                 write: write,
             });
         }
@@ -868,7 +887,7 @@ impl InnerCommandBufferBuilder {
     // FIXME: add access flags
     fn add_image_resource_outside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
                                   array_layers_range: Range<u32>, write: bool, layout: ImageLayout,
-                                  stages: vk::PipelineStageFlagBits)
+                                  stages: vk::PipelineStageFlagBits, accesses: vk::AccessFlagBits)
     {
         // Flushing if required.
         let mut conflict = false;
@@ -891,6 +910,7 @@ impl InnerCommandBufferBuilder {
             let key = (ImageKey(image.clone()), block);
             self.staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 stages: stages,
+                accesses: accesses,
                 write: write,
                 aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
                 old_layout: layout,
@@ -902,12 +922,14 @@ impl InnerCommandBufferBuilder {
     /// Adds a buffer resource to the list of resources used by this command buffer.
     // FIXME: add access flags
     fn add_buffer_resource_inside(&mut self, buffer: Arc<Buffer>, write: bool,
-                                  range: Range<usize>, stages: vk::PipelineStageFlagBits)
+                                  range: Range<usize>, stages: vk::PipelineStageFlagBits,
+                                  accesses: vk::AccessFlagBits)
     {
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
             self.render_pass_staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
                 stages: stages,
+                accesses: accesses,
                 write: write,
             });
         }
@@ -918,12 +940,13 @@ impl InnerCommandBufferBuilder {
     fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
                                  array_layers_range: Range<u32>, write: bool,
                                  initial_layout: ImageLayout, final_layout: ImageLayout,
-                                 stages: vk::PipelineStageFlagBits)
+                                 stages: vk::PipelineStageFlagBits, accesses: vk::AccessFlagBits)
     {
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
             self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 stages: stages,
+                accesses: accesses,
                 write: write,
                 aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
                 old_layout: initial_layout,
@@ -975,6 +998,7 @@ impl InnerCommandBufferBuilder {
                     let mut entry = entry.get_mut();
                     debug_assert!(!entry.write && !access.write);
                     entry.stages |= access.stages;
+                    entry.accesses |= access.accesses;
                 }
             }
         }
@@ -986,6 +1010,7 @@ impl InnerCommandBufferBuilder {
                     debug_assert!(!entry.write && !access.write);
                     debug_assert_eq!(entry.new_layout, access.old_layout);
                     entry.stages |= access.stages;
+                    entry.accesses |= access.accesses;
                     entry.new_layout = access.new_layout;
                 }
             }
@@ -1033,19 +1058,21 @@ impl InnerCommandBufferBuilder {
                     if entry.write || access.write {
                         src_stages |= entry.stages;
                         dst_stages |= access.stages;
-                        entry.stages = access.stages;
 
                         buffer_barriers.push(vk::BufferMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                             pNext: ptr::null(),
-                            srcAccessMask: 0x0001ffff,      // TODO: suboptimal
-                            dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            srcAccessMask: entry.accesses,
+                            dstAccessMask: access.accesses,
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             buffer: (buffer.0).0.inner_buffer().internal_object(),
                             offset: 0,      // FIXME:
                             size: 10,       // FIXME:
                         });
+
+                        entry.stages = access.stages;
+                        entry.accesses = access.accesses;
                     }
 
                     entry.write = entry.write || access.write;
@@ -1059,24 +1086,23 @@ impl InnerCommandBufferBuilder {
                     // This is the first ever use of this image block in this command buffer.
                     // Therefore we need to query the image for the layout that it is going to
                     // have at the entry of this command buffer.
-                    let extern_layout = (image.0).0.initial_layout(image.1, access.old_layout);
+                    let (extern_layout, host, mem) = (image.0).0.initial_layout(image.1, access.old_layout);
 
-                    entry.insert(InternalImageBlockAccess {
-                        stages: access.stages,
-                        write: access.write,
-                        aspects: access.aspects,
-                        old_layout: extern_layout,
-                        new_layout: access.new_layout,
-                    });
+                    let src_access = {
+                        let mut v = 0;
+                        if host { v |= vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT; }
+                        if mem { v |= vk::ACCESS_MEMORY_READ_BIT | vk::ACCESS_MEMORY_WRITE_BIT; }
+                        v
+                    };
 
-                    if extern_layout != access.old_layout {
+                    if extern_layout != access.old_layout || host || mem {
                         dst_stages |= access.stages;
 
                         image_barriers.push(vk::ImageMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                             pNext: ptr::null(),
-                            srcAccessMask: 0x0001ffff,      // TODO: suboptimal
-                            dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            srcAccessMask: src_access,
+                            dstAccessMask: access.accesses,
                             oldLayout: extern_layout as u32,
                             newLayout: access.old_layout as u32,
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
@@ -1091,6 +1117,15 @@ impl InnerCommandBufferBuilder {
                             },
                         });
                     }
+
+                    entry.insert(InternalImageBlockAccess {
+                        stages: access.stages,
+                        accesses: access.accesses,
+                        write: access.write,
+                        aspects: access.aspects,
+                        old_layout: extern_layout,
+                        new_layout: access.new_layout,
+                    });
                 },
 
                 Entry::Occupied(mut entry) => {
@@ -1099,13 +1134,12 @@ impl InnerCommandBufferBuilder {
                     // TODO: not always necessary
                     src_stages |= entry.stages;
                     dst_stages |= access.stages;
-                    entry.stages = access.stages;
 
                     image_barriers.push(vk::ImageMemoryBarrier {
                         sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                         pNext: ptr::null(),
-                        srcAccessMask: 0x0001ffff,      // TODO: suboptimal
-                        dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                        srcAccessMask: entry.accesses,
+                        dstAccessMask: access.accesses,
                         oldLayout: entry.new_layout as u32,
                         newLayout: access.old_layout as u32,
                         srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
@@ -1121,6 +1155,8 @@ impl InnerCommandBufferBuilder {
                     });
 
                     // TODO: incomplete
+                    entry.stages = access.stages;
+                    entry.accesses = access.accesses;
                     entry.new_layout = access.new_layout;
                 },
             };
@@ -1162,10 +1198,15 @@ impl InnerCommandBufferBuilder {
             // TODO: ideally things that don't collide should be added before the first flush,
             //       and things that collide done here
             for (image, access) in self.images_state.iter() {
-                let final_layout = (image.0).0.final_layout(image.1, access.new_layout);
-                if final_layout != access.new_layout {
+                let (final_layout, host, mem) = (image.0).0.final_layout(image.1, access.new_layout);
+                if final_layout != access.new_layout || host || mem {
+                    let mut accesses = 0;
+                    if host { accesses |= vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT; }
+                    if mem { accesses |= vk::ACCESS_MEMORY_READ_BIT | vk::ACCESS_MEMORY_WRITE_BIT; }
+
                     self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
                         stages: vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        accesses: accesses,
                         write: false,
                         aspects: access.aspects,
                         old_layout: final_layout,
@@ -1527,6 +1568,10 @@ struct InternalBufferBlockAccess {
     // For example it can be the stages since the latest barrier instead of just the stages.
     stages: vk::PipelineStageFlagBits,
 
+    // The way this resource is accessed.
+    // Just like `stages`, this has different semantics depending on the usage of this struct.
+    accesses: vk::AccessFlagBits,
+
     write: bool,
 }
 
@@ -1556,6 +1601,10 @@ struct InternalImageBlockAccess {
     // Note that this field can have different semantics depending on where this struct is used.
     // For example it can be the stages since the latest barrier instead of just the stages.
     stages: vk::PipelineStageFlagBits,
+
+    // The way this resource is accessed.
+    // Just like `stages`, this has different semantics depending on the usage of this struct.
+    accesses: vk::AccessFlagBits,
 
     write: bool,
     aspects: vk::ImageAspectFlags,

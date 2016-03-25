@@ -22,11 +22,12 @@ pub struct SwapchainImage {
     format: Format,
     swapchain: Arc<Swapchain>,
     id: u32,
+    guarded: Mutex<Guarded>,
+}
 
-    /// True if already in the `PresentSrc` layout.
-    // TODO: use AtomicBool ; however it's not that easy because we need to single-thread the part
-    //       where we transition the layout
-    present_layout: Mutex<bool>,
+struct Guarded {
+    present_layout: bool,
+    latest_submission: Option<Arc<Submission>>,
 }
 
 impl SwapchainImage {
@@ -41,7 +42,10 @@ impl SwapchainImage {
             format: format,
             swapchain: swapchain.clone(),
             id: id,
-            present_layout: Mutex::new(false),
+            guarded: Mutex::new(Guarded {
+                present_layout: false,
+                latest_submission: None,
+            }),
         }))
     }
 
@@ -63,13 +67,13 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> Layout {
-        Layout::PresentSrc
+    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
+        (Layout::PresentSrc, false, true)
     }
 
     #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> Layout {
-        Layout::PresentSrc
+    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
+        (Layout::PresentSrc, false, true)
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
@@ -79,15 +83,15 @@ unsafe impl Image for SwapchainImage {
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {
-        let mut present_layout = self.present_layout.lock().unwrap();
+        let mut guarded = self.guarded.lock().unwrap();
 
-        if *present_layout {
+        if guarded.present_layout {
             return vec![];
         }
 
         // FIXME: submit a command buffer to transition the layout of the image
 
-        *present_layout = true;
+        guarded.present_layout = true;
         vec![]
     }
 }

@@ -110,13 +110,13 @@ unsafe impl<F> Image for AttachmentImage<F> {
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> Layout {
-        self.attachment_layout
+    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
+        (self.attachment_layout, false, false)
     }
 
     #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> Layout {
-        self.attachment_layout
+    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
+        (self.attachment_layout, false, false)
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {

@@ -50,7 +50,15 @@ pub unsafe trait Image {
     /// The `first_required_layout` is provided as a hint and corresponds to the first layout
     /// that the image will be used for. If this function returns a value different from
     /// `first_required_layout`, then a layout transition will be performed by the command buffer.
-    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> Layout;
+    ///
+    /// The two additional elements are:
+    ///
+    /// - Whether a pipeline barrier should be added in order to address a read or write from
+    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
+    /// - Whether a pipeline barrier should be added in order to address a read or write from
+    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
+    ///
+    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> (Layout, bool, bool);
 
     /// Called when a command buffer that uses this image is being built. Given a block, this
     /// function should return the layout that the block must have when the command buffer is
@@ -60,7 +68,15 @@ pub unsafe trait Image {
     /// that the image will be in at the end of the command buffer. If this function returns a
     /// value different from `last_required_layout`, then a layout transition will be performed
     /// by the command buffer.
-    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> Layout;
+    ///
+    /// The two additional elements are:
+    ///
+    /// - Whether a pipeline barrier should be added in order to address a read or write from
+    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
+    /// - Whether a pipeline barrier should be added in order to address a read or write from
+    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
+    ///
+    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> (Layout, bool, bool);
 
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
