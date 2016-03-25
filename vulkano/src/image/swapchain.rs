@@ -1,5 +1,6 @@
 use std::ops::Range;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use command_buffer::Submission;
 use format::Format;
@@ -21,6 +22,11 @@ pub struct SwapchainImage {
     format: Format,
     swapchain: Arc<Swapchain>,
     id: u32,
+
+    /// True if already in the `PresentSrc` layout.
+    // TODO: use AtomicBool ; however it's not that easy because we need to single-thread the part
+    //       where we transition the layout
+    present_layout: Mutex<bool>,
 }
 
 impl SwapchainImage {
@@ -35,6 +41,7 @@ impl SwapchainImage {
             format: format,
             swapchain: swapchain.clone(),
             id: id,
+            present_layout: Mutex::new(false),
         }))
     }
 
@@ -72,6 +79,15 @@ unsafe impl Image for SwapchainImage {
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> Vec<Arc<Submission>>
     {
+        let mut present_layout = self.present_layout.lock().unwrap();
+
+        if *present_layout {
+            return vec![];
+        }
+
+        // FIXME: submit a command buffer to transition the layout of the image
+
+        *present_layout = true;
         vec![]
     }
 }
