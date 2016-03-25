@@ -67,10 +67,9 @@ fn main() {
 
 
 
-    let vertex_buffer = vulkano::buffer::Buffer::<[Vertex], _>
+    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
                                ::array(&device, 4, &vulkano::buffer::Usage::all(),
-                                       vulkano::memory::HostVisible, &queue)
-                                       .expect("failed to create buffer");
+                                       Some(queue.family())).expect("failed to create buffer");
 
     struct Vertex { position: [f32; 2] }
     impl_vertex!(Vertex, position);
@@ -111,11 +110,8 @@ fn main() {
 
     let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
-    let texture = vulkano::image::Image::<vulkano::image::Type2d, _, _>::new(&device, &vulkano::image::Usage::all(),
-                                                  vulkano::memory::DeviceLocal, &queue,
-                                                  vulkano::format::R8G8B8A8Unorm, [93, 93], (), 1).unwrap();
-    let texture = texture.transition(vulkano::image::Layout::ShaderReadOnlyOptimal, &cb_pool, &queue).unwrap();
-    let texture_view = vulkano::image::ImageView::new(&texture).expect("failed to create image view");
+    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::sys::Dimensions::Dim2d { width: 93, height: 93 },
+                                                                 vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
 
     let pixel_buffer = {
@@ -123,10 +119,10 @@ fn main() {
                                                         image::ImageFormat::PNG).unwrap().to_rgba();
         let image_data = image.into_raw().clone();
 
-        let pixel_buffer = vulkano::buffer::Buffer::<[[u8; 4]], _>
-                               ::array(&device, image_data.len(), &vulkano::buffer::Usage::all(),
-                                       vulkano::memory::HostVisible, &queue)
-                                       .expect("failed to create buffer");
+        // TODO: staging buffer instead
+        let pixel_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
+                                   ::array(&device, image_data.len(), &vulkano::buffer::Usage::all(),
+                                           Some(queue.family())).expect("failed to create buffer");
 
         {
             let mut mapping = pixel_buffer.try_write().unwrap();
@@ -167,13 +163,8 @@ fn main() {
 
     let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
     let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(sampler.clone(), texture_view.clone(), vulkano::image::Layout::ShaderReadOnlyOptimal))]).unwrap();
+                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(sampler.clone(), texture.clone(), vulkano::image::Layout::ShaderReadOnlyOptimal))]).unwrap();
 
-
-    let images = images.into_iter().map(|image| {
-        let image = image.transition(vulkano::image::Layout::PresentSrc, &cb_pool, &queue).unwrap();
-        vulkano::image::ImageView::new(&image).expect("failed to create image view")
-    }).collect::<Vec<_>>();
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
@@ -210,7 +201,11 @@ fn main() {
     };
 
     let framebuffers = images.iter().map(|image| {
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), (image.clone() as std::sync::Arc<_>,)).unwrap()
+        let attachments = renderpass::AList {
+            color: &image,
+        };
+
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
