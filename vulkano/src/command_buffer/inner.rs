@@ -500,8 +500,6 @@ impl InnerCommandBufferBuilder {
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc, Rp: 'static
     {
-        debug_assert!(!self.render_pass_staging_commands.is_empty());
-
         // FIXME: add buffers to the resources
 
         self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
@@ -543,8 +541,6 @@ impl InnerCommandBufferBuilder {
               Pl: 'static + PipelineLayoutDesc, Rp: 'static,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
     {
-        debug_assert!(!self.render_pass_staging_commands.is_empty());
-
         // FIXME: add buffers to the resources
 
         self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
@@ -819,61 +815,10 @@ impl InnerCommandBufferBuilder {
     #[inline]
     pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
         debug_assert!(!self.render_pass_staging_commands.is_empty());
-
-        // Determine whether there's a conflict between the accesses done within the
-        // render pass and the accesses from before the render pass.
-        let mut conflict = false;
-        for (key, access) in self.render_pass_staging_required_buffer_accesses.iter() {
-            if let Some(ex_acc) = self.staging_required_buffer_accesses.get(&key) {
-                if access.write || ex_acc.write {
-                    conflict = true;
-                    break;
-                }
-            }
-        }
-        if !conflict {
-            for (key, access) in self.render_pass_staging_required_image_accesses.iter() {
-                if let Some(ex_acc) = self.staging_required_image_accesses.get(&key) {
-                    if access.write || ex_acc.write ||
-                       (ex_acc.aspects & access.aspects) != ex_acc.aspects
-                    {
-                        conflict = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if conflict {
-            // Calling `flush` here means that a `vkCmdPipelineBarrier` will be inserted right
-            // before the `vkCmdBeginRenderPass`.
-            self.flush(false);
-        }
-
-        // Now merging the render pass accesses with the outter accesses.
-        // Conflicts shouldn't happen since we checked above, but they are partly checked again
-        // with `debug_assert`s.
-        for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
-            match self.staging_required_buffer_accesses.entry((buffer.clone(), block)) {
-                Entry::Vacant(e) => { e.insert(access); },
-                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
-            }
-        }
-        for ((image, block), access) in self.render_pass_staging_required_image_accesses.drain() {
-            match self.staging_required_image_accesses.entry((image.clone(), block)) {
-                Entry::Vacant(e) => { e.insert(access); },
-                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
-            }
-        }
-
-        // Merging the commands as well.
-        for command in self.render_pass_staging_commands.drain(..) {
-            self.staging_commands.push(command);
-        }
-
+        self.flush_render_pass();
         self.staging_commands.push(Box::new(move |vk, cmd| {
             vk.CmdEndRenderPass(cmd);
         }));
-
         self
     }
 
@@ -966,6 +911,60 @@ impl InnerCommandBufferBuilder {
                 old_layout: initial_layout,
                 new_layout: final_layout,
             });
+        }
+    }
+
+    /// Flushes the staging render pass commands. Only call this before `vkCmdEndRenderPass` and
+    /// before `vkEndCommandBuffer`.
+    unsafe fn flush_render_pass(&mut self) {
+        // Determine whether there's a conflict between the accesses done within the
+        // render pass and the accesses from before the render pass.
+        let mut conflict = false;
+        for (key, access) in self.render_pass_staging_required_buffer_accesses.iter() {
+            if let Some(ex_acc) = self.staging_required_buffer_accesses.get(&key) {
+                if access.write || ex_acc.write {
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if !conflict {
+            for (key, access) in self.render_pass_staging_required_image_accesses.iter() {
+                if let Some(ex_acc) = self.staging_required_image_accesses.get(&key) {
+                    if access.write || ex_acc.write ||
+                       (ex_acc.aspects & access.aspects) != ex_acc.aspects
+                    {
+                        conflict = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if conflict {
+            // Calling `flush` here means that a `vkCmdPipelineBarrier` will be inserted right
+            // before the `vkCmdBeginRenderPass`.
+            self.flush(false);
+        }
+
+        // Now merging the render pass accesses with the outter accesses.
+        // Conflicts shouldn't happen since we checked above, but they are partly checked again
+        // with `debug_assert`s.
+        for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
+            match self.staging_required_buffer_accesses.entry((buffer.clone(), block)) {
+                Entry::Vacant(e) => { e.insert(access); },
+                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
+            }
+        }
+        for ((image, block), access) in self.render_pass_staging_required_image_accesses.drain() {
+            match self.staging_required_image_accesses.entry((image.clone(), block)) {
+                Entry::Vacant(e) => { e.insert(access); },
+                Entry::Occupied(e) => { debug_assert!(!e.get().write && !access.write); }
+            }
+        }
+
+        // Merging the commands as well.
+        for command in self.render_pass_staging_commands.drain(..) {
+            self.staging_commands.push(command);
         }
     }
 
@@ -1101,6 +1100,7 @@ impl InnerCommandBufferBuilder {
     /// Finishes building the command buffer.
     pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
         unsafe {
+            self.flush_render_pass();
             self.flush(true);
 
             // Ensuring that each image is in its final layout. We do so by inserting elements
