@@ -1072,22 +1072,25 @@ impl InnerCommandBufferBuilder {
         let mut image_barriers: SmallVec<[_; 8]> = SmallVec::new();
 
         for (buffer, access) in self.staging_required_buffer_accesses.drain() {
-            buffer_barriers.push(vk::BufferMemoryBarrier {
-                sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-                pNext: ptr::null(),
-                srcAccessMask: 0x0001ffff,      // TODO: suboptimal
-                dstAccessMask: 0x0001ffff,      // TODO: suboptimal
-                srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                buffer: (buffer.0).0.inner_buffer().internal_object(),
-                offset: 0,      // FIXME:
-                size: 10,       // FIXME:
-            });
-
             match self.buffers_state.entry(buffer.clone()) {
                 Entry::Vacant(entry) => { entry.insert(access); },
                 Entry::Occupied(mut entry) => {
                     let entry = entry.get_mut();
+
+                    if entry.write || access.write {
+                        buffer_barriers.push(vk::BufferMemoryBarrier {
+                            sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                            pNext: ptr::null(),
+                            srcAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            dstAccessMask: 0x0001ffff,      // TODO: suboptimal
+                            srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+                            buffer: (buffer.0).0.inner_buffer().internal_object(),
+                            offset: 0,      // FIXME:
+                            size: 10,       // FIXME:
+                        });
+                    }
+
                     entry.write = entry.write || access.write;
                 },
             }
