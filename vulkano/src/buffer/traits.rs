@@ -18,7 +18,7 @@ pub unsafe trait Buffer {
     /// Must return true if the command buffer should include a pipeline barrier at the start,
     /// to read from what the host wrote, and a pipeline barrier at the end, to flush caches and
     /// allows the host to read the data.
-    fn host_accesses(&self) -> bool;
+    fn host_accesses(&self, block: usize) -> bool;
 
     /// Given a range, returns the list of blocks which each range is contained in.
     ///

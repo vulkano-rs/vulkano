@@ -1052,7 +1052,7 @@ impl InnerCommandBufferBuilder {
         for (buffer, access) in self.staging_required_buffer_accesses.drain() {
             match self.buffers_state.entry(buffer.clone()) {
                 Entry::Vacant(entry) => {
-                    if (buffer.0).0.host_accesses() {
+                    if (buffer.0).0.host_accesses(buffer.1) {
                         src_stages |= vk::PIPELINE_STAGE_HOST_BIT;
                         dst_stages |= access.stages;
 
@@ -1236,7 +1236,7 @@ impl InnerCommandBufferBuilder {
 
             // Checking each buffer to see if it must be flushed to the host.
             for (buffer, access) in self.buffers_state.iter() {
-                if !(buffer.0).0.host_accesses() {
+                if !(buffer.0).0.host_accesses(buffer.1) {
                     continue;
                 }
 

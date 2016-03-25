@@ -121,7 +121,7 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
     }
 
     #[inline]
-    fn host_accesses(&self) -> bool {
+    fn host_accesses(&self, _: usize) -> bool {
         false
     }
 

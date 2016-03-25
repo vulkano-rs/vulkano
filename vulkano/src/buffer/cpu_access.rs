@@ -137,7 +137,7 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
     }
 
     #[inline]
-    fn host_accesses(&self) -> bool {
+    fn host_accesses(&self, _: usize) -> bool {
         true
     }
 
