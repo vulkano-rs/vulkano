@@ -1595,8 +1595,16 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
 
         // For each dependency, we either wait on one of its semaphores, or create a new one.
         for dependency in dependencies.iter() {
-            let mut guard = dependency.guarded.lock().unwrap();
             let current_queue_id = (queue.family().id(), queue.id_within_family());
+
+            // If we submit to the same queue as your dependency, no need to worry about this.
+            if current_queue_id == (dependency.queue.family().id(),
+                                    dependency.queue.id_within_family())
+            {
+                continue;
+            }
+
+            let mut guard = dependency.guarded.lock().unwrap();
 
             // If the current queue is in the list of already-signalled queue of the dependency, we
             // ignore it.
