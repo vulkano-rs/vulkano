@@ -861,7 +861,6 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
     fn add_buffer_resource_outside(&mut self, buffer: Arc<Buffer>, write: bool,
                                    range: Range<usize>, stages: vk::PipelineStageFlagBits,
                                    accesses: vk::AccessFlagBits)
@@ -893,7 +892,6 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
     fn add_image_resource_outside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
                                   array_layers_range: Range<u32>, write: bool, layout: ImageLayout,
                                   stages: vk::PipelineStageFlagBits, accesses: vk::AccessFlagBits)
@@ -929,7 +927,6 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds a buffer resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
     fn add_buffer_resource_inside(&mut self, buffer: Arc<Buffer>, write: bool,
                                   range: Range<usize>, stages: vk::PipelineStageFlagBits,
                                   accesses: vk::AccessFlagBits)
@@ -945,7 +942,6 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Adds an image resource to the list of resources used by this command buffer.
-    // FIXME: add access flags
     fn add_image_resource_inside(&mut self, image: Arc<Image>, mipmap_levels_range: Range<u32>,
                                  array_layers_range: Range<u32>, write: bool,
                                  initial_layout: ImageLayout, final_layout: ImageLayout,
@@ -1369,7 +1365,6 @@ pub struct InnerCommandBuffer {
 pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
               queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type
 {
-    // FIXME: the whole function should be checked
     let vk = me.device.pointers();
 
     assert_eq!(queue.device().internal_object(), me.pool.device().internal_object());
