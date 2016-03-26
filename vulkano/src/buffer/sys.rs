@@ -11,6 +11,7 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use device::Device;
 use memory::DeviceMemory;
@@ -48,10 +49,9 @@ impl UnsafeBuffer {
         let usage = usage.to_usage_bits();
 
         let buffer = {
-            let (sh_mode, sh_count, sh_indices) = match sharing {
-                Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
-                Sharing::Concurrent(ref ids) => unimplemented!() /*(vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
-                                                     ids.as_ptr())*/,
+            let (sh_mode, sh_indices) = match sharing {
+                Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
+                Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
             };
 
             let infos = vk::BufferCreateInfo {
@@ -61,8 +61,8 @@ impl UnsafeBuffer {
                 size: size as u64,
                 usage: usage,
                 sharingMode: sh_mode,
-                queueFamilyIndexCount: sh_count,
-                pQueueFamilyIndices: sh_indices,
+                queueFamilyIndexCount: sh_indices.len() as u32,
+                pQueueFamilyIndices: sh_indices.as_ptr(),
             };
 
             let mut output = mem::uninitialized();
