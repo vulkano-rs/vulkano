@@ -127,7 +127,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
         }
 
         Ok(CpuAccess {
-            inner: unsafe { self.memory.write() },
+            inner: unsafe { self.memory.read_write() },
             lock: submission,
         })
     }

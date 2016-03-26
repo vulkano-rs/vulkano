@@ -166,17 +166,22 @@ impl MappedDeviceMemory {
 
     // TODO: remove
     #[inline]
+    #[doc(hidden)]
     pub fn mapping_pointer(&self) -> *mut c_void {
         self.pointer
     }
 
+    /// Gives access to the content of the memory.
+    ///
+    /// # Safety
+    ///
+    /// - Type safety is not checked. You must ensure that `T` corresponds to the content of the
+    ///   buffer.
+    /// - Accesses are not synchronized. Synchronization must be handled outside of
+    ///   the `MappedDeviceMemory`.
+    ///
     #[inline]
-    pub unsafe fn read<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
-        self.write()
-    }
-
-    #[inline]
-    pub unsafe fn write<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
+    pub unsafe fn read_write<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
         let vk = self.memory.device().pointers();
         let pointer = T::ref_from_ptr(self.pointer, self.memory.size()).unwrap();       // TODO: error
 
@@ -212,9 +217,6 @@ impl Drop for MappedDeviceMemory {
 }
 
 /// Object that can be used to read or write the content of a `MappedDeviceMemory`.
-///
-/// Note that this object holds a mutex guard on the chunk. If another thread tries to access
-/// this memory's content or tries to submit a GPU command that uses this memory, it will block.
 pub struct CpuAccess<'a, T: ?Sized + 'a> {
     pointer: *mut T,
     mem: &'a MappedDeviceMemory,
@@ -240,6 +242,7 @@ impl<'a, T: ?Sized + 'a> DerefMut for CpuAccess<'a, T> {
 impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
     #[inline]
     fn drop(&mut self) {
+        // If the memory doesn't have the `coherent` flag, we need to flush the data.
         if !self.coherent {
             let vk = self.mem.memory().device().pointers();
 
