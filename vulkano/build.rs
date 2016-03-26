@@ -4,7 +4,6 @@ extern crate vk_sys;
 use std::env;
 use std::fs::File;
 use std::path::Path;
-use std::io::Write;
 
 fn main() {
     // tell Cargo that this build script never needs to be rerun
