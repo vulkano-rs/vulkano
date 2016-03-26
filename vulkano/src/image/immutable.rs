@@ -112,6 +112,16 @@ unsafe impl<F> Image for ImmutableImage<F> {
     }
 
     #[inline]
+    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
+    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
     fn initial_layout(&self, _: (u32, u32), first_usage: Layout) -> (Layout, bool, bool) {
         let l = if first_usage == Layout::TransferDstOptimal {
             Layout::Undefined

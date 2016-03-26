@@ -120,6 +120,16 @@ unsafe impl<F> Image for AttachmentImage<F> {
     }
 
     #[inline]
+    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
+    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
     fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
         (self.attachment_layout, false, false)
     }

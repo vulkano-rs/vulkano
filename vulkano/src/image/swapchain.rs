@@ -79,6 +79,16 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
+    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
+    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
+        0 .. 1
+    }
+
+    #[inline]
     fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
         (Layout::PresentSrc, false, true)
     }

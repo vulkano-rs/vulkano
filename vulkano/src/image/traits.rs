@@ -53,6 +53,9 @@ pub unsafe trait Image {
     /// The return value must not be empty.
     fn blocks(&self, mipmap_levels: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)>;
 
+    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32>;
+    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32>;
+
     /// Called when a command buffer that uses this image is being built. Given a block, this
     /// function should return the layout that the block will have when the command buffer is
     /// submitted.

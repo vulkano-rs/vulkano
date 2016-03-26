@@ -1244,6 +1244,9 @@ impl InnerCommandBufferBuilder {
 
                     if extern_layout != access.old_layout || host || mem {
                         dst_stages |= access.stages;
+                        
+                        let range_mipmaps = (image.0).0.block_mipmap_levels_range(image.1);
+                        let range_layers = (image.0).0.block_array_layers_range(image.1);
 
                         debug_assert!(!self.is_secondary_graphics);
                         image_barriers.push(vk::ImageMemoryBarrier {
@@ -1258,10 +1261,10 @@ impl InnerCommandBufferBuilder {
                             image: (image.0).0.inner_image().internal_object(),
                             subresourceRange: vk::ImageSubresourceRange {
                                 aspectMask: access.aspects,
-                                baseMipLevel: 0,        // FIXME: 
-                                levelCount: 1,      // FIXME: 
-                                baseArrayLayer: 0,      // FIXME: 
-                                layerCount: 1,      // FIXME: 
+                                baseMipLevel: range_mipmaps.start,
+                                levelCount: range_mipmaps.end - range_mipmaps.start,
+                                baseArrayLayer: range_layers.start,
+                                layerCount: range_layers.end - range_layers.start,
                             },
                         });
                     }
@@ -1283,6 +1286,9 @@ impl InnerCommandBufferBuilder {
                     src_stages |= entry.stages;
                     dst_stages |= access.stages;
 
+                    let range_mipmaps = (image.0).0.block_mipmap_levels_range(image.1);
+                    let range_layers = (image.0).0.block_array_layers_range(image.1);
+
                     debug_assert!(!self.is_secondary_graphics);
                     image_barriers.push(vk::ImageMemoryBarrier {
                         sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1296,10 +1302,10 @@ impl InnerCommandBufferBuilder {
                         image: (image.0).0.inner_image().internal_object(),
                         subresourceRange: vk::ImageSubresourceRange {
                             aspectMask: access.aspects,
-                            baseMipLevel: 0,        // FIXME: 
-                            levelCount: 1,      // FIXME: 
-                            baseArrayLayer: 0,      // FIXME: 
-                            layerCount: 1,      // FIXME: 
+                            baseMipLevel: range_mipmaps.start,
+                            levelCount: range_mipmaps.end - range_mipmaps.start,
+                            baseArrayLayer: range_layers.start,
+                            layerCount: range_layers.end - range_layers.start,
                         },
                     });
 
