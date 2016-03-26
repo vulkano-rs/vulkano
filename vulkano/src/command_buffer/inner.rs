@@ -1547,9 +1547,13 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             signalled_semaphores: semaphores_to_signal,
             signalled_queues: SmallVec::new(),
         }),
-        keep_alive_cb: Some(me_arc),
+        keep_alive_cb: Mutex::new({ let mut v = SmallVec::new(); v.push(me_arc); v }),
         keep_alive_semaphores: Mutex::new(SmallVec::new()),
     });
+
+    // List of command buffers to submit before and after the main one.
+    let mut before_command_buffers: SmallVec<[_; 4]> = SmallVec::new();
+    let mut after_command_buffers: SmallVec<[_; 4]> = SmallVec::new();
 
     {
         // There is a possibility that a parallel thread is currently submitting a command buffer to
@@ -1597,7 +1601,17 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
                 post_semaphores.push(semaphore);
             }
 
-            // FIXME: handle transitions in `result`
+            for transition in result.before_transitions {
+                let cb = transition_cb(&me.pool, resource.clone(), transition.block, transition.from, transition.to).unwrap();
+                before_command_buffers.push(cb.cmd);
+                submission.keep_alive_cb.lock().unwrap().push(Arc::new(cb));
+            }
+
+            for transition in result.after_transitions {
+                let cb = transition_cb(&me.pool, resource.clone(), transition.block, transition.from, transition.to).unwrap();
+                after_command_buffers.push(cb.cmd);
+                submission.keep_alive_cb.lock().unwrap().push(Arc::new(cb));
+            }
 
             dependencies.extend(result.dependencies.into_iter());
         }
@@ -1650,6 +1664,72 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             // is non-existing.
         }
 
+        unsafe {
+            let mut infos = SmallVec::<[_; 3]>::new();
+
+            if !before_command_buffers.is_empty() {
+                let semaphore = Semaphore::new(queue.device()).unwrap();
+                let semaphore_id = semaphore.internal_object();
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores_ids.push(semaphore.internal_object());
+                pre_semaphores.push(semaphore);
+
+                infos.push(vk::SubmitInfo {
+                    sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+                    pNext: ptr::null(),
+                    waitSemaphoreCount: 0,
+                    pWaitSemaphores: ptr::null(),
+                    pWaitDstStageMask: ptr::null(),
+                    commandBufferCount: before_command_buffers.len() as u32,
+                    pCommandBuffers: before_command_buffers.as_ptr(),
+                    signalSemaphoreCount: 1,
+                    pSignalSemaphores: &semaphore_id,
+                });
+            }
+
+            let after_semaphore = if !after_command_buffers.is_empty() {
+                let semaphore = Semaphore::new(queue.device()).unwrap();
+                let semaphore_id = semaphore.internal_object();
+                post_semaphores_ids.push(semaphore.internal_object());
+                post_semaphores.push(semaphore);
+                semaphore_id
+            } else {
+                0
+            };
+
+            debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
+            infos.push(vk::SubmitInfo {
+                sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+                pNext: ptr::null(),
+                waitSemaphoreCount: pre_semaphores_ids.len() as u32,
+                pWaitSemaphores: pre_semaphores_ids.as_ptr(),
+                pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
+                commandBufferCount: 1,
+                pCommandBuffers: &me.cmd,
+                signalSemaphoreCount: if after_command_buffers.is_empty() { post_semaphores_ids.len() as u32 } else { 1 },
+                pSignalSemaphores: if after_command_buffers.is_empty() { post_semaphores_ids.as_ptr() } else { &after_semaphore },
+            });
+
+            if !after_command_buffers.is_empty() {
+                let stage = vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT;     // TODO:
+                infos.push(vk::SubmitInfo {
+                    sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+                    pNext: ptr::null(),
+                    waitSemaphoreCount: 1,
+                    pWaitSemaphores: &after_semaphore,
+                    pWaitDstStageMask: &stage,
+                    commandBufferCount: after_command_buffers.len() as u32,
+                    pCommandBuffers: after_command_buffers.as_ptr(),
+                    signalSemaphoreCount: post_semaphores_ids.len() as u32,
+                    pSignalSemaphores: post_semaphores_ids.as_ptr(),
+                });
+            }
+
+            let fence = fence.internal_object();
+            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), infos.len() as u32,
+                                             infos.as_ptr(), fence)));
+        }
+
         // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
         {
             let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
@@ -1657,24 +1737,6 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
                                                     .chain(pre_semaphores.into_iter()).collect();
         }
 
-        debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
-
-        let infos = vk::SubmitInfo {
-            sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
-            pNext: ptr::null(),
-            waitSemaphoreCount: pre_semaphores_ids.len() as u32,
-            pWaitSemaphores: pre_semaphores_ids.as_ptr(),
-            pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
-            commandBufferCount: 1,
-            pCommandBuffers: &me.cmd,
-            signalSemaphoreCount: post_semaphores_ids.len() as u32,
-            pSignalSemaphores: post_semaphores_ids.as_ptr(),
-        };
-
-        unsafe {
-            let fence = fence.internal_object();
-            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
-        }
     }
 
     Ok(submission)
@@ -1701,16 +1763,20 @@ pub struct Submission {
     // Additional variables that are behind a mutex.
     guarded: Mutex<SubmissionGuarded>,
 
-    // The command buffer that was submitted and that needs to be kept alive until the submission
+    // The command buffers that were submitted and that needs to be kept alive until the submission
     // is complete by the GPU.
-    keep_alive_cb: Option<Arc<KeepAlive>>,
+    //
+    // The fact that it is behind a `Mutex` is a hack. The list of CBs can only be known
+    // after the `Submission` has been created and put in an `Arc`. Therefore we need a `Mutex`
+    // in order to write this list. The list isn't accessed anymore afterwards, so it shouldn't
+    // slow things down too much.
+    // TODO: consider an UnsafeCell
+    keep_alive_cb: Mutex<SmallVec<[Arc<KeepAlive>; 8]>>,
 
     // List of semaphores to keep alive while the submission hasn't finished execution.
     //
-    // The fact that it is behind a `Mutex` is a hack. The list of semaphores can only be known
-    // after the `Submission` has been created and put in an `Arc`. Therefore we need a `Mutex`
-    // in order to write this list. The list isn't accessed anymore afterwards, so it shouldn't
-    // slow things down too much. TODO: consider an UnsafeCell
+    // The fact that it is behind a `Mutex` is a hack. See `keep_alive_cb`.
+    // TODO: consider an UnsafeCell
     keep_alive_semaphores: Mutex<SmallVec<[Arc<Semaphore>; 8]>>,
 }
 
@@ -1840,4 +1906,81 @@ struct InternalImageBlockAccess {
     aspects: vk::ImageAspectFlags,
     old_layout: ImageLayout,
     new_layout: ImageLayout,
+}
+
+/// Builds an `InnerCommandBuffer` whose only purpose is to transition an image between two
+/// layouts.
+fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, u32),
+                 old_layout: ImageLayout, new_layout: ImageLayout)
+                 -> Result<InnerCommandBuffer, OomError>
+{
+    let device = pool.device();
+    let vk = device.pointers();
+    let pool_obj = pool.internal_object_guard();
+
+    let cmd = unsafe {
+        let infos = vk::CommandBufferAllocateInfo {
+            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            pNext: ptr::null(),
+            commandPool: *pool_obj,
+            level: vk::COMMAND_BUFFER_LEVEL_PRIMARY,
+            commandBufferCount: 1,
+        };
+
+        let mut output = mem::uninitialized();
+        try!(check_errors(vk.AllocateCommandBuffers(device.internal_object(), &infos,
+                                                    &mut output)));
+        output
+    };
+
+    unsafe {
+        let infos = vk::CommandBufferBeginInfo {
+            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            pNext: ptr::null(),
+            flags: vk::COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            pInheritanceInfo: ptr::null(),
+        };
+
+        // TODO: leak if this returns an err
+        try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
+
+        let range_mipmaps = image.block_mipmap_levels_range(block);
+        let range_layers = image.block_array_layers_range(block);
+        let barrier = vk::ImageMemoryBarrier {
+            sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            pNext: ptr::null(),
+            srcAccessMask: 0x0001ffff,      // TODO: ?
+            dstAccessMask: 0x0001ffff,      // TODO: ?
+            oldLayout: old_layout as u32,
+            newLayout: new_layout as u32,
+            srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+            dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
+            image: image.inner_image().internal_object(),
+            subresourceRange: vk::ImageSubresourceRange {
+                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                baseMipLevel: range_mipmaps.start,
+                levelCount: range_mipmaps.end - range_mipmaps.start,
+                baseArrayLayer: range_layers.start,
+                layerCount: range_layers.end - range_layers.start,
+            },
+        };
+
+        vk.CmdPipelineBarrier(cmd, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                              vk::PIPELINE_STAGE_ALL_COMMANDS_BIT, vk::DEPENDENCY_BY_REGION_BIT,
+                              0, ptr::null(), 0, ptr::null(), 1, &barrier);
+
+        // TODO: leak if this returns an err
+        try!(check_errors(vk.EndCommandBuffer(cmd)));
+    }
+
+    Ok(InnerCommandBuffer {
+        device: device.clone(),
+        pool: pool.clone(),
+        cmd: cmd,
+        buffers_state: HashMap::new(),
+        images_state: HashMap::new(),
+        extern_buffers_sync: SmallVec::new(),
+        extern_images_sync: SmallVec::new(),
+        keep_alive: Vec::new(),
+    })
 }
