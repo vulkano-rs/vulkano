@@ -237,7 +237,7 @@ fn main() {
 
         for ev in window.poll_events() {
             match ev {
-                winit::Event::Closed => break,
+                winit::Event::Closed => return,
                 _ => ()
             }
         }
