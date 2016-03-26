@@ -194,8 +194,10 @@ impl Swapchain {
         let vk = self.device.pointers();
 
         unsafe {
-            let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore from \
-                                                                   the swapchain semaphores pool");
+            // TODO: AMD driver crashes when we use the pool
+            //let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore from \
+            //                                                       the swapchain semaphores pool");
+            let semaphore = Semaphore::new(&self.device).unwrap();
 
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
@@ -257,11 +259,11 @@ impl Swapchain {
             //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
         }
 
-        self.semaphores_pool.push(wait_semaphore);
+        //self.semaphores_pool.push(wait_semaphore);        // TODO: AMD driver crashes when we use the pool
         Ok(())
     }
 
-    /// Returns the semaphore that is going to be signalled when the image is going to be ready
+    /*/// Returns the semaphore that is going to be signalled when the image is going to be ready
     /// to be drawn upon.
     ///
     /// Returns `None` if the image was not acquired first, or was already presented.
@@ -270,6 +272,12 @@ impl Swapchain {
     pub fn image_semaphore(&self, id: u32) -> Option<Arc<Semaphore>> {
         let semaphores = self.images_semaphores.lock().unwrap();
         semaphores[id as usize].as_ref().map(|s| s.clone())
+    }*/
+    // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
+    #[inline]
+    pub fn image_semaphore(&self, id: u32, semaphore: Arc<Semaphore>) -> Option<Arc<Semaphore>> {
+        let mut semaphores = self.images_semaphores.lock().unwrap();
+        mem::replace(&mut semaphores[id as usize], Some(semaphore))
     }
 }
 

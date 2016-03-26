@@ -342,7 +342,8 @@ impl Queue {
         }
     }
 
-    // TODO: document
+    // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
+    /*// TODO: document
     #[doc(hidden)]
     #[inline]
     pub unsafe fn dedicated_semaphore(&self) -> Result<(Arc<Semaphore>, bool), OomError> {
@@ -355,6 +356,12 @@ impl Queue {
         let semaphore = try!(Semaphore::new(&self.device));
         *sem = Some(semaphore.clone());
         Ok((semaphore, false))
+    }*/
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn dedicated_semaphore(&self, signalled: Arc<Semaphore>) -> Option<Arc<Semaphore>> {
+        let mut sem = self.dedicated_semaphore.lock().unwrap();
+        mem::replace(&mut *sem, Some(signalled))
     }
 }
 

@@ -1510,15 +1510,18 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
 
     // Each queue has a dedicated semaphore which must be signalled and waited upon by each
     // command buffer submission.
+    // TODO: for now that's not true ^  as semaphores are only used once then destroyed ;
+    //       waiting on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
     {
-        let (semaphore, wait) = unsafe { try!(queue.dedicated_semaphore()) };
-        if wait {
-            pre_semaphores_ids.push(semaphore.internal_object());
+        let signalled = try!(Semaphore::new(queue.device()));
+        let wait = unsafe { queue.dedicated_semaphore(signalled.clone()) };
+        if let Some(wait) = wait {
+            pre_semaphores_ids.push(wait.internal_object());
             pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(semaphore.clone());
+            pre_semaphores.push(wait);
         }
-        post_semaphores_ids.push(semaphore.internal_object());
-        post_semaphores.push(semaphore);
+        post_semaphores_ids.push(signalled.internal_object());
+        post_semaphores.push(signalled);
     }
 
     // Creating additional semaphores, one for each queue transition.

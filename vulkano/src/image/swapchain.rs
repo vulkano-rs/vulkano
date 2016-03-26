@@ -25,6 +25,7 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
+use sync::Semaphore;
 
 use OomError;
 
@@ -108,7 +109,9 @@ unsafe impl Image for SwapchainImage {
         let mut guarded = self.guarded.lock().unwrap();
 
         let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
-        let semaphore = self.swapchain.image_semaphore(self.id).expect("Try to render to a swapchain image that was not acquired first");
+
+        let signal = Semaphore::new(submission.queue().device()).unwrap();
+        let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
 
         if guarded.present_layout {
             return GpuAccessResult {
@@ -117,8 +120,8 @@ unsafe impl Image for SwapchainImage {
                 } else {
                     vec![]
                 },
-                additional_wait_semaphore: Some(semaphore.clone()),
-                additional_signal_semaphore: Some(semaphore),
+                additional_wait_semaphore: Some(wait),
+                additional_signal_semaphore: Some(signal),
                 before_transitions: vec![],
                 after_transitions: vec![],
             };
@@ -132,8 +135,8 @@ unsafe impl Image for SwapchainImage {
             } else {
                 vec![]
             },
-            additional_wait_semaphore: Some(semaphore.clone()),
-            additional_signal_semaphore: Some(semaphore),
+            additional_wait_semaphore: Some(wait),
+            additional_signal_semaphore: Some(signal),
             before_transitions: vec![Transition {
                 block: (0, 0),
                 from: Layout::Undefined,
