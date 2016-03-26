@@ -27,6 +27,7 @@ use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::Transition;
 use memory::DeviceMemory;
 use sync::Sharing;
 
@@ -42,7 +43,12 @@ pub struct AttachmentImage<F> {
     // Should be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
 
-    latest_submission: Mutex<Option<Arc<Submission>>>,
+    guarded: Mutex<Guarded>,
+}
+
+struct Guarded {
+    correct_layout: bool,
+    latest_submission: Option<Arc<Submission>>,
 }
 
 impl<F> AttachmentImage<F> {
@@ -98,7 +104,10 @@ impl<F> AttachmentImage<F> {
             format: format,
             attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
                                else { Layout::ColorAttachmentOptimal },
-            latest_submission: Mutex::new(None),
+            guarded: Mutex::new(Guarded {
+                correct_layout: false,
+                latest_submission: None,
+            }),
         }))
     }
 
@@ -146,8 +155,21 @@ unsafe impl<F> Image for AttachmentImage<F> {
     unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult
     {
-        let mut latest_submission = self.latest_submission.lock().unwrap();
-        let dependency = mem::replace(&mut *latest_submission, Some(submission.clone()));
+        let mut guarded = self.guarded.lock().unwrap();
+
+        let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
+
+        let transition = if guarded.correct_layout {
+            vec![Transition {
+                block: (0, 0),
+                from: Layout::Undefined,
+                to: self.attachment_layout,
+            }]
+        } else {
+            vec![]
+        };
+
+        guarded.correct_layout = true;
 
         GpuAccessResult {
             dependencies: if let Some(dependency) = dependency {
@@ -157,7 +179,7 @@ unsafe impl<F> Image for AttachmentImage<F> {
             },
             additional_wait_semaphore: None,
             additional_signal_semaphore: None,
-            before_transitions: vec![],
+            before_transitions: transition,
             after_transitions: vec![],
         }
     }
