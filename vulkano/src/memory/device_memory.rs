@@ -164,13 +164,6 @@ impl MappedDeviceMemory {
         &self.memory
     }
 
-    // TODO: remove
-    #[inline]
-    #[doc(hidden)]
-    pub fn mapping_pointer(&self) -> *mut c_void {
-        self.pointer
-    }
-
     /// Gives access to the content of the memory.
     ///
     /// # Safety
