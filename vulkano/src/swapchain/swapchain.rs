@@ -13,6 +13,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use crossbeam::sync::TreiberStack;
 
 use device::Device;
 use device::Queue;
@@ -42,6 +43,9 @@ pub struct Swapchain {
     device: Arc<Device>,
     surface: Arc<Surface>,
     swapchain: vk::SwapchainKHR,
+
+    /// Pool of semaphores from which a semaphore is retreived when acquiring an image.
+    semaphores_pool: TreiberStack<Arc<Semaphore>>,
 
     images_semaphores: Mutex<Vec<Option<Arc<Semaphore>>>>,
 }
@@ -137,6 +141,7 @@ impl Swapchain {
             device: device.clone(),
             surface: surface.clone(),
             swapchain: swapchain,
+            semaphores_pool: TreiberStack::new(),
             images_semaphores: Mutex::new(Vec::new()),
         });
 
@@ -163,6 +168,7 @@ impl Swapchain {
         {
             let mut semaphores = swapchain.images_semaphores.lock().unwrap();
             for _ in 0 .. images.len() {
+                swapchain.semaphores_pool.push(try!(Semaphore::new(device)));
                 semaphores.push(None);
             }
         }
@@ -181,7 +187,8 @@ impl Swapchain {
         let vk = self.device.pointers();
 
         unsafe {
-            let semaphore = Semaphore::new(&self.device).unwrap();      // TODO: error
+            let semaphore = self.semaphores_pool.pop().expect("Failed to obtain a semaphore from \
+                                                               the swapchain semaphores pool");
 
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
@@ -216,7 +223,8 @@ impl Swapchain {
 
         let wait_semaphore = {
             let mut images_semaphores = self.images_semaphores.lock().unwrap();
-            images_semaphores[index].take()
+            images_semaphores[index].take().expect("Trying to present an image that was \
+                                                    not acquired")
         };
 
         // FIXME: the semaphore will be destroyed ; need to return it
@@ -225,14 +233,13 @@ impl Swapchain {
             let mut result = mem::uninitialized();
 
             let queue = queue.internal_object_guard();
-            let semaphore = if let Some(ref sem) = wait_semaphore { sem.internal_object() } else { 0 };
-
             let index = index as u32;
+
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 pNext: ptr::null(),
-                waitSemaphoreCount: if let Some(_) = wait_semaphore { 1 } else { 0 },
-                pWaitSemaphores: &semaphore,
+                waitSemaphoreCount: 1,
+                pWaitSemaphores: &wait_semaphore.internal_object(),
                 swapchainCount: 1,
                 pSwapchains: &self.swapchain,
                 pImageIndices: &index,
@@ -241,8 +248,10 @@ impl Swapchain {
 
             try!(check_errors(vk.QueuePresentKHR(*queue, &infos)));
             //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
-            Ok(())
         }
+
+        self.semaphores_pool.push(wait_semaphore);
+        Ok(())
     }
 
     /// Returns the semaphore that is going to be signalled when the image is going to be ready
