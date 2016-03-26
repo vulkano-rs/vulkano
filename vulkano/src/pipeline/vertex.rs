@@ -238,7 +238,7 @@ unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOn
               -> (VecIntoIter<Arc<Buffer>>, usize, usize)
     {
         let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
+        (iter, source.0.len(), source.1.len())
     }
 }
 
