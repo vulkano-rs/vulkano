@@ -1418,85 +1418,122 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
         keep_alive_semaphores: Mutex::new(SmallVec::new()),
     });
 
-    // Now we determine which earlier submissions we must depend upon.
-    let mut dependencies = SmallVec::<[Arc<Submission>; 6]>::new();
+    {
+        // There is a possibility that a parallel thread is currently submitting a command buffer to
+        // another queue. Once we start invoking the `gpu_access` access functions, there is a
+        // possibility the other thread detects that it depends on this one and submits its command
+        // buffer before us.
+        //
+        // Since we need to access the content of `guarded` in our dependencies, we lock our own
+        // `guarded` here to avoid being used as a dependency before being submitted.
+        // TODO: this needs a new block (https://github.com/rust-lang/rfcs/issues/811)
+        let _submission_lock = submission.guarded.lock().unwrap();
 
-    // Buffers first.
-    for &(ref resource, ref ranges) in me.extern_buffers_sync.iter() {
-        let deps = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
-        dependencies.extend(deps.into_iter());
-    }
+        // Now we determine which earlier submissions we must depend upon.
+        let mut dependencies = SmallVec::<[Arc<Submission>; 6]>::new();
 
-    // Then images.
-    for &(ref resource, ref ranges) in me.extern_images_sync.iter() {
-        let deps = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
-        dependencies.extend(deps.into_iter());
-    }
+        // Buffers first.
+        for &(ref resource, ref ranges) in me.extern_buffers_sync.iter() {
+            let result = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
+            if let Some(semaphore) = result.additional_wait_semaphore {
+                pre_semaphores_ids.push(semaphore.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(semaphore);
+            }
 
-    // For each dependency, we either wait on one of its semaphores, or create a new one.
-    for dependency in dependencies.iter() {
-        let mut guard = dependency.guarded.lock().unwrap();
-        let current_queue_id = (queue.family().id(), queue.id_within_family());
+            if let Some(semaphore) = result.additional_signal_semaphore {
+                post_semaphores_ids.push(semaphore.internal_object());
+                post_semaphores.push(semaphore);
+            }
 
-        // If the current queue is in the list of already-signalled queue of the dependency, we
-        // ignore it.
-        if guard.signalled_queues.iter().find(|&&elem| elem == current_queue_id).is_some() {
-            continue;
+            dependencies.extend(result.dependencies.into_iter());
         }
 
-        // Otherwise, try to extract a semaphore from the semaphores that were signalled by the
-        // dependency.
-        let semaphore = guard.signalled_semaphores.pop();
-        guard.signalled_queues.push(current_queue_id);
+        // Then images.
+        for &(ref resource, ref ranges) in me.extern_images_sync.iter() {
+            let result = unsafe { resource.gpu_access(&mut ranges.iter().cloned(), &submission) };
 
-        let semaphore = if let Some(semaphore) = semaphore {
-            semaphore
+            if let Some(semaphore) = result.additional_wait_semaphore {
+                pre_semaphores_ids.push(semaphore.internal_object());
+                pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+                pre_semaphores.push(semaphore);
+            }
 
-        } else {
-            // This path is the slow path in the case where the user gave the wrong hint about
-            // the number of queue transitions.
-            // The only thing left to do is submit a dummy command buffer and a dummy semaphore
-            // in the source queue.
-            unimplemented!()    // FIXME:
+            if let Some(semaphore) = result.additional_signal_semaphore {
+                post_semaphores_ids.push(semaphore.internal_object());
+                post_semaphores.push(semaphore);
+            }
+
+            // FIXME: handle transitions in `result`
+
+            dependencies.extend(result.dependencies.into_iter());
+        }
+
+        // For each dependency, we either wait on one of its semaphores, or create a new one.
+        for dependency in dependencies.iter() {
+            let mut guard = dependency.guarded.lock().unwrap();
+            let current_queue_id = (queue.family().id(), queue.id_within_family());
+
+            // If the current queue is in the list of already-signalled queue of the dependency, we
+            // ignore it.
+            if guard.signalled_queues.iter().find(|&&elem| elem == current_queue_id).is_some() {
+                continue;
+            }
+
+            // Otherwise, try to extract a semaphore from the semaphores that were signalled by the
+            // dependency.
+            let semaphore = guard.signalled_semaphores.pop();
+            guard.signalled_queues.push(current_queue_id);
+
+            let semaphore = if let Some(semaphore) = semaphore {
+                semaphore
+
+            } else {
+                // This path is the slow path in the case where the user gave the wrong hint about
+                // the number of queue transitions.
+                // The only thing left to do is submit a dummy command buffer and a dummy semaphore
+                // in the source queue.
+                unimplemented!()    // FIXME:
+            };
+
+            pre_semaphores_ids.push(semaphore.internal_object());
+            pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
+            pre_semaphores.push(semaphore);
+
+            // Note that it may look dangerous to unlock the dependency's mutex here, because the
+            // queue has already been added to the list of signalled queues but the command that
+            // signals the semaphore hasn't been sent yet.
+            //
+            // However submitting to a queue must lock the queue, which guarantees that no other
+            // parallel queue submission should happen on this same queue. This means that the problem
+            // is non-existing.
+        }
+
+        // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
+        {
+            let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
+            *keep_alive_semaphores = post_semaphores.into_iter()
+                                                    .chain(pre_semaphores.into_iter()).collect();
+        }
+
+        debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
+
+        let infos = vk::SubmitInfo {
+            sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+            pNext: ptr::null(),
+            waitSemaphoreCount: pre_semaphores_ids.len() as u32,
+            pWaitSemaphores: pre_semaphores_ids.as_ptr(),
+            pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
+            commandBufferCount: 1,
+            pCommandBuffers: &me.cmd,
+            signalSemaphoreCount: post_semaphores_ids.len() as u32,
+            pSignalSemaphores: post_semaphores_ids.as_ptr(),
         };
 
-        pre_semaphores_ids.push(semaphore.internal_object());
-        pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-        pre_semaphores.push(semaphore);
-
-        // Note that it may look dangerous to unlock the dependency's mutex here, because the
-        // queue has already been added to the list of signalled queues but the command that
-        // signals the semaphore hasn't been sent yet.
-        //
-        // However submitting to a queue must lock the queue, which guarantees that no other
-        // parallel queue submission should happen on this same queue. This means that the problem
-        // is non-existing.
-    }
-
-    // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
-    {
-        let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
-        *keep_alive_semaphores = post_semaphores.into_iter()
-                                                .chain(pre_semaphores.into_iter()).collect();
-    }
-
-    debug_assert_eq!(pre_semaphores_ids.len(), pre_semaphores_stages.len());
-
-    let infos = vk::SubmitInfo {
-        sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
-        pNext: ptr::null(),
-        waitSemaphoreCount: pre_semaphores_ids.len() as u32,
-        pWaitSemaphores: pre_semaphores_ids.as_ptr(),
-        pWaitDstStageMask: pre_semaphores_stages.as_ptr(),
-        commandBufferCount: 1,
-        pCommandBuffers: &me.cmd,
-        signalSemaphoreCount: post_semaphores_ids.len() as u32,
-        pSignalSemaphores: post_semaphores_ids.as_ptr(),
-    };
-
-    unsafe {
-        let fence = fence.internal_object();
-        try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
+        unsafe {
+            let fence = fence.internal_object();
+            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), 1, &infos, fence)));
+        }
     }
 
     Ok(submission)

@@ -244,6 +244,14 @@ impl Swapchain {
             Ok(())
         }
     }
+
+    // TODO: better system
+    #[doc(hidden)]
+    #[inline]
+    pub fn image_semaphore(&self, id: u32) -> Option<Arc<Semaphore>> {
+        let semaphores = self.images_semaphores.lock().unwrap();
+        semaphores[id as usize].as_ref().map(|s| s.clone())
+    }
 }
 
 impl Drop for Swapchain {

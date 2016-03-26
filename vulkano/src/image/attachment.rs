@@ -23,6 +23,7 @@ use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
 use image::traits::AccessRange;
+use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
@@ -133,15 +134,21 @@ unsafe impl<F> Image for AttachmentImage<F> {
     }
 
     unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>
+                         submission: &Arc<Submission>) -> GpuAccessResult
     {
         let mut latest_submission = self.latest_submission.lock().unwrap();
-
         let dependency = mem::replace(&mut *latest_submission, Some(submission.clone()));
-        if let Some(dependency) = dependency {
-            vec![dependency]
-        } else {
-            vec![]
+
+        GpuAccessResult {
+            dependencies: if let Some(dependency) = dependency {
+                vec![dependency]
+            } else {
+                vec![]
+            },
+            additional_wait_semaphore: None,
+            additional_signal_semaphore: None,
+            before_transitions: vec![],
+            after_transitions: vec![],
         }
     }
 }

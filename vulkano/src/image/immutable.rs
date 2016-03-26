@@ -21,6 +21,7 @@ use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
 use image::traits::AccessRange;
+use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
@@ -131,9 +132,15 @@ unsafe impl<F> Image for ImmutableImage<F> {
     }
 
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>
+                         submission: &Arc<Submission>) -> GpuAccessResult
     {
-        vec![]
+        GpuAccessResult {
+            dependencies: vec![],
+            additional_wait_semaphore: None,
+            additional_signal_semaphore: None,
+            before_transitions: vec![],
+            after_transitions: vec![],
+        }
     }
 }
 

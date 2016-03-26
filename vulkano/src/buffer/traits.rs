@@ -13,6 +13,7 @@ use std::sync::Arc;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::Submission;
 use memory::Content;
+use sync::Semaphore;
 
 pub unsafe trait Buffer {
     /// Returns the inner buffer.
@@ -49,7 +50,7 @@ pub unsafe trait Buffer {
     /// If the host is still accessing the buffer, this function implementation should block
     /// until it is no longer the case.
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>;
+                         submission: &Arc<Submission>) -> GpuAccessResult;
 
     #[inline]
     fn size(&self) -> usize {
@@ -70,4 +71,10 @@ pub unsafe trait TypedBuffer: Buffer {
 pub struct AccessRange {
     pub block: usize,
     pub write: bool,
+}
+
+pub struct GpuAccessResult {
+    pub dependencies: Vec<Arc<Submission>>,
+    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
+    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
 }

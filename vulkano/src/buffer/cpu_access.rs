@@ -21,6 +21,7 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
+use buffer::traits::GpuAccessResult;
 use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
@@ -159,7 +160,7 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
     }
 
     unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>, submission: &Arc<Submission>)
-                         -> Vec<Arc<Submission>>
+                         -> GpuAccessResult
     {
         let queue_id = submission.queue().family().id();
         if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
@@ -172,10 +173,14 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
             mem::replace(&mut *latest_submission, Some(submission.clone()))
         };
 
-        if let Some(dependency) = dependency {
-            vec![dependency]
-        } else {
-            vec![]
+        GpuAccessResult {
+            dependencies: if let Some(dependency) = dependency {
+                vec![dependency]
+            } else {
+                vec![]
+            },
+            additional_wait_semaphore: None,
+            additional_signal_semaphore: None,
         }
     }
 }

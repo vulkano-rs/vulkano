@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -14,9 +15,11 @@ use std::sync::Mutex;
 use command_buffer::Submission;
 use format::Format;
 use image::traits::AccessRange;
+use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::Transition;
 use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -90,18 +93,44 @@ unsafe impl Image for SwapchainImage {
     }
 
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>
+                         submission: &Arc<Submission>) -> GpuAccessResult
     {
         let mut guarded = self.guarded.lock().unwrap();
 
+        let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
+        let semaphore = self.swapchain.image_semaphore(self.id);
+
         if guarded.present_layout {
-            return vec![];
+            return GpuAccessResult {
+                dependencies: if let Some(dependency) = dependency {
+                    vec![dependency]
+                } else {
+                    vec![]
+                },
+                additional_wait_semaphore: semaphore.clone(),
+                additional_signal_semaphore: semaphore,
+                before_transitions: vec![],
+                after_transitions: vec![],
+            };
         }
 
-        // FIXME: submit a command buffer to transition the layout of the image
-
         guarded.present_layout = true;
-        vec![]
+
+        GpuAccessResult {
+            dependencies: if let Some(dependency) = dependency {
+                vec![dependency]
+            } else {
+                vec![]
+            },
+            additional_wait_semaphore: semaphore.clone(),
+            additional_signal_semaphore: semaphore,
+            before_transitions: vec![Transition {
+                block: (0, 0),
+                from: Layout::Undefined,
+                to: Layout::PresentSrc,
+            }],
+            after_transitions: vec![],
+        }
     }
 }
 

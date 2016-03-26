@@ -18,6 +18,7 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+use sync::Semaphore;
 
 pub unsafe trait Image {
     /// Returns the inner unsafe image object used by this image.
@@ -91,7 +92,7 @@ pub unsafe trait Image {
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
 
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> Vec<Arc<Submission>>;
+                         submission: &Arc<Submission>) -> GpuAccessResult;
 }
 
 pub unsafe trait ImageClearValue<T>: Image {
@@ -158,4 +159,18 @@ pub struct AccessRange {
     pub write: bool,
     pub initial_layout: Layout,
     pub final_layout: Layout,
+}
+
+pub struct GpuAccessResult {
+    pub dependencies: Vec<Arc<Submission>>,
+    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
+    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
+    pub before_transitions: Vec<Transition>,
+    pub after_transitions: Vec<Transition>,
+}
+
+pub struct Transition {
+    pub block: (u32, u32),
+    pub from: Layout,
+    pub to: Layout,
 }
