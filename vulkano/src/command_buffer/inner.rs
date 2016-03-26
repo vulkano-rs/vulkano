@@ -111,13 +111,13 @@ pub struct InnerCommandBufferBuilder {
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
 
-    // Current pipeline object binded to the graphics bind point.
+    // Current pipeline object binded to the graphics bind point. Includes all staging commands.
     current_graphics_pipeline: Option<vk::Pipeline>,
 
-    // Current pipeline object binded to the compute bind point.
+    // Current pipeline object binded to the compute bind point. Includes all staging commands.
     current_compute_pipeline: Option<vk::Pipeline>,
 
-    // Current state of the dynamic state within the command buffer.
+    // Current state of the dynamic state within the command buffer. Includes all staging commands.
     current_dynamic_state: DynamicState,
 }
 
@@ -225,17 +225,96 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<KeepAlive>,
                                        cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
     {
+        debug_assert!(!self.is_secondary);
+        debug_assert!(!self.is_secondary_graphics);
+
         // By keeping alive the secondary command buffer itself, we also keep alive all
         // the resources stored by it.
         self.keep_alive.push(cb_arc);
 
-        // FIXME: merge resources
+        // Merging the resources of the command buffer.
+        if self.render_pass_staging_commands.is_empty() {
+            // We're outside of a render pass.
 
-        {
-            let cb_cmd = cb.cmd;
-            self.staging_commands.push(Box::new(move |vk, cmd| {
-                vk.CmdExecuteCommands(cmd, 1, &cb_cmd);
-            }));
+            // Flushing if required.
+            let mut conflict = false;
+            for (buffer, access) in cb.buffers_state.iter() {
+                if let Some(&entry) = self.staging_required_buffer_accesses.get(&buffer) {
+                    if entry.write || access.write {
+                        conflict = true;
+                        break;
+                    }
+                }
+            }
+            for (image, access) in cb.images_state.iter() {
+                if let Some(entry) = self.staging_required_image_accesses.get(&image) {
+                    // TODO: should be reviewed
+                    if entry.write || access.write || entry.new_layout != access.old_layout {
+                        conflict = true;
+                        break;
+                    }
+                }
+            }
+            if conflict {
+                self.flush(false);
+            }
+
+            // Inserting in `staging_required_buffer_accesses`.
+            for (buffer, access) in cb.buffers_state.iter() {
+                match self.staging_required_buffer_accesses.entry(buffer.clone()) {
+                    Entry::Vacant(e) => { e.insert(access.clone()); },
+                    Entry::Occupied(mut entry) => {
+                        let mut entry = entry.get_mut();
+                        entry.stages &= access.stages;
+                        entry.accesses &= access.stages;
+                        entry.write = entry.write || access.write;
+                    }
+                }
+            }
+
+            // Inserting in `staging_required_image_accesses`.
+            for (image, access) in cb.images_state.iter() {
+                match self.staging_required_image_accesses.entry(image.clone()) {
+                    Entry::Vacant(e) => { e.insert(access.clone()); },
+                    Entry::Occupied(mut entry) => {
+                        let mut entry = entry.get_mut();
+                        entry.stages &= access.stages;
+                        entry.accesses &= access.stages;
+                        entry.write = entry.write || access.write;
+                        debug_assert_eq!(entry.new_layout, access.old_layout);
+                        entry.aspects |= access.aspects;
+                        entry.new_layout = access.new_layout;
+                    }
+                }
+            }
+
+            // Adding the command to the staging commands.
+            {
+                let cb_cmd = cb.cmd;
+                self.staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdExecuteCommands(cmd, 1, &cb_cmd);
+                }));
+            }
+
+        } else {
+            // We're inside a render pass.
+            for (buffer, access) in cb.buffers_state.iter() {
+                // TODO: check for collisions
+                self.render_pass_staging_required_buffer_accesses.insert(buffer.clone(), access.clone());
+            }
+
+            for (image, access) in cb.images_state.iter() {
+                // TODO: check for collisions
+                self.render_pass_staging_required_image_accesses.insert(image.clone(), access.clone());
+            }
+
+            // Adding the command to the staging commands.
+            {
+                let cb_cmd = cb.cmd;
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdExecuteCommands(cmd, 1, &cb_cmd);
+                }));
+            }
         }
 
         // Resetting the state of the command buffer.
@@ -891,11 +970,21 @@ impl InnerCommandBufferBuilder {
         // Inserting in `staging_required_buffer_accesses`.
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
-            self.staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
-                stages: stages,
-                accesses: accesses,
-                write: write,
-            });
+            match self.staging_required_buffer_accesses.entry(key) {
+                Entry::Vacant(e) => {
+                    e.insert(InternalBufferBlockAccess {
+                        stages: stages,
+                        accesses: accesses,
+                        write: write,
+                    });
+                },
+                Entry::Occupied(mut entry) => {
+                    let mut entry = entry.get_mut();
+                    entry.stages &= stages;
+                    entry.accesses &= stages;
+                    entry.write = entry.write || write;
+                }
+            }
         }
     }
 
@@ -923,14 +1012,26 @@ impl InnerCommandBufferBuilder {
         // Inserting in `staging_required_image_accesses`.
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
-            self.staging_required_image_accesses.insert(key, InternalImageBlockAccess {
-                stages: stages,
-                accesses: accesses,
-                write: write,
-                aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
-                old_layout: layout,
-                new_layout: layout,
-            });
+            match self.staging_required_image_accesses.entry(key) {
+                Entry::Vacant(e) => {
+                    e.insert(InternalImageBlockAccess {
+                        stages: stages,
+                        accesses: accesses,
+                        write: write,
+                        aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                        old_layout: layout,
+                        new_layout: layout,
+                    });
+                },
+                Entry::Occupied(mut entry) => {
+                    let mut entry = entry.get_mut();
+                    entry.stages &= stages;
+                    entry.accesses &= stages;
+                    entry.write = entry.write || write;
+                    debug_assert_eq!(entry.new_layout, layout);
+                    entry.aspects |= vk::IMAGE_ASPECT_COLOR_BIT;     // FIXME:
+                }
+            }
         }
     }
 
@@ -939,6 +1040,7 @@ impl InnerCommandBufferBuilder {
                                   range: Range<usize>, stages: vk::PipelineStageFlagBits,
                                   accesses: vk::AccessFlagBits)
     {
+        // TODO: check for collisions
         for block in buffer.blocks(range.clone()) {
             let key = (BufferKey(buffer.clone()), block);
             self.render_pass_staging_required_buffer_accesses.insert(key, InternalBufferBlockAccess {
@@ -955,6 +1057,7 @@ impl InnerCommandBufferBuilder {
                                  initial_layout: ImageLayout, final_layout: ImageLayout,
                                  stages: vk::PipelineStageFlagBits, accesses: vk::AccessFlagBits)
     {
+        // TODO: check for collisions
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
             self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
