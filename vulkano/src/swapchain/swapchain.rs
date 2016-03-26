@@ -13,7 +13,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
-use crossbeam::sync::TreiberStack;
+use crossbeam::sync::MsQueue;
 
 use device::Device;
 use device::Queue;
@@ -45,7 +45,11 @@ pub struct Swapchain {
     swapchain: vk::SwapchainKHR,
 
     /// Pool of semaphores from which a semaphore is retreived when acquiring an image.
-    semaphores_pool: TreiberStack<Arc<Semaphore>>,
+    ///
+    /// We need to use a queue so that we don't use the same semaphore twice in a row. The length
+    /// of the queue is strictly superior to the number of images, in case the driver lets us
+    /// acquire an image before it is presented.
+    semaphores_pool: MsQueue<Arc<Semaphore>>,
 
     images_semaphores: Mutex<Vec<Option<Arc<Semaphore>>>>,
 }
@@ -141,7 +145,7 @@ impl Swapchain {
             device: device.clone(),
             surface: surface.clone(),
             swapchain: swapchain,
-            semaphores_pool: TreiberStack::new(),
+            semaphores_pool: MsQueue::new(),
             images_semaphores: Mutex::new(Vec::new()),
         });
 
@@ -168,9 +172,12 @@ impl Swapchain {
         {
             let mut semaphores = swapchain.images_semaphores.lock().unwrap();
             for _ in 0 .. images.len() {
-                swapchain.semaphores_pool.push(try!(Semaphore::new(device)));
                 semaphores.push(None);
             }
+        }
+
+        for _ in 0 .. images.len() + 1 {
+            swapchain.semaphores_pool.push(try!(Semaphore::new(device)));
         }
 
         Ok((swapchain, images))
@@ -187,8 +194,8 @@ impl Swapchain {
         let vk = self.device.pointers();
 
         unsafe {
-            let semaphore = self.semaphores_pool.pop().expect("Failed to obtain a semaphore from \
-                                                               the swapchain semaphores pool");
+            let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore from \
+                                                                   the swapchain semaphores pool");
 
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
