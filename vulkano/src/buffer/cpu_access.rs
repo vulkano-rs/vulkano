@@ -135,6 +135,11 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
         vec![0]
     }
 
+    #[inline]
+    fn block_memory_range(&self, _: usize) -> Range<usize> {
+        0 .. self.size()
+    }
+
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
         Some(true)
     }

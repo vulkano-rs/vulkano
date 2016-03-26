@@ -29,6 +29,12 @@ pub unsafe trait Buffer {
     /// The return value must not be empty.
     fn blocks(&self, range: Range<usize>) -> Vec<usize>;
 
+    /// Returns the range of bytes of the memory used by a block.
+    ///
+    /// **Important**: This is not the range in the buffer, but the range in the memory that is
+    ///                backing the buffer.
+    fn block_memory_range(&self, block: usize) -> Range<usize>;
+
     ///
     ///
     /// If the host is still accessing the buffer, this function implementation should block

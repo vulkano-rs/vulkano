@@ -1056,6 +1056,8 @@ impl InnerCommandBufferBuilder {
                         src_stages |= vk::PIPELINE_STAGE_HOST_BIT;
                         dst_stages |= access.stages;
 
+                        let range = (buffer.0).0.block_memory_range(buffer.1);
+
                         buffer_barriers.push(vk::BufferMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                             pNext: ptr::null(),
@@ -1064,8 +1066,8 @@ impl InnerCommandBufferBuilder {
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             buffer: (buffer.0).0.inner_buffer().internal_object(),
-                            offset: 0,      // FIXME:
-                            size: 10,       // FIXME:
+                            offset: range.start as u64,
+                            size: (range.end - range.start) as u64,
                         });
                     }
 
@@ -1078,6 +1080,8 @@ impl InnerCommandBufferBuilder {
                         src_stages |= entry.stages;
                         dst_stages |= access.stages;
 
+                        let range = (buffer.0).0.block_memory_range(buffer.1);
+
                         buffer_barriers.push(vk::BufferMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                             pNext: ptr::null(),
@@ -1086,8 +1090,8 @@ impl InnerCommandBufferBuilder {
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             buffer: (buffer.0).0.inner_buffer().internal_object(),
-                            offset: 0,      // FIXME:
-                            size: 10,       // FIXME:
+                            offset: range.start as u64,
+                            size: (range.end - range.start) as u64,
                         });
 
                         entry.stages = access.stages;
