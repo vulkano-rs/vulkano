@@ -73,6 +73,12 @@ pub struct InnerCommandBufferBuilder {
     pool: Arc<CommandBufferPool>,
     cmd: Option<vk::CommandBuffer>,
 
+    // If true, we're inside a secondary command buffer (compute or graphics).
+    is_secondary: bool,
+
+    // If true, we're inside a secondary graphics command buffer.
+    is_secondary_graphics: bool,
+
     // List of accesses made by this command buffer to buffers and images, exclusing the staging
     // commands and the staging render pass.
     //
@@ -194,6 +200,8 @@ impl InnerCommandBufferBuilder {
             device: device.clone(),
             pool: pool.clone(),
             cmd: Some(cmd),
+            is_secondary: secondary,
+            is_secondary_graphics: secondary_cont.is_some(),
             buffers_state: HashMap::new(),
             images_state: HashMap::new(),
             staging_commands: Vec::new(),
@@ -990,6 +998,7 @@ impl InnerCommandBufferBuilder {
         if conflict {
             // Calling `flush` here means that a `vkCmdPipelineBarrier` will be inserted right
             // before the `vkCmdBeginRenderPass`.
+            debug_assert!(!self.is_secondary_graphics);
             self.flush(false);
         }
 
@@ -1057,12 +1066,13 @@ impl InnerCommandBufferBuilder {
         for (buffer, access) in self.staging_required_buffer_accesses.drain() {
             match self.buffers_state.entry(buffer.clone()) {
                 Entry::Vacant(entry) => {
-                    if (buffer.0).0.host_accesses(buffer.1) {
+                    if (buffer.0).0.host_accesses(buffer.1) && !self.is_secondary {
                         src_stages |= vk::PIPELINE_STAGE_HOST_BIT;
                         dst_stages |= access.stages;
 
                         let range = (buffer.0).0.block_memory_range(buffer.1);
 
+                        debug_assert!(!self.is_secondary_graphics);
                         buffer_barriers.push(vk::BufferMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                             pNext: ptr::null(),
@@ -1078,6 +1088,7 @@ impl InnerCommandBufferBuilder {
 
                     entry.insert(access);
                 },
+
                 Entry::Occupied(mut entry) => {
                     let entry = entry.get_mut();
 
@@ -1087,6 +1098,7 @@ impl InnerCommandBufferBuilder {
 
                         let range = (buffer.0).0.block_memory_range(buffer.1);
 
+                        debug_assert!(!self.is_secondary_graphics);
                         buffer_barriers.push(vk::BufferMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                             pNext: ptr::null(),
@@ -1114,7 +1126,11 @@ impl InnerCommandBufferBuilder {
                     // This is the first ever use of this image block in this command buffer.
                     // Therefore we need to query the image for the layout that it is going to
                     // have at the entry of this command buffer.
-                    let (extern_layout, host, mem) = (image.0).0.initial_layout(image.1, access.old_layout);
+                    let (extern_layout, host, mem) = if !self.is_secondary {
+                        (image.0).0.initial_layout(image.1, access.old_layout)
+                    } else {
+                        (access.old_layout, false, false)
+                    };
 
                     let src_access = {
                         let mut v = 0;
@@ -1126,6 +1142,7 @@ impl InnerCommandBufferBuilder {
                     if extern_layout != access.old_layout || host || mem {
                         dst_stages |= access.stages;
 
+                        debug_assert!(!self.is_secondary_graphics);
                         image_barriers.push(vk::ImageMemoryBarrier {
                             sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                             pNext: ptr::null(),
@@ -1163,6 +1180,7 @@ impl InnerCommandBufferBuilder {
                     src_stages |= entry.stages;
                     dst_stages |= access.stages;
 
+                    debug_assert!(!self.is_secondary_graphics);
                     image_barriers.push(vk::ImageMemoryBarrier {
                         sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                         pNext: ptr::null(),
@@ -1222,41 +1240,44 @@ impl InnerCommandBufferBuilder {
             self.flush(true);
 
             // Ensuring that each image is in its final layout. We do so by inserting elements
-            // in `staging_required_image_accesses` and flushing again.
+            // in `staging_required_image_accesses`, which lets the system think that we are
+            // accessing the images, and then flushing again.
             // TODO: ideally things that don't collide should be added before the first flush,
             //       and things that collide done here
-            for (image, access) in self.images_state.iter() {
-                let (final_layout, host, mem) = (image.0).0.final_layout(image.1, access.new_layout);
-                if final_layout != access.new_layout || host || mem {
-                    let mut accesses = 0;
-                    if host { accesses |= vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT; }
-                    if mem { accesses |= vk::ACCESS_MEMORY_READ_BIT | vk::ACCESS_MEMORY_WRITE_BIT; }
+            if !self.is_secondary {
+                for (image, access) in self.images_state.iter() {
+                    let (final_layout, host, mem) = (image.0).0.final_layout(image.1, access.new_layout);
+                    if final_layout != access.new_layout || host || mem {
+                        let mut accesses = 0;
+                        if host { accesses |= vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT; }
+                        if mem { accesses |= vk::ACCESS_MEMORY_READ_BIT | vk::ACCESS_MEMORY_WRITE_BIT; }
 
-                    self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
-                        stages: vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                        accesses: accesses,
+                        self.staging_required_image_accesses.insert(image.clone(), InternalImageBlockAccess {
+                            stages: vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                            accesses: accesses,
+                            write: false,
+                            aspects: access.aspects,
+                            old_layout: final_layout,
+                            new_layout: final_layout,
+                        });
+                    }
+                }
+
+                // Checking each buffer to see if it must be flushed to the host.
+                for (buffer, access) in self.buffers_state.iter() {
+                    if !(buffer.0).0.host_accesses(buffer.1) {
+                        continue;
+                    }
+
+                    self.staging_required_buffer_accesses.insert(buffer.clone(), InternalBufferBlockAccess {
+                        stages: vk::PIPELINE_STAGE_HOST_BIT,
+                        accesses: vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT,
                         write: false,
-                        aspects: access.aspects,
-                        old_layout: final_layout,
-                        new_layout: final_layout,
                     });
                 }
+
+                self.flush(true);
             }
-
-            // Checking each buffer to see if it must be flushed to the host.
-            for (buffer, access) in self.buffers_state.iter() {
-                if !(buffer.0).0.host_accesses(buffer.1) {
-                    continue;
-                }
-
-                self.staging_required_buffer_accesses.insert(buffer.clone(), InternalBufferBlockAccess {
-                    stages: vk::PIPELINE_STAGE_HOST_BIT,
-                    accesses: vk::ACCESS_HOST_READ_BIT | vk::ACCESS_HOST_WRITE_BIT,
-                    write: false,
-                });
-            }
-
-            self.flush(true);
 
             debug_assert!(self.staging_required_buffer_accesses.is_empty());
             debug_assert!(self.staging_required_image_accesses.is_empty());
