@@ -245,8 +245,11 @@ impl Swapchain {
         }
     }
 
-    // TODO: better system
-    #[doc(hidden)]
+    /// Returns the semaphore that is going to be signalled when the image is going to be ready
+    /// to be drawn upon.
+    ///
+    /// Returns `None` if the image was not acquired first, or was already presented.
+    // TODO: racy, as someone could present the image before using the semaphore
     #[inline]
     pub fn image_semaphore(&self, id: u32) -> Option<Arc<Semaphore>> {
         let semaphores = self.images_semaphores.lock().unwrap();
