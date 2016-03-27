@@ -49,6 +49,10 @@ pub unsafe trait Buffer {
     ///
     /// If the host is still accessing the buffer, this function implementation should block
     /// until it is no longer the case.
+    ///
+    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
+    ///                store the `Submission` in the form of a `Weak<Submission>` and not an
+    ///                an `Arc<Submission>` to avoid memory leaks.
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult;
 

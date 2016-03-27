@@ -15,6 +15,7 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::Weak;
 use smallvec::SmallVec;
 
 use buffer::sys::UnsafeBuffer;
@@ -44,7 +45,7 @@ pub struct CpuAccessibleBuffer<T: ?Sized> {
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    latest_submission: Mutex<Option<Arc<Submission>>>,
+    latest_submission: Mutex<Option<Weak<Submission>>>,      // TODO: can use `Weak::new()` once it's stabilized
 
     marker: PhantomData<*const T>,
 }
@@ -122,7 +123,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
     pub fn write(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
         let submission = self.latest_submission.lock().unwrap();
 
-        if let Some(submission) = submission.as_ref() {
+        if let Some(submission) = submission.as_ref().and_then(|s| s.upgrade()) {
             try!(submission.wait(timeout_ns));
         }
 
@@ -169,8 +170,9 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
 
         let dependency = {
             let mut latest_submission = self.latest_submission.lock().unwrap();
-            mem::replace(&mut *latest_submission, Some(submission.clone()))
+            mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
         };
+        let dependency = dependency.and_then(|d| d.upgrade());
 
         GpuAccessResult {
             dependencies: if let Some(dependency) = dependency {
@@ -194,7 +196,7 @@ unsafe impl<T: ?Sized + 'static> TypedBuffer for CpuAccessibleBuffer<T> {
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 pub struct CpuAccess<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: MutexGuard<'a, Option<Arc<Submission>>>,
+    lock: MutexGuard<'a, Option<Weak<Submission>>>,
 }
 
 impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {

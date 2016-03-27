@@ -12,6 +12,7 @@ use std::iter::Empty;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Weak;
 
 use command_buffer::Submission;
 use device::Device;
@@ -48,7 +49,7 @@ pub struct AttachmentImage<F> {
 
 struct Guarded {
     correct_layout: bool,
-    latest_submission: Option<Arc<Submission>>,
+    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<F> AttachmentImage<F> {
@@ -157,7 +158,8 @@ unsafe impl<F> Image for AttachmentImage<F> {
     {
         let mut guarded = self.guarded.lock().unwrap();
 
-        let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
+        let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
+        let dependency = dependency.and_then(|d| d.upgrade());
 
         let transition = if !guarded.correct_layout {
             vec![Transition {

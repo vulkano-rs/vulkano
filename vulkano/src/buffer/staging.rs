@@ -13,6 +13,7 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Weak;
 
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
@@ -37,7 +38,7 @@ pub struct StagingBuffer<T: ?Sized> {
     // Queue family that has exclusive ownership of this buffer.
     owner_queue_family: Mutex<Option<u32>>,     // TODO: could be atomic
 
-    latest_submission: Mutex<Option<Arc<Submission>>>,
+    latest_submission: Mutex<Option<Weak<Submission>>>,     // TODO: can use `Weak::new()` once it's stabilized
 
     marker: PhantomData<*const T>,
 }
@@ -116,8 +117,9 @@ unsafe impl<T: ?Sized> Buffer for StagingBuffer<T> {
 
         let dependency = {
             let mut latest_submission = self.latest_submission.lock().unwrap();
-            mem::replace(&mut *latest_submission, Some(submission.clone()))
+            mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
         };
+        let dependency = dependency.and_then(|d| d.upgrade());
 
         GpuAccessResult {
             dependencies: if let Some(dependency) = dependency {

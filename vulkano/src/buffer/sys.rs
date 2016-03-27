@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;

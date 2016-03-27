@@ -94,6 +94,10 @@ pub unsafe trait Image {
     /// Returns whether accessing a subresource of that image should signal a fence.
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
 
+    ///
+    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
+    ///                store the `Submission` in the form of a `Weak<Submission>` and not an
+    ///                an `Arc<Submission>` to avoid memory leaks.
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult;
 }

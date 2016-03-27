@@ -11,6 +11,7 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Weak;
 
 use command_buffer::Submission;
 use format::Format;
@@ -40,7 +41,7 @@ pub struct SwapchainImage {
 
 struct Guarded {
     present_layout: bool,
-    latest_submission: Option<Arc<Submission>>,
+    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl SwapchainImage {
@@ -108,7 +109,8 @@ unsafe impl Image for SwapchainImage {
     {
         let mut guarded = self.guarded.lock().unwrap();
 
-        let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
+        let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
+        let dependency = dependency.and_then(|d| d.upgrade());
 
         let signal = Semaphore::new(submission.queue().device()).unwrap();
         let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");

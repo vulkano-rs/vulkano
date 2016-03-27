@@ -12,6 +12,7 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
@@ -39,7 +40,7 @@ pub struct ImmutableBuffer<T: ?Sized> {
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    latest_write_submission: Mutex<Option<Arc<Submission>>>,
+    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
 
     started_reading: AtomicBool,
 
@@ -163,11 +164,12 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
             let mut latest_submission = self.latest_write_submission.lock().unwrap();
 
             if write {
-                mem::replace(&mut *latest_submission, Some(submission.clone()))
+                mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
             } else {
                 latest_submission.clone()
             }
         };
+        let dependency = dependency.and_then(|d| d.upgrade());
 
         if write {
             assert!(self.started_reading.load(Ordering::AcqRel) == false);
