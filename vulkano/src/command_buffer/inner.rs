@@ -1949,7 +1949,7 @@ fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, 
         let barrier = vk::ImageMemoryBarrier {
             sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             pNext: ptr::null(),
-            srcAccessMask: 0x0001ffff,      // TODO: ?
+            srcAccessMask: 0,      // TODO: ?
             dstAccessMask: 0x0001ffff,      // TODO: ?
             oldLayout: old_layout as u32,
             newLayout: new_layout as u32,
