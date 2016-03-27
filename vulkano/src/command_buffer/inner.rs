@@ -602,7 +602,7 @@ impl InnerCommandBufferBuilder {
 
         self.add_image_resource_outside(source.clone() as Arc<_>,
                                         source_mip_level .. source_mip_level + 1,
-                                        source_array_layers.clone(), true,
+                                        source_array_layers.clone(), false,
                                         ImageLayout::TransferSrcOptimal,
                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
                                         vk::ACCESS_TRANSFER_READ_BIT);
