@@ -51,8 +51,8 @@ pub unsafe trait Buffer {
     /// until it is no longer the case.
     ///
     /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
-    ///                store the `Submission` in the form of a `Weak<Submission>` and not an
-    ///                an `Arc<Submission>` to avoid memory leaks.
+    ///                should store the `Submission` in the form of a `Weak<Submission>` and not
+    ///                of an `Arc<Submission>` to avoid cyclic references.
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult;
 
