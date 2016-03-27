@@ -528,11 +528,15 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<'a, P, S, Sb, Img>(mut self, source: S, image: &Arc<Img>)
+    pub unsafe fn copy_buffer_to_color_image<'a, P, S, Sb, Img>(mut self, source: S, image: &Arc<Img>,
+                                                                mip_level: u32, array_layers_range: Range<u32>,
+                                                                offset: [u32; 3], extent: [u32; 3])
                                                              -> InnerCommandBufferBuilder
         where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
               Sb: Buffer + 'static
     {
+        // FIXME: check the parameters
+
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
         assert!(image.format().is_float_or_compressed());
@@ -542,7 +546,8 @@ impl InnerCommandBufferBuilder {
                                          source.offset() .. source.offset() + source.size(),
                                          vk::PIPELINE_STAGE_TRANSFER_BIT,
                                          vk::ACCESS_TRANSFER_READ_BIT);
-        self.add_image_resource_outside(image.clone() as Arc<_>, 0 .. 1, 0 .. 1, true,
+        self.add_image_resource_outside(image.clone() as Arc<_>, mip_level .. mip_level + 1,
+                                        array_layers_range.clone(), true,
                                         ImageLayout::TransferDstOptimal,
                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
                                         vk::ACCESS_TRANSFER_WRITE_BIT);
@@ -559,25 +564,100 @@ impl InnerCommandBufferBuilder {
                     bufferImageHeight: 0,
                     imageSubresource: vk::ImageSubresourceLayers {
                         aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                        mipLevel: 0,            // FIXME:
-                        baseArrayLayer: 0,          // FIXME:
-                        layerCount: 1,          // FIXME:
+                        mipLevel: mip_level,
+                        baseArrayLayer: array_layers_range.start,
+                        layerCount: array_layers_range.end - array_layers_range.start,
                     },
                     imageOffset: vk::Offset3D {
-                        x: 0,           // FIXME:
-                        y: 0,           // FIXME:
-                        z: 0,           // FIXME:
+                        x: offset[0] as i32,
+                        y: offset[1] as i32,
+                        z: offset[2] as i32,
                     },
                     imageExtent: vk::Extent3D {
-                        width: 93,         // FIXME:
-                        height: 93,            // FIXME:
-                        depth: 1,         // FIXME:
+                        width: extent[0],
+                        height: extent[1],
+                        depth: extent[2],
                     },
                 };
 
                 vk.CmdCopyBufferToImage(cmd, source, image,
                                         vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL /* FIXME */,
                                         1, &region);
+            }));
+        }
+
+        self
+    }
+
+    pub unsafe fn blit<Si, Di>(mut self, source: &Arc<Si>, source_mip_level: u32,
+                               source_array_layers: Range<u32>, src_coords: [Range<i32>; 3],
+                               destination: &Arc<Di>, dest_mip_level: u32,
+                               dest_array_layers: Range<u32>, dest_coords: [Range<i32>; 3])
+                               -> InnerCommandBufferBuilder
+        where Si: Image + 'static, Di: Image + 'static
+    {
+        // FIXME: check the parameters
+
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
+        self.add_image_resource_outside(source.clone() as Arc<_>,
+                                        source_mip_level .. source_mip_level + 1,
+                                        source_array_layers.clone(), true,
+                                        ImageLayout::TransferSrcOptimal,
+                                        vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                        vk::ACCESS_TRANSFER_READ_BIT);
+        self.add_image_resource_outside(destination.clone() as Arc<_>,
+                                        dest_mip_level .. dest_mip_level + 1,
+                                        dest_array_layers.clone(), true,
+                                        ImageLayout::TransferDstOptimal,
+                                        vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                        vk::ACCESS_TRANSFER_WRITE_BIT);
+
+        {
+            let source = source.inner_image().internal_object();
+            let destination = destination.inner_image().internal_object();
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let region = vk::ImageBlit {
+                    srcSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                        mipLevel: source_mip_level,
+                        baseArrayLayer: source_array_layers.start,
+                        layerCount: source_array_layers.end - source_array_layers.start,
+                    },
+                    srcOffsets: [
+                        vk::Offset3D {
+                            x: src_coords[0].start,
+                            y: src_coords[1].start,
+                            z: src_coords[2].start,
+                        }, vk::Offset3D {
+                            x: src_coords[0].end,
+                            y: src_coords[1].end,
+                            z: src_coords[2].end,
+                        }
+                    ],
+                    dstSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                        mipLevel: dest_mip_level,
+                        baseArrayLayer: dest_array_layers.start,
+                        layerCount: dest_array_layers.end - dest_array_layers.start,
+                    },
+                    dstOffsets: [
+                        vk::Offset3D {
+                            x: dest_coords[0].start,
+                            y: dest_coords[1].start,
+                            z: dest_coords[2].start,
+                        }, vk::Offset3D {
+                            x: dest_coords[0].end,
+                            y: dest_coords[1].end,
+                            z: dest_coords[2].end,
+                        }
+                    ],
+                };
+
+                vk.CmdBlitImage(cmd, source, ImageLayout::TransferSrcOptimal as u32,
+                                destination, ImageLayout::TransferDstOptimal as u32,
+                                1, &region, vk::FILTER_LINEAR);
             }));
         }
 

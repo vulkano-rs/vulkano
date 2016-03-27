@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::ops::Range;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -27,6 +28,7 @@ use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
+use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use pipeline::ComputePipeline;
@@ -127,14 +129,31 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<'a, P, S, Img, Sb>(self, source: S, destination: &Arc<Img>)
+    pub fn copy_buffer_to_color_image<'a, P, S, Img, Sb>(self, source: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
+                                                                offset: [u32; 3], extent: [u32; 3])
                                                     -> PrimaryCommandBufferBuilder
         where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
               Img: ImageContent<P> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
-                inner: self.inner.copy_buffer_to_color_image(source, destination),
+                inner: self.inner.copy_buffer_to_color_image(source, destination, mip_level,
+                                                             array_layers_range, offset, extent),
+            }
+        }
+    }
+
+    pub fn blit<Si, Di>(self, source: &Arc<Si>, source_mip_level: u32,
+                        source_array_layers: Range<u32>, src_coords: [Range<i32>; 3],
+                        destination: &Arc<Di>, dest_mip_level: u32,
+                        dest_array_layers: Range<u32>, dest_coords: [Range<i32>; 3])
+                        -> PrimaryCommandBufferBuilder
+        where Si: Image + 'static, Di: Image + 'static
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.blit(source, source_mip_level, source_array_layers, src_coords,
+                                       destination, dest_mip_level, dest_array_layers, dest_coords),
             }
         }
     }
