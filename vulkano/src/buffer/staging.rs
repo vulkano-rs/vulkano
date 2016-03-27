@@ -63,8 +63,7 @@ impl<T: ?Sized> StagingBuffer<T> {
         //       fulfill any alignment requirement
 
         let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, mem_reqs.size));
-
-        unsafe { try!(buffer.bind_memory(mem.memory(), 0 .. mem_reqs.size)) };
+        unsafe { try!(buffer.bind_memory(mem.memory(), 0)) };
 
         // FIXME: write data in memory
 

@@ -89,13 +89,12 @@ impl UnsafeBuffer {
         Ok((obj, mem_reqs.into()))
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, range: Range<usize>)
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
                               -> Result<(), OomError>
     {
         let vk = self.device.pointers();
         try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
-                                              memory.internal_object(),
-                                              range.start as vk::DeviceSize)));
+                                              memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())
     }
 

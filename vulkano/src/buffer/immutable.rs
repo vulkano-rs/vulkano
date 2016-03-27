@@ -101,8 +101,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         //       fulfill any alignment requirement
 
         let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-
-        try!(buffer.bind_memory(&mem, 0 .. mem_reqs.size));
+        try!(buffer.bind_memory(&mem, 0));
 
         Ok(Arc::new(ImmutableBuffer {
             inner: buffer,

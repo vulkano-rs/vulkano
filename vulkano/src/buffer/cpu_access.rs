@@ -100,8 +100,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
         //       fulfill any alignment requirement
 
         let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, mem_reqs.size));
-
-        try!(buffer.bind_memory(mem.memory(), 0 .. mem_reqs.size));
+        try!(buffer.bind_memory(mem.memory(), 0));
 
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
