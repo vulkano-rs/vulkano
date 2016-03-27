@@ -7,8 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Low-level implementation of images and images views.
+//! 
+//! This module contains low-level wrappers around the Vulkan image and image view types. All
+//! other image or image view types of this library, and all custom image or image view types
+//! that you create must wrap around the types in this module.
+
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -28,6 +33,18 @@ use check_errors;
 use vk;
 
 /// A storage for pixels or arbitrary data.
+///
+/// # Safety
+///
+/// This type is not just unsafe but very unsafe. Don't use it directly.
+///
+/// - You must manually bind memory to the image with `bind_memory`. The memory must respect the
+///   requirements returned by `new`.
+/// - The memory that you bind to the image must be manually kept alive.
+/// - The queue family ownership must be manually enforced.
+/// - The usage must be manually enforced.
+/// - The image layout must be manually enforced and transitionned.
+///
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -199,13 +216,12 @@ impl UnsafeImage {
         }
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, range: Range<usize>)
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
                               -> Result<(), OomError>
     {
         let vk = self.device.pointers();
         try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
-                                             memory.internal_object(),
-                                             range.start as vk::DeviceSize)));
+                                             memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())
     }
 

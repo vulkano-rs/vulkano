@@ -80,7 +80,7 @@ impl<F> ImmutableImage<F> {
         //       fulfill any alignment requirement
 
         let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-        unsafe { try!(image.bind_memory(&mem, 0 .. mem_reqs.size)); }
+        unsafe { try!(image.bind_memory(&mem, 0)); }
 
         let view = unsafe {
             try!(UnsafeImageView::new(&image))
