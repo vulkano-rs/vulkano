@@ -159,7 +159,7 @@ unsafe impl<F> Image for AttachmentImage<F> {
 
         let dependency = mem::replace(&mut guarded.latest_submission, Some(submission.clone()));
 
-        let transition = if guarded.correct_layout {
+        let transition = if !guarded.correct_layout {
             vec![Transition {
                 block: (0, 0),
                 from: Layout::Undefined,
