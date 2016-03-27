@@ -303,7 +303,7 @@ impl UnsafeImageView {
                     baseMipLevel: 0,            // TODO:
                     levelCount: image.mipmaps,          // TODO:
                     baseArrayLayer: 0,          // TODO:
-                    layerCount: 1,          // TODO:
+                    layerCount: image.dimensions.array_layers(),          // TODO:
                 },
             };
 
@@ -422,6 +422,17 @@ impl Dimensions {
     #[inline]
     pub fn width_height(&self) -> [u32; 2] {
         [self.width(), self.height()]
+    }
+
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim2d { .. } => 1,
+            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim3d { .. }  => 1,
+        }
     }
 }
 
