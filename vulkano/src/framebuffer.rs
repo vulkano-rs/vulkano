@@ -983,7 +983,7 @@ pub struct Framebuffer<L> {
     render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
     dimensions: (u32, u32, u32),
-    resources: Vec<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>,
+    resources: SmallVec<[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout); 8]>,
 }
 
 impl<L> Framebuffer<L> {
@@ -1005,7 +1005,7 @@ impl<L> Framebuffer<L> {
         let vk = render_pass.render_pass().device().pointers();
         let device = render_pass.render_pass().device().clone();
 
-        let attachments = render_pass.convert_attachments_list(attachments).collect::<Vec<_>>();
+        let attachments = render_pass.convert_attachments_list(attachments).collect::<SmallVec<[_; 8]>>();
 
         // checking the dimensions against the limits
         {
@@ -1017,11 +1017,10 @@ impl<L> Framebuffer<L> {
             }
         }
 
-        // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
         let ids = attachments.iter().map(|&(ref a, _, _, _)| {
             assert!(a.identity_swizzle());
             a.inner_view().internal_object()
-        }).collect::<Vec<_>>();
+        }).collect::<SmallVec<[_; 8]>>();
 
         let framebuffer = unsafe {
             let infos = vk::FramebufferCreateInfo {

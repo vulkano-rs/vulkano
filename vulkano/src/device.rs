@@ -123,7 +123,6 @@ impl Device {
             }
 
             // turning `queues` into an array of `vkDeviceQueueCreateInfo` suitable for Vulkan
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
             let queues = queues.iter().map(|&(queue_id, ref priorities)| {
                 vk::DeviceQueueCreateInfo {
                     sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -133,7 +132,7 @@ impl Device {
                     queueCount: priorities.len() as u32,
                     pQueuePriorities: priorities.as_ptr()
                 }
-            }).collect::<Vec<_>>();
+            }).collect::<SmallVec<[_; 16]>>();
 
             let features: vk::PhysicalDeviceFeatures = requested_features.clone().into();
 
