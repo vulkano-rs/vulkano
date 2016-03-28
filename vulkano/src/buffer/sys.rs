@@ -92,6 +92,17 @@ impl UnsafeBuffer {
                               -> Result<(), OomError>
     {
         let vk = self.device.pointers();
+
+        // We check for correctness in debug mode.
+        debug_assert!({
+            let mut mem_reqs = mem::uninitialized();
+            vk.GetBufferMemoryRequirements(self.device.internal_object(), self.buffer,
+                                           &mut mem_reqs);
+            mem_reqs.size <= (memory.size() - offset) as u64 &&
+            (offset as u64 % mem_reqs.alignment) == 0 &&
+            mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+        });
+
         try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
                                               memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())

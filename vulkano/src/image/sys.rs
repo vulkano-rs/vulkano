@@ -221,6 +221,17 @@ impl UnsafeImage {
                               -> Result<(), OomError>
     {
         let vk = self.device.pointers();
+
+        // We check for correctness in debug mode.
+        debug_assert!({
+            let mut mem_reqs = mem::uninitialized();
+            vk.GetImageMemoryRequirements(self.device.internal_object(), self.image,
+                                          &mut mem_reqs);
+            mem_reqs.size <= (memory.size() - offset) as u64 &&
+            (offset as u64 % mem_reqs.alignment) == 0 &&
+            mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+        });
+
         try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
                                              memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())
