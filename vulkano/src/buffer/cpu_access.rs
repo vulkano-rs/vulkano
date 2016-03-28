@@ -7,6 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Buffer whose content is accessible to the CPU.
+//! 
+//! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
+//! but may not perform as well as other buffer types.
+//! 
+//! Each access from the CPU or from the GPU locks the whole buffer.
+
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
@@ -36,21 +43,27 @@ use sync::Sharing;
 
 use OomError;
 
+/// Buffer whose content is accessible by the CPU.
 pub struct CpuAccessibleBuffer<T: ?Sized> {
     // Inner content.
     inner: UnsafeBuffer,
 
+    // The memory held by the buffer.
     memory: MappedDeviceMemory,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
+    // Latest submission that uses this buffer.
+    // Also used to block any attempt to submit this buffer while it is accessed by the CPU.
     latest_submission: Mutex<Option<Weak<Submission>>>,      // TODO: can use `Weak::new()` once it's stabilized
 
+    // Necessary to make it compile.
     marker: PhantomData<*const T>,
 }
 
 impl<T> CpuAccessibleBuffer<T> {
+    /// Builds a new buffer. Only allowed for sized data.
     #[inline]
     pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
@@ -63,6 +76,7 @@ impl<T> CpuAccessibleBuffer<T> {
 }
 
 impl<T> CpuAccessibleBuffer<[T]> {
+    /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
@@ -75,6 +89,12 @@ impl<T> CpuAccessibleBuffer<[T]> {
 }
 
 impl<T: ?Sized> CpuAccessibleBuffer<T> {
+    /// Builds a new buffer without checking the size.
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that the size that you pass is correct for `T`.
+    ///
     pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
                              -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
@@ -114,11 +134,28 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
 }
 
 impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
+    /// Locks the buffer in order to write its content.
+    ///
+    /// If the buffer is currently in use by the GPU, this function will block until either the
+    /// buffer is available or the timeout is reached. A value of `0` for the timeout is valid and
+    /// means that the function should never block.
+    ///
+    /// After this function successfully locks the buffer, any attempt to submit a command buffer
+    /// that uses it will block until you unlock it.
+    // TODO: this could be misleading as there's no difference between `read` and `write`
     #[inline]
     pub fn read(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
         self.write(timeout_ns)
     }
 
+    /// Locks the buffer in order to write its content.
+    ///
+    /// If the buffer is currently in use by the GPU, this function will block until either the
+    /// buffer is available or the timeout is reached. A value of `0` for the timeout is valid and
+    /// means that the function should never block.
+    ///
+    /// After this function successfully locks the buffer, any attempt to submit a command buffer
+    /// that uses it will block until you unlock it.
     #[inline]
     pub fn write(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
         let submission = self.latest_submission.lock().unwrap();
