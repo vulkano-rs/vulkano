@@ -21,10 +21,16 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         name: String,
         desc_ty: String,
         bind_ty: String,
+        bind_template_params: Vec<String>,
+        bind_where_clauses: String,
         bind: String,
         set: u32,
         binding: u32,
     }
+
+    // template parameter names that are available for the purpose of the code below
+    // TODO: better system
+    let mut template_params = vec!["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"].into_iter();
 
     // looping to find all the elements that have the `DescriptorSet` decoration
     for instruction in doc.instructions.iter() {
@@ -51,42 +57,58 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         }).next().expect(&format!("Uniform `{}` is missing a binding", name));
 
         // find informations about the kind of binding for this descriptor
-        let (desc_ty, bind_ty, bind) = doc.instructions.iter().filter_map(|i| {
+        let (desc_ty, bind_template_params, bind_where_clauses, bind_ty, bind) = doc.instructions.iter().filter_map(|i| {
             match i {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
+                    let tp_buffer = template_params.next().unwrap();
+
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
-                        "::std::sync::Arc<::vulkano::buffer::Buffer>",
-                        "::vulkano::descriptor_set::DescriptorBind::UniformBuffer { buffer: data, offset: 0, size: 128 /* FIXME */ }"
+                        vec![tp_buffer.to_owned()],
+                        format!("{}: 'static + ::vulkano::buffer::Buffer", tp_buffer),
+                        format!("&'a ::std::sync::Arc<{}>", tp_buffer),
+                        "unsafe { ::vulkano::descriptor_set::DescriptorBind::unchecked_uniform_buffer(data, 0 .. data.size()) }"
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(true) =>
                 {
+                    let img = template_params.next().unwrap();
+
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
-                        "::std::sync::Arc<::vulkano::image::ImageView>",
-                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(data)"
+                        vec![img.to_owned()],
+                        format!("{}: 'static + ::vulkano::image::ImageView", img),
+                        format!("&'a ::std::sync::Arc<{}>", img),
+                        "::vulkano::descriptor_set::DescriptorBind::sampled_image(data)"
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(false) =>
                 {
+                    let img = template_params.next().unwrap();
+
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::InputAttachment",       // FIXME: can be `StorageImage`
-                        "::std::sync::Arc<::vulkano::image::ImageView>",
-                        "::vulkano::descriptor_set::DescriptorBind::InputAttachment(data)"
+                        vec![img.to_owned()],
+                        format!("{}: 'static + ::vulkano::image::ImageView", img),
+                        format!("&'a ::std::sync::Arc<{}>", img),
+                        "::vulkano::descriptor_set::DescriptorBind::input_attachment(data)"
                     ))
                 },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
                                                                     if result_id == pointed_ty =>
                 {
+                    let img = template_params.next().unwrap();
+
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::CombinedImageSampler",
-                        "(::std::sync::Arc<::vulkano::sampler::Sampler>, ::std::sync::Arc<::vulkano::image::ImageView>)",
-                        "::vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(data.0, data.1)"
+                        vec![img.to_owned()],
+                        format!("{}: 'static + ::vulkano::image::ImageView", img),
+                        format!("(&'a ::std::sync::Arc<::vulkano::sampler::Sampler>, &'a ::std::sync::Arc<{}>)", img),
+                        "::vulkano::descriptor_set::DescriptorBind::combined_image_sampler(data.0, data.1)"
                     ))
                 },
                 _ => None,      // TODO: other types
@@ -96,7 +118,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         descriptors.push(Descriptor {
             name: name,
             desc_ty: desc_ty.to_owned(),
-            bind_ty: bind_ty.to_owned(),
+            bind_ty: bind_ty,
+            bind_template_params: bind_template_params,
+            bind_where_clauses: bind_where_clauses,
             bind: bind.to_owned(),
             set: descriptor_set,
             binding: binding,
@@ -112,6 +136,20 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         let write_ty = descriptors.iter().filter(|d| d.set == *set)
                                   .map(|d| d.bind_ty.clone())
                                   .collect::<Vec<_>>();
+
+        let write_tp = {
+            let v = descriptors.iter().filter(|d| d.set == *set)
+                               .map(|d| d.bind_template_params.join(", "))
+                               .collect::<Vec<_>>().join(", ");
+            if v.is_empty() { v } else { ", ".to_owned() + &v }
+        };
+
+        let write_where = {
+            let v = descriptors.iter().filter(|d| d.set == *set)
+                               .map(|d| d.bind_where_clauses.clone())
+                               .collect::<Vec<_>>().join(", ");
+            if v.is_empty() { v } else { "where ".to_owned() + &v }
+        };
 
         let writes = descriptors.iter().enumerate().filter(|&(_, d)| d.set == *set)
                                 .map(|(entry, d)| {
@@ -160,7 +198,9 @@ unsafe impl ::vulkano::descriptor_set::SetLayout for Set{set} {{
     }}
 }}
 
-unsafe impl ::vulkano::descriptor_set::SetLayoutWrite<{write_ty}> for Set{set} {{
+unsafe impl<'a {write_tp}> ::vulkano::descriptor_set::SetLayoutWrite<{write_ty}> for Set{set}
+    {write_where}
+{{
     fn decode(&self, data: {write_ty}) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
         vec![
             {writes}
@@ -168,13 +208,16 @@ unsafe impl ::vulkano::descriptor_set::SetLayoutWrite<{write_ty}> for Set{set} {
     }}
 }}
 
-unsafe impl ::vulkano::descriptor_set::SetLayoutInit<{write_ty}> for Set{set} {{
+unsafe impl<'a {write_tp}> ::vulkano::descriptor_set::SetLayoutInit<{write_ty}> for Set{set}
+    {write_where}
+{{
     fn decode(&self, data: {write_ty}) -> Vec<::vulkano::descriptor_set::DescriptorWrite> {{
         ::vulkano::descriptor_set::SetLayoutWrite::decode(self, data)
     }}
 }}
 
-"#, set = set, write_ty = write_ty, writes = writes.join(","), descr = descr.join(",")));
+"#, set = set, write_ty = write_ty, writes = writes.join(","), write_tp = write_tp, 
+    write_where = write_where, descr = descr.join(",")));
     }
 
     let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);

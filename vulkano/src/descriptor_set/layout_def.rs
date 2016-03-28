@@ -7,13 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use buffer::Buffer;
+use buffer::BufferSlice;
 use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::AbstractDescriptorSetLayout;
+use image::Image;
 use image::ImageView;
-use image::Layout as ImageLayout;
 use sampler::Sampler;
 
 use vk;
@@ -84,40 +86,209 @@ pub struct DescriptorWrite {
     pub content: DescriptorBind,
 }
 
+pub struct DescriptorBind {
+    inner: DescriptorBindInner
+}
+
 // FIXME: incomplete
+// TODO: hacky visibility
 #[derive(Clone)]        // TODO: Debug
-pub enum DescriptorBind {
-    StorageImage(Arc<ImageView>),
+#[doc(hidden)]
+pub enum DescriptorBindInner {
+    StorageImage(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
     Sampler(Arc<Sampler>),
-    SampledImage(Arc<ImageView>),
-    CombinedImageSampler(Arc<Sampler>, Arc<ImageView>),
+    SampledImage(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
+    CombinedImageSampler(Arc<Sampler>, Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
     //UniformTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
     //StorageTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
     UniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     StorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     DynamicUniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     DynamicStorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
-    InputAttachment(Arc<ImageView>),
+    InputAttachment(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
 }
 
 impl DescriptorBind {
+    #[inline]
+    pub fn storage_image<I>(image: &Arc<I>) -> DescriptorBind
+        where I: ImageView + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::StorageImage(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn sampler(sampler: &Arc<Sampler>) -> DescriptorBind {
+        DescriptorBind {
+            inner: DescriptorBindInner::Sampler(sampler.clone())
+        }
+    }
+
+    #[inline]
+    pub fn sampled_image<I>(image: &Arc<I>) -> DescriptorBind
+        where I: ImageView + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::SampledImage(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn combined_image_sampler<I>(sampler: &Arc<Sampler>, image: &Arc<I>) -> DescriptorBind
+        where I: ImageView + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::CombinedImageSampler(sampler.clone(), image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn uniform_buffer<'a, S, T: ?Sized, B>(buffer: S) -> DescriptorBind
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorBind {
+            inner: DescriptorBindInner::UniformBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_uniform_buffer<B>(buffer: &Arc<B>, range: Range<usize>)
+                                              -> DescriptorBind
+        where B: Buffer + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::UniformBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn storage_buffer<'a, S, T: ?Sized, B>(buffer: S) -> DescriptorBind
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorBind {
+            inner: DescriptorBindInner::StorageBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_storage_buffer<B>(buffer: &Arc<B>, range: Range<usize>)
+                                              -> DescriptorBind
+        where B: Buffer + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::StorageBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn dynamic_uniform_buffer<'a, S, T: ?Sized, B>(buffer: S) -> DescriptorBind
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorBind {
+            inner: DescriptorBindInner::DynamicUniformBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_dynamic_uniform_buffer<B>(buffer: &Arc<B>, range: Range<usize>)
+                                                      -> DescriptorBind
+        where B: Buffer + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::DynamicUniformBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn dynamic_storage_buffer<'a, S, T: ?Sized, B>(buffer: S) -> DescriptorBind
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorBind {
+            inner: DescriptorBindInner::DynamicStorageBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_dynamic_storage_buffer<B>(buffer: &Arc<B>, range: Range<usize>)
+                                                      -> DescriptorBind
+        where B: Buffer + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::DynamicStorageBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn input_attachment<I>(image: &Arc<I>) -> DescriptorBind
+        where I: ImageView + 'static
+    {
+        DescriptorBind {
+            inner: DescriptorBindInner::InputAttachment(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
     /// Returns the type corresponding to this bind.
     #[inline]
     pub fn ty(&self) -> DescriptorType {
-        match *self {
-            DescriptorBind::Sampler(_) => DescriptorType::Sampler,
-            DescriptorBind::CombinedImageSampler(_, _) => DescriptorType::CombinedImageSampler,
-            DescriptorBind::SampledImage(_) => DescriptorType::SampledImage,
-            DescriptorBind::StorageImage(_) => DescriptorType::StorageImage,
-            //DescriptorBind::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
-            //DescriptorBind::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
-            DescriptorBind::UniformBuffer { .. } => DescriptorType::UniformBuffer,
-            DescriptorBind::StorageBuffer { .. } => DescriptorType::StorageBuffer,
-            DescriptorBind::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
-            DescriptorBind::DynamicStorageBuffer { .. } => DescriptorType::StorageBufferDynamic,
-            DescriptorBind::InputAttachment(_) => DescriptorType::InputAttachment,
+        match self.inner {
+            DescriptorBindInner::Sampler(_) => DescriptorType::Sampler,
+            DescriptorBindInner::CombinedImageSampler(_, _, _, _) => DescriptorType::CombinedImageSampler,
+            DescriptorBindInner::SampledImage(_, _, _) => DescriptorType::SampledImage,
+            DescriptorBindInner::StorageImage(_, _, _) => DescriptorType::StorageImage,
+            //DescriptorBindInner::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
+            //DescriptorBindInner::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
+            DescriptorBindInner::UniformBuffer { .. } => DescriptorType::UniformBuffer,
+            DescriptorBindInner::StorageBuffer { .. } => DescriptorType::StorageBuffer,
+            DescriptorBindInner::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
+            DescriptorBindInner::DynamicStorageBuffer { .. } => DescriptorType::StorageBufferDynamic,
+            DescriptorBindInner::InputAttachment(_, _, _) => DescriptorType::InputAttachment,
         }
     }
+
+    // TODO: hacky visibility
+    #[doc(hidden)]
+    pub fn inner(&self) -> &DescriptorBindInner { &self.inner }
 }
 
 /// Describes a single descriptor.

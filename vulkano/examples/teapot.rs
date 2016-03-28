@@ -165,7 +165,7 @@ fn main() {
     mod pipeline_layout { pipeline_from_sets!(::vs::Set0); }
     let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, pipeline_layout::Layout, (descriptor_set_layout.clone(),)).unwrap();
     let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          uniform_buffer.clone() as std::sync::Arc<_>).unwrap();
+                                                          &uniform_buffer).unwrap();
 
 
     let pipeline = {

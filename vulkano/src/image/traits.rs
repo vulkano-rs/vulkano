@@ -120,6 +120,9 @@ pub unsafe trait ImageView {
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_view(&self) -> &UnsafeImageView;
 
+    /// Returns the blocks of the parent image this image view overlaps.
+    fn blocks(&self) -> Vec<(u32, u32)>;
+
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {

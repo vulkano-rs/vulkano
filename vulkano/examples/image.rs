@@ -172,7 +172,7 @@ fn main() {
 
     let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
     let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(sampler.clone(), texture.clone(), vulkano::image::Layout::ShaderReadOnlyOptimal))]).unwrap();
+                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::combined_image_sampler(&sampler, &texture))]).unwrap();
 
 
     let pipeline = {

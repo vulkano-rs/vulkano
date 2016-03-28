@@ -168,6 +168,11 @@ unsafe impl ImageView for SwapchainImage {
     }
 
     #[inline]
+    fn blocks(&self) -> Vec<(u32, u32)> {
+        vec![(0, 0)]
+    }
+
+    #[inline]
     fn inner_view(&self) -> &UnsafeImageView {
         &self.view
     }
