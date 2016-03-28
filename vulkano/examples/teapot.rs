@@ -218,7 +218,7 @@ fn main() {
     let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();
 
     loop {
-        submissions.retain(|s| !s.destroying_would_block());
+        submissions.retain(|s| s.destroying_would_block());
 
         let image_num = swapchain.acquire_next_image(1000000).unwrap();
         submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());

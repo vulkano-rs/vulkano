@@ -77,5 +77,5 @@ If you keep pushing submission objects in your `Vec` you will ultimately run out
 Cleaning the objects that are no longer needed can be done like this:
 
 ```rust
-submissions.retain(|s| !s.destroying_would_block());
+submissions.retain(|s| s.destroying_would_block());
 ```
