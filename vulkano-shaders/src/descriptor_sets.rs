@@ -65,9 +65,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
                         vec![tp_buffer.to_owned()],
-                        format!("{}: 'static + ::vulkano::buffer::Buffer", tp_buffer),
+                        format!("{}: 'static + ::vulkano::buffer::TypedBuffer", tp_buffer),
                         format!("&'a ::std::sync::Arc<{}>", tp_buffer),
-                        "unsafe { ::vulkano::descriptor_set::DescriptorBind::unchecked_uniform_buffer(data, 0 .. data.size()) }"
+                        "::vulkano::descriptor_set::DescriptorBind::uniform_buffer(data)"
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
