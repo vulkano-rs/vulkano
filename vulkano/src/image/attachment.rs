@@ -16,6 +16,7 @@ use std::sync::Weak;
 
 use command_buffer::Submission;
 use device::Device;
+use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
 use image::sys::Dimensions;
@@ -26,6 +27,7 @@ use image::sys::Usage;
 use image::traits::AccessRange;
 use image::traits::GpuAccessResult;
 use image::traits::Image;
+use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::Transition;
@@ -184,6 +186,13 @@ unsafe impl<F> Image for AttachmentImage<F> {
             before_transitions: transition,
             after_transitions: vec![],
         }
+    }
+}
+
+unsafe impl<F> ImageClearValue<F::ClearValue> for AttachmentImage<F> where F: FormatDesc {
+    #[inline]
+    fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
+        Some(self.format.decode_clear_value(value))
     }
 }
 
