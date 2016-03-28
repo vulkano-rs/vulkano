@@ -276,6 +276,20 @@ impl<S> DescriptorSet<S> where S: SetLayout {
     }
 }
 
+impl<S> DescriptorSet<S> {
+    // TODO: provide a better API with an iterator
+    #[inline]
+    pub fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)] {
+        &self.resources_images
+    }
+
+    // TODO: provide a better API with an iterator
+    #[inline]
+    pub fn buffers_list(&self) -> &[Arc<Buffer>] {
+        &self.resources_buffers
+    }
+}
+
 unsafe impl<S> VulkanObject for DescriptorSet<S> {
     type Object = vk::DescriptorSet;
 
@@ -298,8 +312,17 @@ impl<S> Drop for DescriptorSet<S> {
 
 
 /// Implemented on all `DescriptorSet` objects. Hides the template parameters.
-pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {}
-unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {}
+pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {
+    // TODO: crappy interface
+    fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)];
+    fn buffers_list(&self) -> &[Arc<Buffer>];
+}
+unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {
+    #[inline]
+    fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)] { DescriptorSet::images_list(self) }
+    #[inline]
+    fn buffers_list(&self) -> &[Arc<Buffer>] { DescriptorSet::buffers_list(self) }
+}
 
 /// Describes the layout of all descriptors within a descriptor set.
 pub struct DescriptorSetLayout<S> {

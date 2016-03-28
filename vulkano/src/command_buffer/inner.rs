@@ -24,6 +24,7 @@ use buffer::TypedBuffer;
 use buffer::traits::AccessRange as BufferAccessRange;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
+use descriptor_set::AbstractDescriptorSet;
 use descriptor_set::Layout as PipelineLayoutDesc;
 use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
@@ -796,6 +797,20 @@ impl InnerCommandBufferBuilder {
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+
+            for set in descriptor_sets.iter() {
+                for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
+                    self.add_image_resource_outside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
+                                                   false, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
+                                                   vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                }
+                for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
+                    self.add_buffer_resource_outside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
+                                                    vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
+                                                    vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                }
+            }
+
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
             let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
 
@@ -872,6 +887,18 @@ impl InnerCommandBufferBuilder {
             }
 
             let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+            for set in descriptor_sets.iter() {
+                for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
+                    self.add_image_resource_inside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
+                                                   false, layout, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
+                                                   vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                }
+                for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
+                    self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
+                                                    vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
+                                                    vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                }
+            }
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
             let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
 
