@@ -176,6 +176,7 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                 },
                 DescriptorBind::StorageImage(ref image, layout) => {
                     assert!(image.inner_view().usage_storage());
+                    assert!(image.identity_swizzle());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
@@ -194,6 +195,7 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                 },
                 DescriptorBind::InputAttachment(ref image, layout) => {
                     assert!(image.inner_view().usage_input_attachment());
+                    assert!(image.identity_swizzle());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
