@@ -30,6 +30,7 @@ use descriptor_set::DescriptorSetsCollection;
 use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
+use format::FormatTy;
 use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use framebuffer::RenderPass;
@@ -1119,13 +1120,22 @@ impl InnerCommandBufferBuilder {
         // Inserting in `staging_required_image_accesses`.
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
+            let aspect_mask = match image.format().ty() {
+                FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
+                    vk::IMAGE_ASPECT_COLOR_BIT
+                },
+                FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
+                FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
+                FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+            };
+
             match self.staging_required_image_accesses.entry(key) {
                 Entry::Vacant(e) => {
                     e.insert(InternalImageBlockAccess {
                         stages: stages,
                         accesses: accesses,
                         write: write,
-                        aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                        aspects: aspect_mask,
                         old_layout: layout,
                         new_layout: layout,
                     });
@@ -1136,7 +1146,7 @@ impl InnerCommandBufferBuilder {
                     entry.accesses &= stages;
                     entry.write = entry.write || write;
                     debug_assert_eq!(entry.new_layout, layout);
-                    entry.aspects |= vk::IMAGE_ASPECT_COLOR_BIT;     // FIXME:
+                    entry.aspects |= aspect_mask;
                 }
             }
         }
@@ -1167,11 +1177,20 @@ impl InnerCommandBufferBuilder {
         // TODO: check for collisions
         for block in image.blocks(mipmap_levels_range.clone(), array_layers_range.clone()) {
             let key = (ImageKey(image.clone()), block);
+            let aspect_mask = match image.format().ty() {
+                FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
+                    vk::IMAGE_ASPECT_COLOR_BIT
+                },
+                FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
+                FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
+                FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+            };
+
             self.render_pass_staging_required_image_accesses.insert(key, InternalImageBlockAccess {
                 stages: stages,
                 accesses: accesses,
                 write: write,
-                aspects: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                aspects: aspect_mask,
                 old_layout: initial_layout,
                 new_layout: final_layout,
             });
@@ -2051,6 +2070,15 @@ fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, 
 
         let range_mipmaps = image.block_mipmap_levels_range(block);
         let range_layers = image.block_array_layers_range(block);
+        let aspect_mask = match image.format().ty() {
+            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
+                vk::IMAGE_ASPECT_COLOR_BIT
+            },
+            FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
+            FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
+            FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+        };
+
         let barrier = vk::ImageMemoryBarrier {
             sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             pNext: ptr::null(),
@@ -2062,7 +2090,7 @@ fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, 
             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
             image: image.inner_image().internal_object(),
             subresourceRange: vk::ImageSubresourceRange {
-                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,     // FIXME:
+                aspectMask: aspect_mask,
                 baseMipLevel: range_mipmaps.start,
                 levelCount: range_mipmaps.end - range_mipmaps.start,
                 baseArrayLayer: range_layers.start,
