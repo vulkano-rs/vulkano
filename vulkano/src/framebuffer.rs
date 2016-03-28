@@ -585,11 +585,11 @@ macro_rules! ordered_passes_renderpass {
         ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
     };
 
-    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ident,)*] []) => {
+    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ident,)+] []) => {
         pub struct ClearValues {
             $(
                 pub $atch: <$crate::format::$format as $crate::format::FormatDesc>::ClearValue,
-            )*
+            )+
         }
 
         pub struct ClearValuesIter(ClearValues, usize);
@@ -618,6 +618,22 @@ macro_rules! ordered_passes_renderpass {
                 let len = $total - self.1;
                 (len, Some(len))
             }
+        }
+
+        impl ExactSizeIterator for ClearValuesIter {}
+    };
+
+    (__impl_clear_values__ [$total:expr] [] []) => {
+        pub type ClearValues = ();
+
+        pub struct ClearValuesIter((), usize);
+
+        impl Iterator for ClearValuesIter {
+            type Item = $crate::format::ClearValue;
+            #[inline]
+            fn next(&mut self) -> Option<Self::Item> { None }
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(0)) }
         }
 
         impl ExactSizeIterator for ClearValuesIter {}
