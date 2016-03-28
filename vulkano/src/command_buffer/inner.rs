@@ -1582,11 +1582,10 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
 
     let fence = try!(Fence::new(queue.device()));
 
-    let mut post_semaphores = Vec::new();
-    let mut post_semaphores_ids = Vec::new();
-    let mut pre_semaphores = Vec::new();
-    let mut pre_semaphores_ids = Vec::new();
-    let mut pre_semaphores_stages = Vec::new();
+    let mut keep_alive_semaphores = SmallVec::<[_; 8]>::new();
+    let mut post_semaphores_ids = SmallVec::<[_; 8]>::new();
+    let mut pre_semaphores_ids = SmallVec::<[_; 8]>::new();
+    let mut pre_semaphores_stages = SmallVec::<[_; 8]>::new();
 
     // Each queue has a dedicated semaphore which must be signalled and waited upon by each
     // command buffer submission.
@@ -1598,10 +1597,10 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
         if let Some(wait) = wait {
             pre_semaphores_ids.push(wait.internal_object());
             pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(wait);
+            keep_alive_semaphores.push(wait);
         }
         post_semaphores_ids.push(signalled.internal_object());
-        post_semaphores.push(signalled);
+        keep_alive_semaphores.push(signalled);
     }
 
     // Creating additional semaphores, one for each queue transition.
@@ -1612,7 +1611,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
         for _ in 0 .. queue_transitions_hint {
             let sem = try!(Semaphore::new(queue.device()));
             post_semaphores_ids.push(sem.internal_object());
-            post_semaphores.push(sem.clone());
+            keep_alive_semaphores.push(sem.clone());
             list.push(sem);
         }
         list
@@ -1655,12 +1654,12 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             if let Some(semaphore) = result.additional_wait_semaphore {
                 pre_semaphores_ids.push(semaphore.internal_object());
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
             }
 
             if let Some(semaphore) = result.additional_signal_semaphore {
                 post_semaphores_ids.push(semaphore.internal_object());
-                post_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
             }
 
             dependencies.extend(result.dependencies.into_iter());
@@ -1673,12 +1672,12 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             if let Some(semaphore) = result.additional_wait_semaphore {
                 pre_semaphores_ids.push(semaphore.internal_object());
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-                pre_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
             }
 
             if let Some(semaphore) = result.additional_signal_semaphore {
                 post_semaphores_ids.push(semaphore.internal_object());
-                post_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
             }
 
             for transition in result.before_transitions {
@@ -1733,7 +1732,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
 
             pre_semaphores_ids.push(semaphore.internal_object());
             pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
-            pre_semaphores.push(semaphore);
+            keep_alive_semaphores.push(semaphore);
 
             // Note that it may look dangerous to unlock the dependency's mutex here, because the
             // queue has already been added to the list of signalled queues but the command that
@@ -1752,7 +1751,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
                 let semaphore_id = semaphore.internal_object();
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
                 pre_semaphores_ids.push(semaphore.internal_object());
-                pre_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
 
                 infos.push(vk::SubmitInfo {
                     sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
@@ -1771,7 +1770,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
                 let semaphore = Semaphore::new(queue.device()).unwrap();
                 let semaphore_id = semaphore.internal_object();
                 post_semaphores_ids.push(semaphore.internal_object());
-                post_semaphores.push(semaphore);
+                keep_alive_semaphores.push(semaphore);
                 semaphore_id
             } else {
                 0
@@ -1812,9 +1811,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
 
         // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
         {
-            let mut keep_alive_semaphores = submission.keep_alive_semaphores.lock().unwrap();
-            *keep_alive_semaphores = post_semaphores.into_iter()
-                                                    .chain(pre_semaphores.into_iter()).collect();
+            let mut ka_sem = submission.keep_alive_semaphores.lock().unwrap();
+            *ka_sem = keep_alive_semaphores;
         }
 
     }
