@@ -17,14 +17,26 @@
 //!   the format and dimensions of the attachments that are part of the subpass. The render
 //!   pass only defines the layout of the rendering process.
 //! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
-//!   `UnsafeRenderPass` and has to match its characteristics.
+//!   render pass and has to match its characteristics.
 //!
-//! This split means that you can create graphics pipelines from a `UnsafeRenderPass` alone.
+//! This split means that you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` is only needed when you add draw commands to a command buffer.
 //!
 //! # Render passes
 //!
-//! A render pass is composed of three things:
+//! In vulkano, a render pass is any object that implements the `RenderPass` trait.
+//!
+//! You can create a render pass by creating a `UnsafeRenderPass` object. But as its name tells,
+//! it is unsafe because a lot of safety checks aren't performed.
+//!
+//! Instead you are encouraged to use a safe wrapper around an `UnsafeRenderPass`.
+//! There are two ways to do this:   TODO add more ways
+//!
+//! - Creating an instance of an `EmptySinglePassRenderPass`, which describes a render pass with no
+//!   attachment and with one subpass.
+//! - Using the `single_pass_renderpass!` macro. See the documentation of this macro.
+//!
+//! Render passes have three characteristics:
 //!
 //! - A list of attachments with their format.
 //! - A list of subpasses, that defines for each subpass which attachment is used for which
@@ -33,25 +45,13 @@
 //!   subpasses, which means that you need to declare dependencies if the output of a subpass
 //!   needs to be read in a following subpass.
 //!
-//! In vulkano, a render pass is any object that implements the `RenderPass` trait.
-//! 
-//! You can create a render pass by creating a `UnsafeRenderPass` object. But as its name tells,
-//! it is unsafe because it doesn't perform some checks.
-//! 
-//! Instead you are encouraged to use a safe wrapper around an `UnsafeRenderPass`.
-//! There are two ways to do this:   TODO add more ways
-//! 
-//! - Creating an instance of an `EmptySinglePassRenderPass`, which describes a renderpass with no
-//!   attachment and with one subpass.
-//! - Using the `single_pass_renderpass!` macro. See the documentation of this macro.
-//!
 //! ## Example
-//! 
+//!
 //! With `EmptySinglePassRenderPass`:
-//! 
+//!
 //! ```no_run
 //! use vulkano::framebuffer::EmptySinglePassRenderPass;
-//! 
+//!
 //! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
 //! let renderpass = EmptySinglePassRenderPass::new(&device).unwrap();
 //! ```
@@ -61,15 +61,11 @@
 //! Creating a framebuffer is done by passing the render pass object, the dimensions of the
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
-//! The slightly tricky part is that the list of attachments depends on the trait implementation
-//! of `RenderPass`. For example if you use an `EmptySinglePassRenderPass`, you have to pass
-//! `()` for the list of attachments.
+//! The slightly tricky part is that the type that contains the list of attachments depends on
+//! the trait implementation of `RenderPass`. For example if you use an
+//! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
 //!
-//! Some implementations of `RenderPass` can use strong typing for the attachments list, in
-//! order to produce a compilation error if you pass the wrong kind of attachment. Other
-//! implementations may have more relaxed rules and check the format of the attachments at runtime
-//! instead.
-//!
+
 use std::error;
 use std::fmt;
 use std::iter;
@@ -105,6 +101,7 @@ use vk;
 ///
 pub unsafe trait RenderPass {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
+    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn render_pass(&self) -> &UnsafeRenderPass;
 
     /// Returns the number of subpasses within the render pass.
@@ -112,8 +109,15 @@ pub unsafe trait RenderPass {
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
+///
+/// # Safety
+///
+/// This trait is unsafe because it's the job of the implementation to check whether the
+/// attachments list is correct.
+///
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.
+    // TODO: crappy way to handle this
     type AttachmentsIter: ExactSizeIterator<Item = (Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
 
     /// Decodes a `A` into a list of attachments.
@@ -121,16 +125,22 @@ pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
+///
+/// # Safety
+///
+/// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
+/// matches the attachment.
+///
 pub unsafe trait RenderPassClearValues<C>: RenderPass {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
     /// Decodes a `C` into a list of clear values where each element corresponds
-    /// to an attachment. The size of the returned array must be the same as the number of
+    /// to an attachment. The size of the returned iterator must be the same as the number of
     /// attachments.
     ///
-    /// The format of the clear value **must** match the format of the attachment. Only attachments
-    /// that are loaded with `LoadOp::Clear` must have an entry in the array.
+    /// The format of the clear value **must** match the format of the attachment. Attachments
+    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
 }
 
