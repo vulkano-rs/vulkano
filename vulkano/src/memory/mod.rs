@@ -8,6 +8,7 @@
 // according to those terms.
 
 //! GPU-visible memory allocation.
+
 use std::mem;
 use std::os::raw::c_void;
 use std::slice;
@@ -20,10 +21,18 @@ pub use self::device_memory::MappedDeviceMemory;
 
 mod device_memory;
 
+/// Represents requirements expressed by the Vulkan implementation.
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryRequirements {
+    /// Number of bytes of memory required.
     pub size: usize,
+
+    /// Alignment of the requirement buffer. The base memory address must be a multiple
+    /// of this value.
     pub alignment: usize,
+
+    /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
+    /// type whose index is the same as the position of the bit can be used.
     pub memory_type_bits: u32,
 }
 
