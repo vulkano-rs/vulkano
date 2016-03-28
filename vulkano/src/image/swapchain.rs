@@ -48,7 +48,7 @@ impl SwapchainImage {
     pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
-        let view = try!(UnsafeImageView::new(&image));
+        let view = try!(UnsafeImageView::new(&image, 0 .. 1, 0 .. 1));
 
         Ok(Arc::new(SwapchainImage {
             image: image,

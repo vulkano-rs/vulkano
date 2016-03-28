@@ -14,6 +14,7 @@
 //! that you create must wrap around the types in this module.
 
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -231,6 +232,11 @@ impl UnsafeImage {
     }
 
     #[inline]
+    pub fn mipmap_levels(&self) -> u32 {
+        self.mipmaps
+    }
+
+    #[inline]
     pub fn dimensions(&self) -> Dimensions {
         self.dimensions
     }
@@ -277,8 +283,15 @@ impl UnsafeImageView {
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
     /// as a framebuffer attachment.
-    pub unsafe fn new(image: &UnsafeImage) -> Result<UnsafeImageView, OomError> {
+    pub unsafe fn new(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
+                      -> Result<UnsafeImageView, OomError>
+    {
         let vk = image.device.pointers();
+
+        assert!(mipmap_levels.end > mipmap_levels.start);
+        assert!(mipmap_levels.end <= image.mipmaps);
+        assert!(array_layers.end > array_layers.start);
+        assert!(array_layers.end <= image.dimensions.array_layers());
 
         let aspect_mask = match image.format.ty() {
             FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
@@ -300,10 +313,10 @@ impl UnsafeImageView {
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
                     aspectMask: aspect_mask,
-                    baseMipLevel: 0,            // TODO:
-                    levelCount: image.mipmaps,          // TODO:
-                    baseArrayLayer: 0,          // TODO:
-                    layerCount: image.dimensions.array_layers(),          // TODO:
+                    baseMipLevel: mipmap_levels.start,
+                    levelCount: mipmap_levels.end - mipmap_levels.start,
+                    baseArrayLayer: array_layers.start,
+                    layerCount: array_layers.end - array_layers.start,
                 },
             };
 

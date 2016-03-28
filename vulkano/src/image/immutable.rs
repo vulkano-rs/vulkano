@@ -83,7 +83,8 @@ impl<F> ImmutableImage<F> {
         unsafe { try!(image.bind_memory(&mem, 0)); }
 
         let view = unsafe {
-            try!(UnsafeImageView::new(&image))
+            try!(UnsafeImageView::new(&image, 0 .. image.mipmap_levels(),
+                                      0 .. image.dimensions().array_layers()))
         };
 
         Ok(Arc::new(ImmutableImage {
