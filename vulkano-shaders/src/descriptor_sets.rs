@@ -67,7 +67,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::SampledImage",
                         "::std::sync::Arc<::vulkano::image::ImageView>",
-                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(data, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorBind::SampledImage(data)"
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
@@ -77,7 +77,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::InputAttachment",       // FIXME: can be `StorageImage`
                         "::std::sync::Arc<::vulkano::image::ImageView>",
-                        "::vulkano::descriptor_set::DescriptorBind::InputAttachment(data, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"     // FIXME:
+                        "::vulkano::descriptor_set::DescriptorBind::InputAttachment(data)"
                     ))
                 },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
@@ -86,7 +86,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     Some((
                         "::vulkano::descriptor_set::DescriptorType::CombinedImageSampler",
                         "(::std::sync::Arc<::vulkano::sampler::Sampler>, ::std::sync::Arc<::vulkano::image::ImageView>)",
-                        "::vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(data.0, data.1, ::vulkano::image::Layout::ShaderReadOnlyOptimal)"      // FIXME:
+                        "::vulkano::descriptor_set::DescriptorBind::CombinedImageSampler(data.0, data.1)"
                     ))
                 },
                 _ => None,      // TODO: other types

@@ -211,22 +211,22 @@ unsafe impl<F: 'static> ImageView for AttachmentImage<F> {
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self, _: AccessRange) -> Layout {
+    fn descriptor_set_storage_image_layout(&self) -> Layout {
         Layout::ColorAttachmentOptimal
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self, _: AccessRange) -> Layout {
+    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
         Layout::ColorAttachmentOptimal
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self, _: AccessRange) -> Layout {
+    fn descriptor_set_sampled_image_layout(&self) -> Layout {
         Layout::ColorAttachmentOptimal
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self, _: AccessRange) -> Layout {
+    fn descriptor_set_input_attachment_layout(&self) -> Layout {
         Layout::ColorAttachmentOptimal
     }
 

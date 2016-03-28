@@ -132,13 +132,13 @@ pub unsafe trait ImageView {
     }
 
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self, AccessRange) -> Layout;
+    fn descriptor_set_storage_image_layout(&self) -> Layout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self, AccessRange) -> Layout;
+    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self, AccessRange) -> Layout;
+    fn descriptor_set_sampled_image_layout(&self) -> Layout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self, AccessRange) -> Layout;
+    fn descriptor_set_input_attachment_layout(&self) -> Layout;
 
     /// Returns true if the view doesn't use components swizzling.
     ///

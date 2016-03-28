@@ -164,43 +164,43 @@ impl<S> DescriptorSet<S> where S: SetLayout {
                         imageLayout: 0,
                     })
                 },
-                DescriptorBind::CombinedImageSampler(ref sampler, ref image, layout) => {
+                DescriptorBind::CombinedImageSampler(ref sampler, ref image) => {
                     assert!(image.inner_view().usage_sampled());
                     self_resources_samplers.push(sampler.clone());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: sampler.internal_object(),
                         imageView: image.inner_view().internal_object(),
-                        imageLayout: layout as u32,
+                        imageLayout: image.descriptor_set_combined_image_sampler_layout() as u32,
                     })
                 },
-                DescriptorBind::StorageImage(ref image, layout) => {
+                DescriptorBind::StorageImage(ref image) => {
                     assert!(image.inner_view().usage_storage());
                     assert!(image.identity_swizzle());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
                         imageView: image.inner_view().internal_object(),
-                        imageLayout: layout as u32,
+                        imageLayout: image.descriptor_set_storage_image_layout() as u32,
                     })
                 },
-                DescriptorBind::SampledImage(ref image, layout) => {
+                DescriptorBind::SampledImage(ref image) => {
                     assert!(image.inner_view().usage_sampled());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
                         imageView: image.inner_view().internal_object(),
-                        imageLayout: layout as u32,
+                        imageLayout: image.descriptor_set_sampled_image_layout() as u32,
                     })
                 },
-                DescriptorBind::InputAttachment(ref image, layout) => {
+                DescriptorBind::InputAttachment(ref image) => {
                     assert!(image.inner_view().usage_input_attachment());
                     assert!(image.identity_swizzle());
                     self_resources_image_views.push(image.clone());
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
                         imageView: image.inner_view().internal_object(),
-                        imageLayout: layout as u32,
+                        imageLayout: image.descriptor_set_input_attachment_layout() as u32,
                     })
                 },
                 _ => None
@@ -213,9 +213,9 @@ impl<S> DescriptorSet<S> where S: SetLayout {
 
         let vk_writes = write.iter().map(|write| {
             let (buffer_info, image_info) = match write.content {
-                DescriptorBind::Sampler(_) | DescriptorBind::CombinedImageSampler(_, _ ,_) |
-                DescriptorBind::SampledImage(_, _) | DescriptorBind::StorageImage(_, _) |
-                DescriptorBind::InputAttachment(_, _) => {
+                DescriptorBind::Sampler(_) | DescriptorBind::CombinedImageSampler(_, _) |
+                DescriptorBind::SampledImage(_) | DescriptorBind::StorageImage(_) |
+                DescriptorBind::InputAttachment(_) => {
                     let img = image_descriptors.as_ptr().offset(next_image_desc as isize);
                     next_image_desc += 1;
                     (ptr::null(), img)

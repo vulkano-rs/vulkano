@@ -87,17 +87,17 @@ pub struct DescriptorWrite {
 // FIXME: incomplete
 #[derive(Clone)]        // TODO: Debug
 pub enum DescriptorBind {
-    StorageImage(Arc<ImageView>, ImageLayout),
+    StorageImage(Arc<ImageView>),
     Sampler(Arc<Sampler>),
-    SampledImage(Arc<ImageView>, ImageLayout),
-    CombinedImageSampler(Arc<Sampler>, Arc<ImageView>, ImageLayout),
+    SampledImage(Arc<ImageView>),
+    CombinedImageSampler(Arc<Sampler>, Arc<ImageView>),
     //UniformTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
     //StorageTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
     UniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     StorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     DynamicUniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     DynamicStorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
-    InputAttachment(Arc<ImageView>, ImageLayout),
+    InputAttachment(Arc<ImageView>),
 }
 
 impl DescriptorBind {
@@ -106,16 +106,16 @@ impl DescriptorBind {
     pub fn ty(&self) -> DescriptorType {
         match *self {
             DescriptorBind::Sampler(_) => DescriptorType::Sampler,
-            DescriptorBind::CombinedImageSampler(_, _, _) => DescriptorType::CombinedImageSampler,
-            DescriptorBind::SampledImage(_, _) => DescriptorType::SampledImage,
-            DescriptorBind::StorageImage(_, _) => DescriptorType::StorageImage,
+            DescriptorBind::CombinedImageSampler(_, _) => DescriptorType::CombinedImageSampler,
+            DescriptorBind::SampledImage(_) => DescriptorType::SampledImage,
+            DescriptorBind::StorageImage(_) => DescriptorType::StorageImage,
             //DescriptorBind::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
             //DescriptorBind::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
             DescriptorBind::UniformBuffer { .. } => DescriptorType::UniformBuffer,
             DescriptorBind::StorageBuffer { .. } => DescriptorType::StorageBuffer,
             DescriptorBind::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
             DescriptorBind::DynamicStorageBuffer { .. } => DescriptorType::StorageBufferDynamic,
-            DescriptorBind::InputAttachment(_, _) => DescriptorType::InputAttachment,
+            DescriptorBind::InputAttachment(_) => DescriptorType::InputAttachment,
         }
     }
 }
