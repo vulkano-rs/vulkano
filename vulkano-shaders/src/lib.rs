@@ -257,7 +257,8 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::shader::ComputeShaderEntryPoint"), format!("compute_shader_entry_point"))
+            (format!("::vulkano::shader::ComputeShaderEntryPoint<Layout>"),
+             format!("compute_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
         enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),

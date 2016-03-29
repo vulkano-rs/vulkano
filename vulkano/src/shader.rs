@@ -102,6 +102,17 @@ impl ShaderModule {
             marker: PhantomData,
         }
     }
+
+    #[inline]
+    pub unsafe fn compute_shader_entry_point<'a, L>(&'a self, name: &'a CStr, layout: L)
+                                                    -> ComputeShaderEntryPoint<'a, L>
+    {
+        ComputeShaderEntryPoint {
+            module: self,
+            name: name,
+            layout: layout,
+        }
+    }
 }
 
 unsafe impl VulkanObject for ShaderModule {
