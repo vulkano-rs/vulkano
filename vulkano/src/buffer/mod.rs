@@ -56,7 +56,6 @@ pub use self::traits::TypedBuffer;
 
 pub mod cpu_access;
 pub mod immutable;
-pub mod staging;
 pub mod sys;
 pub mod traits;
 
