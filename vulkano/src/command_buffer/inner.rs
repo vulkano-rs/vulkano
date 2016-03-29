@@ -804,12 +804,12 @@ impl InnerCommandBufferBuilder {
                 for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
                     self.add_image_resource_outside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
-                                                   vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                                                   vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
                 for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
                     self.add_buffer_resource_outside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
-                                                    vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
             }
 
@@ -893,12 +893,12 @@ impl InnerCommandBufferBuilder {
                 for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
                     self.add_image_resource_inside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
-                                                   vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                                                   vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
                 for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
                     self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
-                                                    vk::ACCESS_SHADER_READ_BIT /* TODO */);
+                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
             }
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
