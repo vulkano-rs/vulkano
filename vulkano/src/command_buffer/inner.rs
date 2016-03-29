@@ -1931,7 +1931,7 @@ impl Submission {
     /// Returns `true` if destroying this `Submission` object would block the CPU for some time.
     #[inline]
     pub fn destroying_would_block(&self) -> bool {
-        self.finished()
+        !self.finished()
     }
 
     /// Returns `true` if the GPU has finished executing this submission.
