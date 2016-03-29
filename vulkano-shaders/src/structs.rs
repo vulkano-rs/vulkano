@@ -93,9 +93,16 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
         members_defs.push(format!("pub {name}: {ty}", name = member_name, ty = ty));
     }
 
-    format!("#[repr(C)]\n#[derive(Copy, Clone, Debug, Default)]\n\
+    // We can only derive common traits if there's no unsized member in the struct.
+    let derive = if current_rust_offset.is_some() {
+        "#[derive(Copy, Clone, Debug, Default)]\n"
+    } else {
+        ""
+    };
+
+    format!("#[repr(C)]\n{derive}\
              pub struct {name} {{\n\t{members}\n}}\n",
-            name = name, members = members_defs.join(",\n\t"))
+            derive = derive, name = name, members = members_defs.join(",\n\t"))
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
