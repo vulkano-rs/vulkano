@@ -62,6 +62,8 @@ pub use self::instance::Limits;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 
+pub mod debug;
+
 mod extensions;
 mod instance;
 mod layers;
