@@ -668,7 +668,7 @@ impl InnerCommandBufferBuilder {
     }
 
     pub unsafe fn dispatch<Pl, L>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                                  x: u32, y: u32, z: u32) -> InnerCommandBufferBuilder
+                                  dimensions: [u32; 3]) -> InnerCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc
     {
@@ -677,7 +677,7 @@ impl InnerCommandBufferBuilder {
         self.bind_compute_pipeline_state(pipeline, sets);
 
         self.staging_commands.push(Box::new(move |vk, cmd| {
-            vk.CmdDispatch(cmd, x, y, z);
+            vk.CmdDispatch(cmd, dimensions[0], dimensions[1], dimensions[2]);
         }));
 
         self

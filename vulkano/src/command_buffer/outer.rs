@@ -186,13 +186,13 @@ impl PrimaryCommandBufferBuilder {
     /// Executes a compute pipeline.
     #[inline]
     pub fn dispatch<Pl, L>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                           x: u32, y: u32, z: u32) -> PrimaryCommandBufferBuilder
+                           dimensions: [u32; 3]) -> PrimaryCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection,
               Pl: 'static + PipelineLayoutDesc
     {
         unsafe {
             PrimaryCommandBufferBuilder {
-                inner: self.inner.dispatch(pipeline, sets, x, y, z)
+                inner: self.inner.dispatch(pipeline, sets, dimensions)
             }
         }
     }
