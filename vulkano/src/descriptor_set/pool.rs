@@ -44,6 +44,10 @@ impl DescriptorPool {
                 descriptorCount: 10,
             },
             vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                descriptorCount: 10,
+            },
+            vk::DescriptorPoolSize {
                 ty: vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
                 descriptorCount: 10,
             },
