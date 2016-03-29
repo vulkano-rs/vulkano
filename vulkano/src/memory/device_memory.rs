@@ -24,6 +24,7 @@ use check_errors;
 use vk;
 
 /// Represents memory that has been allocated.
+#[derive(Debug)]
 pub struct DeviceMemory {
     device: Arc<Device>,
     memory: vk::DeviceMemory,
@@ -150,6 +151,7 @@ impl Drop for DeviceMemory {
 }
 
 /// Represents memory that has been allocated and mapped in CPU accessible space.
+#[derive(Debug)]
 pub struct MappedDeviceMemory {
     memory: DeviceMemory,
     pointer: *mut c_void,

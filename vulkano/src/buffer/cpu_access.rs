@@ -44,6 +44,7 @@ use sync::Sharing;
 use OomError;
 
 /// Buffer whose content is accessible by the CPU.
+#[derive(Debug)]
 pub struct CpuAccessibleBuffer<T: ?Sized> {
     // Inner content.
     inner: UnsafeBuffer,

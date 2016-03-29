@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::hash;
 use std::mem;
 use std::ops::Range;
@@ -1904,6 +1905,14 @@ pub struct Submission {
     keep_alive_semaphores: Mutex<SmallVec<[Arc<Semaphore>; 8]>>,
 }
 
+impl fmt::Debug for Submission {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Submission object>")      // TODO: better description
+    }
+}
+
+#[derive(Debug)]
 struct SubmissionGuarded {
     // Reserve of semaphores that have been signalled by this submission and that can be
     // waited upon. The semaphore must be removed from the list if it is going to be waiting upon.

@@ -28,6 +28,7 @@ use vk;
 /// # Safety
 ///
 ///
+#[derive(Debug)]
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
     device: Arc<Device>,

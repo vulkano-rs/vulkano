@@ -102,6 +102,7 @@ pub enum Sharing<I> where I: Iterator<Item = u32> {
 /// When a command buffer accesses a ressource, you have to ensure that the CPU doesn't access
 /// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
 /// when the CPU can access a ressource again, a fence has to be used.
+#[derive(Debug)]
 pub struct Fence {
     device: Arc<Device>,
     fence: vk::Fence,
@@ -349,6 +350,7 @@ impl From<Error> for FenceWaitError {
 /// 
 /// It is similar to a fence, except that it is purely on the GPU side. The CPU can't query a
 /// semaphore's status or wait for it to be signaled.
+#[derive(Debug)]
 pub struct Semaphore {
     device: Arc<Device>,
     semaphore: vk::Semaphore,
@@ -406,6 +408,7 @@ impl Drop for Semaphore {
 /// event to be signaled, in order to avoid interfering with progress of other clients of the GPU.
 /// If the event isn't signaled within these limits, results are undefined and may include
 /// device loss.
+#[derive(Debug)]
 pub struct Event {
     device: Arc<Device>,
     event: Mutex<vk::Event>,

@@ -294,6 +294,7 @@ impl From<Error> for DeviceCreationError {
 
 /// Represents a queue where commands can be submitted.
 // TODO: should use internal synchronization
+#[derive(Debug)]
 pub struct Queue {
     queue: Mutex<vk::Queue>,
     device: Arc<Device>,
