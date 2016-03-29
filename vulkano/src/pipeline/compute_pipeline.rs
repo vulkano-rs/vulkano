@@ -94,6 +94,12 @@ impl<Pl> ComputePipeline<Pl> {
         }))
     }
 
+    /// Returns the `Device` this compute pipeline was created with.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
     /// Returns the `PipelineLayout` used in this compute pipeline.
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout<Pl>> {
