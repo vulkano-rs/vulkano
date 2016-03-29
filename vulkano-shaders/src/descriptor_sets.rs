@@ -62,12 +62,33 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     let tp_buffer = template_params.next().unwrap();
 
+                    // Determine whether there's a Block or BufferBlock decoration.
+                    let is_ssbo = doc.instructions.iter().filter_map(|i| {
+                        match i {
+                            &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationBufferBlock, .. } if target_id == pointed_ty => {
+                                Some(true)
+                            },
+                            &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationBlock, .. } if target_id == pointed_ty => {
+                                Some(false)
+                            },
+                            _ => None,
+                        }
+                    }).next().expect("Found a buffer uniform with neither the Block nor BufferBlock decorations");
+
                     Some((
-                        "::vulkano::descriptor_set::DescriptorType::UniformBuffer",
+                        if !is_ssbo {
+                            "::vulkano::descriptor_set::DescriptorType::UniformBuffer"
+                        } else {
+                            "::vulkano::descriptor_set::DescriptorType::StorageBuffer"
+                        },
                         vec![tp_buffer.to_owned()],
                         format!("{}: 'static + ::vulkano::buffer::TypedBuffer", tp_buffer),
                         format!("&'a ::std::sync::Arc<{}>", tp_buffer),
-                        "::vulkano::descriptor_set::DescriptorBind::uniform_buffer(data)"
+                        if !is_ssbo {
+                            "::vulkano::descriptor_set::DescriptorBind::uniform_buffer(data)"
+                        } else {
+                            "::vulkano::descriptor_set::DescriptorBind::storage_buffer(data)"
+                        }
                     ))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
