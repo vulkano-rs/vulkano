@@ -132,6 +132,21 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             marker: PhantomData,
         }))
     }
+
+    /// Returns the device used to create this buffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+
+    /// Returns the queue families this buffer can be used on.
+    // TODO: use a custom iterator
+    #[inline]
+    pub fn queue_families(&self) -> Vec<QueueFamily> {
+        self.queue_families.iter().map(|&num| {
+            self.device().physical_device().queue_family_by_id(num).unwrap()
+        }).collect()
+    }
 }
 
 impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
@@ -169,21 +184,6 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
             inner: unsafe { self.memory.read_write() },
             lock: submission,
         })
-    }
-
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
-    /// Returns the queue families this buffer can be used on.
-    // TODO: use a custom iterator
-    #[inline]
-    pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
     }
 }
 
