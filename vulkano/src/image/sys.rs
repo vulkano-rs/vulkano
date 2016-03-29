@@ -78,7 +78,6 @@ impl UnsafeImage {
     {
         // Preprocessing parameters.
         let sharing = sharing.into();
-        let usage = usage.to_usage_bits();
         assert!(num_samples >= 1);
 
         // Compute the maximum number of mipmaps.
@@ -113,7 +112,14 @@ impl UnsafeImage {
             MipmapsCount::One => 1,
         };
 
+        // If the `shaderStorageImageMultisample` feature is not enabled and we have
+        // `usage_storage` set to true, then the number of samples must be 1.
+        if usage.storage && num_samples > 1 {
+            assert!(device.enabled_features().shader_storage_image_multisample);
+        }
+
         let vk = device.pointers();
+        let usage = usage.to_usage_bits();
 
         // TODO: check for limits
         let (ty, extent, array_layers) = match dimensions {
