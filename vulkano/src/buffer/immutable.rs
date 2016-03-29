@@ -7,6 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Buffer that is written once then read for as long as it is alive.
+//! 
+//! Use this buffer when you have data that you never modify.
+//!
+//! Only the first ever command buffer that uses this buffer can write to it (for example by
+//! copying from another buffer). Any subsequent command buffer **must** only read from the buffer,
+//! or a panic will happen.
+//! 
+//! The buffer will be stored in device-local memory if possible
+//!
+
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
@@ -31,6 +42,7 @@ use sync::Sharing;
 
 use OomError;
 
+/// Buffer that is written once then read for as long as it is alive.
 pub struct ImmutableBuffer<T: ?Sized> {
     // Inner content.
     inner: UnsafeBuffer,
@@ -48,6 +60,7 @@ pub struct ImmutableBuffer<T: ?Sized> {
 }
 
 impl<T> ImmutableBuffer<T> {
+    /// Builds a new buffer. Only allowed for sized data.
     #[inline]
     pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
                       -> Result<Arc<ImmutableBuffer<T>>, OomError>
@@ -60,6 +73,7 @@ impl<T> ImmutableBuffer<T> {
 }
 
 impl<T> ImmutableBuffer<[T]> {
+    /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
                       -> Result<Arc<ImmutableBuffer<T>>, OomError>
@@ -72,6 +86,12 @@ impl<T> ImmutableBuffer<[T]> {
 }
 
 impl<T: ?Sized> ImmutableBuffer<T> {
+    /// Builds a new buffer without checking the size.
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that the size that you pass is correct for `T`.
+    ///
     pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
                              -> Result<Arc<ImmutableBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
@@ -112,6 +132,21 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             started_reading: AtomicBool::new(false),
             marker: PhantomData,
         }))
+    }
+
+    /// Returns the device used to create this buffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+
+    /// Returns the queue families this buffer can be used on.
+    // TODO: use a custom iterator
+    #[inline]
+    pub fn queue_families(&self) -> Vec<QueueFamily> {
+        self.queue_families.iter().map(|&num| {
+            self.device().physical_device().queue_family_by_id(num).unwrap()
+        }).collect()
     }
 }
 
