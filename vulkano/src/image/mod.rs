@@ -24,6 +24,7 @@
 //! buffers.
 //!
 
+pub use self::sys::ImageCreationError;
 pub use self::sys::Layout;
 pub use self::sys::Usage;
 pub use self::traits::Image;

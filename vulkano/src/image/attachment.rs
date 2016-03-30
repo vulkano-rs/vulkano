@@ -20,6 +20,7 @@ use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
 use image::sys::Dimensions;
+use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -33,8 +34,6 @@ use image::traits::ImageView;
 use image::traits::Transition;
 use memory::DeviceMemory;
 use sync::Sharing;
-
-use OomError;
 
 pub struct AttachmentImage<F> {
     image: UnsafeImage,
@@ -56,7 +55,7 @@ struct Guarded {
 
 impl<F> AttachmentImage<F> {
     pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
-               -> Result<Arc<AttachmentImage<F>>, OomError>
+               -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let is_depth = match format.format().ty() {

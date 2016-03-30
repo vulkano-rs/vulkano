@@ -16,6 +16,7 @@ use command_buffer::Submission;
 use device::Device;
 use format::FormatDesc;
 use image::sys::Dimensions;
+use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -29,8 +30,6 @@ use instance::QueueFamily;
 use memory::DeviceMemory;
 use sync::Sharing;
 
-use OomError;
-
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it. TODO: clarify because of blit operations
 // TODO: type (2D, 3D, array, etc.) as template parameter
@@ -43,7 +42,7 @@ pub struct ImmutableImage<F> {
 
 impl<F> ImmutableImage<F> {
     pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
-                      -> Result<Arc<ImmutableImage<F>>, OomError>
+                      -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
     {
         let usage = Usage {

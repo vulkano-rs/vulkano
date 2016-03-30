@@ -13,6 +13,8 @@
 //! other image or image view types of this library, and all custom image or image view types
 //! that you create must wrap around the types in this module.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
@@ -27,6 +29,7 @@ use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
 
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -73,12 +76,11 @@ impl UnsafeImage {
                                  dimensions: Dimensions, num_samples: u32, mipmaps: Mi,
                                  sharing: Sharing<I>, linear_tiling: bool,
                                  preinitialized_layout: bool)
-                                 -> Result<(UnsafeImage, MemoryRequirements), OomError>
+                                 -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
         where Mi: Into<MipmapsCount>, I: Iterator<Item = u32>
     {
         // Preprocessing parameters.
         let sharing = sharing.into();
-        assert!(num_samples >= 1);
 
         // Compute the maximum number of mipmaps.
         // TODO: only compte if necessary?
@@ -104,18 +106,30 @@ impl UnsafeImage {
         // Compute the number of mipmaps.
         let mipmaps = match mipmaps.into() {
             MipmapsCount::Specific(num) => {
-                assert!(num >= 1);
-                assert!(num <= max_mipmaps);
+                if num < 1 || num > max_mipmaps {
+                    return Err(ImageCreationError::InvalidMipmapsCount {
+                        obtained: num, valid_range: 1 .. max_mipmaps + 1
+                    });
+                }
+
                 num
             },
             MipmapsCount::Max => max_mipmaps,
             MipmapsCount::One => 1,
         };
 
+        // Checking whether the number of samples is supported.
+        if num_samples == 0 {
+            // FIXME: check correctly
+            return Err(ImageCreationError::UnsupportedSamplesCount { obtained: num_samples });
+        }
+
         // If the `shaderStorageImageMultisample` feature is not enabled and we have
         // `usage_storage` set to true, then the number of samples must be 1.
         if usage.storage && num_samples > 1 {
-            assert!(device.enabled_features().shader_storage_image_multisample);
+            if !device.enabled_features().shader_storage_image_multisample {
+                return Err(ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled);
+            }
         }
 
         let vk = device.pointers();
@@ -283,6 +297,73 @@ impl Drop for UnsafeImage {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyImage(self.device.internal_object(), self.image, ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating an instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// A wrong number of mipmaps was provided.
+    InvalidMipmapsCount { obtained: u32, valid_range: Range<u32> },
+    /// The requeted number of samples is not supported, or is 0.
+    UnsupportedSamplesCount { obtained: u32 },
+    /// The dimensions are too large, or one of the dimensions is 0.
+    UnsupportedDimensions { dimensions: Dimensions },
+    /// The `shader_storage_image_multisample` feature must be enabled to create such an image.
+    ShaderStorageImageMultisampleFeatureNotEnabled,
+}
+
+impl error::Error for ImageCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            ImageCreationError::OomError(_) => "not enough memory available",
+            ImageCreationError::InvalidMipmapsCount { .. } => "a wrong number of mipmaps was \
+                                                               provided",
+            ImageCreationError::UnsupportedSamplesCount { .. } => "the requeted number of samples \
+                                                                   is not supported, or is 0",
+            ImageCreationError::UnsupportedDimensions { .. } => "the dimensions are too large, or \
+                                                                 one of the dimensions is 0",
+            ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled => {
+                "the `shader_storage_image_multisample` feature must be enabled to create such \
+                 an image"
+            },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            ImageCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for ImageCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for ImageCreationError {
+    #[inline]
+    fn from(err: OomError) -> ImageCreationError {
+        ImageCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for ImageCreationError {
+    #[inline]
+    fn from(err: Error) -> ImageCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => ImageCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => ImageCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err)
         }
     }
 }
