@@ -651,3 +651,96 @@ pub enum Layout {
     Preinitialized = vk::IMAGE_LAYOUT_PREINITIALIZED,
     PresentSrc = vk::IMAGE_LAYOUT_PRESENT_SRC_KHR,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::iter::Empty;
+
+    use super::Dimensions;
+    use super::ImageCreationError;
+    use super::UnsafeImage;
+    use super::Usage;
+
+    use format::Format;
+    use sync::Sharing;
+
+    #[test]
+    fn create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let (buf, _) = unsafe {
+            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        }.unwrap();
+    }
+
+    #[test]
+    fn zero_sample() {
+        let (device, _) = gfx_dev_and_queue!();
+        let res = unsafe {
+            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 0, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (),
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn zero_mipmap() {
+        let (device, _) = gfx_dev_and_queue!();
+        let res = unsafe {
+            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 0,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::InvalidMipmapsCount { .. }) => (),
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn mipmaps_too_high() {
+        let (device, _) = gfx_dev_and_queue!();
+        let res = unsafe {
+            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 7,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::InvalidMipmapsCount { obtained, valid_range }) => {
+                assert_eq!(obtained, 7);
+                assert_eq!(valid_range, 1 .. 7);
+            },
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn shader_storage_image_multisample() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            storage: true,
+            .. Usage::none()
+        };
+
+        let res = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 2, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled) => (),
+            Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (), // unlikely but possible
+            _ => panic!()
+        };
+    }
+}

@@ -28,10 +28,11 @@ macro_rules! instance {
 
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
-    () => ({
+    ($($feature:ident),*) => ({
         use instance;
         use device::Device;
         use device::DeviceExtensions;
+        use features::Features;
 
         let instance = instance!();
 
@@ -47,7 +48,14 @@ macro_rules! gfx_dev_and_queue {
 
         let extensions = DeviceExtensions::none();
 
-        let (device, queues) = match Device::new(&physical, physical.supported_features(),
+        let features = Features {
+            $(
+                $feature: true,
+            )*
+            .. Features::none()
+        };
+
+        let (device, queues) = match Device::new(&physical, &features,
                                                  &extensions, None, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,
@@ -55,5 +63,5 @@ macro_rules! gfx_dev_and_queue {
         };
 
         (device, queues.into_iter().next().unwrap())
-    })
+    });
 }
