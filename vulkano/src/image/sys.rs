@@ -918,6 +918,27 @@ mod tests {
     }
 
     #[test]
+    fn non_po2_sample() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
+        let res = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 5, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (),
+            _ => panic!()
+        };
+    }
+
+    #[test]
     fn zero_mipmap() {
         let (device, _) = gfx_dev_and_queue!();
 
