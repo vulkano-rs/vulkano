@@ -91,7 +91,6 @@ impl UnsafeImage {
         let sharing = sharing.into();
 
         // Checking if image usage conforms to what is supported.
-        // TODO: check the transient stuff
         let format_features = {
             let physical_device = device.physical_device().internal_object();
 
@@ -126,6 +125,21 @@ impl UnsafeImage {
 
             features
         };
+
+        // If `transient_attachment` is true, then only `color_attachment`,
+        // `depth_stencil_attachment` and `input_attachment` can be true as well.
+        if usage.transient_attachment {
+            let u = Usage {
+                color_attachment: false,
+                depth_stencil_attachment: false,
+                input_attachment: false,
+                .. usage.clone()
+            };
+
+            if u != Usage::none() {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+        }
 
         // This function is going to perform various checks and write to `capabilities_error` in
         // case of error.
@@ -215,7 +229,9 @@ impl UnsafeImage {
                                            .storage_image_sample_counts();
             }
 
-            if usage.color_attachment || usage.depth_stencil_attachment {
+            if usage.color_attachment || usage.depth_stencil_attachment || usage.input_attachment ||
+               usage.transient_attachment
+            {
                 match format.ty() {
                     FormatTy::Float | FormatTy::Compressed | FormatTy::Uint | FormatTy::Sint => {
                         supported_samples &= device.physical_device().limits()
@@ -765,8 +781,11 @@ impl Dimensions {
 /// Describes how an image is going to be used. This is **not** an optimization.
 ///
 /// If you try to use an image in a way that you didn't declare, a panic will happen.
-// TODO: enforce the fact that `transient_attachment` can't be set at the same time as other bits
-#[derive(Debug, Copy, Clone)]
+///
+/// If `transient_attachment` is true, then only `color_attachment`, `depth_stencil_attachment`
+/// and `input_attachment` can be true as well. The rest must be false or an error will be returned
+/// when creating the image.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Usage {
     pub transfer_source: bool,
     pub transfer_dest: bool,
@@ -779,7 +798,8 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// Builds a `Usage` with all values set to true. Can be used for quick prototyping.
+    /// Builds a `Usage` with all values set to true. Note that using the returned value will
+    /// produce an error because of `transient_attachment` being true.
     #[inline]
     pub fn all() -> Usage {
         Usage {
@@ -1023,6 +1043,28 @@ mod tests {
 
         match res {
             Err(ImageCreationError::FormatNotSupported) => (),
+            Err(ImageCreationError::UnsupportedUsage) => (),
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn transient_forbidden_with_some_usages() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            transient_attachment: true,
+            sampled: true,
+            .. Usage::none()
+        };
+
+        let res = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
             Err(ImageCreationError::UnsupportedUsage) => (),
             _ => panic!()
         };
