@@ -57,6 +57,7 @@ pub use self::surface::PresentMode;
 pub use self::surface::SurfaceTransform;
 pub use self::surface::CompositeAlpha;
 pub use self::surface::ColorSpace;
+pub use self::surface::SurfaceCreationError;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::AcquireError;
 

@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
@@ -22,6 +24,7 @@ use swapchain::DisplayMode;
 use swapchain::DisplayPlane;
 
 use check_errors;
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -44,9 +47,11 @@ impl Surface {
     /// - Panicks if `plane` doesn't support the display of `display_mode`.
     ///
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
-                             -> Result<Arc<Surface>, OomError>
+                             -> Result<Arc<Surface>, SurfaceCreationError>
     {
-        assert!(display_mode.display.physical_device().instance().loaded_extensions().khr_display);     // TODO: return error instead
+        if !display_mode.display.physical_device().instance().loaded_extensions().khr_display {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
+        }
 
         assert_eq!(display_mode.display.physical_device().internal_object(),
                    plane.physical_device().internal_object());
@@ -93,10 +98,13 @@ impl Surface {
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_hwnd<T, U>(instance: &Arc<Instance>, hinstance: *const T, hwnd: *const U)
-                                  -> Result<Arc<Surface>, OomError>
+                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_win32_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_win32_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_win32_surface" });
+        }
 
         let surface = {
             let infos = vk::Win32SurfaceCreateInfoKHR {
@@ -128,10 +136,13 @@ impl Surface {
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_xcb<C, W>(instance: &Arc<Instance>, connection: *const C, window: *const W)
-                                 -> Result<Arc<Surface>, OomError>
+                                 -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_xcb_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_xcb_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_xcb_surface" });
+        }
 
         let surface = {
             let infos = vk::XcbSurfaceCreateInfoKHR   {
@@ -163,10 +174,13 @@ impl Surface {
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_xlib<D, W>(instance: &Arc<Instance>, display: *const D, window: *const W)
-                                  -> Result<Arc<Surface>, OomError>
+                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_xlib_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_xlib_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_xlib_surface" });
+        }
 
         let surface = {
             let infos = vk::XlibSurfaceCreateInfoKHR  {
@@ -198,10 +212,13 @@ impl Surface {
     /// The caller must ensure that the `display` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_wayland<D, S>(instance: &Arc<Instance>, display: *const D, surface: *const S)
-                                     -> Result<Arc<Surface>, OomError>
+                                     -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_wayland_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_wayland_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_wayland_surface" });
+        }
 
         let surface = {
             let infos = vk::WaylandSurfaceCreateInfoKHR {
@@ -234,10 +251,13 @@ impl Surface {
     /// The caller must ensure that the `connection` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_mir<C, S>(instance: &Arc<Instance>, connection: *const C, surface: *const S)
-                                 -> Result<Arc<Surface>, OomError>
+                                 -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_mir_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_mir_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_mir_surface" });
+        }
 
         let surface = {
             let infos = vk::MirSurfaceCreateInfoKHR  {
@@ -267,10 +287,13 @@ impl Surface {
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
     pub unsafe fn from_anativewindow<T>(instance: &Arc<Instance>, window: *const T)
-                                        -> Result<Arc<Surface>, OomError>
+                                        -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
-        assert!(instance.loaded_extensions().khr_android_surface);     // TODO: return error instead
+
+        if !instance.loaded_extensions().khr_android_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_android_surface" });
+        }
 
         let surface = {
             let infos = vk::AndroidSurfaceCreateInfoKHR {
@@ -407,6 +430,60 @@ impl Drop for Surface {
         unsafe {
             let vk = self.instance.pointers();
             vk.DestroySurfaceKHR(self.instance.internal_object(), self.surface, ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating a debug callback.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SurfaceCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The extension required for this function was not enabled.
+    MissingExtension { name: &'static str },
+}
+
+impl error::Error for SurfaceCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            SurfaceCreationError::OomError(_) => "not enough memory available",
+            SurfaceCreationError::MissingExtension { .. } => "the extension required for this \
+                                                              function was not enabled",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            SurfaceCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for SurfaceCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for SurfaceCreationError {
+    #[inline]
+    fn from(err: OomError) -> SurfaceCreationError {
+        SurfaceCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for SurfaceCreationError {
+    #[inline]
+    fn from(err: Error) -> SurfaceCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => SurfaceCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => SurfaceCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err)
         }
     }
 }
