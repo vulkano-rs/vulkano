@@ -99,7 +99,7 @@ use vk;
 /// - `render_pass` has to return the same `UnsafeRenderPass` every time.
 /// - `num_subpasses` has to return a correct value.
 ///
-pub unsafe trait RenderPass {
+pub unsafe trait RenderPass: 'static + Send + Sync {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn render_pass(&self) -> &UnsafeRenderPass;

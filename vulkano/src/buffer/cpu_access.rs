@@ -60,7 +60,7 @@ pub struct CpuAccessibleBuffer<T: ?Sized> {
     latest_submission: Mutex<Option<Weak<Submission>>>,      // TODO: can use `Weak::new()` once it's stabilized
 
     // Necessary to make it compile.
-    marker: PhantomData<*const T>,
+    marker: PhantomData<Box<T>>,
 }
 
 impl<T> CpuAccessibleBuffer<T> {
@@ -187,7 +187,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
     }
 }
 
-unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
+unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> where T: 'static + Send + Sync {
     #[inline]
     fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
@@ -239,7 +239,7 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> {
     }
 }
 
-unsafe impl<T: ?Sized + 'static> TypedBuffer for CpuAccessibleBuffer<T> {
+unsafe impl<T: ?Sized> TypedBuffer for CpuAccessibleBuffer<T> where T: 'static + Send + Sync {
     type Content = T;
 }
 

@@ -20,7 +20,7 @@ use image::sys::UnsafeImageView;
 use sampler::Sampler;
 use sync::Semaphore;
 
-pub unsafe trait Image {
+pub unsafe trait Image: 'static + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_image(&self) -> &UnsafeImage;
@@ -123,7 +123,7 @@ pub unsafe trait ImageContent<P>: Image {
     fn matches_format(&self) -> bool;
 }
 
-pub unsafe trait ImageView {
+pub unsafe trait ImageView: 'static + Send + Sync {
     fn parent(&self) -> &Image;
 
     fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;

@@ -201,6 +201,9 @@ impl MappedDeviceMemory {
     }
 }
 
+unsafe impl Send for MappedDeviceMemory {}
+unsafe impl Sync for MappedDeviceMemory {}
+
 impl Drop for MappedDeviceMemory {
     #[inline]
     fn drop(&mut self) {
@@ -217,6 +220,9 @@ pub struct CpuAccess<'a, T: ?Sized + 'a> {
     mem: &'a MappedDeviceMemory,
     coherent: bool,
 }
+
+unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {}
+unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {}
 
 impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
     type Target = T;

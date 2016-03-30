@@ -119,7 +119,7 @@ impl<F> AttachmentImage<F> {
     }
 }
 
-unsafe impl<F> Image for AttachmentImage<F> {
+unsafe impl<F> Image for AttachmentImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
@@ -188,21 +188,23 @@ unsafe impl<F> Image for AttachmentImage<F> {
     }
 }
 
-unsafe impl<F> ImageClearValue<F::ClearValue> for AttachmentImage<F> where F: FormatDesc {
+unsafe impl<F> ImageClearValue<F::ClearValue> for AttachmentImage<F>
+    where F: FormatDesc + 'static + Send + Sync
+{
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
         Some(self.format.decode_clear_value(value))
     }
 }
 
-unsafe impl<P, F> ImageContent<P> for AttachmentImage<F> {
+unsafe impl<P, F> ImageContent<P> for AttachmentImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn matches_format(&self) -> bool {
         true        // FIXME:
     }
 }
 
-unsafe impl<F: 'static> ImageView for AttachmentImage<F> {
+unsafe impl<F: 'static> ImageView for AttachmentImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn parent(&self) -> &Image {
         self

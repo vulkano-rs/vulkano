@@ -56,7 +56,7 @@ pub struct ImmutableBuffer<T: ?Sized> {
 
     started_reading: AtomicBool,
 
-    marker: PhantomData<*const T>,
+    marker: PhantomData<Box<T>>,
 }
 
 impl<T> ImmutableBuffer<T> {
@@ -150,7 +150,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     }
 }
 
-unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
+unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
     #[inline]
     fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
@@ -224,6 +224,6 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> {
     }
 }
 
-unsafe impl<T: ?Sized + 'static> TypedBuffer for ImmutableBuffer<T> {
+unsafe impl<T: ?Sized> TypedBuffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
     type Content = T;
 }

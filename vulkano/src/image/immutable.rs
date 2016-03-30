@@ -100,7 +100,7 @@ impl<F> ImmutableImage<F> {
     }
 }
 
-unsafe impl<F> Image for ImmutableImage<F> {
+unsafe impl<F> Image for ImmutableImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
@@ -154,14 +154,14 @@ unsafe impl<F> Image for ImmutableImage<F> {
     }
 }
 
-unsafe impl<P, F> ImageContent<P> for ImmutableImage<F> {
+unsafe impl<P, F> ImageContent<P> for ImmutableImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn matches_format(&self) -> bool {
         true        // FIXME:
     }
 }
 
-unsafe impl<F: 'static> ImageView for ImmutableImage<F> {
+unsafe impl<F: 'static> ImageView for ImmutableImage<F> where F: 'static + Send + Sync {
     #[inline]
     fn parent(&self) -> &Image {
         self

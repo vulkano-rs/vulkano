@@ -129,7 +129,7 @@ impl InnerCommandBufferBuilder {
     pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>,
                   secondary_cont_fb: Option<&Arc<Framebuffer<R>>>)
                   -> Result<InnerCommandBufferBuilder, OomError>
-        where R: RenderPass + 'static
+        where R: RenderPass + 'static + Send + Sync
     {
         let device = pool.device();
         let vk = device.pointers();
@@ -672,8 +672,8 @@ impl InnerCommandBufferBuilder {
 
     pub unsafe fn dispatch<Pl, L>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                                   dimensions: [u32; 3]) -> InnerCommandBufferBuilder
-        where L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc
+        where L: 'static + DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayoutDesc + Send + Sync
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
@@ -691,8 +691,8 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn draw<V, Pv, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L) -> InnerCommandBufferBuilder
-        where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc, Rp: 'static
+        where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync
     {
         // FIXME: add buffers to the resources
 
@@ -732,9 +732,9 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibb>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
                                                           sets: L) -> InnerCommandBufferBuilder
-        where L: 'static + DescriptorSetsCollection,
+        where L: 'static + DescriptorSetsCollection + Send + Sync,
               Pv: 'static + VertexDefinition + VertexSource<V>,
-              Pl: 'static + PipelineLayoutDesc, Rp: 'static,
+              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
     {
         // FIXME: add buffers to the resources
@@ -786,7 +786,7 @@ impl InnerCommandBufferBuilder {
 
     fn bind_compute_pipeline_state<Pl, L>(&mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L)
         where L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc
+              Pl: 'static + PipelineLayoutDesc + Send + Sync
     {
         unsafe {
             assert!(sets.is_compatible_with(pipeline.layout()));
@@ -834,8 +834,8 @@ impl InnerCommandBufferBuilder {
 
     fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                              dynamic: &DynamicState, sets: L)
-        where V: 'static + VertexDefinition, L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc, Rp: 'static
+        where V: 'static + VertexDefinition + Send + Sync, L: 'static + DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync
     {
         unsafe {
             assert!(sets.is_compatible_with(pipeline.layout()));
@@ -1970,8 +1970,8 @@ impl Drop for Submission {
     }
 }
 
-pub trait KeepAlive {}
-impl<T> KeepAlive for T {}
+pub trait KeepAlive: 'static + Send + Sync {}
+impl<T> KeepAlive for T where T: 'static + Send + Sync {}
 
 #[derive(Clone)]
 struct BufferKey(Arc<Buffer>);

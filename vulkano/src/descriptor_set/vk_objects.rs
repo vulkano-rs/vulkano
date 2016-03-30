@@ -312,12 +312,12 @@ impl<S> Drop for DescriptorSet<S> {
 
 
 /// Implemented on all `DescriptorSet` objects. Hides the template parameters.
-pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 {
+pub unsafe trait AbstractDescriptorSet: ::VulkanObjectU64 + 'static + Send + Sync {
     // TODO: crappy interface
     fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)];
     fn buffers_list(&self) -> &[Arc<Buffer>];
 }
-unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> {
+unsafe impl<S> AbstractDescriptorSet for DescriptorSet<S> where S: 'static + Send + Sync {
     #[inline]
     fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)] { DescriptorSet::images_list(self) }
     #[inline]
@@ -395,8 +395,8 @@ impl<S> Drop for DescriptorSetLayout<S> {
 }
 
 /// Implemented on all `DescriptorSetLayout` objects. Hides the template parameters.
-pub unsafe trait AbstractDescriptorSetLayout: ::VulkanObjectU64 {}
-unsafe impl<S> AbstractDescriptorSetLayout for DescriptorSetLayout<S> {}
+pub unsafe trait AbstractDescriptorSetLayout: ::VulkanObjectU64 + 'static + Send + Sync {}
+unsafe impl<S> AbstractDescriptorSetLayout for DescriptorSetLayout<S> where S: 'static + Send + Sync {}
 
 /// A collection of `DescriptorSetLayout` structs.
 // TODO: push constants.

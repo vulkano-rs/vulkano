@@ -78,7 +78,7 @@ pub enum InputRate {
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
-pub unsafe trait Vertex {
+pub unsafe trait Vertex: 'static + Send + Sync {
     /// Returns the characteristics of a vertex attribute.
     fn attrib(name: &str) -> Option<AttributeInfo>;
 }
@@ -92,7 +92,7 @@ pub struct AttributeInfo {
 }
 
 /// Trait for types that contain a definition of the vertex input used by a graphics pipeline.
-pub unsafe trait Definition {
+pub unsafe trait Definition: 'static + Send + Sync {
     /// Iterator used to enumerate the list of buffers.
     type InfoIter: ExactSizeIterator<Item = (usize, InputRate)>;
 

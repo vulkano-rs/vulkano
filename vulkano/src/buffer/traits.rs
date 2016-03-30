@@ -15,7 +15,7 @@ use command_buffer::Submission;
 use memory::Content;
 use sync::Semaphore;
 
-pub unsafe trait Buffer {
+pub unsafe trait Buffer: 'static + Send + Sync {
     /// Returns the inner buffer.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_buffer(&self) -> &UnsafeBuffer;

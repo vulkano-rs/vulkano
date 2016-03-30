@@ -97,7 +97,7 @@ unsafe impl DescriptorSetsCollection for () {
 }
 
 unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
-    where T: 'static + SetLayout
+    where T: 'static + SetLayout + Send + Sync
 {
     type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
 
@@ -114,7 +114,7 @@ unsafe impl<T> DescriptorSetsCollection for Arc<DescriptorSet<T>>
 }
 
 unsafe impl<T> DescriptorSetsCollection for (Arc<DescriptorSet<T>>,)
-    where T: 'static + SetLayout
+    where T: 'static + SetLayout + Send + Sync
 {
     type Iter = OptionIntoIter<Arc<AbstractDescriptorSet>>;
 

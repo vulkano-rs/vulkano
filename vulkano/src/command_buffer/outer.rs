@@ -187,8 +187,8 @@ impl PrimaryCommandBufferBuilder {
     #[inline]
     pub fn dispatch<Pl, L>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                            dimensions: [u32; 3]) -> PrimaryCommandBufferBuilder
-        where L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc
+        where L: 'static + DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayoutDesc + Send + Sync
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -284,8 +284,8 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static, Rp: 'static,
-              L: DescriptorSetsCollection + 'static
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static + Send + Sync, Rp: 'static + Send + Sync,
+              L: DescriptorSetsCollection + 'static + Send + Sync
     {
         // FIXME: check subpass
 
@@ -302,9 +302,9 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc, Rp: 'static,
-              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              L: DescriptorSetsCollection + 'static
+        where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync,
+              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
+              L: DescriptorSetsCollection + 'static + Send + Sync
     {
         // FIXME: check subpass
 
@@ -443,8 +443,9 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if the secondary command buffers wasn't created with a compatible
     ///   renderpass or is using the wrong subpass.
     #[inline]
-    pub fn execute_commands<R: 'static>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R>>)
-                                        -> PrimaryCommandBufferBuilderSecondaryDraw
+    pub fn execute_commands<R>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R>>)
+                               -> PrimaryCommandBufferBuilderSecondaryDraw
+        where R: 'static + Send + Sync
     {
         // FIXME: check renderpass, subpass and framebuffer
 
@@ -514,6 +515,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
                framebuffer: Option<&Arc<Framebuffer<R>>>)
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
+        where R: 'static + Send + Sync
     {
         let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone()));
         Ok(SecondaryGraphicsCommandBufferBuilder {
@@ -529,8 +531,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static,
-              Rp: RenderPass + 'static, L: DescriptorSetsCollection + 'static,
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static + Send + Sync,
+              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + 'static + Send + Sync,
               R: RenderPassCompatible<Rp>
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
@@ -550,10 +552,10 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc,
-              Rp: RenderPass + 'static,
+        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc + Send + Sync,
+              Rp: RenderPass + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              L: DescriptorSetsCollection + 'static
+              L: DescriptorSetsCollection + 'static + Send + Sync
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
