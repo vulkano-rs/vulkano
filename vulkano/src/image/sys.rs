@@ -471,6 +471,18 @@ impl UnsafeImage {
     pub fn samples(&self) -> u32 {
         self.samples
     }
+
+    /// Returns true if the image can be used as a source for blits.
+    #[inline]
+    pub fn supports_blit_source(&self) -> bool {
+        (self.format_features & vk::FORMAT_FEATURE_BLIT_SRC_BIT) != 0
+    }
+
+    /// Returns true if the image can be used as a destination for blits.
+    #[inline]
+    pub fn supports_blit_destination(&self) -> bool {
+        (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
+    }
 }
 
 unsafe impl VulkanObject for UnsafeImage {

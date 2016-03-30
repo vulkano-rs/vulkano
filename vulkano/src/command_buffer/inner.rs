@@ -603,6 +603,9 @@ impl InnerCommandBufferBuilder {
 
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
+        assert!(source.supports_blit_source());
+        assert!(destination.supports_blit_destination());
+
         self.add_image_resource_outside(source.clone() as Arc<_>,
                                         source_mip_level .. source_mip_level + 1,
                                         source_array_layers.clone(), false,

@@ -100,6 +100,18 @@ pub unsafe trait Image {
     ///                of an `Arc<Submission>` to avoid cyclic references.
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult;
+
+    /// Returns true if the image can be used as a source for blits.
+    #[inline]
+    fn supports_blit_source(&self) -> bool {
+        self.inner_image().supports_blit_source()
+    }
+
+    /// Returns true if the image can be used as a destination for blits.
+    #[inline]
+    fn supports_blit_destination(&self) -> bool {
+        self.inner_image().supports_blit_destination()
+    }
 }
 
 pub unsafe trait ImageClearValue<T>: Image {
