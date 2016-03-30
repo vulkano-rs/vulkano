@@ -41,14 +41,17 @@ pub mod traits;
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
 #[derive(Debug, Copy, Clone)]
 pub enum MipmapsCount {
-    /// Allocate the given number of mipmaps.
+    /// Allocate the given number of mipmaps. May result in an error if the value is out of range.
     Specific(u32),
 
     /// Allocates the number of mipmaps required to store all the mipmaps of the image where each
-    /// mipmap is half the dimensions of the previous level.
-    Max,
+    /// mipmap is half the dimensions of the previous level. Always supported.
+    ///
+    /// Note that this is not necessarily the maximum number of mipmaps, as the Vulkan
+    /// implementation may report that it supports a greater value.
+    Log2,
 
-    /// Allocate one mipmap (ie. just the main level).
+    /// Allocate one mipmap (ie. just the main level). Always supported.
     One,
 }
 

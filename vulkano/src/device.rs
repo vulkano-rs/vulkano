@@ -200,6 +200,12 @@ impl Device {
         }
     }
 
+    /// Returns the instance used to create this device.
+    #[inline]
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
+    }
+
     /// Returns the physical device that was used to create this device.
     #[inline]
     pub fn physical_device(&self) -> PhysicalDevice {

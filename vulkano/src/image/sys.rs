@@ -82,6 +82,13 @@ impl UnsafeImage {
         // Preprocessing parameters.
         let sharing = sharing.into();
 
+        // This function is going to perform various checks and write to `capabilities_error` in
+        // case of error.
+        //
+        // If `capabilities_error` is not `None` after the checks are finished, the function will
+        // check for additional image capabilities (section 31.4 of the specs).
+        let mut capabilities_error = None;
+
         // Compute the maximum number of mipmaps.
         // TODO: only compte if necessary?
         let max_mipmaps = {
@@ -99,29 +106,97 @@ impl UnsafeImage {
                 },
             };
 
-            assert!(smallest_dim >= 1);
             32 - smallest_dim.leading_zeros()
         };
 
         // Compute the number of mipmaps.
         let mipmaps = match mipmaps.into() {
             MipmapsCount::Specific(num) => {
-                if num < 1 || num > max_mipmaps {
+                if num < 1 {
                     return Err(ImageCreationError::InvalidMipmapsCount {
+                        obtained: num, valid_range: 1 .. max_mipmaps + 1
+                    });
+                } else if num > max_mipmaps {
+                    capabilities_error = Some(ImageCreationError::InvalidMipmapsCount {
                         obtained: num, valid_range: 1 .. max_mipmaps + 1
                     });
                 }
 
                 num
             },
-            MipmapsCount::Max => max_mipmaps,
+            MipmapsCount::Log2 => max_mipmaps,
             MipmapsCount::One => 1,
         };
 
         // Checking whether the number of samples is supported.
         if num_samples == 0 {
-            // FIXME: check correctly
             return Err(ImageCreationError::UnsupportedSamplesCount { obtained: num_samples });
+
+        } else if !num_samples.is_power_of_two() {
+            return Err(ImageCreationError::UnsupportedSamplesCount { obtained: num_samples });
+
+        } else {
+            let mut supported_samples = 0x7f;       // all bits up to VK_SAMPLE_COUNT_64_BIT
+
+            if usage.sampled {
+                match format.ty() {
+                    FormatTy::Float | FormatTy::Compressed => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_color_sample_counts();
+                    },
+                    FormatTy::Uint | FormatTy::Sint => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_integer_sample_counts();
+                    },
+                    FormatTy::Depth => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_depth_sample_counts();
+                    },
+                    FormatTy::Stencil => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_stencil_sample_counts();
+                    },
+                    FormatTy::DepthStencil => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_depth_sample_counts();
+                        supported_samples &= device.physical_device().limits()
+                                                   .sampled_image_stencil_sample_counts();
+                    },
+                }
+            }
+
+            if usage.storage {
+                supported_samples &= device.physical_device().limits()
+                                           .storage_image_sample_counts();
+            }
+
+            if usage.color_attachment || usage.depth_stencil_attachment {
+                match format.ty() {
+                    FormatTy::Float | FormatTy::Compressed | FormatTy::Uint | FormatTy::Sint => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .framebuffer_color_sample_counts();
+                    },
+                    FormatTy::Depth => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .framebuffer_depth_sample_counts();
+                    },
+                    FormatTy::Stencil => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .framebuffer_stencil_sample_counts();
+                    },
+                    FormatTy::DepthStencil => {
+                        supported_samples &= device.physical_device().limits()
+                                                   .framebuffer_depth_sample_counts();
+                        supported_samples &= device.physical_device().limits()
+                                                   .framebuffer_stencil_sample_counts();
+                    },
+                }
+            }
+
+            if (num_samples & supported_samples) == 0 {
+                let err = ImageCreationError::UnsupportedSamplesCount { obtained: num_samples };
+                capabilities_error = Some(err);
+            }
         }
 
         // If the `shaderStorageImageMultisample` feature is not enabled and we have
@@ -132,33 +207,104 @@ impl UnsafeImage {
             }
         }
 
-        let vk = device.pointers();
-        let usage = usage.to_usage_bits();
-
-        // TODO: check for limits
+        // Decoding the dimensions.
         let (ty, extent, array_layers) = match dimensions {
             Dimensions::Dim1d { width } => {
+                if width == 0 {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
                 (vk::IMAGE_TYPE_1D, extent, 1)
             },
             Dimensions::Dim1dArray { width, array_layers } => {
+                if width == 0 || array_layers == 0 {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
                 (vk::IMAGE_TYPE_1D, extent, array_layers)
             },
             Dimensions::Dim2d { width, height } => {
+                if width == 0 || height == 0 {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
                 (vk::IMAGE_TYPE_2D, extent, 1)
             },
             Dimensions::Dim2dArray { width, height, array_layers } => {
+                if width == 0 || height == 0 || array_layers == 0 {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
                 (vk::IMAGE_TYPE_2D, extent, array_layers)
             },
             Dimensions::Dim3d { width, height, depth } => {
+                if width == 0 || height == 0 || depth == 0 {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: height, depth: depth };
                 (vk::IMAGE_TYPE_3D, extent, 1)
             },
         };
 
+        // Checking the dimensions against the limits.
+        if array_layers > device.physical_device().limits().max_image_array_layers() {
+            let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
+            capabilities_error = Some(err);
+        }
+        match ty {
+            vk::IMAGE_TYPE_1D => {
+                if extent.width > device.physical_device().limits().max_image_dimension_1d() {
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
+                    capabilities_error = Some(err);
+                }
+            },
+            vk::IMAGE_TYPE_2D => {
+                let limit = device.physical_device().limits().max_image_dimension_2d();
+                if extent.width > limit || extent.height > limit {
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
+                    capabilities_error = Some(err);
+                }
+            },
+            vk::IMAGE_TYPE_3D => {
+                let limit = device.physical_device().limits().max_image_dimension_3d();
+                if extent.width > limit || extent.height > limit || extent.depth > limit {
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
+                    capabilities_error = Some(err);
+                }
+            },
+            _ => unreachable!()
+        };
+
+        // Entering Vulkan zone.
+        let vk = device.pointers();
+        let vk_i = device.instance().pointers();
+        let usage = usage.to_usage_bits();
+
+        // Now that all checks have been performed, if any of the check failed we query the Vulkan
+        // implementation for additional image capabilities.
+        if let Some(capabilities_error) = capabilities_error {
+            let tiling = if linear_tiling {
+                vk::IMAGE_TILING_LINEAR     // FIXME: check whether it's supported
+            } else {
+                vk::IMAGE_TILING_OPTIMAL
+            };
+
+            let mut output = mem::uninitialized();
+            let physical_device = device.physical_device().internal_object();
+            let r = vk_i.GetPhysicalDeviceImageFormatProperties(physical_device, format as u32, ty,
+                                                                tiling, usage, 0 /* TODO */,
+                                                                &mut output);
+            try!(check_errors(r));
+
+            if extent.width > output.maxExtent.width || extent.height > output.maxExtent.height ||
+               extent.depth > output.maxExtent.depth || mipmaps > output.maxMipLevels ||
+               array_layers > output.maxArrayLayers || (num_samples & output.sampleCounts) == 0
+            {
+                return Err(capabilities_error);
+            }
+        }
+
+        // Everything now ok. Creating the image.
         let image = {
             let (sh_mode, sh_indices) = match sharing {
                 Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
@@ -655,6 +801,7 @@ pub enum Layout {
 #[cfg(test)]
 mod tests {
     use std::iter::Empty;
+    use std::u32;
 
     use super::Dimensions;
     use super::ImageCreationError;
@@ -705,18 +852,19 @@ mod tests {
     }
 
     #[test]
+    #[ignore]       // TODO: AMD card seems to support a u32::MAX number of mipmaps
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
         let res = unsafe {
             UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 7,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
         match res {
             Err(ImageCreationError::InvalidMipmapsCount { obtained, valid_range }) => {
-                assert_eq!(obtained, 7);
-                assert_eq!(valid_range, 1 .. 7);
+                assert_eq!(obtained, u32::MAX);
+                assert_eq!(valid_range.start, 1);
             },
             _ => panic!()
         };
