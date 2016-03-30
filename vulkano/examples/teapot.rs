@@ -54,6 +54,7 @@ fn main() {
 
     let device_ext = vulkano::device::DeviceExtensions {
         khr_swapchain: true,
+        .. vulkano::device::DeviceExtensions::none()
     };
 
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
