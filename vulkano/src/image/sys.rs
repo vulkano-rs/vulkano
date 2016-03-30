@@ -787,13 +787,33 @@ impl Dimensions {
 /// when creating the image.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Usage {
+    /// Can be used a source for transfers. Includes blits.
     pub transfer_source: bool,
+
+    /// Can be used a destination for transfers. Includes blits.
     pub transfer_dest: bool,
+
+    /// Can be sampled from a shader.
     pub sampled: bool,
+
+    /// Can be used as an image storage in a shader.
     pub storage: bool,
+
+    /// Can be attached as a color attachment to a framebuffer.
     pub color_attachment: bool,
+
+    /// Can be attached as a depth, stencil or depth-stencil attachment to a framebuffer.
     pub depth_stencil_attachment: bool,
+
+    /// Indicates that this image will only ever be used as a temporary framebuffer attachment.
+    /// As soon as you leave a render pass, the content of transient images becomes undefined.
+    ///
+    /// This is a hint to the Vulkan implementation that it may not need allocate any memory for
+    /// this image if the image can live entirely in some cache.
     pub transient_attachment: bool,
+
+    /// Can be used as an input attachment. In other words, you can draw to it in a subpass then
+    /// read from it in a following pass.
     pub input_attachment: bool,
 }
 
