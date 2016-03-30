@@ -322,3 +322,26 @@ impl Usage {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::iter::Empty;
+
+    use super::UnsafeBuffer;
+    use super::Usage;
+
+    use device::Device;
+    use sync::Sharing;
+
+    #[test]
+    fn create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let (buf, reqs) = unsafe {
+            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>)
+        }.unwrap();
+
+        assert!(reqs.size >= 128);
+        assert_eq!(buf.size(), 128);
+        assert_eq!(&**buf.device() as *const Device, &*device as *const Device);
+    }
+}
