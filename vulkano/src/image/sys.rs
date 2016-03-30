@@ -59,6 +59,9 @@ pub struct UnsafeImage {
     samples: u32,
     mipmaps: u32,
 
+    // Features that are supported for this particular format.
+    format_features: vk::FormatFeatureFlagBits,
+
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
 }
@@ -79,8 +82,50 @@ impl UnsafeImage {
                                  -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
         where Mi: Into<MipmapsCount>, I: Iterator<Item = u32>
     {
+        // TODO: doesn't check that the proper features are enabled
+
+        let vk = device.pointers();
+        let vk_i = device.instance().pointers();
+
         // Preprocessing parameters.
         let sharing = sharing.into();
+
+        // Checking if image usage conforms to what is supported.
+        // TODO: check the transient stuff
+        let format_features = {
+            let physical_device = device.physical_device().internal_object();
+
+            let mut output = mem::uninitialized();
+            vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, &mut output);
+
+            let features = if linear_tiling {
+                output.linearTilingFeatures
+            } else {
+                output.optimalTilingFeatures
+            };
+
+            if features == 0 {
+                return Err(ImageCreationError::FormatNotSupported);
+            }
+
+            if usage.sampled && (features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_BIT == 0) {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+            if usage.storage && (features & vk::FORMAT_FEATURE_STORAGE_IMAGE_BIT == 0) {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+            if usage.color_attachment && (features & vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT == 0) {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+            if usage.depth_stencil_attachment && (features & vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT == 0) {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+            if usage.input_attachment && (features & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0) {
+                return Err(ImageCreationError::UnsupportedUsage);
+            }
+
+            features
+        };
 
         // This function is going to perform various checks and write to `capabilities_error` in
         // case of error.
@@ -275,16 +320,13 @@ impl UnsafeImage {
             _ => unreachable!()
         };
 
-        // Entering Vulkan zone.
-        let vk = device.pointers();
-        let vk_i = device.instance().pointers();
         let usage = usage.to_usage_bits();
 
         // Now that all checks have been performed, if any of the check failed we query the Vulkan
         // implementation for additional image capabilities.
         if let Some(capabilities_error) = capabilities_error {
             let tiling = if linear_tiling {
-                vk::IMAGE_TILING_LINEAR     // FIXME: check whether it's supported
+                vk::IMAGE_TILING_LINEAR
             } else {
                 vk::IMAGE_TILING_OPTIMAL
             };
@@ -294,7 +336,12 @@ impl UnsafeImage {
             let r = vk_i.GetPhysicalDeviceImageFormatProperties(physical_device, format as u32, ty,
                                                                 tiling, usage, 0 /* TODO */,
                                                                 &mut output);
-            try!(check_errors(r));
+
+            match check_errors(r) {
+                Ok(_) => (),
+                Err(Error::FormatNotSupported) => return Err(ImageCreationError::FormatNotSupported),
+                Err(err) => return Err(err.into()),
+            }
 
             if extent.width > output.maxExtent.width || extent.height > output.maxExtent.height ||
                extent.depth > output.maxExtent.depth || mipmaps > output.maxMipLevels ||
@@ -322,7 +369,7 @@ impl UnsafeImage {
                 arrayLayers: array_layers,
                 samples: num_samples,
                 tiling: if linear_tiling {
-                    vk::IMAGE_TILING_LINEAR     // FIXME: check whether it's supported
+                    vk::IMAGE_TILING_LINEAR
                 } else {
                     vk::IMAGE_TILING_OPTIMAL
                 },
@@ -358,6 +405,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: num_samples,
             mipmaps: mipmaps,
+            format_features: format_features,
             needs_destruction: true,
         };
 
@@ -379,6 +427,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: samples,
             mipmaps: mipmaps,
+            format_features: 0,     // FIXME: wrong
             needs_destruction: false,       // TODO: pass as parameter
         }
     }
@@ -458,6 +507,10 @@ pub enum ImageCreationError {
     UnsupportedSamplesCount { obtained: u32 },
     /// The dimensions are too large, or one of the dimensions is 0.
     UnsupportedDimensions { dimensions: Dimensions },
+    /// The requested format is not supported by the Vulkan implementation.
+    FormatNotSupported,
+    /// The format is supported, but at least one of the requested usages is not supported.
+    UnsupportedUsage,
     /// The `shader_storage_image_multisample` feature must be enabled to create such an image.
     ShaderStorageImageMultisampleFeatureNotEnabled,
 }
@@ -473,6 +526,10 @@ impl error::Error for ImageCreationError {
                                                                    is not supported, or is 0",
             ImageCreationError::UnsupportedDimensions { .. } => "the dimensions are too large, or \
                                                                  one of the dimensions is 0",
+            ImageCreationError::FormatNotSupported => "the requested format is not supported by \
+                                                       the Vulkan implementation",
+            ImageCreationError::UnsupportedUsage => "the format is supported, but at least one \
+                                                     of the requested usages is not supported",
             ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled => {
                 "the `shader_storage_image_multisample` feature must be enabled to create such \
                  an image"
@@ -814,8 +871,14 @@ mod tests {
     #[test]
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
-        let (buf, _) = unsafe {
-            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
+        let (_img, _) = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
                              Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         }.unwrap();
@@ -824,8 +887,14 @@ mod tests {
     #[test]
     fn zero_sample() {
         let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
         let res = unsafe {
-            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
                              Dimensions::Dim2d { width: 32, height: 32 }, 0, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
@@ -839,8 +908,14 @@ mod tests {
     #[test]
     fn zero_mipmap() {
         let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
         let res = unsafe {
-            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
                              Dimensions::Dim2d { width: 32, height: 32 }, 1, 0,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
@@ -855,8 +930,14 @@ mod tests {
     #[ignore]       // TODO: AMD card seems to support a u32::MAX number of mipmaps
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
         let res = unsafe {
-            UnsafeImage::new(&device, &Usage::all(), Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
                              Dimensions::Dim2d { width: 32, height: 32 }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
@@ -888,6 +969,28 @@ mod tests {
         match res {
             Err(ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled) => (),
             Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (), // unlikely but possible
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn compressed_not_color_attachment() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            color_attachment: true,
+            .. Usage::none()
+        };
+
+        let res = unsafe {
+            UnsafeImage::new(&device, &usage, Format::ASTC_5x4UnormBlock,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, u32::MAX,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::FormatNotSupported) => (),
+            Err(ImageCreationError::UnsupportedUsage) => (),
             _ => panic!()
         };
     }
