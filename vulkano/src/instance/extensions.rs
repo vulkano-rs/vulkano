@@ -61,10 +61,14 @@ extensions! {
 #[cfg(test)]
 mod tests {
     use instance::InstanceExtensions;
+    use instance::DeviceExtensions;
 
     #[test]
     fn empty_extensions() {
-        let s = InstanceExtensions::none().build_extensions_list();
-        assert!(s.is_empty());
+        let i = InstanceExtensions::none().build_extensions_list();
+        assert!(i.is_empty());
+
+        let d = DeviceExtensions::none().build_extensions_list();
+        assert!(d.is_empty());
     }
 }
