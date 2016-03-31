@@ -9,7 +9,7 @@ description = "Safe wrapper for the Vulkan graphics API"
 crossbeam = "0.2.5"
 shared_library = "0.1.4"
 #smallvec = "0.1.6"
-smallvec = { git = "https://github.com/tomaka/rust-smallvec", branch = "patch-1" }
+smallvec = { git = "https://github.com/servo/rust-smallvec" }
 lazy_static = "0.1.15"
 
 [build-dependencies]
