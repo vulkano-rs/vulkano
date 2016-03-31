@@ -21,7 +21,6 @@ use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::Transition;
-use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -63,9 +62,13 @@ impl SwapchainImage {
         }))
     }
 
+    /// Returns the dimensions of the image.
+    ///
+    /// A `SwapchainImage` is always two-dimensional.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
-        self.image.dimensions()
+    pub fn dimensions(&self) -> [u32; 2] {
+        let dims = self.image.dimensions();
+        [dims.width(), dims.height()]
     }
 }
 
