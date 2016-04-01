@@ -42,7 +42,6 @@ impl Sampler {
     /// - Panicks if `max_anisotropy < 1.0`.
     /// - Panicks if `min_lod > max_lod`.
     ///
-    // TODO: wrong error type returned
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
@@ -121,7 +120,6 @@ impl Sampler {
     /// - It can only be used with images with a single mipmap.
     /// - Projection and offsets can't be used by shaders. Only the first mipmap can be accessed.
     ///
-    // TODO: wrong error type returned
     pub fn unnormalized(device: &Arc<Device>, filter: Filter,
                         address_u: UnnormalizedSamplerAddressMode,
                         address_v: UnnormalizedSamplerAddressMode)
