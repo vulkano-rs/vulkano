@@ -32,7 +32,6 @@ use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
-use format::PossibleFloatOrCompressedFormatDesc;
 use format::PossibleFloatFormatDesc;
 use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
@@ -542,7 +541,7 @@ impl InnerCommandBufferBuilder {
 
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
-        assert!(image.format().is_float_or_compressed());
+        //assert!(image.format().is_float_or_compressed());
 
         let source = source.into();
         self.add_buffer_resource_outside(source.buffer().clone() as Arc<_>, false,

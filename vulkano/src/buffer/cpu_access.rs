@@ -252,6 +252,19 @@ pub struct CpuAccess<'a, T: ?Sized + 'a> {
     lock: MutexGuard<'a, Option<Weak<Submission>>>,
 }
 
+impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
+    /// Makes a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
+    #[inline]
+    pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U>
+        where F: FnOnce(&mut T) -> &mut U
+    {
+        CpuAccess {
+            inner: self.inner.map(|ptr| unsafe { f(&mut *ptr) as *mut _ }),
+            lock: self.lock,
+        }
+    }
+}
+
 impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
     type Target = T;
 

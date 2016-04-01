@@ -70,7 +70,6 @@ pub mod memory;
 pub mod pipeline;
 //pub mod query;
 pub mod sampler;
-pub mod shader;
 pub mod swapchain;
 pub mod sync;
 

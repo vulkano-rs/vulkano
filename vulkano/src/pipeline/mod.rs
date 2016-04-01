@@ -19,5 +19,6 @@ pub mod cache;
 pub mod input_assembly;
 pub mod multisample;
 pub mod raster;
+pub mod shader;
 pub mod vertex;
 pub mod viewport;

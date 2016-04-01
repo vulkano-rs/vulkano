@@ -14,7 +14,7 @@ use std::sync::Arc;
 use descriptor_set::Layout;
 use descriptor_set::LayoutPossibleSuperset;
 use descriptor_set::PipelineLayout;
-use shader::ComputeShaderEntryPoint;
+use pipeline::shader::ComputeShaderEntryPoint;
 
 use device::Device;
 use OomError;

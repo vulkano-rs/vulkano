@@ -49,6 +49,7 @@ use vk;
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitionned.
 ///
+#[derive(Debug)]
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -435,6 +436,14 @@ impl UnsafeImage {
                            dimensions: Dimensions, samples: u32, mipmaps: u32)
                            -> UnsafeImage
     {
+        let vk_i = device.instance().pointers();
+        let physical_device = device.physical_device().internal_object();
+
+        let mut output = mem::uninitialized();
+        vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, &mut output);
+
+        // TODO: check that usage is correct in regard to `output`?
+
         UnsafeImage {
             device: device.clone(),
             image: handle,
@@ -443,7 +452,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: samples,
             mipmaps: mipmaps,
-            format_features: 0,     // FIXME: wrong
+            format_features: output.optimalTilingFeatures,
             needs_destruction: false,       // TODO: pass as parameter
         }
     }
@@ -599,6 +608,7 @@ impl From<Error> for ImageCreationError {
     }
 }
 
+#[derive(Debug)]
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,

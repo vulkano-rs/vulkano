@@ -35,6 +35,7 @@ use image::traits::Transition;
 use memory::DeviceMemory;
 use sync::Sharing;
 
+#[derive(Debug)]
 pub struct AttachmentImage<F> {
     image: UnsafeImage,
     view: UnsafeImageView,
@@ -48,6 +49,7 @@ pub struct AttachmentImage<F> {
     guarded: Mutex<Guarded>,
 }
 
+#[derive(Debug)]
 struct Guarded {
     correct_layout: bool,
     latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized

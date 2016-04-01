@@ -21,7 +21,6 @@ use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::Transition;
-use image::sys::Dimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -30,6 +29,7 @@ use sync::Semaphore;
 
 use OomError;
 
+// TODO: #[derive(Debug)] (needs https://github.com/aturon/crossbeam/issues/62)
 pub struct SwapchainImage {
     image: UnsafeImage,
     view: UnsafeImageView,
@@ -39,6 +39,7 @@ pub struct SwapchainImage {
     guarded: Mutex<Guarded>,
 }
 
+#[derive(Debug)]
 struct Guarded {
     present_layout: bool,
     latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
@@ -63,9 +64,13 @@ impl SwapchainImage {
         }))
     }
 
+    /// Returns the dimensions of the image.
+    ///
+    /// A `SwapchainImage` is always two-dimensional.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
-        self.image.dimensions()
+    pub fn dimensions(&self) -> [u32; 2] {
+        let dims = self.image.dimensions();
+        [dims.width(), dims.height()]
     }
 }
 

@@ -33,6 +33,7 @@ use vk;
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
+#[derive(Debug)]
 pub struct Surface {
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
