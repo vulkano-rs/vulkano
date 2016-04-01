@@ -221,6 +221,20 @@ pub struct CpuAccess<'a, T: ?Sized + 'a> {
     coherent: bool,
 }
 
+impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
+    /// Makes a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
+    #[inline]
+    pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U>
+        where F: FnOnce(*mut T) -> *mut U
+    {
+        CpuAccess {
+            pointer: f(self.pointer),
+            mem: self.mem,
+            coherent: self.coherent,
+        }
+    }
+}
+
 unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {}
 unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {}
 
