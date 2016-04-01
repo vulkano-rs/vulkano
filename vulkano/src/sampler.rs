@@ -50,8 +50,31 @@ impl Sampler {
                -> Result<Arc<Sampler>, SamplerCreationError>
     {
         assert!(max_anisotropy >= 1.0);
-        // TODO: check limits
         assert!(min_lod <= max_lod);
+
+        if max_anisotropy > 1.0 {
+            if !device.enabled_features().sampler_anisotropy {
+                return Err(SamplerCreationError::SamplerAnisotropyFeatureNotEnabled);
+            }
+
+            let limit = device.physical_device().limits().max_sampler_anisotropy();
+            if max_anisotropy > limit {
+                return Err(SamplerCreationError::AnisotropyLimitExceeded {
+                    requested: max_anisotropy,
+                    maximum: limit,
+                });
+            }
+        }
+
+        {
+            let limit = device.physical_device().limits().max_sampler_lod_bias();
+            if mip_lod_bias > limit {
+                return Err(SamplerCreationError::MipLodBiasLimitExceeded {
+                    requested: mip_lod_bias,
+                    maximum: limit,
+                });
+            }
+        }
 
         let vk = device.pointers();
 
@@ -203,13 +226,24 @@ pub enum UnnormalizedSamplerAddressMode {
 }
 
 /// Error that can happen when creating an instance.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SamplerCreationError {
     /// Not enough memory.
     OomError(OomError),
+
     /// Too many sampler objects have been created. You must destroy some before creating new ones.
     /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
     TooManyObjects,
+
+    /// Using an anisotropy superior to 1.0 requires enabling the `sampler_anisotropy` feature when
+    /// creating the device.
+    SamplerAnisotropyFeatureNotEnabled,
+
+    /// The requested anisotropy level exceeds the device's limits.
+    AnisotropyLimitExceeded { requested: f32, maximum: f32 },
+
+    /// The requested mip lod bias exceeds the device's limits.
+    MipLodBiasLimitExceeded { requested: f32, maximum: f32 },
 }
 
 impl error::Error for SamplerCreationError {
@@ -218,6 +252,10 @@ impl error::Error for SamplerCreationError {
         match *self {
             SamplerCreationError::OomError(_) => "not enough memory available",
             SamplerCreationError::TooManyObjects => "too many simultaneous sampler objects",
+            SamplerCreationError::SamplerAnisotropyFeatureNotEnabled => "the `sampler_anisotropy` \
+                                                                         feature is not enabled",
+            SamplerCreationError::AnisotropyLimitExceeded { .. } => "anisotropy limit exceeded",
+            SamplerCreationError::MipLodBiasLimitExceeded { .. } => "mip lod bias limit exceeded",
         }
     }
 
@@ -261,7 +299,7 @@ mod tests {
     use sampler;
 
     #[test]
-    fn create() {
+    fn create_regular() {
         let (device, queue) = gfx_dev_and_queue!();
 
         let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
@@ -270,6 +308,16 @@ mod tests {
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
                                       0.0, 2.0).unwrap();
+    }
+
+    #[test]
+    fn create_unnormalized() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let _ = sampler::Sampler::unnormalized(&device, sampler::Filter::Linear,
+                                               sampler::UnnormalizedSamplerAddressMode::ClampToEdge,
+                                               sampler::UnnormalizedSamplerAddressMode::ClampToEdge)
+                                               .unwrap();
     }
 
     #[test]
@@ -294,5 +342,55 @@ mod tests {
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat, 1.0, 0.5, 0.0, 2.0);
+    }
+
+    #[test]
+    fn anisotropy_feature() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 2.0, 0.0, 2.0);
+
+        match r {
+            Err(sampler::SamplerCreationError::SamplerAnisotropyFeatureNotEnabled) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn anisotropy_limit() {
+        let (device, queue) = gfx_dev_and_queue!(sampler_anisotropy);
+
+        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 100000000.0, 0.0,
+                                      2.0);
+
+        match r {
+            Err(sampler::SamplerCreationError::AnisotropyLimitExceeded { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn mip_lod_bias_limit() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      sampler::SamplerAddressMode::Repeat, 100000000.0, 1.0, 0.0,
+                                      2.0);
+
+        match r {
+            Err(sampler::SamplerCreationError::MipLodBiasLimitExceeded { .. }) => (),
+            _ => panic!()
+        }
     }
 }
