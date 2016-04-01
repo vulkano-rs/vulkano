@@ -12,11 +12,14 @@
 //! This module contains a struct named `Sampler` which describes how to get pixel data from
 //! a texture.
 //!
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -43,7 +46,8 @@ impl Sampler {
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
-               max_anisotropy: f32, min_lod: f32, max_lod: f32) -> Result<Arc<Sampler>, OomError>
+               max_anisotropy: f32, min_lod: f32, max_lod: f32)
+               -> Result<Arc<Sampler>, SamplerCreationError>
     {
         assert!(max_anisotropy >= 1.0);
         // TODO: check limits
@@ -97,7 +101,8 @@ impl Sampler {
     // TODO: wrong error type returned
     pub fn unnormalized(device: &Arc<Device>, filter: Filter,
                         address_u: UnnormalizedSamplerAddressMode,
-                        address_v: UnnormalizedSamplerAddressMode) -> Result<Arc<Sampler>, OomError>
+                        address_v: UnnormalizedSamplerAddressMode)
+                        -> Result<Arc<Sampler>, SamplerCreationError>
     {
         let vk = device.pointers();
 
@@ -195,6 +200,60 @@ pub enum SamplerAddressMode {
 pub enum UnnormalizedSamplerAddressMode {
     ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
     ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+}
+
+/// Error that can happen when creating an instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SamplerCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// Too many sampler objects have been created. You must destroy some before creating new ones.
+    /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
+    TooManyObjects,
+}
+
+impl error::Error for SamplerCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            SamplerCreationError::OomError(_) => "not enough memory available",
+            SamplerCreationError::TooManyObjects => "too many simultaneous sampler objects",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            SamplerCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for SamplerCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for SamplerCreationError {
+    #[inline]
+    fn from(err: OomError) -> SamplerCreationError {
+        SamplerCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for SamplerCreationError {
+    #[inline]
+    fn from(err: Error) -> SamplerCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => SamplerCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => SamplerCreationError::OomError(OomError::from(err)),
+            Error::TooManyObjects => SamplerCreationError::TooManyObjects,
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
 }
 
 #[cfg(test)]
