@@ -75,7 +75,7 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         // writing the header
         output.push_str(&format!(r#"
 pub struct {name} {{
-    shader: ::std::sync::Arc<::vulkano::shader::ShaderModule>,
+    shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
 }}
 
 impl {name} {{
@@ -106,7 +106,7 @@ impl {name} {{
             let data = [{spirv_data}];
 
             Ok({name} {{
-                shader: try!(::vulkano::shader::ShaderModule::new(device, &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
             }})
         }}
     }}
@@ -114,7 +114,7 @@ impl {name} {{
     /// Returns the module that was created.
     #[allow(dead_code)]
     #[inline]
-    pub fn module(&self) -> &::std::sync::Arc<::vulkano::shader::ShaderModule> {{
+    pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {{
         &self.shader
     }}
         "#, name = name, spirv_data = spirv_data));
@@ -211,22 +211,22 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
             }).collect::<Vec<_>>().join(", ");
 
-            let t = format!("::vulkano::shader::VertexShaderEntryPoint<({input}), Layout>",
+            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<({input}), Layout>",
                             input = input);
             let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, vec![{}])", attributes);
             (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelTessellationControl => {
-            (format!("::vulkano::shader::TessControlShaderEntryPoint"), String::new())
+            (format!("::vulkano::pipeline::shader::TessControlShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            (format!("::vulkano::shader::TessEvaluationShaderEntryPoint"), String::new())
+            (format!("::vulkano::pipeline::shader::TessEvaluationShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
-            (format!("::vulkano::shader::GeometryShaderEntryPoint"), String::new())
+            (format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint"), String::new())
         },
 
         enums::ExecutionModel::ExecutionModelFragment => {
@@ -251,13 +251,13 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 if output.is_empty() { output } else { output + "," }
             };
 
-            let t = format!("::vulkano::shader::FragmentShaderEntryPoint<({output}), Layout>",
+            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<({output}), Layout>",
                             output = output);
             (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::shader::ComputeShaderEntryPoint<Layout>"),
+            (format!("::vulkano::pipeline::shader::ComputeShaderEntryPoint<Layout>"),
              format!("compute_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
