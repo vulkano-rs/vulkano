@@ -25,9 +25,11 @@ use vk;
 
 /// Describes how to retreive data from an image within a shader.
 pub struct Sampler {
-    device: Arc<Device>,
     sampler: vk::Sampler,
+    device: Arc<Device>,
 }
+
+// TODO: what's the story with VK_KHR_mirror_clamp_to_edge? Is it an extension or is it core?
 
 impl Sampler {
     /// Creates a new `Sampler` with the given behavior.
@@ -37,12 +39,14 @@ impl Sampler {
     /// - Panicks if `max_anisotropy < 1.0`.
     /// - Panicks if `min_lod > max_lod`.
     ///
+    // TODO: wrong error type returned
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
                max_anisotropy: f32, min_lod: f32, max_lod: f32) -> Result<Arc<Sampler>, OomError>
     {
         assert!(max_anisotropy >= 1.0);
+        // TODO: check limits
         assert!(min_lod <= max_lod);
 
         let vk = device.pointers();
@@ -66,7 +70,7 @@ impl Sampler {
                 minLod: min_lod,
                 maxLod: max_lod,
                 borderColor: 0,     // FIXME: 
-                unnormalizedCoordinates: 0,     // FIXME: 
+                unnormalizedCoordinates: vk::FALSE,
             };
 
             let mut output = mem::uninitialized();
@@ -76,8 +80,58 @@ impl Sampler {
         };
 
         Ok(Arc::new(Sampler {
-            device: device.clone(),
             sampler: sampler,
+            device: device.clone(),
+        }))
+    }
+
+    /// Creates a sampler with unnormalized coordinates. This means that texture coordinates won't
+    /// range between `0.0` and `1.0` but use plain pixel offsets.
+    ///
+    /// Using an unnormalized sampler adds a few restrictions:
+    ///
+    /// - It can only be used with non-array 1D or 2D images.
+    /// - It can only be used with images with a single mipmap.
+    /// - Projection and offsets can't be used by shaders. Only the first mipmap can be accessed.
+    ///
+    // TODO: wrong error type returned
+    pub fn unnormalized(device: &Arc<Device>, filter: Filter,
+                        address_u: UnnormalizedSamplerAddressMode,
+                        address_v: UnnormalizedSamplerAddressMode) -> Result<Arc<Sampler>, OomError>
+    {
+        let vk = device.pointers();
+
+        let sampler = unsafe {
+            let infos = vk::SamplerCreateInfo {
+                sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                magFilter: filter as u32,
+                minFilter: filter as u32,
+                mipmapMode: vk::SAMPLER_MIPMAP_MODE_NEAREST,
+                addressModeU: address_u as u32,
+                addressModeV: address_v as u32,
+                addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,       // unused by the impl
+                mipLodBias: 0.0,
+                anisotropyEnable: vk::FALSE,
+                maxAnisotropy: 0.0,
+                compareEnable: vk::FALSE,
+                compareOp: vk::COMPARE_OP_NEVER,
+                minLod: 0.0,
+                maxLod: 0.0,
+                borderColor: 0,     // FIXME: 
+                unnormalizedCoordinates: vk::TRUE,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateSampler(device.internal_object(), &infos,
+                                               ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Sampler {
+            sampler: sampler,
+            device: device.clone(),
         }))
     }
 }
@@ -134,6 +188,13 @@ pub enum SamplerAddressMode {
     ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
     ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
     MirrorClampToEdge = vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum UnnormalizedSamplerAddressMode {
+    ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+    ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
 }
 
 #[cfg(test)]
