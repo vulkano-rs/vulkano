@@ -61,6 +61,7 @@ pub use self::instance::MemoryHeap;
 pub use self::instance::Limits;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
+pub use self::layers::LayersIterator;
 
 pub mod debug;
 

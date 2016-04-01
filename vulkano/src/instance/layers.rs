@@ -9,6 +9,7 @@
 
 use std::ffi::CStr;
 use std::ptr;
+use std::vec::IntoIter;
 
 //use alloc::Alloc;
 use check_errors;
@@ -18,18 +19,19 @@ use VK_ENTRY;
 use version::Version;
 
 /// Queries the list of layers that are available when creating an instance.
-pub fn layers_list() -> Result<Vec<LayerProperties>, OomError> {
+pub fn layers_list() -> Result<LayersIterator, OomError> {
     unsafe {
         let mut num = 0;
         try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
-        try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())));
+        try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num,
+                                                                    layers.as_mut_ptr())));
         layers.set_len(num as usize);
 
-        Ok(layers.into_iter().map(|layer| {
-            LayerProperties { props: layer }
-        }).collect())
+        Ok(LayersIterator {
+            iter: layers.into_iter()
+        })
     }
 }
 
@@ -64,12 +66,35 @@ impl LayerProperties {
     }
 }
 
+/// Iterator that produces the list of layers that are available.
+// TODO: #[derive(Debug, Clone)]
+pub struct LayersIterator {
+    iter: IntoIter<vk::LayerProperties>
+}
+
+impl Iterator for LayersIterator {
+    type Item = LayerProperties;
+
+    #[inline]
+    fn next(&mut self) -> Option<LayerProperties> {
+        self.iter.next().map(|p| LayerProperties { props: p })
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl ExactSizeIterator for LayersIterator {
+}
+
 #[cfg(test)]
 mod tests {
     use instance;
 
     #[test]
     fn layers_list() {
-        let _ = instance::layers_list();
+        let _ = instance::layers_list().collect::<Vec<_>>();
     }
 }
