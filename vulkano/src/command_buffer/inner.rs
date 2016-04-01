@@ -25,9 +25,8 @@ use buffer::TypedBuffer;
 use buffer::traits::AccessRange as BufferAccessRange;
 use command_buffer::CommandBufferPool;
 use command_buffer::DynamicState;
-use descriptor_set::AbstractDescriptorSet;
-use descriptor_set::Layout as PipelineLayoutDesc;
-use descriptor_set::DescriptorSetsCollection;
+use descriptor_set::descriptor_set::DescriptorSetsCollection;
+use descriptor_set::PipelineLayout;
 use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
@@ -672,7 +671,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn dispatch<Pl, L>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                                   dimensions: [u32; 3]) -> InnerCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
@@ -691,7 +690,7 @@ impl InnerCommandBufferBuilder {
                              vertices: V, dynamic: &DynamicState,
                              sets: L) -> InnerCommandBufferBuilder
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync
     {
         // FIXME: add buffers to the resources
 
@@ -733,7 +732,7 @@ impl InnerCommandBufferBuilder {
                                                           sets: L) -> InnerCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection + Send + Sync,
               Pv: 'static + VertexDefinition + VertexSource<V>,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
     {
         // FIXME: add buffers to the resources
@@ -785,10 +784,10 @@ impl InnerCommandBufferBuilder {
 
     fn bind_compute_pipeline_state<Pl, L>(&mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L)
         where L: 'static + DescriptorSetsCollection,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync
     {
         unsafe {
-            assert!(sets.is_compatible_with(pipeline.layout()));
+            //assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.current_compute_pipeline != Some(pipeline.internal_object()) {
                 self.keep_alive.push(pipeline.clone());
@@ -800,15 +799,15 @@ impl InnerCommandBufferBuilder {
                 self.current_compute_pipeline = Some(pipeline);
             }
 
-            let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+            let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
 
             for set in descriptor_sets.iter() {
-                for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
+                for &(ref img, block, layout) in set.inner_descriptor_set().images_list().iter() {
                     self.add_image_resource_outside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
-                for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
+                for buffer in set.inner_descriptor_set().buffers_list().iter() {
                     self.add_buffer_resource_outside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                     vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
@@ -816,15 +815,15 @@ impl InnerCommandBufferBuilder {
             }
 
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner_descriptor_set().internal_object()).collect::<SmallVec<[_; 32]>>());
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let playout = pipeline.layout().internal_object();
+                let pipeline = pipeline.layout().inner_pipeline_layout().internal_object();
                 self.staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
-                                             playout, 0, descriptor_sets.len() as u32,
+                                             pipeline, 0, descriptor_sets.len() as u32,
                                              descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
                 }));
             }
@@ -834,10 +833,10 @@ impl InnerCommandBufferBuilder {
     fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                              dynamic: &DynamicState, sets: L)
         where V: 'static + VertexDefinition + Send + Sync, L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync
     {
         unsafe {
-            assert!(sets.is_compatible_with(pipeline.layout()));
+            //assert!(sets.is_compatible_with(pipeline.layout()));
 
             if self.current_graphics_pipeline != Some(pipeline.internal_object()) {
                 self.keep_alive.push(pipeline.clone());
@@ -890,31 +889,31 @@ impl InnerCommandBufferBuilder {
                 assert!(!pipeline.has_dynamic_scissors());
             }
 
-            let mut descriptor_sets = sets.list().collect::<SmallVec<[_; 32]>>();
+            let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
             for set in descriptor_sets.iter() {
-                for &(ref img, block, layout) in AbstractDescriptorSet::images_list(&**set).iter() {
+                for &(ref img, block, layout) in set.inner_descriptor_set().images_list().iter() {
                     self.add_image_resource_inside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
-                for buffer in AbstractDescriptorSet::buffers_list(&**set).iter() {
+                for buffer in set.inner_descriptor_set().buffers_list().iter() {
                     self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                     vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
             }
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.internal_object()).collect::<SmallVec<[_; 32]>>());
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner_descriptor_set().internal_object()).collect::<SmallVec<[_; 32]>>());
 
             // FIXME: input attachments of descriptor sets have to be checked against input
             //        attachments of the render pass
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let playout = pipeline.layout().internal_object();
+                let pipeline = pipeline.layout().inner_pipeline_layout().internal_object();
                 self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
-                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, playout,
+                    vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline,
                                              0, descriptor_sets.len() as u32,
                                              descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
                 }));
