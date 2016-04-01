@@ -49,6 +49,7 @@ use vk;
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitionned.
 ///
+#[derive(Debug)]
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -607,6 +608,7 @@ impl From<Error> for ImageCreationError {
     }
 }
 
+#[derive(Debug)]
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,

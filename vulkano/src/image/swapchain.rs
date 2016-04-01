@@ -29,6 +29,7 @@ use sync::Semaphore;
 
 use OomError;
 
+// TODO: #[derive(Debug)] (needs https://github.com/aturon/crossbeam/issues/62)
 pub struct SwapchainImage {
     image: UnsafeImage,
     view: UnsafeImageView,
@@ -38,6 +39,7 @@ pub struct SwapchainImage {
     guarded: Mutex<Guarded>,
 }
 
+#[derive(Debug)]
 struct Guarded {
     present_layout: bool,
     latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized

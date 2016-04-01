@@ -33,6 +33,7 @@ use sync::Sharing;
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it. TODO: clarify because of blit operations
 // TODO: type (2D, 3D, array, etc.) as template parameter
+#[derive(Debug)]
 pub struct ImmutableImage<F> {
     image: UnsafeImage,
     view: UnsafeImageView,

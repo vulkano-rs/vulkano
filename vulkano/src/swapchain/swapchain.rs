@@ -39,6 +39,7 @@ use VulkanPointers;
 use vk;
 
 /// Contains the swapping system and the images that can be shown on a surface.
+// TODO: #[derive(Debug)] (waiting on https://github.com/aturon/crossbeam/issues/62)
 pub struct Swapchain {
     device: Arc<Device>,
     surface: Arc<Surface>,
