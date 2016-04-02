@@ -503,6 +503,7 @@ impl Drop for Event {
 
 #[cfg(test)]
 mod tests {
+    use sync::Event;
     use sync::Fence;
     use sync::Semaphore;
 
@@ -545,5 +546,34 @@ mod tests {
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
         let _ = Semaphore::new(&device).unwrap();
+    }
+
+    #[test]
+    fn event_create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let event = Event::new(&device).unwrap();
+        assert!(!event.signaled().unwrap());
+    }
+
+    #[test]
+    fn event_set() {
+        let (device, _) = gfx_dev_and_queue!();
+        let event = Event::new(&device).unwrap();
+        assert!(!event.signaled().unwrap());
+
+        event.set().unwrap();
+        assert!(event.signaled().unwrap());
+    }
+
+    #[test]
+    fn event_reset() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let event = Event::new(&device).unwrap();
+        event.set().unwrap();
+        assert!(event.signaled().unwrap());
+
+        event.reset().unwrap();
+        assert!(!event.signaled().unwrap());
     }
 }
