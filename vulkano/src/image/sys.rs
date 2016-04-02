@@ -131,6 +131,7 @@ impl UnsafeImage {
         // `depth_stencil_attachment` and `input_attachment` can be true as well.
         if usage.transient_attachment {
             let u = Usage {
+                transient_attachment: false,
                 color_attachment: false,
                 depth_stencil_attachment: false,
                 input_attachment: false,
@@ -931,11 +932,28 @@ mod tests {
     use sync::Sharing;
 
     #[test]
-    fn create() {
+    fn create_sampled() {
         let (device, _) = gfx_dev_and_queue!();
 
         let usage = Usage {
             sampled: true,
+            .. Usage::none()
+        };
+
+        let (_img, _) = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        }.unwrap();
+    }
+
+    #[test]
+    fn create_transient() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            transient_attachment: true,
+            color_attachment: true,
             .. Usage::none()
         };
 
