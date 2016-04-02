@@ -324,3 +324,21 @@ unsafe impl<F: 'static> ImageView for AttachmentImage<F> where F: 'static + Send
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AttachmentImage;
+    use format::Format;
+
+    #[test]
+    fn create_regular() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::new(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+    }
+
+    #[test]
+    fn create_transient() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::transient(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+    }
+}
