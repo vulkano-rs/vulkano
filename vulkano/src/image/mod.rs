@@ -9,19 +9,24 @@
 
 //! Images storage (1D, 2D, 3D, arrays, etc.).
 //! 
-//! # Strong typing
+//! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
+//! most common usage is to store a 2D array of color pixels (in other words an *image* in the
+//! everyday language), but it can also be used to store arbitrary data.
 //! 
-//! Images in vulkano are strong-typed. Their signature is `Image<Ty, F, M>`.
+//! # High-level wrappers
 //! 
-//! The `Ty` parameter describes the type of image: 1D, 2D, 3D, 1D array, 2D array. All these come
-//! in two variants: with or without multisampling. The actual type of `Ty` must be one of the
-//! marker structs of this module that start with the `Ty` prefix.
+//! The vulkano library provides high-level wrappers around images that are specialized depending
+//! on the way you are going to use the image:
 //! 
-//! The `F` parameter describes the format of each pixel of the image. It must be one of the marker
-//! structs of the `formats` module.
+//! - An `AttachmentImage` can be used when you want to draw to an image.
+//! - An `ImmutableImage` stores data which never need be changed after the initial upload,
+//!   like a texture.
 //! 
-//! The `M` parameter describes where the image's memory was allocated from. It is similar to
-//! buffers.
+//! If are a beginner, you are strongly encouraged to use one of these wrappers.
+//! 
+//! # Low-level informations
+//! 
+//! To be written.
 //!
 
 pub use self::sys::ImageCreationError;
