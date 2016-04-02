@@ -95,6 +95,7 @@ mod tests {
 
     #[test]
     fn layers_list() {
-        let _ = instance::layers_list().collect::<Vec<_>>();
+        let mut list = instance::layers_list().unwrap();
+        while let Some(_) = list.next() {}
     }
 }
