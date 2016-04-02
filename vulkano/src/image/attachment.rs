@@ -7,6 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Image whose purpose is to be used as a framebuffer attachment.
+//! 
+//! This module declares the `AttachmentImage` type. It is a safe wrapper around `UnsafeImage`
+//! and implements all the relevant image traits.
+//! 
+//! The image is always two-dimensional and has only one mipmap, but it can have any kind of
+//! format. Trying to use a format that the backend doesn't support for rendering will result in
+//! an error being returned when creating the image. Once you have an `AttachmentImage`, you are
+//! guaranteed that you will be able to draw on it.
+//! 
+//! The template parameter of `AttachmentImage` is a type that describes the format of the image.
+
 use std::mem;
 use std::iter::Empty;
 use std::ops::Range;
@@ -35,27 +47,43 @@ use image::traits::Transition;
 use memory::DeviceMemory;
 use sync::Sharing;
 
+/// Image whose purpose is to be used as a framebuffer attachment.
 #[derive(Debug)]
 pub struct AttachmentImage<F> {
+    // Inner implementation.
     image: UnsafeImage,
+
+    // We maintain a view of the whole image since we will need it when rendering.
     view: UnsafeImageView,
+
+    // Memory used to back the image.
     memory: DeviceMemory,
+
+    // Format.
     format: F,
 
     // Layout to use when the image is used as a framebuffer attachment.
     // Should be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
 
+    // Additional info behind a mutex.
     guarded: Mutex<Guarded>,
 }
 
 #[derive(Debug)]
 struct Guarded {
+    // If false, the image is still in the undefined layout.
     correct_layout: bool,
+
+    // The latest submission that used the image. Used for synchronization purposes.
     latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<F> AttachmentImage<F> {
+    /// Creates a new image with the given dimensions and format.
+    ///
+    /// Returns an error if the dimensions are too large or if the backend doesn't support this
+    /// format as a framebuffer attachment.
     pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
@@ -115,9 +143,11 @@ impl<F> AttachmentImage<F> {
         }))
     }
 
+    /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
-        self.image.dimensions()
+    pub fn dimensions(&self) -> [u32; 2] {
+        let dims = self.image.dimensions();
+        [dims.width(), dims.height()]
     }
 }
 
