@@ -18,7 +18,22 @@
 //! guaranteed that you will be able to draw on it.
 //! 
 //! The template parameter of `AttachmentImage` is a type that describes the format of the image.
-
+//! 
+//! # Regular vs transient
+//! 
+//! Calling `AttachmentImage::new` will create a regular image, while calling
+//! `AttachmentImage::transient` will create a *transient* image.
+//! 
+//! A transient image is a special kind of image whose content is undefined outside of render
+//! passes. Once you finish drawing, you can't read from it anymore.
+//! 
+//! This gives a hint to the Vulkan implementation that it is possible for the image's content to
+//! live exclusively in some cache memory, and that no real memory has to be allocated for it.
+//! 
+//! In other words, if you are going to read from the image after drawing to it, use a regular
+//! image. If you don't need to read from it (for example if it's some kind of intermediary color,
+//! or a depth buffer that is only used once) then use a transient image.
+//!
 use std::mem;
 use std::iter::Empty;
 use std::ops::Range;
@@ -88,6 +103,35 @@ impl<F> AttachmentImage<F> {
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
+        let usage = Usage {
+            transfer_source: true,
+            sampled: true,
+            .. Usage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, usage)
+    }
+
+    /// Same as `new`, except that the image will be transient.
+    ///
+    /// A transient image is special because its content is undefined outside of a render pass.
+    /// This means that the implementation has the possibility to not allocate any memory for it.
+    pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F)
+                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let usage = Usage {
+            transient_attachment: true,
+            .. Usage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, usage)
+    }
+
+    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: Usage)
+                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
         let is_depth = match format.format().ty() {
             FormatTy::Depth => true,
             FormatTy::DepthStencil => true,
@@ -96,12 +140,10 @@ impl<F> AttachmentImage<F> {
         };
 
         let usage = Usage {
-            transfer_source: true,
-            sampled: true,
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            .. Usage::none()
+            .. usage
         };
 
         let (image, mem_reqs) = unsafe {

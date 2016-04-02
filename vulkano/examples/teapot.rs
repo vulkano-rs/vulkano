@@ -81,7 +81,7 @@ fn main() {
                                                   .expect("failed to create command buffer pool");
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::new(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
+    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                ::array(&device, teapot::VERTICES.len(),
