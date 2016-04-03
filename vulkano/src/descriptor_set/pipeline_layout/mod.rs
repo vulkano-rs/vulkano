@@ -23,6 +23,8 @@ use descriptor_set::descriptor_set::DescriptorSetsCollection;
 use descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 
+mod custom_pipeline_macro;
+
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayout: PipelineLayoutDesc + 'static + Send + Sync {
     /// Returns the inner `UnsafePipelineLayout`.
