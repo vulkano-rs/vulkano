@@ -89,14 +89,19 @@ macro_rules! pipeline_layout {
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::UniformBuffer;
 
+            // This constant is part of the API, but Rust sees it as dead code.
+            #[allow(dead_code)]
             pub const SET_NUM: u32 = $num;
 
+            #[allow(non_camel_case_types)]
             pub struct Descriptors<$($field),*> {
                 $(
                     pub $field: $field
                 ),*
             }
 
+            #[allow(non_camel_case_types)]
+            #[allow(unused_assignments)]
             impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
                 pub fn writes(&self) -> Vec<DescriptorWrite> {
                     let mut writes = Vec::new();
@@ -115,6 +120,7 @@ macro_rules! pipeline_layout {
 
             impl Set {
                 #[inline]
+                #[allow(non_camel_case_types)]
                 pub fn new<$($field: ValidParameter<$ty>),*>
                           (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
                            descriptors: &Descriptors<$($field)*>)
@@ -138,6 +144,7 @@ macro_rules! pipeline_layout {
                 }
             }
 
+            #[allow(unused_assignments)]
             pub fn build_set_layout(device: &Arc<Device>)
                                     -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
             {
