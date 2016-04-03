@@ -11,6 +11,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use buffer::TypedBuffer;
+use descriptor_set::descriptor::DescriptorType;
+use descriptor_set::descriptor::DescriptorWrite;
 
 #[macro_export]
 macro_rules! pipeline_layout {
@@ -75,12 +77,15 @@ macro_rules! pipeline_layout {
             use super::CustomPipeline;
             use $crate::OomError;
             use $crate::device::Device;
+            use $crate::descriptor_set::descriptor::DescriptorDesc;
             use $crate::descriptor_set::descriptor::DescriptorWrite;
+            use $crate::descriptor_set::descriptor::ShaderStages;
             use $crate::descriptor_set::descriptor_set::DescriptorPool;
             use $crate::descriptor_set::descriptor_set::DescriptorSet;
             use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor_set::pipeline_layout::PipelineLayout;
+            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::UniformBuffer;
 
@@ -94,7 +99,13 @@ macro_rules! pipeline_layout {
 
             impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
                 pub fn writes(&self) -> Vec<DescriptorWrite> {
-                    vec![]
+                    let mut writes = Vec::new();
+                    let mut binding = 0;
+                    $(
+                        writes.push(self.$field.write(binding));
+                        binding += 1;
+                    )*
+                    writes
                 }
             }
 
@@ -130,7 +141,21 @@ macro_rules! pipeline_layout {
             pub fn build_set_layout(device: &Arc<Device>)
                                     -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
             {
-                unimplemented!()
+                let mut descriptors = Vec::new();
+                let mut binding = 0;
+
+                $(
+                    descriptors.push(DescriptorDesc {
+                        binding: binding,
+                        ty: <$ty as DescriptorMarker>::descriptor_type(),
+                        array_count: 1,                     // TODO:
+                        stages: ShaderStages::all(),        // TODO:
+                    });
+
+                    binding += 1;
+                )*
+
+                UnsafeDescriptorSetLayout::new(device, descriptors.into_iter())
             }
         }
 
@@ -140,10 +165,27 @@ macro_rules! pipeline_layout {
     (__inner__ ($num:expr)) => {};
 }
 
-pub unsafe trait ValidParameter<Target> {}
+pub unsafe trait ValidParameter<Target> {
+    fn write(&self, binding: u32) -> DescriptorWrite;
+}
+
+pub unsafe trait DescriptorMarker {
+    fn descriptor_type() -> DescriptorType;
+}
 
 pub struct UniformBuffer<T: ?Sized>(PhantomData<T>);
+unsafe impl<T: ?Sized> DescriptorMarker for UniformBuffer<T> {
+    #[inline]
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::UniformBuffer
+    }
+}
+
 unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a Arc<B>
     where B: TypedBuffer<Content = T>
 {
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::uniform_buffer(binding, *self)
+    }
 }
