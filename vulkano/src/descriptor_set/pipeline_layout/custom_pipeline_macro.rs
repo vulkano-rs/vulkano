@@ -7,17 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use buffer::TypedBuffer;
+
 #[macro_export]
 macro_rules! pipeline_layout {
-    ($($name:ident: { $($field:ident $ty:ty),* }),*) => (
-        #![allow(unsafe_code)]
-
+    ($($name:ident: { $($field:ident: $ty:ty),* }),*) => {
         use std::sync::Arc;
+        use std::vec::IntoIter as VecIntoIter;
         use $crate::OomError;
-        use $crate::descriptor_set::descriptor_set::DescriptorSet;
-        use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSet;
-        use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
+        use $crate::device::Device;
+        use $crate::descriptor_set::descriptor::DescriptorDesc;
         use $crate::descriptor_set::pipeline_layout::PipelineLayout;
+        use $crate::descriptor_set::pipeline_layout::PipelineLayoutDesc;
         use $crate::descriptor_set::pipeline_layout::UnsafePipelineLayout;
 
         pub struct CustomPipeline {
@@ -25,21 +29,25 @@ macro_rules! pipeline_layout {
         }
 
         impl CustomPipeline {
+            #[allow(unsafe_code)]
             pub fn new(device: &Arc<Device>) -> Result<Arc<CustomPipeline>, OomError> {
                 let layouts = vec![
                     $(
-                        try!($name::layout(device))
+                        try!($name::build_set_layout(device))
                     ),*
                 ];
 
-                let inner = try!(UnsafePipelineLayout::new(device, layouts.iter()));
+                let inner = unsafe {
+                    try!(UnsafePipelineLayout::new(device, layouts.iter()))
+                };
 
-                Ok(CustomPipeline {
+                Ok(Arc::new(CustomPipeline {
                     inner: inner
-                })
+                }))
             }
         }
 
+        #[allow(unsafe_code)]
         unsafe impl PipelineLayout for CustomPipeline {
             #[inline]
             fn inner_pipeline_layout(&self) -> &UnsafePipelineLayout {
@@ -47,26 +55,95 @@ macro_rules! pipeline_layout {
             }
         }
 
-        $(
-            pub struct $name {
-                inner: UnsafeDescriptorSet
+        #[allow(unsafe_code)]
+        unsafe impl PipelineLayoutDesc for CustomPipeline {
+            type SetsIter = VecIntoIter<Self::DescIter>;
+            type DescIter = VecIntoIter<DescriptorDesc>;
+
+            fn descriptors_desc(&self) -> Self::SetsIter {
+                // FIXME:
+                vec![].into_iter()
+            }
+        }
+
+        pipeline_layout!{__inner__ (0) $($name: {$($field: $ty),*}),*}
+    };
+
+    (__inner__ ($num:expr) $name:ident: { $($field:ident: $ty:ty),* } $($rest:tt)*) => {
+        pub mod $name {
+            use std::sync::Arc;
+            use super::CustomPipeline;
+            use $crate::OomError;
+            use $crate::device::Device;
+            use $crate::descriptor_set::descriptor::DescriptorWrite;
+            use $crate::descriptor_set::descriptor_set::DescriptorPool;
+            use $crate::descriptor_set::descriptor_set::DescriptorSet;
+            use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSet;
+            use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
+            use $crate::descriptor_set::pipeline_layout::PipelineLayout;
+            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
+            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::UniformBuffer;
+
+            pub const SET_NUM: u32 = $num;
+
+            pub struct Descriptors<$($field),*> {
+                $(
+                    pub $field: $field
+                ),*
             }
 
-            impl $name {
-                fn layout(device: &Arc<Device>)
-                          -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
-                {
-                    unimplemented!()
+            impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
+                pub fn writes(&self) -> Vec<DescriptorWrite> {
+                    vec![]
                 }
             }
 
-            unsafe impl DescriptorSet for $name {
+            pub struct Set {
+                inner: UnsafeDescriptorSet
+            }
+
+            impl Set {
+                #[inline]
+                pub fn new<$($field: ValidParameter<$ty>),*>
+                          (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
+                           descriptors: &Descriptors<$($field)*>)
+                           -> Result<Arc<Set>, OomError>
+                {
+                    #![allow(unsafe_code)]
+                    unsafe {
+                        let layout = layout.inner_pipeline_layout().descriptor_set_layout($num).unwrap();
+                        let mut set = try!(UnsafeDescriptorSet::uninitialized(pool, layout));
+                        set.write(descriptors.writes());
+                        Ok(Arc::new(Set { inner: set }))
+                    }
+                }
+            }
+
+            #[allow(unsafe_code)]
+            unsafe impl DescriptorSet for Set {
                 #[inline]
                 fn inner_descriptor_set(&self) -> &UnsafeDescriptorSet {
                     &self.inner
                 }
             }
 
-        )*
-    );
+            pub fn build_set_layout(device: &Arc<Device>)
+                                    -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
+            {
+                unimplemented!()
+            }
+        }
+
+        pipeline_layout!{__inner__ ($num+1) $($rest)*}
+    };
+
+    (__inner__ ($num:expr)) => {};
+}
+
+pub unsafe trait ValidParameter<Target> {}
+
+pub struct UniformBuffer<T: ?Sized>(PhantomData<T>);
+unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a Arc<B>
+    where B: TypedBuffer<Content = T>
+{
 }

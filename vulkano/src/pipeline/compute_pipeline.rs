@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use descriptor_set::PipelineLayout;
+//use descriptor_set::pipeline_layout::PipelineLayoutDesc;
 //use descriptor_set::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 
@@ -40,7 +41,7 @@ impl<Pl> ComputePipeline<Pl> {
     pub fn new<Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
                     shader: &ComputeShaderEntryPoint<Csl>) 
                     -> Result<Arc<ComputePipeline<Pl>>, OomError>
-        where Pl: PipelineLayout// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayout
+        where Pl: PipelineLayout// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 

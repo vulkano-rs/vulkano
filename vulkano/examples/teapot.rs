@@ -160,14 +160,20 @@ fn main() {
 
     let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
-    let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
-    let descriptor_set_layout = vulkano::descriptor_set::DescriptorSetLayout::new(&device, vs::Set0).unwrap();
+    let descriptor_pool = vulkano::descriptor_set::descriptor_set::DescriptorPool::new(&device).unwrap();
 
-    mod pipeline_layout { pipeline_from_sets!(::vs::Set0); }
-    let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, pipeline_layout::Layout, (descriptor_set_layout.clone(),)).unwrap();
-    let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          &uniform_buffer).unwrap();
+    mod pipeline_layout {
+        pipeline_layout!{
+            set0: {
+                uniforms: UniformBuffer<::vs::ty::Data>
+            }
+        }
+    }
 
+    let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
+    let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
+        uniforms: &uniform_buffer
+    }).unwrap();
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly::triangle_list();
@@ -211,7 +217,8 @@ fn main() {
                  color: [0.0, 0.0, 1.0, 1.0],
                  depth: 1.0,
              })
-            .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
+            .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
+                          &vulkano::command_buffer::DynamicState::none(), &set)
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

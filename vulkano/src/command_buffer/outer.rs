@@ -285,7 +285,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> PrimaryCommandBufferBuilderInlineDraw
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+              L: DescriptorSetsCollection + Send + Sync
     {
         // FIXME: check subpass
 
@@ -304,7 +304,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
         where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+              L: DescriptorSetsCollection + Send + Sync
     {
         // FIXME: check subpass
 
@@ -532,7 +532,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
-              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + 'static + Send + Sync,
+              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               R: RenderPassCompatible<Rp>
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
@@ -555,7 +555,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
               Rp: RenderPass + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+              L: DescriptorSetsCollection + Send + Sync
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());

@@ -14,6 +14,7 @@ use smallvec::SmallVec;
 
 use device::Device;
 use descriptor_set::PipelineLayout;
+use descriptor_set::pipeline_layout::PipelineLayoutDesc;
 use descriptor_set::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
@@ -77,7 +78,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                layout: &Arc<L>, render_pass: Subpass<Rp>)
                -> Result<Arc<GraphicsPipeline<Mv, L, Rp>>, OomError>
         where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayout, Fl: PipelineLayout
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 

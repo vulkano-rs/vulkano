@@ -33,6 +33,17 @@ unsafe impl DescriptorSetsCollection for () {
     }
 }
 
+unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
+    where T: DescriptorSet
+{
+    type Iter = OptionIntoIter<Arc<DescriptorSet>>;
+
+    #[inline]
+    fn list(&self) -> Self::Iter {
+        Some(self.clone() as Arc<_>).into_iter()
+    }
+}
+
 unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
     where T: DescriptorSet
 {

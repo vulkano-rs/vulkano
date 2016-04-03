@@ -58,7 +58,7 @@ impl UnsafeDescriptorSet {
     // FIXME: this has to check whether there's still enough room in the pool
     pub unsafe fn uninitialized(pool: &Arc<DescriptorPool>,
                                 layout: &Arc<UnsafeDescriptorSetLayout>)
-                                -> Result<Arc<UnsafeDescriptorSet>, OomError>
+                                -> Result<UnsafeDescriptorSet, OomError>
     {
         assert_eq!(&**pool.device() as *const Device, &**layout.device() as *const Device);
 
@@ -81,7 +81,7 @@ impl UnsafeDescriptorSet {
             output
         };
 
-        Ok(Arc::new(UnsafeDescriptorSet {
+        Ok(UnsafeDescriptorSet {
             set: set,
             pool: pool.clone(),
             layout: layout.clone(),
@@ -90,7 +90,7 @@ impl UnsafeDescriptorSet {
             resources_images: Vec::new(),
             resources_image_views: Vec::new(),
             resources_buffers: Vec::new(),
-        }))
+        })
     }
 
     /// Modifies a descriptor set without checking that the writes are correct.

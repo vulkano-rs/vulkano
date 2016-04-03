@@ -65,6 +65,21 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     println!("{:#?}", doc);
 
     let mut output = String::new();
+    output.push_str(r#"
+        use std::sync::Arc;
+        use std::vec::IntoIter as VecIntoIter;
+
+        use vulkano::device::Device;
+        use vulkano::descriptor_set::descriptor::DescriptorDesc;
+        use vulkano::descriptor_set::descriptor::DescriptorType;
+        use vulkano::descriptor_set::descriptor::ShaderStages;
+        use vulkano::descriptor_set::descriptor_set::DescriptorSet;
+        use vulkano::descriptor_set::descriptor_set::UnsafeDescriptorSet;
+        use vulkano::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
+        use vulkano::descriptor_set::pipeline_layout::PipelineLayout;
+        use vulkano::descriptor_set::pipeline_layout::PipelineLayoutDesc;
+        use vulkano::descriptor_set::pipeline_layout::UnsafePipelineLayout;
+    "#);
 
     {
         // contains the data that was passed as input to this function
