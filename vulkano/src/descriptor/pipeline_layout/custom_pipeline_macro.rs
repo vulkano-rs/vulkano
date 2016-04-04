@@ -73,6 +73,15 @@ macro_rules! pipeline_layout {
             }
         }
 
+        /* TODO: uncomment when specialization lands
+        #[allow(unsafe_code)]
+        unsafe impl<'a> PipelineLayoutSetsCompatible<($(&'a Arc<$name::Set>),*)> for CustomPipeline {
+            #[inline]
+            default fn is_compatible(&self, _: &($(&'a Arc<$name::Set>),*)) -> bool {
+                true
+            }
+        }*/
+
         pipeline_layout!{__inner__ (0) $($name: {$($field: $ty),*}),*}
     };
 
