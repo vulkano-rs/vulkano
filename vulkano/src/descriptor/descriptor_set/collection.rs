@@ -11,7 +11,7 @@ use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
-//use std::vec::IntoIter as VecIntoIter;
+use std::vec::IntoIter as VecIntoIter;
 
 use descriptor::descriptor_set::DescriptorSet;
 
@@ -57,21 +57,25 @@ unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
 
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)*) => (
-        /*unsafe impl<'a, $first$(, $others)*> DescriptorSetsCollection for
+        unsafe impl<'a, $first$(, $others)*> DescriptorSetsCollection for
                                                         (&'a Arc<$first>, $(&'a Arc<$others>),*)
+            where $first: DescriptorSet + 'static $(, $others: DescriptorSet + 'static)*
         {
             type Iter = VecIntoIter<Arc<DescriptorSet>>;
 
             #[inline]
             fn list(&self) -> Self::Iter {
+                #![allow(non_snake_case)]
+                let ($first, $($others),*) = *self;
+
                 let list = vec![
-                    $first,
-                    $($others),*
+                    $first.clone() as Arc<_>,
+                    $($others.clone() as Arc<_>),*
                 ];
 
                 list.into_iter()
             }
-        }*/
+        }
 
         impl_collection!($($others),*);
     );
