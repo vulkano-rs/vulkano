@@ -11,9 +11,9 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor_set::PipelineLayout;
-//use descriptor_set::pipeline_layout::PipelineLayoutDesc;
-//use descriptor_set::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::PipelineLayout;
+//use descriptor::pipeline_layout::PipelineLayoutDesc;
+//use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 
 use device::Device;

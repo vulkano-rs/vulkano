@@ -18,9 +18,9 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-use descriptor_set::descriptor::DescriptorDesc;
-use descriptor_set::descriptor_set::DescriptorSetsCollection;
-use descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::descriptor::DescriptorDesc;
+use descriptor::descriptor_set::DescriptorSetsCollection;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 
 pub mod custom_pipeline_macro;

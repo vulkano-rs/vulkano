@@ -13,9 +13,9 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
-use descriptor_set::PipelineLayout;
-use descriptor_set::pipeline_layout::PipelineLayoutDesc;
-use descriptor_set::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use OomError;

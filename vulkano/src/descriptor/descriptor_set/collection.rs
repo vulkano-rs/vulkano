@@ -13,7 +13,7 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 //use std::vec::IntoIter as VecIntoIter;
 
-use descriptor_set::descriptor_set::DescriptorSet;
+use descriptor::descriptor_set::DescriptorSet;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {

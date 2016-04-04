@@ -20,10 +20,10 @@ use VulkanPointers;
 use vk;
 
 use buffer::Buffer;
-use descriptor_set::descriptor::DescriptorWrite;
-use descriptor_set::descriptor::DescriptorWriteInner;
-use descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor_set::descriptor_set::DescriptorPool;
+use descriptor::descriptor::DescriptorWrite;
+use descriptor::descriptor::DescriptorWriteInner;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::descriptor_set::DescriptorPool;
 use device::Device;
 use image::Image;
 use image::ImageView;

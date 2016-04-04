@@ -160,7 +160,7 @@ fn main() {
 
     let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
 
-    let descriptor_pool = vulkano::descriptor_set::descriptor_set::DescriptorPool::new(&device).unwrap();
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
 
     mod pipeline_layout {
         pipeline_layout!{

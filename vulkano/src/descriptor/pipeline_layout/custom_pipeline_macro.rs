@@ -11,8 +11,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use buffer::TypedBuffer;
-use descriptor_set::descriptor::DescriptorType;
-use descriptor_set::descriptor::DescriptorWrite;
+use descriptor::descriptor::DescriptorType;
+use descriptor::descriptor::DescriptorWrite;
 use image::ImageView;
 use sampler::Sampler;
 
@@ -23,10 +23,10 @@ macro_rules! pipeline_layout {
         use std::vec::IntoIter as VecIntoIter;
         use $crate::OomError;
         use $crate::device::Device;
-        use $crate::descriptor_set::descriptor::DescriptorDesc;
-        use $crate::descriptor_set::pipeline_layout::PipelineLayout;
-        use $crate::descriptor_set::pipeline_layout::PipelineLayoutDesc;
-        use $crate::descriptor_set::pipeline_layout::UnsafePipelineLayout;
+        use $crate::descriptor::descriptor::DescriptorDesc;
+        use $crate::descriptor::pipeline_layout::PipelineLayout;
+        use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+        use $crate::descriptor::pipeline_layout::UnsafePipelineLayout;
 
         pub struct CustomPipeline {
             inner: UnsafePipelineLayout
@@ -79,18 +79,18 @@ macro_rules! pipeline_layout {
             use super::CustomPipeline;
             use $crate::OomError;
             use $crate::device::Device;
-            use $crate::descriptor_set::descriptor::DescriptorDesc;
-            use $crate::descriptor_set::descriptor::DescriptorWrite;
-            use $crate::descriptor_set::descriptor::ShaderStages;
-            use $crate::descriptor_set::descriptor_set::DescriptorPool;
-            use $crate::descriptor_set::descriptor_set::DescriptorSet;
-            use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSet;
-            use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
-            use $crate::descriptor_set::pipeline_layout::PipelineLayout;
-            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
-            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
-            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::UniformBuffer;
-            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
+            use $crate::descriptor::descriptor::DescriptorDesc;
+            use $crate::descriptor::descriptor::DescriptorWrite;
+            use $crate::descriptor::descriptor::ShaderStages;
+            use $crate::descriptor::descriptor_set::DescriptorPool;
+            use $crate::descriptor::descriptor_set::DescriptorSet;
+            use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
+            use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+            use $crate::descriptor::pipeline_layout::PipelineLayout;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::ValidParameter;
 
             // This constant is part of the API, but Rust sees it as dead code.
             #[allow(dead_code)]

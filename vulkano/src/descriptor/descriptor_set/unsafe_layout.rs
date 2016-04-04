@@ -18,7 +18,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-use descriptor_set::descriptor::DescriptorDesc;
+use descriptor::descriptor::DescriptorDesc;
 use device::Device;
 
 /// Describes the layout of all descriptors within a descriptor set.

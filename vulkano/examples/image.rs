@@ -155,7 +155,7 @@ fn main() {
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let descriptor_pool = vulkano::descriptor_set::descriptor_set::DescriptorPool::new(&device).unwrap();
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
     mod pipeline_layout {
         pipeline_layout!{
             set0: {
