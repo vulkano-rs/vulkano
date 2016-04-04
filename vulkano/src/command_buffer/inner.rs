@@ -819,7 +819,7 @@ impl InnerCommandBufferBuilder {
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let pipeline = pipeline.layout().inner_pipeline_layout().internal_object();
+                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
                 self.staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
@@ -910,7 +910,7 @@ impl InnerCommandBufferBuilder {
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let pipeline = pipeline.layout().inner_pipeline_layout().internal_object();
+                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
                 self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline,

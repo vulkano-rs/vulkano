@@ -315,7 +315,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
-                layout: layout.inner_pipeline_layout().internal_object(),
+                layout: PipelineLayout::inner_pipeline_layout(&**layout).internal_object(),
                 renderPass: render_pass.render_pass().render_pass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
