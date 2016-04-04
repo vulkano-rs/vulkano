@@ -13,6 +13,8 @@ use std::sync::Arc;
 use buffer::TypedBuffer;
 use descriptor_set::descriptor::DescriptorType;
 use descriptor_set::descriptor::DescriptorWrite;
+use image::ImageView;
+use sampler::Sampler;
 
 #[macro_export]
 macro_rules! pipeline_layout {
@@ -85,9 +87,10 @@ macro_rules! pipeline_layout {
             use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor_set::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor_set::pipeline_layout::PipelineLayout;
+            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
-            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
             use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::UniformBuffer;
+            use $crate::descriptor_set::pipeline_layout::custom_pipeline_macro::ValidParameter;
 
             // This constant is part of the API, but Rust sees it as dead code.
             #[allow(dead_code)]
@@ -194,5 +197,22 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::uniform_buffer(binding, *self)
+    }
+}
+
+pub struct CombinedImageSampler;
+unsafe impl DescriptorMarker for CombinedImageSampler {
+    #[inline]
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::CombinedImageSampler
+    }
+}
+
+unsafe impl<'a, I> ValidParameter<CombinedImageSampler> for (&'a Arc<Sampler>, &'a Arc<I>)
+    where I: ImageView + 'static
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::combined_image_sampler(binding, self.0, self.1)
     }
 }
