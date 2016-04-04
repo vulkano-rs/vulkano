@@ -31,7 +31,7 @@ pub unsafe trait DescriptorSet: 'static + Send + Sync {
 /// Trait for objects that describe the layout of the descriptors of a set.
 pub unsafe trait DescriptorSetDesc {
     /// Iterator that describes individual descriptors.
-    type Iter: Iterator<Item = DescriptorDesc>;
+    type Iter: ExactSizeIterator<Item = DescriptorDesc>;
 
     /// Describes the layout of the descriptors of the pipeline.
     fn desc(&self) -> Self::Iter;
