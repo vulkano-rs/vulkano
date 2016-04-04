@@ -71,7 +71,7 @@ unsafe impl<T, U> PipelineLayoutSuperset<U> for T
 }
 
 /// Traits that allow determining whether 
-pub unsafe trait PipelineLayoutSetsCompatible<Other>: PipelineLayout
+pub unsafe trait PipelineLayoutSetsCompatible<Other>: PipelineLayoutDesc
     where Other: DescriptorSetsCollection
 {
     /// Returns true if `Other` can be used with a pipeline that uses `self` as layout.
@@ -79,10 +79,29 @@ pub unsafe trait PipelineLayoutSetsCompatible<Other>: PipelineLayout
 }
 
 unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
-    where T: PipelineLayout, U: DescriptorSetsCollection
+    where T: PipelineLayoutDesc, U: DescriptorSetsCollection
 {
-    fn is_compatible(&self, _: &U) -> bool {
-        // FIXME:
+    fn is_compatible(&self, sets: &U) -> bool {
+        let mut other_descriptor_sets = DescriptorSetsCollection::description(sets);
+
+        for my_set in self.descriptors_desc() {
+            let mut other_set = match other_descriptor_sets.next() {
+                None => return false,
+                Some(s) => s,
+            };
+
+            for my_desc in my_set {
+                let other_desc = match other_set.next() {
+                    None => return false,
+                    Some(d) => d,
+                };
+
+                if !my_desc.is_superset_of(&other_desc) {
+                    return false;
+                }
+            }
+        }
+
         true
     }
 }
