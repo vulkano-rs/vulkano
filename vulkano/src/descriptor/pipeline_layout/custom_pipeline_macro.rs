@@ -78,6 +78,8 @@ macro_rules! pipeline_layout {
 
     (__inner__ ($num:expr) $name:ident: { $($field:ident: $ty:ty),* } $($rest:tt)*) => {
         pub mod $name {
+            #![allow(unused_imports)]
+
             use std::sync::Arc;
             use super::CustomPipeline;
             use $crate::OomError;
@@ -217,5 +219,20 @@ unsafe impl<'a, I> ValidParameter<CombinedImageSampler> for (&'a Arc<Sampler>, &
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::combined_image_sampler(binding, self.0, self.1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn no_warning() {
+        #![deny(warnings)]
+        mod layout {
+            pipeline_layout! {
+                set0: {
+                    field1: UniformBuffer<[u8]>
+                }
+            }
+        }
     }
 }
