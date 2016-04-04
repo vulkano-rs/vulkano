@@ -102,3 +102,15 @@ impl Drop for UnsafePipelineLayout {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+    use descriptor::pipeline_layout::sys::UnsafePipelineLayout;
+
+    #[test]
+    fn empty() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _layout = unsafe { UnsafePipelineLayout::new(&device, iter::empty()) };
+    }
+}
