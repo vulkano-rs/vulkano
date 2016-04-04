@@ -81,6 +81,7 @@ macro_rules! pipeline_layout {
             #![allow(unused_imports)]
 
             use std::sync::Arc;
+            use std::vec::IntoIter as VecIntoIter;
             use super::CustomPipeline;
             use $crate::OomError;
             use $crate::device::Device;
@@ -89,6 +90,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor::ShaderStages;
             use $crate::descriptor::descriptor_set::DescriptorPool;
             use $crate::descriptor::descriptor_set::DescriptorSet;
+            use $crate::descriptor::descriptor_set::DescriptorSetDesc;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor::pipeline_layout::PipelineLayout;
@@ -149,6 +151,17 @@ macro_rules! pipeline_layout {
                 #[inline]
                 fn inner_descriptor_set(&self) -> &UnsafeDescriptorSet {
                     &self.inner
+                }
+            }
+
+            #[allow(unsafe_code)]
+            unsafe impl DescriptorSetDesc for Set {
+                type Iter = VecIntoIter<DescriptorDesc>;
+
+                #[inline]
+                fn desc(&self) -> Self::Iter {
+                    // FIXME:
+                    vec![].into_iter()
                 }
             }
 

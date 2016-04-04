@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use descriptor::descriptor::DescriptorDesc;
+
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
 pub use self::sys::UnsafeDescriptorSet;
@@ -24,4 +26,13 @@ pub unsafe trait DescriptorSet: 'static + Send + Sync {
     /// Returns the inner `UnsafeDescriptorSet`.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn inner_descriptor_set(&self) -> &UnsafeDescriptorSet;
+}
+
+/// Trait for objects that describe the layout of the descriptors of a set.
+pub unsafe trait DescriptorSetDesc {
+    /// Iterator that describes individual descriptors.
+    type Iter: Iterator<Item = DescriptorDesc>;
+
+    /// Describes the layout of the descriptors of the pipeline.
+    fn desc(&self) -> Self::Iter;
 }
