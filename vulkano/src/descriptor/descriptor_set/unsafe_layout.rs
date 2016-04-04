@@ -21,7 +21,7 @@ use vk;
 use descriptor::descriptor::DescriptorDesc;
 use device::Device;
 
-/// Describes the layout of all descriptors within a descriptor set.
+/// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
@@ -93,5 +93,17 @@ impl Drop for UnsafeDescriptorSetLayout {
             vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout,
                                           ptr::null());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+    use descriptor::descriptor_set::unsafe_layout::UnsafeDescriptorSetLayout;
+
+    #[test]
+    fn empty() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _layout = UnsafeDescriptorSetLayout::new(&device, iter::empty());
     }
 }
