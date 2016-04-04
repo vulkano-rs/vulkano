@@ -112,7 +112,7 @@ impl Drop for DescriptorPool {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::DescriptorPool;
+    use descriptor::descriptor_set::DescriptorPool;
 
     #[test]
     fn create() {
