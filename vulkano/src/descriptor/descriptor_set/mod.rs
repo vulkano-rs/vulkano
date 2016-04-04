@@ -17,6 +17,9 @@ mod pool;
 mod sys;
 mod unsafe_layout;
 
+/// Trait for objects that contain a collection of resources that will be accessible by shaders.
+///
+/// Objects of this type can be passed when submitting a draw command.
 pub unsafe trait DescriptorSet: 'static + Send + Sync {
     /// Returns the inner `UnsafeDescriptorSet`.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed

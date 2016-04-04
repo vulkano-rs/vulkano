@@ -34,7 +34,9 @@ pub unsafe trait PipelineLayout: PipelineLayoutDesc + 'static + Send + Sync {
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutDesc {
+    /// Iterator that describes descriptor sets.
     type SetsIter: Iterator<Item = Self::DescIter>;
+    /// Iterator that describes individual descriptors.
     type DescIter: Iterator<Item = DescriptorDesc>;
 
     /// Describes the layout of the descriptors of the pipeline.
@@ -118,7 +120,7 @@ pub unsafe trait CompiletimePipelineLayout: PipelineLayout {
     type RawContent;
 }
 
-/// A collection of `DescriptorSetLayout` structs.
+/// Low-level struct that represents the layout of the resources available to your shaders.
 // TODO: push constants.
 pub struct UnsafePipelineLayout {
     device: Arc<Device>,
@@ -172,6 +174,9 @@ impl UnsafePipelineLayout {
         })
     }
 
+    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
+    ///
+    /// Returns `None` if out of range.
     #[inline]
     pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layouts.get(index)

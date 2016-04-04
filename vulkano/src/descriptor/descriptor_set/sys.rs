@@ -31,11 +31,6 @@ use image::Layout as ImageLayout;
 use sampler::Sampler;
 
 /// Low-level descriptor set.
-///
-/// # Safety
-///
-/// Doesn't verify that the things you write in the descriptor set match its layout.
-///
 pub struct UnsafeDescriptorSet {
     set: vk::DescriptorSet,
     pool: Arc<DescriptorPool>,
@@ -50,6 +45,7 @@ pub struct UnsafeDescriptorSet {
 }
 
 impl UnsafeDescriptorSet {
+    /// Builds a new descriptor set.
     ///
     /// # Panic
     ///
@@ -94,6 +90,11 @@ impl UnsafeDescriptorSet {
     }
 
     /// Modifies a descriptor set without checking that the writes are correct.
+    ///
+    /// # Safety
+    ///
+    /// - Doesn't verify that the things you write in the descriptor set match its layout.
+    ///
     pub unsafe fn write(&mut self, write: Vec<DescriptorWrite>) {
         let vk = self.pool.device().pointers();
 

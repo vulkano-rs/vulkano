@@ -16,6 +16,9 @@ use descriptor::descriptor::DescriptorWrite;
 use image::ImageView;
 use sampler::Sampler;
 
+/// Call this macro with the layout of a pipeline to generate some helper structs that wrap around
+/// vulkano's unsafe APIs.
+// TODO: more docs
 #[macro_export]
 macro_rules! pipeline_layout {
     ($($name:ident: { $($field:ident: $ty:ty),* }),*) => {

@@ -18,7 +18,7 @@ use image::traits::ImageView;
 use image::traits::Image;
 use sampler::Sampler;
 
-/// Represents a single write to a descriptor.
+/// Represents a single write entry to a descriptor set.
 pub struct DescriptorWrite {
     binding: u32,
     first_array_element: u32,
