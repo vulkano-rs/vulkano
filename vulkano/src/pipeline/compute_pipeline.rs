@@ -15,6 +15,7 @@ use descriptor::PipelineLayout;
 //use descriptor::pipeline_layout::PipelineLayoutDesc;
 //use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
+use pipeline::shader::SpecializationConstants;
 
 use device::Device;
 use OomError;
@@ -39,9 +40,10 @@ impl<Pl> ComputePipeline<Pl> {
     ///
     /// Panicks if the pipeline layout and/or shader don't belong to the device.
     pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
-                         shader: &ComputeShaderEntryPoint<Css, Csl>) 
+                         shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
                          -> Result<Arc<ComputePipeline<Pl>>, OomError>
-        where Pl: PipelineLayout// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc
+        where Pl: PipelineLayout,// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
+              Css: SpecializationConstants
     {
         let vk = device.pointers();
 
@@ -49,13 +51,13 @@ impl<Pl> ComputePipeline<Pl> {
         //assert!(PipelineLayoutSuperset::is_superset_of(pipeline_layout, shader));
 
         let pipeline = unsafe {
-            /*let spec_descriptors = specialization.descriptors();
+            let spec_descriptors = <Css as SpecializationConstants>::descriptors();
             let specialization = vk::SpecializationInfo {
-                mapEntryCount: spec_descriptors.len(),
+                mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
                 dataSize: mem::size_of_val(specialization),
-                pData: specialization as *const S as *const _,
-            };*/
+                pData: specialization as *const Css as *const _,
+            };
 
             let stage = vk::PipelineShaderStageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -64,11 +66,11 @@ impl<Pl> ComputePipeline<Pl> {
                 stage: vk::SHADER_STAGE_COMPUTE_BIT,
                 module: shader.module().internal_object(),
                 pName: shader.name().as_ptr(),
-                pSpecializationInfo: //if mem::size_of_val(specialization) == 0 {
+                pSpecializationInfo: if specialization.dataSize == 0 {
                     ptr::null()
-                /*} else {
+                } else {
                     &specialization
-                }*/,
+                },
             };
 
             let infos = vk::ComputePipelineCreateInfo {
