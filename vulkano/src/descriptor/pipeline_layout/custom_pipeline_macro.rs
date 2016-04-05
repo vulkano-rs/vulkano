@@ -227,6 +227,23 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a
     }
 }
 
+pub struct StorageBuffer<T: ?Sized>(PhantomData<T>);
+unsafe impl<T: ?Sized> DescriptorMarker for StorageBuffer<T> {
+    #[inline]
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::StorageBuffer
+    }
+}
+
+unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for &'a Arc<B>
+    where B: TypedBuffer<Content = T>
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::storage_buffer(binding, *self)
+    }
+}
+
 pub struct CombinedImageSampler;
 unsafe impl DescriptorMarker for CombinedImageSampler {
     #[inline]
