@@ -105,6 +105,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::pipeline_layout::PipelineLayout;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::ValidParameter;
 
