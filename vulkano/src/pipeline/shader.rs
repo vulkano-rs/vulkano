@@ -236,7 +236,7 @@ unsafe impl SpecializationConstants for () {
     }
 }
 
-/// Describes an invidiual constant to set in the shader. Also a field in the struct.
+/// Describes an indiviual constant to set in the shader. Also a field in the struct.
 // Has the same memory representation as a `VkSpecializationMapEntry`.
 #[repr(C)]
 pub struct SpecializationMapEntry {
