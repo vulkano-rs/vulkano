@@ -82,7 +82,7 @@ macro_rules! pipeline_layout {
             }
         }*/
 
-        pipeline_layout!{__inner__ (0) $($name: {$($field: $ty),*}),*}
+        pipeline_layout!{__inner__ (0) $($name: {$($field: $ty),*})*}
     };
 
     (__inner__ ($num:expr) $name:ident: { $($field:ident: $ty:ty),* } $($rest:tt)*) => {
@@ -142,7 +142,7 @@ macro_rules! pipeline_layout {
                 #[allow(non_camel_case_types)]
                 pub fn new<$($field: ValidParameter<$ty>),*>
                           (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
-                           descriptors: &Descriptors<$($field)*>)
+                           descriptors: &Descriptors<$($field),*>)
                            -> Result<Arc<Set>, OomError>
                 {
                     #![allow(unsafe_code)]
@@ -252,7 +252,12 @@ mod tests {
         mod layout {
             pipeline_layout! {
                 set0: {
-                    field1: UniformBuffer<[u8]>
+                    field1: UniformBuffer<[u8]>,
+                    field2: UniformBuffer<[u8]>
+                },
+                set1: {
+                    field1: UniformBuffer<[u8]>,
+                    field2: UniformBuffer<[u8]>
                 }
             }
         }
