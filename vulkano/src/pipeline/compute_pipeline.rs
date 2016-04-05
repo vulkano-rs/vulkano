@@ -7,17 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
 use descriptor::PipelineLayout;
-//use descriptor::pipeline_layout::PipelineLayoutDesc;
-//use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
 
 use device::Device;
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -41,14 +44,15 @@ impl<Pl> ComputePipeline<Pl> {
     /// Panicks if the pipeline layout and/or shader don't belong to the device.
     pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
                          shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
-                         -> Result<Arc<ComputePipeline<Pl>>, OomError>
-        where Pl: PipelineLayout,// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
+                         -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
+        where Pl: PipelineLayout + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
               Css: SpecializationConstants
     {
         let vk = device.pointers();
 
-        // TODO: should be an error instead
-        //assert!(PipelineLayoutSuperset::is_superset_of(pipeline_layout, shader));
+        if !PipelineLayoutSuperset::is_superset_of(&**pipeline_layout, shader.layout()) {
+            return Err(ComputePipelineCreationError::IncompatiblePipelineLayout);
+        }
 
         let pipeline = unsafe {
             let spec_descriptors = <Css as SpecializationConstants>::descriptors();
@@ -126,4 +130,68 @@ impl<Pl> Drop for ComputePipeline<Pl> {
             vk.DestroyPipeline(self.device.internal_object(), self.pipeline, ptr::null());
         }
     }
+}
+
+/// Error that can happen when creating an instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComputePipelineCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// The pipeline layout is not compatible with what the shader expects.
+    IncompatiblePipelineLayout,
+}
+
+impl error::Error for ComputePipelineCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            ComputePipelineCreationError::OomError(_) => "not enough memory available",
+            ComputePipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is \
+                                                                         not compatible with what \
+                                                                         the shader expects",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            ComputePipelineCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for ComputePipelineCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for ComputePipelineCreationError {
+    #[inline]
+    fn from(err: OomError) -> ComputePipelineCreationError {
+        ComputePipelineCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for ComputePipelineCreationError {
+    #[inline]
+    fn from(err: Error) -> ComputePipelineCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                ComputePipelineCreationError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                ComputePipelineCreationError::OomError(OomError::from(err))
+            },
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO: test for basic creation
+    // TODO: test for pipeline layout error
 }
