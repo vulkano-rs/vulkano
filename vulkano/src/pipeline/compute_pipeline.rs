@@ -27,7 +27,8 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-///
+/// A pipeline object that describes to the Vulkan implementation how it should perform compute
+/// operations.
 ///
 /// The template parameter contains the descriptor set to use with this pipeline.
 pub struct ComputePipeline<Pl> {
@@ -37,11 +38,7 @@ pub struct ComputePipeline<Pl> {
 }
 
 impl<Pl> ComputePipeline<Pl> {
-    ///
-    ///
-    /// # Panic
-    ///
-    /// Panicks if the pipeline layout and/or shader don't belong to the device.
+    /// Builds a new `ComputePipeline`.
     pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
                          shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
                          -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
@@ -132,7 +129,7 @@ impl<Pl> Drop for ComputePipeline<Pl> {
     }
 }
 
-/// Error that can happen when creating an instance.
+/// Error that can happen when creating a compute pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComputePipelineCreationError {
     /// Not enough memory.
