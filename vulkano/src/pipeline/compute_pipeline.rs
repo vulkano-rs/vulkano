@@ -38,9 +38,9 @@ impl<Pl> ComputePipeline<Pl> {
     /// # Panic
     ///
     /// Panicks if the pipeline layout and/or shader don't belong to the device.
-    pub fn new<Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
-                    shader: &ComputeShaderEntryPoint<Csl>) 
-                    -> Result<Arc<ComputePipeline<Pl>>, OomError>
+    pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
+                         shader: &ComputeShaderEntryPoint<Css, Csl>) 
+                         -> Result<Arc<ComputePipeline<Pl>>, OomError>
         where Pl: PipelineLayout// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc
     {
         let vk = device.pointers();

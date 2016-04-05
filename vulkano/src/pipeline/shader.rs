@@ -67,16 +67,16 @@ impl ShaderModule {
         }))
     }
 
-    pub unsafe fn vertex_shader_entry_point<'a, V, L>(&'a self, name: &'a CStr, layout: L,
-                                                      attributes: Vec<(u32, Cow<'static, str>)>)
-                                                      -> VertexShaderEntryPoint<'a, V, L>
+    pub unsafe fn vertex_shader_entry_point<'a, S, V, L>(&'a self, name: &'a CStr, layout: L,
+                                                         attributes: Vec<(u32, Cow<'static, str>)>)
+                                                         -> VertexShaderEntryPoint<'a, S, V, L>
     {
         VertexShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
-            marker: PhantomData,
             attributes: attributes,
+            marker: PhantomData,
         }
     }
 
@@ -92,8 +92,8 @@ impl ShaderModule {
     /// - Calling this function also determines the template parameters associated to the
     ///   `EntryPoint` struct. Therefore care must be taken that the values there are correct.
     ///
-    pub unsafe fn fragment_shader_entry_point<'a, F, L>(&'a self, name: &'a CStr, layout: L)
-                                                        -> FragmentShaderEntryPoint<'a, F, L>
+    pub unsafe fn fragment_shader_entry_point<'a, S, F, L>(&'a self, name: &'a CStr, layout: L)
+                                                           -> FragmentShaderEntryPoint<'a, S, F, L>
     {
         FragmentShaderEntryPoint {
             module: self,
@@ -104,13 +104,14 @@ impl ShaderModule {
     }
 
     #[inline]
-    pub unsafe fn compute_shader_entry_point<'a, L>(&'a self, name: &'a CStr, layout: L)
-                                                    -> ComputeShaderEntryPoint<'a, L>
+    pub unsafe fn compute_shader_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L)
+                                                       -> ComputeShaderEntryPoint<'a, S, L>
     {
         ComputeShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
+            marker: PhantomData,
         }
     }
 }
@@ -134,15 +135,15 @@ impl Drop for ShaderModule {
     }
 }
 
-pub struct VertexShaderEntryPoint<'a, V, L> {
+pub struct VertexShaderEntryPoint<'a, S, V, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    marker: PhantomData<V>,
     attributes: Vec<(u32, Cow<'static, str>)>,
     layout: L,
+    marker: PhantomData<(S, V)>,
 }
 
-impl<'a, V, L> VertexShaderEntryPoint<'a, V, L> {
+impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
@@ -165,13 +166,14 @@ impl<'a, V, L> VertexShaderEntryPoint<'a, V, L> {
     }
 }
 
-pub struct ComputeShaderEntryPoint<'a, L> {
+pub struct ComputeShaderEntryPoint<'a, S, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
+    marker: PhantomData<S>,
 }
 
-impl<'a, L> ComputeShaderEntryPoint<'a, L> {
+impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
@@ -188,14 +190,14 @@ impl<'a, L> ComputeShaderEntryPoint<'a, L> {
     }
 }
 
-pub struct FragmentShaderEntryPoint<'a, F, L> {
+pub struct FragmentShaderEntryPoint<'a, S, F, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    marker: PhantomData<F>,
     layout: L,
+    marker: PhantomData<(S, F)>,
 }
 
-impl<'a, F, L> FragmentShaderEntryPoint<'a, F, L> {
+impl<'a, S, F, L> FragmentShaderEntryPoint<'a, S, F, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module

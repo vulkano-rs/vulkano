@@ -70,11 +70,11 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     /// - Panicks if the line width is different from 1.0 and the `wide_lines` feature is not enabled.
     ///
     // TODO: check all the device's limits
-    pub fn new<Vi, Fo, Vl, Fl>
-              (device: &Arc<Device>, vertex: Mv, vertex_shader: &VertexShaderEntryPoint<Vi, Vl>,
+    pub fn new<Vs, Vi, Fo, Vl, Fs, Fl>
+              (device: &Arc<Device>, vertex: Mv, vertex_shader: &VertexShaderEntryPoint<Vs, Vi, Vl>,
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
-               fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
+               fragment_shader: &FragmentShaderEntryPoint<Fs, Fo, Fl>,
                layout: &Arc<L>, render_pass: Subpass<Rp>)
                -> Result<Arc<GraphicsPipeline<Mv, L, Rp>>, OomError>
         where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,

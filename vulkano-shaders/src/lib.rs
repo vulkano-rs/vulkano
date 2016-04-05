@@ -226,7 +226,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
             }).collect::<Vec<_>>().join(", ");
 
-            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<({input}), Layout>",
+            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<(), ({input}), Layout>",
                             input = input);
             let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, vec![{}])", attributes);
             (t, f)
@@ -266,13 +266,13 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 if output.is_empty() { output } else { output + "," }
             };
 
-            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<({output}), Layout>",
+            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<(), ({output}), Layout>",
                             output = output);
             (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::pipeline::shader::ComputeShaderEntryPoint<Layout>"),
+            (format!("::vulkano::pipeline::shader::ComputeShaderEntryPoint<(), Layout>"),
              format!("compute_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
         },
 
