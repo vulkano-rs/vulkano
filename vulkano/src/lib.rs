@@ -60,7 +60,7 @@ mod version;
 
 pub mod buffer;
 pub mod command_buffer;
-pub mod descriptor_set;
+pub mod descriptor;
 pub mod device;
 pub mod format;
 pub mod framebuffer;

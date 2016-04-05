@@ -19,8 +19,8 @@ use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
 use command_buffer::inner::Submission;
 use command_buffer::inner::submit as inner_submit;
-use descriptor_set::Layout as PipelineLayoutDesc;
-use descriptor_set::DescriptorSetsCollection;
+use descriptor::descriptor_set::DescriptorSetsCollection;
+use descriptor::PipelineLayout;
 use device::Queue;
 use framebuffer::Framebuffer;
 use framebuffer::UnsafeRenderPass;
@@ -188,7 +188,7 @@ impl PrimaryCommandBufferBuilder {
     pub fn dispatch<Pl, L>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                            dimensions: [u32; 3]) -> PrimaryCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayoutDesc + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -284,8 +284,8 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static + Send + Sync, Rp: 'static + Send + Sync,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
+              L: DescriptorSetsCollection + Send + Sync
     {
         // FIXME: check subpass
 
@@ -302,9 +302,9 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayoutDesc + Send + Sync, Rp: 'static + Send + Sync,
+        where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+              L: DescriptorSetsCollection + Send + Sync
     {
         // FIXME: check subpass
 
@@ -531,8 +531,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw<V, L, Pv, Pl, Rp>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayoutDesc + 'static + Send + Sync,
-              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + 'static + Send + Sync,
+        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
+              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               R: RenderPassCompatible<Rp>
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
@@ -552,10 +552,10 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayoutDesc + Send + Sync,
+        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
               Rp: RenderPass + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              L: DescriptorSetsCollection + 'static + Send + Sync
+              L: DescriptorSetsCollection + Send + Sync
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());

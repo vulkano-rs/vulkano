@@ -11,9 +11,9 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor_set::Layout;
-use descriptor_set::LayoutPossibleSuperset;
-use descriptor_set::PipelineLayout;
+use descriptor::PipelineLayout;
+//use descriptor::pipeline_layout::PipelineLayoutDesc;
+//use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 
 use device::Device;
@@ -29,7 +29,7 @@ use vk;
 pub struct ComputePipeline<Pl> {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
-    pipeline_layout: Arc<PipelineLayout<Pl>>,
+    pipeline_layout: Arc<Pl>,
 }
 
 impl<Pl> ComputePipeline<Pl> {
@@ -38,15 +38,15 @@ impl<Pl> ComputePipeline<Pl> {
     /// # Panic
     ///
     /// Panicks if the pipeline layout and/or shader don't belong to the device.
-    pub fn new<Csl>(device: &Arc<Device>, pipeline_layout: &Arc<PipelineLayout<Pl>>,
+    pub fn new<Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
                     shader: &ComputeShaderEntryPoint<Csl>) 
                     -> Result<Arc<ComputePipeline<Pl>>, OomError>
-        where Pl: LayoutPossibleSuperset<Csl>, Csl: Layout
+        where Pl: PipelineLayout// + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 
         // TODO: should be an error instead
-        assert!(LayoutPossibleSuperset::is_superset_of(pipeline_layout.layout(), shader.layout()));
+        //assert!(PipelineLayoutSuperset::is_superset_of(pipeline_layout, shader));
 
         let pipeline = unsafe {
             /*let spec_descriptors = specialization.descriptors();
@@ -76,7 +76,7 @@ impl<Pl> ComputePipeline<Pl> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: pipeline_layout.internal_object(),
+                layout: PipelineLayout::inner_pipeline_layout(&**pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
@@ -100,9 +100,9 @@ impl<Pl> ComputePipeline<Pl> {
         &self.device
     }
 
-    /// Returns the `PipelineLayout` used in this compute pipeline.
+    /// Returns the pipeline layout used in this compute pipeline.
     #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout<Pl>> {
+    pub fn layout(&self) -> &Arc<Pl> {
         &self.pipeline_layout
     }
 }

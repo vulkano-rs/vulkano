@@ -13,9 +13,9 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
-use descriptor_set::PipelineLayout;
-use descriptor_set::Layout as PipelineLayoutDesc;
-use descriptor_set::LayoutPossibleSuperset as PipelineLayoutPossibleSuperset;
+use descriptor::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use OomError;
@@ -42,7 +42,7 @@ use pipeline::viewport::ViewportsState;
 pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     device: Arc<Device>,
     pipeline: vk::Pipeline,
-    layout: Arc<PipelineLayout<Layout>>,
+    layout: Arc<Layout>,
 
     render_pass: Arc<RenderP>,
     render_pass_subpass: u32,
@@ -58,7 +58,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition, L: PipelineLayoutDesc, Rp: RenderPass
+    where Mv: VertexDefinition, L: PipelineLayout, Rp: RenderPass
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -75,15 +75,15 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                input_assembly: &InputAssembly, viewport: &ViewportsState,
                raster: &Rasterization, multisample: &Multisample, blend: &Blend,
                fragment_shader: &FragmentShaderEntryPoint<Fo, Fl>,
-               layout: &Arc<PipelineLayout<L>>, render_pass: Subpass<Rp>)
+               layout: &Arc<L>, render_pass: Subpass<Rp>)
                -> Result<Arc<GraphicsPipeline<Mv, L, Rp>>, OomError>
-        where L: PipelineLayoutDesc + PipelineLayoutPossibleSuperset<Vl> + PipelineLayoutPossibleSuperset<Fl>,
+        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 
-        assert!(PipelineLayoutPossibleSuperset::is_superset_of(layout.layout(), vertex_shader.layout()));
-        assert!(PipelineLayoutPossibleSuperset::is_superset_of(layout.layout(), fragment_shader.layout()));
+        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), vertex_shader.layout()));
+        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), fragment_shader.layout()));
 
         let pipeline = unsafe {
             let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
@@ -315,7 +315,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
-                layout: layout.internal_object(),
+                layout: PipelineLayout::inner_pipeline_layout(&**layout).internal_object(),
                 renderPass: render_pass.render_pass().render_pass().internal_object(),
                 subpass: render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -359,11 +359,11 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutDesc
+    where L: PipelineLayout
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout<L>> {
+    pub fn layout(&self) -> &Arc<L> {
         &self.layout
     }
 }

@@ -155,26 +155,19 @@ fn main() {
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let descriptor_pool = vulkano::descriptor_set::DescriptorPool::new(&device).unwrap();
-    let descriptor_set_layout = {
-        let desc = vulkano::descriptor_set::RuntimeDescriptorSetDesc {
-            descriptors: vec![
-                vulkano::descriptor_set::DescriptorDesc {
-                    binding: 0,
-                    ty: vulkano::descriptor_set::DescriptorType::CombinedImageSampler,
-                    array_count: 1,
-                    stages: vulkano::descriptor_set::ShaderStages::all_graphics(),
-                }
-            ]
-        };
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
+    mod pipeline_layout {
+        pipeline_layout!{
+            set0: {
+                tex: CombinedImageSampler
+            }
+        }
+    }
 
-        vulkano::descriptor_set::DescriptorSetLayout::new(&device, desc).unwrap()
-    };
-
-    let pipeline_layout = vulkano::descriptor_set::PipelineLayout::new(&device, vulkano::descriptor_set::RuntimeDesc, vec![descriptor_set_layout.clone()]).unwrap();
-    let set = vulkano::descriptor_set::DescriptorSet::new(&descriptor_pool, &descriptor_set_layout,
-                                                          vec![(0, vulkano::descriptor_set::DescriptorBind::combined_image_sampler(&sampler, &texture))]).unwrap();
-
+    let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
+    let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
+        tex: (&sampler, &texture)
+    }).unwrap();
 
     let pipeline = {
         let ia = vulkano::pipeline::input_assembly::InputAssembly {
@@ -221,7 +214,8 @@ fn main() {
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
-            .copy_buffer_to_color_image(&pixel_buffer, &texture)
+            .copy_buffer_to_color_image(&pixel_buffer, &texture, 0, 0 .. 1, [0, 0, 0],
+                                        [texture.dimensions().width(), texture.dimensions().height(), 1])
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
                 color: [0.0, 0.0, 1.0, 1.0]
