@@ -597,6 +597,30 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     pub fn has_dynamic_scissors(&self) -> bool {
         self.dynamic_scissor
     }
+
+    /// Returns true if the depth bounds used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_depth_bounds(&self) -> bool {
+        self.dynamic_depth_bounds
+    }
+
+    /// Returns true if the stencil compare masks used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_stencil_compare_mask(&self) -> bool {
+        self.dynamic_stencil_compare_mask
+    }
+
+    /// Returns true if the stencil write masks used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_stencil_write_mask(&self) -> bool {
+        self.dynamic_stencil_write_mask
+    }
+
+    /// Returns true if the stencil references used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_stencil_reference(&self) -> bool {
+        self.dynamic_stencil_reference
+    }
 }
 
 unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {
