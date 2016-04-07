@@ -17,11 +17,15 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```no_run
+//! # use std::sync::Arc;
+//! use vulkano::buffer::immutable::ImmutableBuffer;
 //! use vulkano::buffer::sys::Usage;
+//! use vulkano::buffer::BufferView;
 //! use vulkano::format;
 //!
-//! # let (device, queue) = gfx_dev_and_queue!();
+//! # let device: Arc<vulkano::device::Device> = unsafe { std::mem::uninitialized() };
+//! # let queue: Arc<vulkano::device::Queue> = unsafe { std::mem::uninitialized() };
 //! let usage = Usage {
 //!     storage_texel_buffer: true,
 //!     .. Usage::none()
