@@ -9,6 +9,7 @@
 
 pub use self::compute_pipeline::ComputePipeline;
 pub use self::graphics_pipeline::GraphicsPipeline;
+pub use self::graphics_pipeline::GraphicsPipelineParams;
 
 mod compute_pipeline;
 mod graphics_pipeline;

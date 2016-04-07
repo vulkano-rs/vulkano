@@ -126,7 +126,7 @@ impl Default for FrontFace {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum PolygonMode {
     Fill = vk::POLYGON_MODE_FILL,

@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -26,14 +29,29 @@ use vk;
 
 use pipeline::blend::Blend;
 use pipeline::input_assembly::InputAssembly;
+use pipeline::input_assembly::PrimitiveTopology;
 use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
+use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
 use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
+
+pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
+    pub vertex: Vdef,
+    pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vl>,
+    pub input_assembly: InputAssembly,
+    pub viewport: ViewportsState,
+    pub raster: Rasterization,
+    pub multisample: Multisample,
+    pub blend: Blend,
+    pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fo, Fl>,
+    pub layout: &'a Arc<L>,
+    pub render_pass: Subpass<'a, Rp>,
+}
 
 ///
 ///
@@ -57,8 +75,8 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     num_viewports: u32,
 }
 
-impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition, L: PipelineLayout, Rp: RenderPass
+impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
+    where Vdef: VertexDefinition, L: PipelineLayout, Rp: RenderPass
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -69,24 +87,24 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
     /// - Panicks if the line width is different from 1.0 and the `wide_lines` feature is not enabled.
     ///
-    // TODO: check all the device's limits
-    pub fn new<Vs, Vi, Fo, Vl, Fs, Fl>
-              (device: &Arc<Device>, vertex: Mv, vertex_shader: &VertexShaderEntryPoint<Vs, Vi, Vl>,
-               input_assembly: &InputAssembly, viewport: &ViewportsState,
-               raster: &Rasterization, multisample: &Multisample, blend: &Blend,
-               fragment_shader: &FragmentShaderEntryPoint<Fs, Fo, Fl>,
-               layout: &Arc<L>, render_pass: Subpass<Rp>)
-               -> Result<Arc<GraphicsPipeline<Mv, L, Rp>>, OomError>
+    pub fn new<'a, Vsp, Vi, Vl, Fs, Fo, Fl>
+              (device: &Arc<Device>,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         let vk = device.pointers();
 
-        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), vertex_shader.layout()));
-        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), fragment_shader.layout()));
+        // FIXME: check
+        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.vertex_shader.layout()));
+        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.fragment_shader.layout()));
 
-        let pipeline = unsafe {
-            let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
+        // Will contain the list of dynamic states. Filled throughout this function.
+        let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
+
+        // List of shader stages.
+        let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
 
             stages.push(vk::PipelineShaderStageCreateInfo {
@@ -94,8 +112,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 stage: vk::SHADER_STAGE_VERTEX_BIT,
-                module: vertex_shader.module().internal_object(),
-                pName: vertex_shader.name().as_ptr(),
+                module: params.vertex_shader.module().internal_object(),
+                pName: params.vertex_shader.name().as_ptr(),
                 pSpecializationInfo: ptr::null(),       // TODO:
             });
 
@@ -104,202 +122,311 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 stage: vk::SHADER_STAGE_FRAGMENT_BIT,
-                module: fragment_shader.module().internal_object(),
-                pName: fragment_shader.name().as_ptr(),
+                module: params.fragment_shader.module().internal_object(),
+                pName: params.fragment_shader.name().as_ptr(),
                 pSpecializationInfo: ptr::null(),       // TODO:
             });
 
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let binding_descriptions = vertex.buffers().enumerate().map(|(num, (stride, rate))| {
-                vk::VertexInputBindingDescription {
+            stages
+        };
+
+        // Vertex bindings.
+        let binding_descriptions = {
+            let mut binding_descriptions = SmallVec::<[_; 8]>::new();
+            for (num, (stride, rate)) in params.vertex.buffers().enumerate() {
+                if stride > device.physical_device().limits().max_vertex_input_binding_stride() as usize {
+                    return Err(GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
+                        binding: num,
+                        max: device.physical_device().limits().max_vertex_input_binding_stride() as usize,
+                        obtained: stride,
+                    });
+                }
+
+                binding_descriptions.push(vk::VertexInputBindingDescription {
                     binding: num as u32,
                     stride: stride as u32,
                     inputRate: rate as u32,
-                }
-            }).collect::<Vec<_>>();
+                });
+            }
 
-            // TODO: allocate on stack instead (https://github.com/rust-lang/rfcs/issues/618)
-            let attribute_descriptions = vertex_shader.attributes().iter().map(|&(loc, ref name)| {
-                let (binding, info) = vertex.attrib(name).expect("missing attr");       // TODO: error
-                debug_assert!(binding < vertex.buffers().len());
-                vk::VertexInputAttributeDescription {
+            binding_descriptions
+        };
+
+        if binding_descriptions.len() > device.physical_device().limits()
+                                              .max_vertex_input_bindings() as usize
+        {
+            return Err(GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                max: device.physical_device().limits().max_vertex_input_bindings() as usize,
+                obtained: binding_descriptions.len(),
+            });
+        }
+
+        // Vertex attributes.
+        // TODO: check vertex attribute formats somewhere (match and support)?
+        let attribute_descriptions = {
+            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
+
+            for &(loc, ref name) in params.vertex_shader.attributes().iter() {
+                let (binding, info) = match params.vertex.attrib(name) {
+                    Some(i) => i,
+                    None => return Err(GraphicsPipelineCreationError::MissingVertexAttribute {
+                        name: name.clone().into_owned()
+                    })
+                };
+
+                // TODO: check attribute format support
+
+                if info.offset > device.physical_device().limits().max_vertex_input_attribute_offset() as usize {
+                    return Err(GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                        max: device.physical_device().limits().max_vertex_input_attribute_offset() as usize,
+                        obtained: info.offset,
+                    });
+                }
+
+                debug_assert!(binding < params.vertex.buffers().len());
+
+                attribute_descriptions.push(vk::VertexInputAttributeDescription {
                     location: loc as u32,
                     binding: binding as u32,
                     format: info.format as u32,
                     offset: info.offset as u32,
-                }
-            }).collect::<Vec<_>>();
-
-            let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                vertexBindingDescriptionCount: binding_descriptions.len() as u32,
-                pVertexBindingDescriptions: binding_descriptions.as_ptr(),
-                vertexAttributeDescriptionCount: attribute_descriptions.len() as u32,
-                pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
-            };
-
-            assert!(!input_assembly.primitive_restart_enable ||
-                    input_assembly.topology.supports_primitive_restart());
-            let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                topology: input_assembly.topology as u32,
-                primitiveRestartEnable: if input_assembly.primitive_restart_enable { vk::TRUE } else { vk::FALSE },
-            };
-
-            let (vp_vp, vp_sc, vp_num) = match *viewport {
-                ViewportsState::Fixed { ref data } => (
-                    data.iter().map(|e| e.0.clone().into()).collect::<Vec<vk::Viewport>>(),
-                    data.iter().map(|e| e.1.clone().into()).collect::<Vec<vk::Rect2D>>(),
-                    data.len() as u32
-                ),
-                ViewportsState::DynamicViewports { ref scissors } => {
-                    let num = scissors.len() as u32;
-                    let scissors = scissors.iter().map(|e| e.clone().into())
-                                           .collect::<Vec<vk::Rect2D>>();
-                    dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
-                    (vec![], scissors, num)
-                },
-                ViewportsState::DynamicScissors { ref viewports } => {
-                    let num = viewports.len() as u32;
-                    let viewports = viewports.iter().map(|e| e.clone().into())
-                                             .collect::<Vec<vk::Viewport>>();
-                    dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
-                    (viewports, vec![], num)
-                },
-                ViewportsState::Dynamic { num } => {
-                    dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
-                    dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
-                    (vec![], vec![], num)
-                },
-            };
-
-            let viewport_info = vk::PipelineViewportStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                viewportCount: vp_num,
-                pViewports: if vp_vp.is_empty() { ptr::null() } else { vp_vp.as_ptr() },    // validation layer crashes if you just pass the pointer
-                scissorCount: vp_num,
-                pScissors: if vp_sc.is_empty() { ptr::null() } else { vp_sc.as_ptr() },     // validation layer crashes if you just pass the pointer
-            };
-
-            if let Some(line_width) = raster.line_width {
-                if line_width != 1.0 {
-                    assert!(device.enabled_features().wide_lines);
-                }
-            } else {
-                dynamic_states.push(vk::DYNAMIC_STATE_LINE_WIDTH);
+                });
             }
 
-            let (db_enable, db_const, db_clamp, db_slope) = match raster.depth_bias {
-                DepthBiasControl::Dynamic => {
-                    dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
-                    (vk::TRUE, 0.0, 0.0, 0.0)
-                },
-                DepthBiasControl::Disabled => {
-                    (vk::FALSE, 0.0, 0.0, 0.0)
-                },
-                DepthBiasControl::Static(bias) => {
-                    // TODO: check the depthBiasClamp feature if clamp != 0.0
-                    (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
-                },
-            };
+            attribute_descriptions
+        };
 
-            let rasterization = vk::PipelineRasterizationStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                depthClampEnable: if raster.depth_clamp { vk::TRUE } else { vk::FALSE },
-                rasterizerDiscardEnable: if raster.rasterizer_discard { vk::TRUE } else { vk::FALSE },
-                polygonMode: raster.polygon_mode as u32,
-                cullMode: raster.cull_mode as u32,
-                frontFace: raster.front_face as u32,
-                depthBiasEnable: db_enable,
-                depthBiasConstantFactor: db_const,
-                depthBiasClamp: db_clamp,
-                depthBiasSlopeFactor: db_slope,
-                lineWidth: raster.line_width.unwrap_or(1.0),
-            };
+        if attribute_descriptions.len() > device.physical_device().limits()
+                                                .max_vertex_input_attributes() as usize
+        {
+            return Err(GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
+                max: device.physical_device().limits().max_vertex_input_attributes() as usize,
+                obtained: attribute_descriptions.len(),
+            });
+        }
 
-            assert!(multisample.rasterization_samples >= 1);
-            // FIXME: check that rasterization_samples is equal to what's in the renderpass
-            if let Some(s) = multisample.sample_shading { assert!(s >= 0.0 && s <= 1.0); }
-            let multisample = vk::PipelineMultisampleStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                rasterizationSamples: multisample.rasterization_samples,
-                sampleShadingEnable: if multisample.sample_shading.is_some() { vk::TRUE } else { vk::FALSE },
-                minSampleShading: multisample.sample_shading.unwrap_or(1.0),
-                pSampleMask: ptr::null(),   //multisample.sample_mask.as_ptr(),     // FIXME:
-                alphaToCoverageEnable: if multisample.alpha_to_coverage { vk::TRUE } else { vk::FALSE },
-                alphaToOneEnable: if multisample.alpha_to_one { vk::TRUE } else { vk::FALSE },
-            };
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            vertexBindingDescriptionCount: binding_descriptions.len() as u32,
+            pVertexBindingDescriptions: binding_descriptions.as_ptr(),
+            vertexAttributeDescriptionCount: attribute_descriptions.len() as u32,
+            pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
+        };
 
-            let depth_stencil = vk::PipelineDepthStencilStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                depthTestEnable: vk::TRUE,          // FIXME:
-                depthWriteEnable: vk::TRUE,         // FIXME:
-                depthCompareOp: vk::COMPARE_OP_LESS,           // FIXME:
-                depthBoundsTestEnable: vk::FALSE,            // FIXME:
-                stencilTestEnable: vk::FALSE,            // FIXME:
-                front: vk::StencilOpState {
-                    failOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                    passOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                    depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
-                    compareOp: 0,            // FIXME:
-                    compareMask: 0,          // FIXME:
-                    writeMask: 0,            // FIXME:
-                    reference: 0,            // FIXME:
-                },
-                back: vk::StencilOpState {
-                    failOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                    passOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                    depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
-                    compareOp: 0,            // FIXME:
-                    compareMask: 0,          // FIXME:
-                    writeMask: 0,            // FIXME:
-                    reference: 0,            // FIXME:
-                },
-                minDepthBounds: 0.0,           // FIXME:
-                maxDepthBounds: 1.0,           // FIXME:
-            };
+        if params.input_assembly.primitive_restart_enable &&
+           !params.input_assembly.topology.supports_primitive_restart()
+        {
+            return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
+                primitive: params.input_assembly.topology
+            });
+        }
 
-            let atch = vk::PipelineColorBlendAttachmentState {
-                blendEnable: 0,
-                srcColorBlendFactor: 0,
-                dstColorBlendFactor: 0,
-                colorBlendOp: 0,
-                srcAlphaBlendFactor: 0,
-                dstAlphaBlendFactor: 0,
-                alphaBlendOp: 0,
-                colorWriteMask: 0xf,
-            };
-            let blend = vk::PipelineColorBlendStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                logicOpEnable: if blend.logic_op.is_some() { vk::TRUE } else { vk::FALSE },
-                logicOp: blend.logic_op.unwrap_or(Default::default()) as u32,
-                attachmentCount: 1,         // FIXME:
-                pAttachments: &atch,      // FIXME:
-                blendConstants: blend.blend_constants.unwrap_or([0.0, 0.0, 0.0, 0.0]),
-            };
+        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            topology: params.input_assembly.topology as u32,
+            primitiveRestartEnable: if params.input_assembly.primitive_restart_enable {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+        };
 
-            let dynamic_states = vk::PipelineDynamicStateCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                dynamicStateCount:  dynamic_states.len() as u32,
-                pDynamicStates: dynamic_states.as_ptr(),
-            };
+        let (vp_vp, vp_sc, vp_num) = match params.viewport {
+            ViewportsState::Fixed { ref data } => (
+                data.iter().map(|e| e.0.clone().into()).collect::<SmallVec<[vk::Viewport; 4]>>(),
+                data.iter().map(|e| e.1.clone().into()).collect::<SmallVec<[vk::Rect2D; 4]>>(),
+                data.len() as u32
+            ),
+            ViewportsState::DynamicViewports { ref scissors } => {
+                let num = scissors.len() as u32;
+                let scissors = scissors.iter().map(|e| e.clone().into())
+                                       .collect::<SmallVec<[vk::Rect2D; 4]>>();
+                dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                (SmallVec::new(), scissors, num)
+            },
+            ViewportsState::DynamicScissors { ref viewports } => {
+                let num = viewports.len() as u32;
+                let viewports = viewports.iter().map(|e| e.clone().into())
+                                         .collect::<SmallVec<[vk::Viewport; 4]>>();
+                dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                (viewports, SmallVec::new(), num)
+            },
+            ViewportsState::Dynamic { num } => {
+                dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                (SmallVec::new(), SmallVec::new(), num)
+            },
+        };
 
+        if vp_num > 1 && !device.enabled_features().multi_viewport {
+            return Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled);
+        }
+
+        if vp_num > device.physical_device().limits().max_viewports() {
+            return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
+                obtained: vp_num,
+                max: device.physical_device().limits().max_viewports(),
+            });
+        }
+
+        for vp in vp_vp.iter() {
+            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32 ||
+               vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
+            {
+                return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
+            }
+
+            if vp.x < device.physical_device().limits().viewport_bounds_range()[0] ||
+               vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1] ||
+               vp.y < device.physical_device().limits().viewport_bounds_range()[0] ||
+               vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
+            {
+                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
+            }
+        }
+
+        let viewport_info = vk::PipelineViewportStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            viewportCount: vp_num,
+            pViewports: if vp_vp.is_empty() { ptr::null() } else { vp_vp.as_ptr() },    // validation layer crashes if you just pass the pointer
+            scissorCount: vp_num,
+            pScissors: if vp_sc.is_empty() { ptr::null() } else { vp_sc.as_ptr() },     // validation layer crashes if you just pass the pointer
+        };
+
+        if let Some(line_width) = params.raster.line_width {
+            if line_width != 1.0 && !device.enabled_features().wide_lines {
+                return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+            }
+        } else {
+            dynamic_states.push(vk::DYNAMIC_STATE_LINE_WIDTH);
+        }
+
+        let (db_enable, db_const, db_clamp, db_slope) = match params.raster.depth_bias {
+            DepthBiasControl::Dynamic => {
+                dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
+                (vk::TRUE, 0.0, 0.0, 0.0)
+            },
+            DepthBiasControl::Disabled => {
+                (vk::FALSE, 0.0, 0.0, 0.0)
+            },
+            DepthBiasControl::Static(bias) => {
+                if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
+                    return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
+                }
+
+                (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
+            },
+        };
+
+        if params.raster.depth_clamp && !device.enabled_features().depth_clamp {
+            return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
+        }
+
+        if params.raster.polygon_mode != PolygonMode::Fill &&
+           !device.enabled_features().fill_mode_non_solid
+        {
+            return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
+        }
+
+        let rasterization = vk::PipelineRasterizationStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            depthClampEnable: if params.raster.depth_clamp { vk::TRUE } else { vk::FALSE },
+            rasterizerDiscardEnable: if params.raster.rasterizer_discard { vk::TRUE } else { vk::FALSE },
+            polygonMode: params.raster.polygon_mode as u32,
+            cullMode: params.raster.cull_mode as u32,
+            frontFace: params.raster.front_face as u32,
+            depthBiasEnable: db_enable,
+            depthBiasConstantFactor: db_const,
+            depthBiasClamp: db_clamp,
+            depthBiasSlopeFactor: db_slope,
+            lineWidth: params.raster.line_width.unwrap_or(1.0),
+        };
+
+        assert!(params.multisample.rasterization_samples >= 1);
+        // FIXME: check that rasterization_samples is equal to what's in the renderpass
+        if let Some(s) = params.multisample.sample_shading { assert!(s >= 0.0 && s <= 1.0); }
+        let multisample = vk::PipelineMultisampleStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            rasterizationSamples: params.multisample.rasterization_samples,
+            sampleShadingEnable: if params.multisample.sample_shading.is_some() { vk::TRUE } else { vk::FALSE },
+            minSampleShading: params.multisample.sample_shading.unwrap_or(1.0),
+            pSampleMask: ptr::null(),   //params.multisample.sample_mask.as_ptr(),     // FIXME:
+            alphaToCoverageEnable: if params.multisample.alpha_to_coverage { vk::TRUE } else { vk::FALSE },
+            alphaToOneEnable: if params.multisample.alpha_to_one { vk::TRUE } else { vk::FALSE },
+        };
+
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            depthTestEnable: vk::TRUE,          // FIXME:
+            depthWriteEnable: vk::TRUE,         // FIXME:
+            depthCompareOp: vk::COMPARE_OP_LESS,           // FIXME:
+            depthBoundsTestEnable: vk::FALSE,            // FIXME:
+            stencilTestEnable: vk::FALSE,            // FIXME:
+            front: vk::StencilOpState {
+                failOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                passOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
+                compareOp: 0,            // FIXME:
+                compareMask: 0,          // FIXME:
+                writeMask: 0,            // FIXME:
+                reference: 0,            // FIXME:
+            },
+            back: vk::StencilOpState {
+                failOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                passOp: vk::STENCIL_OP_KEEP,           // FIXME:
+                depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
+                compareOp: 0,            // FIXME:
+                compareMask: 0,          // FIXME:
+                writeMask: 0,            // FIXME:
+                reference: 0,            // FIXME:
+            },
+            minDepthBounds: 0.0,           // FIXME:
+            maxDepthBounds: 1.0,           // FIXME:
+        };
+
+        let atch = vk::PipelineColorBlendAttachmentState {
+            blendEnable: 0,
+            srcColorBlendFactor: 0,
+            dstColorBlendFactor: 0,
+            colorBlendOp: 0,
+            srcAlphaBlendFactor: 0,
+            dstAlphaBlendFactor: 0,
+            alphaBlendOp: 0,
+            colorWriteMask: 0xf,
+        };
+
+        let blend = vk::PipelineColorBlendStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            logicOpEnable: if params.blend.logic_op.is_some() { vk::TRUE } else { vk::FALSE },
+            logicOp: params.blend.logic_op.unwrap_or(Default::default()) as u32,
+            attachmentCount: 1,         // FIXME:
+            pAttachments: &atch,      // FIXME:
+            blendConstants: params.blend.blend_constants.unwrap_or([0.0, 0.0, 0.0, 0.0]),
+        };
+
+        let dynamic_states = vk::PipelineDynamicStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0,   // reserved
+            dynamicStateCount: dynamic_states.len() as u32,
+            pDynamicStates: dynamic_states.as_ptr(),
+        };
+
+        let pipeline = unsafe {
             let infos = vk::GraphicsPipelineCreateInfo {
                 sType: vk::STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -315,9 +442,9 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
                 pDynamicState: &dynamic_states,
-                layout: PipelineLayout::inner_pipeline_layout(&**layout).internal_object(),
-                renderPass: render_pass.render_pass().render_pass().internal_object(),
-                subpass: render_pass.index(),
+                layout: PipelineLayout::inner_pipeline_layout(&**params.layout).internal_object(),
+                renderPass: params.render_pass.render_pass().render_pass().internal_object(),
+                subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
                 basePipelineIndex: -1,       // TODO:
             };
@@ -331,19 +458,19 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
         Ok(Arc::new(GraphicsPipeline {
             device: device.clone(),
             pipeline: pipeline,
-            layout: layout.clone(),
+            layout: params.layout.clone(),
 
-            vertex_definition: vertex,
+            vertex_definition: params.vertex,
 
-            render_pass: render_pass.render_pass().clone(),
-            render_pass_subpass: render_pass.index(),
+            render_pass: params.render_pass.render_pass().clone(),
+            render_pass_subpass: params.render_pass.index(),
 
-            dynamic_line_width: raster.line_width.is_none(),
-            dynamic_viewport: viewport.dynamic_viewports(),
-            dynamic_scissor: viewport.dynamic_scissors(),
-            dynamic_depth_bias: raster.depth_bias.is_dynamic(),
+            dynamic_line_width: params.raster.line_width.is_none(),
+            dynamic_viewport: params.viewport.dynamic_viewports(),
+            dynamic_scissor: params.viewport.dynamic_scissors(),
+            dynamic_depth_bias: params.raster.depth_bias.is_dynamic(),
 
-            num_viewports: viewport.num_viewports(),
+            num_viewports: params.viewport.num_viewports(),
         }))
     }
 }
@@ -419,6 +546,108 @@ impl<Mv, L, Rp> Drop for GraphicsPipeline<Mv, L, Rp> {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyPipeline(self.device.internal_object(), self.pipeline, ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating a graphics pipeline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GraphicsPipelineCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The pipeline layout is not compatible with what the shaders expect.
+    IncompatiblePipelineLayout,
+
+    MissingVertexAttribute { name: String },
+
+    MaxVertexInputBindingStrideExceeded { binding: usize, max: usize, obtained: usize },
+
+    MaxVertexInputBindingsExceeded { max: usize, obtained: usize },
+
+    MaxVertexInputAttributeOffsetExceeded { max: usize, obtained: usize },
+
+    MaxVertexInputAttributesExceeded { max: usize, obtained: usize },
+
+    PrimitiveDoesntSupportPrimitiveRestart { primitive: PrimitiveTopology },
+
+    MultiViewportFeatureNotEnabled,
+
+    MaxViewportsExceeded { max: u32, obtained: u32 },
+
+    MaxViewportDimensionsExceeded,
+
+    ViewportBoundsExceeded,
+
+    WideLinesFeatureNotEnabled,
+
+    DepthClampFeatureNotEnabled,
+
+    DepthBiasClampFeatureNotEnabled,
+
+    FillModeNonSolidFeatureNotEnabled,
+}
+
+impl error::Error for GraphicsPipelineCreationError {
+    #[inline]
+    // TODO: finish
+    fn description(&self) -> &str {
+        match *self {
+            GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is \
+                                                                          not compatible with what \
+                                                                          the shaders expect",
+            GraphicsPipelineCreationError::MissingVertexAttribute { .. } => "",
+            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => "",
+            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => "",
+            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => "",
+            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => "",
+            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. } => "",
+            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => "",
+            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => "",
+            GraphicsPipelineCreationError::ViewportBoundsExceeded => "",
+            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => "",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for GraphicsPipelineCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: OomError) -> GraphicsPipelineCreationError {
+        GraphicsPipelineCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: Error) -> GraphicsPipelineCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                GraphicsPipelineCreationError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                GraphicsPipelineCreationError::OomError(OomError::from(err))
+            },
+            _ => panic!("unexpected error: {:?}", err)
         }
     }
 }
