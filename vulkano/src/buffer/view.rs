@@ -94,6 +94,24 @@ impl<F, B> BufferView<F, B> where B: Buffer {
                               vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
         }))
     }
+
+    /// Returns true if the buffer view can be used as a uniform texel buffer.
+    #[inline]
+    pub fn uniform_texel_buffer(&self) -> bool {
+        self.buffer.inner_buffer().usage_uniform_texel_buffer()
+    }
+
+    /// Returns true if the buffer view can be used as a storage texel buffer.
+    #[inline]
+    pub fn storage_texel_buffer(&self) -> bool {
+        self.buffer.inner_buffer().usage_storage_texel_buffer()
+    }
+
+    /// Returns true if the buffer view can be used as a storage texel buffer with atomic accesses.
+    #[inline]
+    pub fn storage_texel_buffer_atomic(&self) -> bool {
+        self.atomic_accesses && self.storage_texel_buffer()
+    }
 }
 
 unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
@@ -192,7 +210,9 @@ mod tests {
 
         let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
                                                          Some(queue.family())).unwrap();
-        let _ = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+
+        assert!(view.uniform_texel_buffer());
     }
 
     #[test]
@@ -207,7 +227,27 @@ mod tests {
 
         let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
                                                          Some(queue.family())).unwrap();
-        let _ = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+
+        assert!(view.storage_texel_buffer());
+    }
+
+    #[test]
+    fn create_storage_atomic() {
+        // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            storage_texel_buffer: true,
+            .. Usage::none()
+        };
+
+        let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
+                                                     Some(queue.family())).unwrap();
+        let view = BufferView::new(&buffer, format::R32Uint).unwrap();
+
+        assert!(view.storage_texel_buffer());
+        assert!(view.storage_texel_buffer_atomic());
     }
 
     #[test]
