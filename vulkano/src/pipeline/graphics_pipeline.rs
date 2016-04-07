@@ -45,7 +45,7 @@ use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
 
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
-    pub vertex: Vdef,
+    pub vertex_input: Vdef,
     pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vl>,
     pub input_assembly: InputAssembly,
     pub viewport: ViewportsState,
@@ -142,7 +142,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         // Vertex bindings.
         let binding_descriptions = {
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
-            for (num, (stride, rate)) in params.vertex.buffers().enumerate() {
+            for (num, (stride, rate)) in params.vertex_input.buffers().enumerate() {
                 if stride > device.physical_device().limits().max_vertex_input_binding_stride() as usize {
                     return Err(GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
                         binding: num,
@@ -176,7 +176,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
 
             for &(loc, ref name) in params.vertex_shader.attributes().iter() {
-                let (binding, info) = match params.vertex.attrib(name) {
+                let (binding, info) = match params.vertex_input.attrib(name) {
                     Some(i) => i,
                     None => return Err(GraphicsPipelineCreationError::MissingVertexAttribute {
                         name: name.clone().into_owned()
@@ -192,7 +192,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     });
                 }
 
-                debug_assert!(binding < params.vertex.buffers().len());
+                debug_assert!(binding < params.vertex_input.buffers().len());
 
                 attribute_descriptions.push(vk::VertexInputAttributeDescription {
                     location: loc as u32,
@@ -524,7 +524,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             pipeline: pipeline,
             layout: params.layout.clone(),
 
-            vertex_definition: params.vertex,
+            vertex_definition: params.vertex_input,
 
             render_pass: params.render_pass.render_pass().clone(),
             render_pass_subpass: params.render_pass.index(),

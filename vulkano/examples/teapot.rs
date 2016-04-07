@@ -176,7 +176,7 @@ fn main() {
     }).unwrap();
 
     let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
-        vertex: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
+        vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
         viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
