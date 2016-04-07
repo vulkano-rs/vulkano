@@ -47,8 +47,8 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp> wher
     pub viewport: ViewportsState,
     pub raster: Rasterization,
     pub multisample: Multisample,
-    pub blend: Blend,
     pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fo, Fl>,
+    pub blend: Blend,
     pub layout: &'a Arc<L>,
     pub render_pass: Subpass<'a, Rp>,
 }

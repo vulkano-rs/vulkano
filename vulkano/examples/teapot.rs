@@ -191,11 +191,11 @@ fn main() {
         },
         raster: Default::default(),
         multisample: vulkano::pipeline::multisample::Multisample::disabled(),
+        fragment_shader: fs.main_entry_point(),
         blend: vulkano::pipeline::blend::Blend {
             logic_op: None,
             blend_constants: Some([0.0; 4]),
         },
-        fragment_shader: fs.main_entry_point(),
         layout: &pipeline_layout,
         render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
     }).unwrap();
