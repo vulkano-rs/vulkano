@@ -24,6 +24,7 @@ pub struct BufferView<F, B> where B: Buffer {
     view: vk::BufferView,
     buffer: Arc<B>,
     marker: PhantomData<F>,
+    atomic_accesses: bool,
 }
 
 impl<F, B> BufferView<F, B> where B: Buffer {
@@ -47,7 +48,25 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             return Err(BufferViewCreationError::WrongBufferUsage);
         }
 
-        // TODO: check that format is supported? or check only when the view is used?
+        let format_props = unsafe {
+            let vk_i = device.instance().pointers();
+            let mut output = mem::uninitialized();
+            vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
+                                                   format as u32, &mut output);
+            output.bufferFeatures
+        };
+
+        if buffer.buffer().inner_buffer().usage_uniform_texel_buffer() {
+            if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
+                return Err(BufferViewCreationError::UnsupportedFormat);
+            }
+        }
+
+        if buffer.buffer().inner_buffer().usage_storage_texel_buffer() {
+            if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
+                return Err(BufferViewCreationError::UnsupportedFormat);
+            }
+        }
 
         let infos = vk::BufferViewCreateInfo {
             sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
@@ -71,6 +90,8 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             view: view,
             buffer: buffer.resource.clone(),
             marker: PhantomData,
+            atomic_accesses: (format_props &
+                              vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
         }))
     }
 }
@@ -104,6 +125,9 @@ pub enum BufferViewCreationError {
     /// The buffer was not creating with one of the `storage_texel_buffer` or
     /// `uniform_texel_buffer` usages.
     WrongBufferUsage,
+
+    /// The requested format is not supported for this usage.
+    UnsupportedFormat,
 }
 
 impl error::Error for BufferViewCreationError {
@@ -113,6 +137,8 @@ impl error::Error for BufferViewCreationError {
             BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
             BufferViewCreationError::WrongBufferUsage => "the buffer is missing correct usage \
                                                           flags",
+            BufferViewCreationError::UnsupportedFormat => "the requested format is not supported \
+                                                           for this usage",
         }
     }
 
@@ -148,7 +174,6 @@ impl From<Error> for BufferViewCreationError {
 
 #[cfg(test)]
 mod tests {
-    use buffer::Buffer;
     use buffer::BufferView;
     use buffer::sys::Usage;
     use buffer::view::BufferViewCreationError;
@@ -157,6 +182,7 @@ mod tests {
 
     #[test]
     fn create_uniform() {
+        // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
         let usage = Usage {
@@ -164,13 +190,14 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[i8]>::array(&device, 128, &usage,
-                                                    Some(queue.family())).unwrap();
-        let _ = BufferView::new(&buffer, format::R8Sscaled).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
+                                                         Some(queue.family())).unwrap();
+        let _ = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
     }
 
     #[test]
     fn create_storage() {
+        // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
         let usage = Usage {
@@ -178,21 +205,42 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[i8]>::array(&device, 128, &usage,
-                                                    Some(queue.family())).unwrap();
-        let _ = BufferView::new(&buffer, format::R8Sscaled).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
+                                                         Some(queue.family())).unwrap();
+        let _ = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
     }
 
-    /*#[test]
+    #[test]
     fn wrong_usage() {
+        // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::none(), DeviceLocal,
-                                              &queue).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &Usage::none(),
+                                                         Some(queue.family())).unwrap();
 
-        match BufferView::new(&buffer) {
+        match BufferView::new(&buffer, format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!()
         }
-    }*/
+    }
+
+    #[test]
+    fn unsupported_format() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            uniform_texel_buffer: true,
+            storage_texel_buffer: true,
+            .. Usage::none()
+        };
+
+        let buffer = ImmutableBuffer::<[[f64; 4]]>::array(&device, 128, &usage,
+                                                          Some(queue.family())).unwrap();
+
+        // TODO: what if R64G64B64A64Sfloat is supported?
+        match BufferView::new(&buffer, format::R64G64B64A64Sfloat) {
+            Err(BufferViewCreationError::UnsupportedFormat) => (),
+            _ => panic!()
+        }
+    }
 }
