@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
-use buffer::TypedBuffer;
 use format::StrongStorage;
 
 use Error;
@@ -27,7 +26,7 @@ pub struct BufferView<F, B> where B: Buffer {
     marker: PhantomData<F>,
 }
 
-impl<F, B> BufferView<F, B> where B: TypedBuffer {
+impl<F, B> BufferView<F, B> where B: Buffer {
     /// Builds a new buffer view.
     ///
     /// The format of the view will be automatically determined by the `T` parameter.
@@ -145,4 +144,55 @@ impl From<Error> for BufferViewCreationError {
     fn from(err: Error) -> BufferViewCreationError {
         OomError::from(err).into()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use buffer::Buffer;
+    use buffer::BufferView;
+    use buffer::sys::Usage;
+    use buffer::view::BufferViewCreationError;
+    use buffer::immutable::ImmutableBuffer;
+    use format;
+
+    #[test]
+    fn create_uniform() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            uniform_texel_buffer: true,
+            .. Usage::none()
+        };
+
+        let buffer = ImmutableBuffer::<[i8]>::array(&device, 128, &usage,
+                                                    Some(queue.family())).unwrap();
+        let _ = BufferView::new(&buffer, format::R8Sscaled).unwrap();
+    }
+
+    #[test]
+    fn create_storage() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            storage_texel_buffer: true,
+            .. Usage::none()
+        };
+
+        let buffer = ImmutableBuffer::<[i8]>::array(&device, 128, &usage,
+                                                    Some(queue.family())).unwrap();
+        let _ = BufferView::new(&buffer, format::R8Sscaled).unwrap();
+    }
+
+    /*#[test]
+    fn wrong_usage() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::none(), DeviceLocal,
+                                              &queue).unwrap();
+
+        match BufferView::new(&buffer) {
+            Err(BufferViewCreationError::WrongBufferUsage) => (),
+            _ => panic!()
+        }
+    }*/
 }

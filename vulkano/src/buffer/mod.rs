@@ -147,27 +147,5 @@ mod tests {
                                           DeviceLocal, &queue).unwrap();
         assert_eq!(b.len(), 12);
         assert_eq!(b.size(), 12 * mem::size_of::<i16>());
-    }
-
-    #[test]
-    fn view_create() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::all(), DeviceLocal,
-                                              &queue).unwrap();
-        let _ = BufferView::new(&buffer).unwrap();
-    }
-
-    #[test]
-    fn view_wrong_usage() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::none(), DeviceLocal,
-                                              &queue).unwrap();
-
-        match BufferView::new(&buffer) {
-            Err(BufferViewCreationError::WrongBufferUsage) => (),
-            _ => panic!()
-        }
     }*/
 }
