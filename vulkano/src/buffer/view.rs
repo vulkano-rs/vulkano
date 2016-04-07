@@ -86,6 +86,8 @@ impl<F, B> BufferView<F, B> where B: Buffer {
         let device = buffer.resource.inner_buffer().device();
         let format = format.format();
 
+        // TODO: check minTexelBufferOffsetAlignment
+
         if !buffer.buffer().inner_buffer().usage_uniform_texel_buffer() &&
            !buffer.buffer().inner_buffer().usage_storage_texel_buffer()
         {
