@@ -76,7 +76,7 @@ impl<T> ImmutableBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<ImmutableBuffer<T>>, OomError>
+                      -> Result<Arc<ImmutableBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
