@@ -11,12 +11,24 @@ use std::ops::Range;
 use std::u32;
 use vk;
 
+/// Configuration of the depth and stencil tests.
 #[derive(Debug, Clone)]
 pub struct DepthStencil {
-    pub depth_write: bool,
+    /// Comparison to use between the depth value of each fragment and the depth value currently
+    /// in the depth buffer.
     pub depth_compare: Compare,
+
+    /// If `true`, then the value in the depth buffer will be updated when the depth test succeeds.
+    pub depth_write: bool,
+
+    /// Allows you to ask the GPU to exclude fragments that are outside of a certain range. This is
+    /// done in addition to the regular depth test.
     pub depth_bounds_test: DepthBounds,
+
+    /// Stencil operations to use for points, lines and triangles whose front is facing the user.
     pub stencil_front: Stencil,
+
+    /// Stencil operations to use for triangles whose back is facing the user.
     pub stencil_back: Stencil,
 }
 
@@ -48,6 +60,7 @@ impl Default for DepthStencil {
     }
 }
 
+/// Configuration of a stencil test.
 #[derive(Debug, Copy, Clone)]
 pub struct Stencil {
     /// The comparison to perform between the existing stencil value in the stencil buffer, and
@@ -139,10 +152,18 @@ pub enum StencilOp {
     DecrementAndWrap = vk::STENCIL_OP_DECREMENT_AND_WRAP,
 }
 
+/// Allows you to ask the GPU to exclude fragments that are outside of a certain range.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DepthBounds {
+    /// The test is disabled. All fragments pass the depth bounds test.
     Disabled,
+
+    /// Fragments that are within the given range do pass the test. Values are depth values 
+    /// between 0.0 and 1.0.
     Fixed(Range<f32>),
+
+    /// The depth bounds test is enabled, but the range will need to specified when you submit
+    /// a draw command.
     Dynamic,
 }
 
