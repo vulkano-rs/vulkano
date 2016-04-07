@@ -8,7 +8,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
-use format::Data as FormatData;
+use format::StrongStorage;
 
 use Error;
 use OomError;
@@ -21,27 +21,26 @@ use vk;
 ///
 /// Note that a buffer view is only required for some operations. For example using a buffer as a
 /// uniform buffer doesn't require creating a `BufferView`.
-pub struct BufferView<T, B> where B: Buffer {
+pub struct BufferView<F, B> where B: Buffer {
     view: vk::BufferView,
     buffer: Arc<B>,
-    marker: PhantomData<T>,
+    marker: PhantomData<F>,
 }
 
-impl<T, B> BufferView<T, B> where B: TypedBuffer {
+impl<F, B> BufferView<F, B> where B: TypedBuffer {
     /// Builds a new buffer view.
     ///
     /// The format of the view will be automatically determined by the `T` parameter.
     ///
     /// The buffer must have been created with either the `uniform_texel_buffer` or
     /// the `storage_texel_buffer` usage or an error will occur.
-    ///
-    // FIXME: how to handle the fact that eg. `u8` can be either Unorm or Uint?
-    pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, B>>, BufferViewCreationError>
-        where S: Into<BufferSlice<'a, [T], B>>, B: 'static, T: FormatData + 'static
+    pub fn new<'a, S>(buffer: S, format: F)
+                      -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where S: Into<BufferSlice<'a, [F::Pixel], B>>, B: 'static, F: StrongStorage + 'static
     {
         let buffer = buffer.into();
         let device = buffer.resource.inner_buffer().device();
-        let format = T::ty();
+        let format = format.format();
 
         if !buffer.buffer().inner_buffer().usage_uniform_texel_buffer() &&
            !buffer.buffer().inner_buffer().usage_storage_texel_buffer()
@@ -77,7 +76,7 @@ impl<T, B> BufferView<T, B> where B: TypedBuffer {
     }
 }
 
-unsafe impl<T, B> VulkanObject for BufferView<T, B> where B: Buffer {
+unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
     type Object = vk::BufferView;
 
     #[inline]
@@ -86,7 +85,7 @@ unsafe impl<T, B> VulkanObject for BufferView<T, B> where B: Buffer {
     }
 }
 
-impl<T, B> Drop for BufferView<T, B> where B: Buffer {
+impl<F, B> Drop for BufferView<F, B> where B: Buffer {
     #[inline]
     fn drop(&mut self) {
         unsafe {
