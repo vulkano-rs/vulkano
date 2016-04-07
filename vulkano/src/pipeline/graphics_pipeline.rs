@@ -12,6 +12,7 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::u32;
 use smallvec::SmallVec;
 
 use device::Device;
@@ -28,6 +29,9 @@ use check_errors;
 use vk;
 
 use pipeline::blend::Blend;
+use pipeline::depth_stencil::Compare;
+use pipeline::depth_stencil::DepthStencil;
+use pipeline::depth_stencil::DepthBounds;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
 use pipeline::multisample::Multisample;
@@ -48,6 +52,7 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp> wher
     pub raster: Rasterization,
     pub multisample: Multisample,
     pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fo, Fl>,
+    pub depth_stencil: DepthStencil,
     pub blend: Blend,
     pub layout: &'a Arc<L>,
     pub render_pass: Subpass<'a, Rp>,
@@ -71,6 +76,10 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     dynamic_viewport: bool,
     dynamic_scissor: bool,
     dynamic_depth_bias: bool,
+    dynamic_depth_bounds: bool,
+    dynamic_stencil_compare_mask: bool,
+    dynamic_stencil_write_mask: bool,
+    dynamic_stencil_reference: bool,
 
     num_viewports: u32,
 }
@@ -365,35 +374,90 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             alphaToOneEnable: if params.multisample.alpha_to_one { vk::TRUE } else { vk::FALSE },
         };
 
-        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0,   // reserved
-            depthTestEnable: vk::TRUE,          // FIXME:
-            depthWriteEnable: vk::TRUE,         // FIXME:
-            depthCompareOp: vk::COMPARE_OP_LESS,           // FIXME:
-            depthBoundsTestEnable: vk::FALSE,            // FIXME:
-            stencilTestEnable: vk::FALSE,            // FIXME:
-            front: vk::StencilOpState {
-                failOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                passOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
-                compareOp: 0,            // FIXME:
-                compareMask: 0,          // FIXME:
-                writeMask: 0,            // FIXME:
-                reference: 0,            // FIXME:
-            },
-            back: vk::StencilOpState {
-                failOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                passOp: vk::STENCIL_OP_KEEP,           // FIXME:
-                depthFailOp: vk::STENCIL_OP_KEEP,          // FIXME:
-                compareOp: 0,            // FIXME:
-                compareMask: 0,          // FIXME:
-                writeMask: 0,            // FIXME:
-                reference: 0,            // FIXME:
-            },
-            minDepthBounds: 0.0,           // FIXME:
-            maxDepthBounds: 1.0,           // FIXME:
+        let depth_stencil = {
+            let db = match params.depth_stencil.depth_bounds_test {
+                DepthBounds::Disabled => (vk::FALSE, 0.0, 0.0),
+                DepthBounds::Fixed(ref range) => {
+                    if !device.enabled_features().depth_bounds {
+                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
+                    }
+
+                    (vk::TRUE, range.start, range.end)
+                },
+                DepthBounds::Dynamic => {
+                    if !device.enabled_features().depth_bounds {
+                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
+                    }
+
+                    dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BOUNDS);
+
+                    (vk::TRUE, 0.0, 1.0)
+                },
+            };
+
+            match (params.depth_stencil.stencil_front.compare_mask,
+                   params.depth_stencil.stencil_back.compare_mask)
+            {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_COMPARE_MASK);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+            };
+
+            match (params.depth_stencil.stencil_front.write_mask,
+                   params.depth_stencil.stencil_back.write_mask)
+            {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_WRITE_MASK);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+            };
+
+            match (params.depth_stencil.stencil_front.reference,
+                   params.depth_stencil.stencil_back.reference)
+            {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_REFERENCE);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+            };
+
+            vk::PipelineDepthStencilStateCreateInfo {
+                sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                depthTestEnable: if !params.depth_stencil.depth_write &&
+                                    params.depth_stencil.depth_compare == Compare::Always
+                                 { vk::FALSE } else { vk::TRUE },
+                depthWriteEnable: if params.depth_stencil.depth_write { vk::TRUE }
+                                  else { vk::FALSE },
+                depthCompareOp: params.depth_stencil.depth_compare as u32,
+                depthBoundsTestEnable: db.0,
+                stencilTestEnable: vk::FALSE,            // FIXME:
+                front: vk::StencilOpState {
+                    failOp: params.depth_stencil.stencil_front.fail_op as u32,
+                    passOp: params.depth_stencil.stencil_front.pass_op as u32,
+                    depthFailOp: params.depth_stencil.stencil_front.depth_fail_op as u32,
+                    compareOp: params.depth_stencil.stencil_front.compare as u32,
+                    compareMask: params.depth_stencil.stencil_front.compare_mask.unwrap_or(u32::MAX),
+                    writeMask: params.depth_stencil.stencil_front.write_mask.unwrap_or(u32::MAX),
+                    reference: params.depth_stencil.stencil_front.reference.unwrap_or(0),
+                },
+                back: vk::StencilOpState {
+                    failOp: params.depth_stencil.stencil_back.fail_op as u32,
+                    passOp: params.depth_stencil.stencil_back.pass_op as u32,
+                    depthFailOp: params.depth_stencil.stencil_back.depth_fail_op as u32,
+                    compareOp: params.depth_stencil.stencil_back.compare as u32,
+                    compareMask: params.depth_stencil.stencil_back.compare_mask.unwrap_or(u32::MAX),
+                    writeMask: params.depth_stencil.stencil_back.write_mask.unwrap_or(u32::MAX),
+                    reference: params.depth_stencil.stencil_back.reference.unwrap_or(0)
+                },
+                minDepthBounds: db.1,
+                maxDepthBounds: db.2,
+            }
         };
 
         let atch = vk::PipelineColorBlendAttachmentState {
@@ -469,6 +533,10 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             dynamic_viewport: params.viewport.dynamic_viewports(),
             dynamic_scissor: params.viewport.dynamic_scissors(),
             dynamic_depth_bias: params.raster.depth_bias.is_dynamic(),
+            dynamic_depth_bounds: params.depth_stencil.depth_bounds_test.is_dynamic(),
+            dynamic_stencil_compare_mask: params.depth_stencil.stencil_back.compare_mask.is_none(),
+            dynamic_stencil_write_mask: params.depth_stencil.stencil_back.write_mask.is_none(),
+            dynamic_stencil_reference: params.depth_stencil.stencil_back.reference.is_none(),
 
             num_viewports: params.viewport.num_viewports(),
         }))
@@ -586,6 +654,10 @@ pub enum GraphicsPipelineCreationError {
     DepthBiasClampFeatureNotEnabled,
 
     FillModeNonSolidFeatureNotEnabled,
+
+    DepthBoundsFeatureNotEnabled,
+
+    WrongStencilState,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -611,6 +683,8 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => "",
             GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => "",
             GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => "",
+            GraphicsPipelineCreationError::WrongStencilState => "",
         }
     }
 

@@ -192,6 +192,7 @@ fn main() {
         raster: Default::default(),
         multisample: vulkano::pipeline::multisample::Multisample::disabled(),
         fragment_shader: fs.main_entry_point(),
+        depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
         blend: vulkano::pipeline::blend::Blend {
             logic_op: None,
             blend_constants: Some([0.0; 4]),
