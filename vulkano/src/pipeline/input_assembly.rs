@@ -42,7 +42,7 @@ impl InputAssembly {
 /// Describes how vertices must be grouped together to form primitives.
 ///
 /// Note that some topologies don't support primitive restart.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum PrimitiveTopology {
     PointList = vk::PRIMITIVE_TOPOLOGY_POINT_LIST,

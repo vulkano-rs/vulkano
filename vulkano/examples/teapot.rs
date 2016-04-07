@@ -175,16 +175,11 @@ fn main() {
         uniforms: &uniform_buffer
     }).unwrap();
 
-    let pipeline = {
-        let ia = vulkano::pipeline::input_assembly::InputAssembly::triangle_list();
-        let raster = Default::default();
-        let ms = vulkano::pipeline::multisample::Multisample::disabled();
-        let blend = vulkano::pipeline::blend::Blend {
-            logic_op: None,
-            blend_constants: Some([0.0; 4]),
-        };
-
-        let viewports = vulkano::pipeline::viewport::ViewportsState::Fixed {
+    let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+        vertex: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
+        vertex_shader: vs.main_entry_point(),
+        input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
+        viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
             data: vec![(
                 vulkano::pipeline::viewport::Viewport {
                     origin: [0.0, 0.0],
@@ -193,13 +188,18 @@ fn main() {
                 },
                 vulkano::pipeline::viewport::Scissor::irrelevant()
             )],
-        };
-
-        vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::vertex::TwoBuffersDefinition::new(), &vs.main_entry_point(), &ia, &viewports,
-                                                 &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &pipeline_layout, vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap())
-                                                 .unwrap()
-    };
+        },
+        raster: Default::default(),
+        multisample: vulkano::pipeline::multisample::Multisample::disabled(),
+        fragment_shader: fs.main_entry_point(),
+        depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
+        blend: vulkano::pipeline::blend::Blend {
+            logic_op: None,
+            blend_constants: Some([0.0; 4]),
+        },
+        layout: &pipeline_layout,
+        render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
+    }).unwrap();
 
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {

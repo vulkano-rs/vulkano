@@ -8,11 +8,31 @@
 // according to those terms.
 
 use std::ops::Range;
+use std::u32;
+use vk;
 
+#[derive(Debug, Clone)]
 pub struct DepthStencil {
-    depth_write: bool,
-    depth_compare: Compare,
-    depth_bounds_test: Option<Range<f32>>,
+    pub depth_write: bool,
+    pub depth_compare: Compare,
+    pub depth_bounds_test: DepthBounds,
+    pub stencil_front: Stencil,
+    pub stencil_back: Stencil,
+}
+
+impl DepthStencil {
+    /// Creates a `DepthStencil` with a `Less` depth test, `depth_write` set to true, and stencil
+    /// testing disabled.
+    #[inline]
+    pub fn simple_depth_test() -> DepthStencil {
+        DepthStencil {
+            depth_write: true,
+            depth_compare: Compare::Less,
+            depth_bounds_test: DepthBounds::Disabled,
+            stencil_front: Default::default(),
+            stencil_back: Default::default(),
+        }
+    }
 }
 
 impl Default for DepthStencil {
@@ -21,31 +41,121 @@ impl Default for DepthStencil {
         DepthStencil {
             depth_write: false,
             depth_compare: Compare::Always,
-            depth_bounds_test: None,
+            depth_bounds_test: DepthBounds::Disabled,
+            stencil_front: Default::default(),
+            stencil_back: Default::default(),
         }
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct Stencil {
+    /// The comparison to perform between the existing stencil value in the stencil buffer, and
+    /// the reference value (given by `reference`).
+    pub compare: Compare,
 
-    VkBool32                                    depthTestEnable;
-    VkBool32                                    depthWriteEnable;
-    VkCompareOp                                 depthCompareOp;
-    VkBool32                                    depthBoundsTestEnable;
-    VkBool32                                    stencilTestEnable;
-    VkStencilOpState                            front;
-    VkStencilOpState                            back;
-    float                                       minDepthBounds;
-    float                                       maxDepthBounds;
+    /// The operation to perform when both the depth test and the stencil test passed.
+    pub pass_op: StencilOp,
 
-typedef struct {
-    VkStencilOp                                 stencilFailOp;
-    VkStencilOp                                 stencilPassOp;
-    VkStencilOp                                 stencilDepthFailOp;
-    VkCompareOp                                 stencilCompareOp;
-    uint32_t                                    stencilCompareMask;
-    uint32_t                                    stencilWriteMask;
-    uint32_t                                    stencilReference;
-} VkStencilOpState;
+    /// The operation to perform when the stencil test failed.
+    pub fail_op: StencilOp,
+
+    /// The operation to perform when the stencil test passed but the depth test failed.
+    pub depth_fail_op: StencilOp,
+
+    /// Selects the bits of the unsigned integer stencil values participating in the stencil test.
+    ///
+    /// Ignored if `compare` is `Never` or `Always`.
+    ///
+    /// If `None`, then this value is dynamic and will need to be set when drawing. Doesn't apply
+    /// if `compare` is `Never` or `Always`.
+    ///
+    /// Note that if this value is `Some` in `stencil_front`, it must also be `Some` in
+    /// `stencil_back` (but the content can be different). If this value is `None` in
+    /// `stencil_front`, then it must also be `None` in `stencil_back`. This rule doesn't apply
+    /// if `compare` is `Never` or `Always`.
+    pub compare_mask: Option<u32>,
+
+    /// Selects the bits of the unsigned integer stencil values updated by the stencil test in the
+    /// stencil framebuffer attachment.
+    ///
+    /// If `None`, then this value is dynamic and will need to be set when drawing.
+    ///
+    /// Note that if this value is `Some` in `stencil_front`, it must also be `Some` in
+    /// `stencil_back` (but the content can be different). If this value is `None` in
+    /// `stencil_front`, then it must also be `None` in `stencil_back`.
+    pub write_mask: Option<u32>,
+
+    /// Reference value that is used in the unsigned stencil comparison.
+    ///
+    /// If `None`, then this value is dynamic and will need to be set when drawing.
+    ///
+    /// Note that if this value is `Some` in `stencil_front`, it must also be `Some` in
+    /// `stencil_back` (but the content can be different). If this value is `None` in
+    /// `stencil_front`, then it must also be `None` in `stencil_back`.
+    pub reference: Option<u32>,
+}
+
+impl Stencil {
+    /// Returns true if the stencil operation will always result in `Keep`.
+    #[inline]
+    pub fn always_keep(&self) -> bool {
+        match self.compare {
+            Compare::Always => self.pass_op == StencilOp::Keep &&
+                               self.depth_fail_op == StencilOp::Keep,
+            Compare::Never => self.fail_op == StencilOp::Keep,
+            _ => self.pass_op == StencilOp::Keep && self.fail_op == StencilOp::Keep &&
+                 self.depth_fail_op == StencilOp::Keep,
+        }
+    }
+}
+
+impl Default for Stencil {
+    #[inline]
+    fn default() -> Stencil {
+        Stencil {
+            compare: Compare::Never,
+            pass_op: StencilOp::Keep,
+            fail_op: StencilOp::Keep,
+            depth_fail_op: StencilOp::Keep,
+            compare_mask: Some(u32::MAX),
+            write_mask: Some(u32::MAX),
+            reference: Some(u32::MAX),
+        }
+    }
+}
+
+/// Operation to perform after the depth and stencil tests.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum StencilOp {
+    Keep = vk::STENCIL_OP_KEEP,
+    Zero = vk::STENCIL_OP_ZERO,
+    Replace = vk::STENCIL_OP_REPLACE,
+    IncrementAndClamp = vk::STENCIL_OP_INCREMENT_AND_CLAMP,
+    DecrementAndClamp = vk::STENCIL_OP_DECREMENT_AND_CLAMP,
+    Invert = vk::STENCIL_OP_INVERT,
+    IncrementAndWrap = vk::STENCIL_OP_INCREMENT_AND_WRAP,
+    DecrementAndWrap = vk::STENCIL_OP_DECREMENT_AND_WRAP,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DepthBounds {
+    Disabled,
+    Fixed(Range<f32>),
+    Dynamic,
+}
+
+impl DepthBounds {
+    /// Returns true if equal to `DepthBounds::Dynamic`.
+    #[inline]
+    pub fn is_dynamic(&self) -> bool {
+        match self {
+            &DepthBounds::Dynamic => true,
+            _ => false,
+        }
+    }
+}
 
 /// Specifies how two values should be compared to decide whether a test passes or fails.
 ///
@@ -54,19 +164,19 @@ typedef struct {
 #[repr(u32)]
 pub enum Compare {
     /// The test never passes.
-    Never => vk::COMPARE_OP_NEVER,
+    Never = vk::COMPARE_OP_NEVER,
     /// The test passes if `value < reference_value`.
-    Less => vk::COMPARE_OP_LESS,
+    Less = vk::COMPARE_OP_LESS,
     /// The test passes if `value == reference_value`.
-    Equal => vk::COMPARE_OP_EQUAL,
+    Equal = vk::COMPARE_OP_EQUAL,
     /// The test passes if `value <= reference_value`.
-    LessOrEqual => vk::COMPARE_OP_LESS_OR_EQUAL,
+    LessOrEqual = vk::COMPARE_OP_LESS_OR_EQUAL,
     /// The test passes if `value > reference_value`.
-    Greater => vk::COMPARE_OP_GREATER,
+    Greater = vk::COMPARE_OP_GREATER,
     /// The test passes if `value != reference_value`.
-    NotEqual => vk::COMPARE_OP_NOT_EQUAL,
+    NotEqual = vk::COMPARE_OP_NOT_EQUAL,
     /// The test passes if `value >= reference_value`.
-    GreaterOrEqual => vk::COMPARE_OP_GREATER_OR_EQUAL,
+    GreaterOrEqual = vk::COMPARE_OP_GREATER_OR_EQUAL,
     /// The test always passes.
-    Always => vk::COMPARE_OP_ALWAYS,
+    Always = vk::COMPARE_OP_ALWAYS,
 }
