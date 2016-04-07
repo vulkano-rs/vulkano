@@ -11,28 +11,51 @@
 //!
 //! All buffers are guaranteed to be accessible from the GPU.
 //!
-//! The `Buffer` struct has two template parameters:
+//! # High-level wrappers
 //!
-//! - `T` is the type of data that is contained in the buffer. It can be a struct
-//!   (eg. `Foo`), an array (eg. `[u16; 1024]` or `[Foo; 1024]`), or an unsized array (eg. `[u16]`).
+//! The low level implementation of a buffer is `UnsafeBuffer`. However, the vulkano library
+//! provides high-level wrappers around that type that are specialized depending on the way you
+//! are going to use it:
 //!
-//! - `M` is the object that provides memory and handles synchronization for the buffer.
-//!   If the `CpuAccessible` and/or `CpuWriteAccessible` traits are implemented on `M`, then you
-//!   can access the buffer's content from your program.
+//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be written by
+//!   your application.
+//! - `ImmutableBuffer` designates a buffer in video memory and whose content can only be
+//!   written once.
+//! 
+//! If are a beginner, you are strongly encouraged to use one of these wrappers.
 //!
+//! # Buffers usage
 //!
-//! # Strong typing
-//! 
-//! All buffers take a template parameter that indicates their content.
-//! 
-//! # Memory
-//! 
-//! Creating a buffer requires passing an object that will be used by this library to provide
-//! memory to the buffer.
-//! 
-//! All accesses to the memory are done through the `Buffer` object.
-//! 
-//! TODO: proof read this section
+//! Buffers have the following usages:
+//!
+//! - Can contain arbitrary data that can be copied from/to other buffers and images.
+//! - Can be read and modified from a shader.
+//! - Can be used as a source of vertices and indices.
+//! - Can be used as a source of list of models for draw indirect commands.
+//!
+//! The correct `Usage` flags have to be passed when you create a buffer. Trying to use a buffer
+//! in a way that wasn't specified when you created it will result in an error.
+//!
+//! Accessing a buffer from a shader can be done in the following ways:
+//!
+//! - As a uniform buffer. Uniform buffers are read-only.
+//! - As a storage buffer. Storage buffers can be read and written.
+//! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the
+//!   GPU and can be for example normalized.
+//! - As a storage texel buffer. Additionnally, some data formats can be modified with atomic
+//!   operations.
+//!
+//! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
+//! for how to create a buffer view.
+//!
+//! # Data uploads
+//!
+//! One of the major usages of buffers is to upload data to other buffers and to images. When you
+//! create a buffer or an image in non-host-visible memory, one of the only way to upload data to
+//! it is write the data in a temporary buffer and ask the device to copy from the temporary buffer
+//! to the real buffer.
+//!
+//! TODO: add example of this
 //!
 use std::marker::PhantomData;
 use std::mem;
