@@ -7,6 +7,31 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! View of a buffer, in order to use it as a uniform texel buffer or storage texel buffer.
+//! 
+//! In order to use a buffer as a uniform texel buffer or a storage texel buffer, you have to
+//! create a `BufferView`, which indicates which format the data is in.
+//! 
+//! In order to create a view from a buffer, the buffer must have been created with either the
+//! `uniform_texel_buffer` or the `storage_texel_buffer` usage.
+//!
+//! # Example
+//!
+//! ```
+//! use vulkano::buffer::sys::Usage;
+//! use vulkano::format;
+//!
+//! # let (device, queue) = gfx_dev_and_queue!();
+//! let usage = Usage {
+//!     storage_texel_buffer: true,
+//!     .. Usage::none()
+//! };
+//!
+//! let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
+//!                                              Some(queue.family())).unwrap();
+//! let _view = BufferView::new(&buffer, format::R32Uint).unwrap();
+//! ```
+
 use std::marker::PhantomData;
 use std::error;
 use std::fmt;
@@ -16,6 +41,7 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use format::FormatDesc;
 use format::StrongStorage;
 
 use Error;
@@ -25,10 +51,8 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-/// Represents a way for the GPU to interpret buffer data.
-///
-/// Note that a buffer view is only required for some operations. For example using a buffer as a
-/// uniform buffer doesn't require creating a `BufferView`.
+/// Represents a way for the GPU to interpret buffer data. See the documentation of the
+/// `view` module.
 pub struct BufferView<F, B> where B: Buffer {
     view: vk::BufferView,
     buffer: Arc<B>,
@@ -38,14 +62,21 @@ pub struct BufferView<F, B> where B: Buffer {
 
 impl<F, B> BufferView<F, B> where B: Buffer {
     /// Builds a new buffer view.
-    ///
-    /// The format of the view will be automatically determined by the `T` parameter.
-    ///
-    /// The buffer must have been created with either the `uniform_texel_buffer` or
-    /// the `storage_texel_buffer` usage or an error will occur.
+    #[inline]
     pub fn new<'a, S>(buffer: S, format: F)
                       -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
         where S: Into<BufferSlice<'a, [F::Pixel], B>>, B: 'static, F: StrongStorage + 'static
+    {
+        unsafe {
+            BufferView::unchecked(buffer, format)
+        }
+    }
+
+    /// Builds a new buffer view without checking that the format is correct.
+    pub unsafe fn unchecked<'a, S, T: ?Sized>(buffer: S, format: F)
+                                              -> Result<Arc<BufferView<F, B>>,
+                                                        BufferViewCreationError>
+        where S: Into<BufferSlice<'a, T, B>>, B: 'static, T: 'static, F: FormatDesc + 'static
     {
         let buffer = buffer.into();
         let device = buffer.resource.inner_buffer().device();
@@ -57,7 +88,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             return Err(BufferViewCreationError::WrongBufferUsage);
         }
 
-        let format_props = unsafe {
+        let format_props = {
             let vk_i = device.instance().pointers();
             let mut output = mem::uninitialized();
             vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
@@ -87,7 +118,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             range: buffer.size as u64,
         };
 
-        let view = unsafe {
+        let view = {
             let vk = device.pointers();
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
