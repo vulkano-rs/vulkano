@@ -62,8 +62,14 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             };
 
             None
-        }).next().expect(&format!("Struct member `{}` of `{}` is missing an `Offset` decoration",
-                                  member_name, name)) as usize;
+        }).next();
+
+        // Some structs don't have `Offset` decorations, in the case they are used as local
+        // variables only. Ignoring these.
+        let spirv_offset = match spirv_offset {
+            Some(o) => o as usize,
+            None => return String::new()
+        };
 
         // We need to add a dummy field if necessary.
         {
