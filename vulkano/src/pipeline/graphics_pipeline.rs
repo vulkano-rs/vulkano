@@ -436,7 +436,9 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                                   else { vk::FALSE },
                 depthCompareOp: params.depth_stencil.depth_compare as u32,
                 depthBoundsTestEnable: db.0,
-                stencilTestEnable: vk::FALSE,            // FIXME:
+                stencilTestEnable: if params.stencil_front.always_keep() &&
+                                      params.stencil_back.always_keep()
+                                      { vk::FALSE } else { vk::TRUE },
                 front: vk::StencilOpState {
                     failOp: params.depth_stencil.stencil_front.fail_op as u32,
                     passOp: params.depth_stencil.stencil_front.pass_op as u32,
