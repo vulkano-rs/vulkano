@@ -651,36 +651,90 @@ pub enum GraphicsPipelineCreationError {
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout,
 
-    MissingVertexAttribute { name: String },
+    /// One of the vertex attributes requested by the vertex shader is missing from the vertex
+    /// input.
+    MissingVertexAttribute {
+        /// Name of the attribute.
+        name: String
+    },
 
-    MaxVertexInputBindingStrideExceeded { binding: usize, max: usize, obtained: usize },
+    /// The maximum stride value for vertex input (ie. the distance between two vertex elements)
+    /// has been exceeded.
+    MaxVertexInputBindingStrideExceeded {
+        /// Index of the faulty binding.
+        binding: usize,
+        /// Maximum allowed value.
+        max: usize,
+        /// Value that was passed.
+        obtained: usize,
+    },
 
-    MaxVertexInputBindingsExceeded { max: usize, obtained: usize },
+    /// The maximum number of vertex sources has been exceeded.
+    MaxVertexInputBindingsExceeded {
+        /// Maximum allowed value.
+        max: usize,
+        /// Value that was passed.
+        obtained: usize,
+    },
 
-    MaxVertexInputAttributeOffsetExceeded { max: usize, obtained: usize },
+    /// The maximum offset for a vertex attribute has been exceeded. This means that your vertex
+    /// struct is too large.
+    MaxVertexInputAttributeOffsetExceeded {
+        /// Maximum allowed value.
+        max: usize,
+        /// Value that was passed.
+        obtained: usize,
+    },
 
-    MaxVertexInputAttributesExceeded { max: usize, obtained: usize },
+    /// The maximum number of vertex attributes has been exceeded.
+    MaxVertexInputAttributesExceeded {
+        /// Maximum allowed value.
+        max: usize,
+        /// Value that was passed.
+        obtained: usize,
+    },
 
-    PrimitiveDoesntSupportPrimitiveRestart { primitive: PrimitiveTopology },
+    /// The user requested to use primitive restart, but the primitive topology doesn't support it.
+    PrimitiveDoesntSupportPrimitiveRestart {
+        /// The topology that doesn't support primitive restart.
+        primitive: PrimitiveTopology
+    },
 
+    /// The `multi_viewport` feature must be enabled in order to use multiple viewports at once.
     MultiViewportFeatureNotEnabled,
 
-    MaxViewportsExceeded { max: u32, obtained: u32 },
+    /// The maximum number of viewports has been exceeded.
+    MaxViewportsExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32
+    },
 
+    /// The maximum dimensions of viewports has been exceeded.
     MaxViewportDimensionsExceeded,
 
+    /// The minimum or maximum bounds of viewports have been exceeded.
     ViewportBoundsExceeded,
 
+    /// The `wide_lines` feature must be enabled in order to use a line width superior to 1.0.
     WideLinesFeatureNotEnabled,
 
+    /// The `depth_clamp` feature must be enabled in order to use depth clamping.
     DepthClampFeatureNotEnabled,
 
+    /// The `depth_bias_clamp` feature must be enabled in order to use a depth bias clamp different
+    /// from 0.0.
     DepthBiasClampFeatureNotEnabled,
 
+    /// The `fill_mode_non_solid` feature must be enabled in order to use a polygon mode different
+    /// from `Fill`.
     FillModeNonSolidFeatureNotEnabled,
 
+    /// The `depth_bounds` feature must be enabled in order to use depth bounds testing.
     DepthBoundsFeatureNotEnabled,
 
+    /// The requested stencil test is invalid.
     WrongStencilState,
 }
 
@@ -690,25 +744,64 @@ impl error::Error for GraphicsPipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
-            GraphicsPipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is \
-                                                                          not compatible with what \
-                                                                          the shaders expect",
-            GraphicsPipelineCreationError::MissingVertexAttribute { .. } => "",
-            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => "",
-            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => "",
-            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => "",
-            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => "",
-            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. } => "",
-            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => "",
-            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => "",
-            GraphicsPipelineCreationError::ViewportBoundsExceeded => "",
-            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => "",
-            GraphicsPipelineCreationError::WrongStencilState => "",
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
+                "the pipeline layout is not compatible with what the shaders expect"
+            },
+            GraphicsPipelineCreationError::MissingVertexAttribute { .. } => {
+                "one of the vertex attributes requested by the vertex shader is missing from the \
+                 vertex input"
+            },
+            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
+                "the maximum stride value for vertex input (ie. the distance between two vertex \
+                 elements) has been exceeded"
+            },
+            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => {
+                "the maximum number of vertex sources has been exceeded"
+            },
+            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => {
+                "the maximum offset for a vertex attribute has been exceeded"
+            },
+            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => {
+                "the maximum number of vertex attributes has been exceeded"
+            },
+            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. } => {
+                "the user requested to use primitive restart, but the primitive topology \
+                 doesn't support it"
+            },
+            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => {
+                "the `multi_viewport` feature must be enabled in order to use multiple viewports \
+                 at once"
+            },
+            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => {
+                "the maximum number of viewports has been exceeded"
+            },
+            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => {
+                "the maximum dimensions of viewports has been exceeded"
+            },
+            GraphicsPipelineCreationError::ViewportBoundsExceeded => {
+                "the minimum or maximum bounds of viewports have been exceeded"
+            },
+            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => {
+                "the `wide_lines` feature must be enabled in order to use a line width \
+                 superior to 1.0"
+            },
+            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => {
+                "the `depth_clamp` feature must be enabled in order to use depth clamping"
+            },
+            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => {
+                "the `depth_bias_clamp` feature must be enabled in order to use a depth bias \
+                 clamp different from 0.0."
+            },
+            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => {
+                "the `fill_mode_non_solid` feature must be enabled in order to use a polygon mode \
+                 different from `Fill`"
+            },
+            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => {
+                "the `depth_bounds` feature must be enabled in order to use depth bounds testing"
+            },
+            GraphicsPipelineCreationError::WrongStencilState => {
+                "the requested stencil test is invalid"
+            },
         }
     }
 
