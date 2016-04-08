@@ -1,5 +1,7 @@
 # Vulkano
 
+**Note: requires Rust 1.8**
+
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
 be able to trigger any undefined behavior. In the case of Vulkan, this means that non-unsafe code
