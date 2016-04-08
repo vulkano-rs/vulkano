@@ -38,16 +38,18 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
-use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::shader::VertexShaderEntryPoint;
+use pipeline::shader::GeometryShaderEntryPoint;
+use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
 
-pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
+pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gs, Gi, Go, Gl, Fs, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
     pub vertex_input: Vdef,
     pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vl>,
     pub input_assembly: InputAssembly,
+    pub geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
     pub viewport: ViewportsState,
     pub raster: Rasterization,
     pub multisample: Multisample,
@@ -88,18 +90,34 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     where Vdef: VertexDefinition, L: PipelineLayout, Rp: RenderPass
 {
     /// Builds a new graphics pipeline object.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if primitive restart is enabled and the topology doesn't support this feature.
-    /// - Panicks if the `rasterization_samples` parameter of `multisample` is not >= 1.
-    /// - Panicks if the `sample_shading` parameter of `multisample` is not between 0.0 and 1.0.
-    /// - Panicks if the line width is different from 1.0 and the `wide_lines` feature is not enabled.
-    ///
+    #[inline]
     pub fn new<'a, Vsp, Vi, Vl, Fs, Fo, Fl>
               (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Fs, Fo, Fl, L, Rp>)
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, (), (), (), (), Fs, Fo, Fl,
+                                              L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+    {
+        GraphicsPipeline::new_inner::<_, _, _, (), (), (), (), _, _, _>(device, params)
+    }
+
+    /// Builds a new graphics pipeline object with a geometry shader.
+    #[inline]
+    pub fn with_geometry_shader<'a, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl>
+              (device: &Arc<Device>,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+    {
+        GraphicsPipeline::new_inner(device, params)
+    }
+
+    fn new_inner<'a, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl>
+                (device: &Arc<Device>,
+                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
+                 -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
@@ -135,6 +153,18 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pName: params.fragment_shader.name().as_ptr(),
                 pSpecializationInfo: ptr::null(),       // TODO:
             });
+
+            if let Some(ref gs) = params.geometry_shader {
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0,   // reserved
+                    stage: vk::SHADER_STAGE_GEOMETRY_BIT,
+                    module: gs.module().internal_object(),
+                    pName: gs.name().as_ptr(),
+                    pSpecializationInfo: ptr::null(),       // TODO:
+                });
+            }
 
             stages
         };
@@ -230,6 +260,13 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
                 primitive: params.input_assembly.topology
             });
+        }
+
+        // TODO: should check from the tess eval shader instead of the input assembly
+        if let Some(ref gs) = params.geometry_shader {
+            if !gs.primitives().matches(params.input_assembly.topology) {
+                return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
+            }
         }
 
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
@@ -738,6 +775,9 @@ pub enum GraphicsPipelineCreationError {
 
     /// The requested stencil test is invalid.
     WrongStencilState,
+
+    /// The primitives topology does not match what the geometry shader expects.
+    TopologyNotMatchingGeometryShader,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -803,6 +843,9 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::WrongStencilState => {
                 "the requested stencil test is invalid"
+            },
+            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => {
+                "the primitives topology does not match what the geometry shader expects"
             },
         }
     }

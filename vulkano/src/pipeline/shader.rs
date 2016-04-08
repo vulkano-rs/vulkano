@@ -14,6 +14,8 @@ use std::ptr;
 use std::sync::Arc;
 use std::ffi::CStr;
 
+use pipeline::input_assembly::PrimitiveTopology;
+
 use device::Device;
 use OomError;
 use VulkanObject;
@@ -102,13 +104,14 @@ impl ShaderModule {
         }
     }
 
-    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
+    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, layout: L)
                                                               -> GeometryShaderEntryPoint<'a, S, I, O, L>
     {
         GeometryShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
+            primitives: primitives,
             marker: PhantomData,
         }
     }
@@ -251,6 +254,7 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
+    primitives: GeometryShaderExecutionMode,
     marker: PhantomData<(S, I, O)>,
 }
 
@@ -265,9 +269,49 @@ impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
         self.name
     }
 
+    /// Returns the kind of primitives expected by the geometry shader.
+    #[inline]
+    pub fn primitives(&self) -> GeometryShaderExecutionMode {
+        self.primitives
+    }
+
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
+    }
+}
+
+/// Declares which type of primitives are expected by the geometry shader.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum GeometryShaderExecutionMode {
+    Points,
+    Lines,
+    LinesWithAdjacency,
+    Triangles,
+    TrianglesWithAdjacency,
+}
+
+impl GeometryShaderExecutionMode {
+    /// Returns true if the given primitive topology can be used with this execution mode.
+    #[inline]
+    pub fn matches(&self, input: PrimitiveTopology) -> bool {
+        match (*self, input) {
+            (GeometryShaderExecutionMode::Points, PrimitiveTopology::PointList) => true,
+            (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineList) => true,
+            (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineStrip) => true,
+            (GeometryShaderExecutionMode::LinesWithAdjacency,
+             PrimitiveTopology::LineListWithAdjacency) => true,
+            (GeometryShaderExecutionMode::LinesWithAdjacency,
+             PrimitiveTopology::LineStripWithAdjacency) => true,
+            (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleList) => true,
+            (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleStrip) => true,
+            (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleFan) => true,
+            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
+             PrimitiveTopology::TriangleListWithAdjancecy) => true,
+            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
+             PrimitiveTopology::TriangleStripWithAdjacency) => true,
+            _ => false,
+        }
     }
 }
 
