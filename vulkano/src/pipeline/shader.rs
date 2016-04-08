@@ -80,6 +80,39 @@ impl ShaderModule {
         }
     }
 
+    pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
+                                                              -> TessControlShaderEntryPoint<'a, S, I, O, L>
+    {
+        TessControlShaderEntryPoint {
+            module: self,
+            name: name,
+            layout: layout,
+            marker: PhantomData,
+        }
+    }
+
+    pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
+                                                                     -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
+    {
+        TessEvaluationShaderEntryPoint {
+            module: self,
+            name: name,
+            layout: layout,
+            marker: PhantomData,
+        }
+    }
+
+    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
+                                                              -> GeometryShaderEntryPoint<'a, S, I, O, L>
+    {
+        GeometryShaderEntryPoint {
+            module: self,
+            name: name,
+            layout: layout,
+            marker: PhantomData,
+        }
+    }
+
     /// Gets access to an entry point contained in this module.
     ///
     /// This is purely a *logical* operation. It returns a struct that *represents* the entry
@@ -166,14 +199,62 @@ impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
     }
 }
 
-pub struct ComputeShaderEntryPoint<'a, S, L> {
+pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
-    marker: PhantomData<S>,
+    marker: PhantomData<(S, I, O)>,
 }
 
-impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
+impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
+    #[inline]
+    pub fn module(&self) -> &'a ShaderModule {
+        self.module
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'a CStr {
+        self.name
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &L {
+        &self.layout
+    }
+}
+
+pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
+    module: &'a ShaderModule,
+    name: &'a CStr,
+    layout: L,
+    marker: PhantomData<(S, I, O)>,
+}
+
+impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
+    #[inline]
+    pub fn module(&self) -> &'a ShaderModule {
+        self.module
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'a CStr {
+        self.name
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &L {
+        &self.layout
+    }
+}
+
+pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
+    module: &'a ShaderModule,
+    name: &'a CStr,
+    layout: L,
+    marker: PhantomData<(S, I, O)>,
+}
+
+impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
@@ -198,6 +279,30 @@ pub struct FragmentShaderEntryPoint<'a, S, F, L> {
 }
 
 impl<'a, S, F, L> FragmentShaderEntryPoint<'a, S, F, L> {
+    #[inline]
+    pub fn module(&self) -> &'a ShaderModule {
+        self.module
+    }
+
+    #[inline]
+    pub fn name(&self) -> &'a CStr {
+        self.name
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &L {
+        &self.layout
+    }
+}
+
+pub struct ComputeShaderEntryPoint<'a, S, L> {
+    module: &'a ShaderModule,
+    name: &'a CStr,
+    layout: L,
+    marker: PhantomData<S>,
+}
+
+impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
