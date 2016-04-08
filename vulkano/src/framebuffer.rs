@@ -550,6 +550,7 @@ macro_rules! ordered_passes_renderpass {
             #[inline]
             fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
                 #![allow(unused_variables)]
+                #![allow(unused_assignments)]
                 let mut subpass_num = 0;
 
                 $(
