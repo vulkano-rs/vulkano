@@ -29,6 +29,7 @@ use check_errors;
 use vk;
 
 use pipeline::blend::Blend;
+use pipeline::blend::AttachmentsBlend;
 use pipeline::depth_stencil::Compare;
 use pipeline::depth_stencil::DepthStencil;
 use pipeline::depth_stencil::DepthBounds;
@@ -82,6 +83,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     dynamic_stencil_compare_mask: bool,
     dynamic_stencil_write_mask: bool,
     dynamic_stencil_reference: bool,
+    dynamic_blend_constants: bool,
 
     num_viewports: u32,
 }
@@ -503,26 +505,48 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             }
         };
 
-        let atch = vk::PipelineColorBlendAttachmentState {
-            blendEnable: 0,
-            srcColorBlendFactor: 0,
-            dstColorBlendFactor: 0,
-            colorBlendOp: 0,
-            srcAlphaBlendFactor: 0,
-            dstAlphaBlendFactor: 0,
-            alphaBlendOp: 0,
-            colorWriteMask: 0xf,
+        let blend_atch: SmallVec<[vk::PipelineColorBlendAttachmentState; 8]> = {
+            let num_atch = params.render_pass.num_color_attachments();
+
+            match params.blend.attachments {
+                AttachmentsBlend::Collective(blend) => {
+                    (0 .. num_atch).map(|_| blend.clone().into()).collect()
+                },
+                AttachmentsBlend::Individual(blend) => {
+                    if blend.len() != num_atch as usize {
+                        return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+                    }
+
+                    if !device.enabled_features().independent_blend {
+                        return Err(GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled);
+                    }
+
+                    blend.iter().map(|b| b.clone().into()).collect()
+                },
+            }
         };
 
         let blend = vk::PipelineColorBlendStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
             pNext: ptr::null(),
             flags: 0,   // reserved
-            logicOpEnable: if params.blend.logic_op.is_some() { vk::TRUE } else { vk::FALSE },
+            logicOpEnable: if params.blend.logic_op.is_some() {
+                if !device.enabled_features().logic_op {
+                    return Err(GraphicsPipelineCreationError::LogicOpFeatureNotEnabled);
+                }
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
             logicOp: params.blend.logic_op.unwrap_or(Default::default()) as u32,
-            attachmentCount: 1,         // FIXME:
-            pAttachments: &atch,      // FIXME:
-            blendConstants: params.blend.blend_constants.unwrap_or([0.0, 0.0, 0.0, 0.0]),
+            attachmentCount: blend_atch.len() as u32,
+            pAttachments: blend_atch.as_ptr(),
+            blendConstants: if let Some(c) = params.blend.blend_constants {
+                c
+            } else {
+                dynamic_states.push(vk::DYNAMIC_STATE_BLEND_CONSTANTS);
+                [0.0, 0.0, 0.0, 0.0]
+            }
         };
 
         let dynamic_states = vk::PipelineDynamicStateCreateInfo {
@@ -580,6 +604,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             dynamic_stencil_compare_mask: params.depth_stencil.stencil_back.compare_mask.is_none(),
             dynamic_stencil_write_mask: params.depth_stencil.stencil_back.write_mask.is_none(),
             dynamic_stencil_reference: params.depth_stencil.stencil_back.reference.is_none(),
+            dynamic_blend_constants: params.blend.blend_constants.is_none(),
 
             num_viewports: params.viewport.num_viewports(),
         }))
@@ -785,6 +810,17 @@ pub enum GraphicsPipelineCreationError {
 
     /// The `geometry_shader` feature must be enabled in order to use geometry shaders.
     GeometryShaderFeatureNotEnabled,
+
+    /// The number of attachments specified in the blending does not match the number of
+    /// attachments in the subpass.
+    MismatchBlendingAttachmentsCount,
+
+    /// The `independent_blend` feature must be enabled in order to use different blending
+    /// operations per attachment.
+    IndependentBlendFeatureNotEnabled,
+
+    /// The `logic_op` feature must be enabled in order to use logic operations.
+    LogicOpFeatureNotEnabled,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -856,6 +892,17 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => {
                 "the `geometry_shader` feature must be enabled in order to use geometry shaders"
+            },
+            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => {
+                "the number of attachments specified in the blending does not match the number of \
+                 attachments in the subpass"
+            },
+            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled => {
+                "the `independent_blend` feature must be enabled in order to use different \
+                 blending operations per attachment"
+            },
+            GraphicsPipelineCreationError::LogicOpFeatureNotEnabled => {
+                "the `logic_op` feature must be enabled in order to use logic operations"
             },
         }
     }

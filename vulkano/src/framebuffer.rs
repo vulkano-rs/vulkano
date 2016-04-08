@@ -106,6 +106,9 @@ pub unsafe trait RenderPass: 'static + Send + Sync {
 
     /// Returns the number of subpasses within the render pass.
     fn num_subpasses(&self) -> u32;
+
+    /// Returns the number of color attachments in a subpass. Returns `None` if out of range.
+    fn num_color_attachments(&self, subpass: u32) -> Option<u32>;
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
@@ -310,6 +313,15 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
     #[inline]
     fn num_subpasses(&self) -> u32 {
         1
+    }
+
+    #[inline]
+    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
+        if subpass == 0 {
+            Some(0)
+        } else {
+            None
+        }
     }
 }
 
@@ -534,6 +546,24 @@ macro_rules! ordered_passes_renderpass {
                 )*
                 attachment_num
             }
+
+            #[inline]
+            fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
+                #![allow(unused_variables)]
+                let mut subpass_num = 0;
+
+                $(
+                    if subpass == subpass_num {
+                        let mut num_color = 0;
+                        $(let $color_atch = 0; num_color += 1;)*
+                        return Some(num_color);
+                    }
+
+                    subpass_num += 1;
+                )*
+
+                None
+            }
         }
 
         #[allow(non_camel_case_types)]
@@ -686,6 +716,7 @@ pub struct UnsafeRenderPass {
     renderpass: vk::RenderPass,
     device: Arc<Device>,
     num_passes: u32,
+    num_color_attachments: SmallVec<[u32; 8]>,
 }
 
 impl UnsafeRenderPass {
@@ -856,6 +887,7 @@ impl UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
             num_passes: passes.len() as u32,
+            num_color_attachments: passes.iter().map(|p| p.colorAttachmentCount).collect(),
         })
     }
 
@@ -893,6 +925,11 @@ unsafe impl RenderPass for UnsafeRenderPass {
     fn num_subpasses(&self) -> u32 {
         self.num_subpasses()
     }
+
+    #[inline]
+    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
+        self.num_color_attachments.get(subpass as usize).map(|&n| n)
+    }
 }
 
 impl Drop for UnsafeRenderPass {
@@ -917,7 +954,7 @@ pub struct Subpass<'a, L: 'a> {
     subpass_id: u32,
 }
 
-impl<'a, L: 'a> Subpass<'a, L> {
+impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
@@ -944,6 +981,12 @@ impl<'a, L: 'a> Subpass<'a, L> {
     #[inline]
     pub fn index(&self) -> u32 {
         self.subpass_id
+    }
+
+    /// Returns the number of color attachments in this subpass.
+    #[inline]
+    pub fn num_color_attachments(&self) -> u32 {
+        self.render_pass.num_color_attachments(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has any color or depth/stencil attachment.

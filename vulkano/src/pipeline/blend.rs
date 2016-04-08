@@ -17,15 +17,16 @@
 //! 
 //! For floating-point and fixed-point formats, the blending operation is applied. For integer
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
-//! will take precedence if it is activated. Otherwise the blending operation is applied.
+//! will take precedence if it is activated, otherwise the blending operation is applied.
 //!
 
 use vk;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Blend {
     pub logic_op: Option<LogicOp>,
 
-    
+    pub attachments: AttachmentsBlend,
 
     /// The constant color to use for the `Constant*` blending operation.
     ///
@@ -34,28 +35,77 @@ pub struct Blend {
     pub blend_constants: Option<[f32; 4]>,
 }
 
-/*
-VkStructureType                             sType;
-    const void*                                 pNext;
-    VkPipelineColorBlendStateCreateFlags        flags;
-    VkBool32                                    logicOpEnable;
-    VkLogicOp                                   logicOp;
-    uint32_t                                    attachmentCount;
-    const VkPipelineColorBlendAttachmentState*  pAttachments;
-    float                                       blendConstants[4];
-} VkPipelineColorBlendStateCreateInfo;
+impl Blend {
+    #[inline]
+    pub fn pass_through() -> Blend {
+        Blend {
+            logic_op: None,
+            attachments: AttachmentsBlend::Collective(AttachmentBlend {
+                enabled: false,
+                color_op: BlendOp::Add,
+                color_src: BlendFactor::Zero,
+                color_dst: BlendFactor::One,
+                alpha_op: BlendOp::Add,
+                alpha_src: BlendFactor::Zero,
+                alpha_dst: BlendFactor::One,
+                mask_red: true,
+                mask_green: true,
+                mask_blue: true,
+                mask_alpha: true,
+            }),
+            blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
+        }
+    }
+}
 
-typedef struct {
-    VkBool32                                    blendEnable;
-    VkBlend                                     srcBlendColor;
-    VkBlend                                     dstBlendColor;
-    VkBlendOp                                   blendOpColor;
-    VkBlend                                     srcBlendAlpha;
-    VkBlend                                     dstBlendAlpha;
-    VkBlendOp                                   blendOpAlpha;
-    VkChannelFlags                              channelWriteMask;
-} VkPipelineColorBlendAttachmentState;
-*/
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttachmentsBlend {
+    Collective(AttachmentBlend),
+    Individual(Vec<AttachmentBlend>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentBlend {
+    // TODO: could be automatically determined from the other params
+    pub enabled: bool,
+
+    pub color_op: BlendOp,
+    pub color_src: BlendFactor,
+    pub color_dst: BlendFactor,
+
+    pub alpha_op: BlendOp,
+    pub alpha_src: BlendFactor,
+    pub alpha_dst: BlendFactor,
+
+    pub mask_red: bool,
+    pub mask_green: bool,
+    pub mask_blue: bool,
+    pub mask_alpha: bool,
+}
+
+#[doc(hidden)]
+impl Into<vk::PipelineColorBlendAttachmentState> for AttachmentBlend {
+    #[inline]
+    fn into(self) -> vk::PipelineColorBlendAttachmentState {
+        vk::PipelineColorBlendAttachmentState {
+            blendEnable: if self.enabled { vk::TRUE } else { vk::FALSE },
+            srcColorBlendFactor: self.color_src as u32,
+            dstColorBlendFactor: self.color_dst as u32,
+            colorBlendOp: self.color_op as u32,
+            srcAlphaBlendFactor: self.alpha_src as u32,
+            dstAlphaBlendFactor: self.alpha_dst as u32,
+            alphaBlendOp: self.alpha_op as u32,
+            colorWriteMask: {
+                let mut mask = 0;
+                if self.mask_red { mask |= vk::COLOR_COMPONENT_R_BIT; }
+                if self.mask_green { mask |= vk::COLOR_COMPONENT_G_BIT; }
+                if self.mask_blue { mask |= vk::COLOR_COMPONENT_B_BIT; }
+                if self.mask_alpha { mask |= vk::COLOR_COMPONENT_A_BIT; }
+                mask
+            },
+        }
+    }
+}
 
 /// Which logical operation to apply to the output values.
 ///
@@ -64,7 +114,7 @@ typedef struct {
 /// Only relevant for integer or unsigned attachments.
 ///
 /// Also note that some implementations don't support logic operations.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum LogicOp {
     /// Returns `0`.
@@ -108,10 +158,19 @@ impl Default for LogicOp {
     }
 }
 
-///
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum BlendOp {
+    Add = vk::BLEND_OP_ADD,
+    Subtract = vk::BLEND_OP_SUBTRACT,
+    ReverseSubtract = vk::BLEND_OP_REVERSE_SUBTRACT,
+    Min = vk::BLEND_OP_MIN,
+    Max = vk::BLEND_OP_MAX,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum BlendFactor {
     Zero = vk::BLEND_FACTOR_ZERO,
     One = vk::BLEND_FACTOR_ONE,
     SrcColor = vk::BLEND_FACTOR_SRC_COLOR,
