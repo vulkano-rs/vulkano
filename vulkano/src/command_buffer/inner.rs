@@ -11,12 +11,14 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::hash;
+use std::hash::BuildHasherDefault;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::u64;
+use fnv::FnvHasher;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
@@ -87,8 +89,8 @@ pub struct InnerCommandBufferBuilder {
     // buffer yet and is still in its default state.
     //
     // This list is only updated by the `flush()` function.
-    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
-    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer. Doesn't
     // include commands that were submitted within a render pass.
@@ -96,8 +98,8 @@ pub struct InnerCommandBufferBuilder {
 
     // List of resources accesses made by the comands in `staging_commands`. Doesn't include
     // commands added to the current render pass.
-    staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
-    staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
+    staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
+    staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
     // inside a render pass. Flushed when `end_renderpass` is called.
@@ -106,8 +108,8 @@ pub struct InnerCommandBufferBuilder {
     // List of resources accesses made by the current render pass. Merged with
     // `staging_required_buffer_accesses` and `staging_required_image_accesses` when
     // `end_renderpass` is called.
-    render_pass_staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
-    render_pass_staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
+    render_pass_staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
+    render_pass_staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -203,14 +205,14 @@ impl InnerCommandBufferBuilder {
             cmd: Some(cmd),
             is_secondary: secondary,
             is_secondary_graphics: secondary_cont.is_some(),
-            buffers_state: HashMap::new(),
-            images_state: HashMap::new(),
+            buffers_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+            images_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
             staging_commands: Vec::new(),
-            staging_required_buffer_accesses: HashMap::new(),
-            staging_required_image_accesses: HashMap::new(),
+            staging_required_buffer_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+            staging_required_image_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
             render_pass_staging_commands: Vec::new(),
-            render_pass_staging_required_buffer_accesses: HashMap::new(),
-            render_pass_staging_required_image_accesses: HashMap::new(),
+            render_pass_staging_required_buffer_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+            render_pass_staging_required_image_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
             keep_alive: keep_alive,
             current_graphics_pipeline: None,
             current_compute_pipeline: None,
@@ -1546,7 +1548,7 @@ impl InnerCommandBufferBuilder {
                 buffers_state: self.buffers_state.clone(),      // TODO: meh
                 images_state: self.images_state.clone(),        // TODO: meh
                 extern_buffers_sync: {
-                    let mut map = HashMap::new();
+                    let mut map = HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default());
                     for ((buf, bl), access) in self.buffers_state.drain() {
                         let value = BufferAccessRange {
                             block: bl,
@@ -1568,7 +1570,7 @@ impl InnerCommandBufferBuilder {
                     map.into_iter().map(|(buf, val)| (buf.0, val)).collect()
                 },
                 extern_images_sync: {
-                    let mut map = HashMap::new();
+                    let mut map = HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default());
                     for ((img, bl), access) in self.images_state.drain() {
                         let value = ImageAccessRange {
                             block: bl,
@@ -1617,8 +1619,8 @@ pub struct InnerCommandBuffer {
     device: Arc<Device>,
     pool: Arc<CommandBufferPool>,
     cmd: vk::CommandBuffer,
-    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess>,
-    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess>,
+    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
+    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
     extern_buffers_sync: SmallVec<[(Arc<Buffer>, SmallVec<[BufferAccessRange; 4]>); 32]>,
     extern_images_sync: SmallVec<[(Arc<Image>, SmallVec<[ImageAccessRange; 8]>); 32]>,
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -2133,8 +2135,8 @@ fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, 
         device: device.clone(),
         pool: pool.clone(),
         cmd: cmd,
-        buffers_state: HashMap::new(),
-        images_state: HashMap::new(),
+        buffers_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+        images_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
         extern_buffers_sync: SmallVec::new(),
         extern_images_sync: SmallVec::new(),
         keep_alive: Vec::new(),

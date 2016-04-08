@@ -47,6 +47,7 @@
 #![allow(unused_variables)]     // TODO: remove
 
 extern crate crossbeam;
+extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
 extern crate shared_library;
