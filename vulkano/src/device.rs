@@ -134,7 +134,24 @@ impl Device {
                 }
             }).collect::<SmallVec<[_; 16]>>();
 
-            let features: vk::PhysicalDeviceFeatures = requested_features.clone().into();
+            // TODO: The plan regarding `robustBufferAccess` is to check the shaders' code to see
+            //       if they can possibly perform out-of-bounds reads and writes. If the user tries
+            //       to use a shader that can perform out-of-bounds operations without having
+            //       `robustBufferAccess` enabled, an error is returned.
+            //
+            //       However for the moment this verification isn't performed. In order to be safe,
+            //       we always enable the `robustBufferAccess` feature as it is guaranteed to be
+            //       supported everywhere.
+            //
+            //       The only alternative (while waiting for shaders introspection to work) is to
+            //       make all shaders depend on `robustBufferAccess`. But since usually the
+            //       majority of shaders don't need this feature, it would be very annoying to have
+            //       to enable it manually when you don't need it.
+            let features = {
+                let mut features: vk::PhysicalDeviceFeatures = requested_features.clone().into();
+                features.robustBufferAccess = vk::TRUE;
+                features
+            };
 
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
