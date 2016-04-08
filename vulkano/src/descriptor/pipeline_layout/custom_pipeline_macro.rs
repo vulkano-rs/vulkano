@@ -188,6 +188,7 @@ macro_rules! pipeline_layout {
                         ty: <$ty as DescriptorMarker>::descriptor_type(),
                         array_count: 1,                     // TODO:
                         stages: ShaderStages::all(),        // TODO:
+                        readonly: false,                    // TODO:
                     });
 
                     binding += 1;

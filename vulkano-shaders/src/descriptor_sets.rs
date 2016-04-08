@@ -117,6 +117,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                                 ty: {desc_ty},
                                                 array_count: 1,
                                                 stages: ShaderStages::all(),        // TODO:
+                                                readonly: false,                    // TODO:
                                             }}", binding = d.binding, desc_ty = d.desc_ty)
                                })
                                .collect::<Vec<_>>();

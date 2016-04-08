@@ -266,6 +266,9 @@ pub struct DescriptorDesc {
 
     /// Which shader stages are going to access this descriptor.
     pub stages: ShaderStages,
+
+    /// True if the attachment is only ever read by the shader. False if it is also written.
+    pub readonly: bool,
 }
 
 impl DescriptorDesc {
@@ -276,7 +279,8 @@ impl DescriptorDesc {
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
         self.binding == other.binding && self.ty == other.ty &&
-        self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages)
+        self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) &&
+        (!self.readonly || other.readonly)
     }
 }
 
