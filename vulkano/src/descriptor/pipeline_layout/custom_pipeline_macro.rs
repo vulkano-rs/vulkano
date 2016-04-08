@@ -21,15 +21,22 @@ use sampler::Sampler;
 // TODO: more docs
 #[macro_export]
 macro_rules! pipeline_layout {
-    ($($name:ident: { $($field:ident: $ty:ty),* }),*) => {
+    (push_constants: { $($pc_f:ident: $pc_t:ty),* } $(, $name:ident: { $($field:ident: $ty:ty),* })*) => {
+        use std::mem;
         use std::sync::Arc;
         use std::vec::IntoIter as VecIntoIter;
         use $crate::OomError;
         use $crate::device::Device;
         use $crate::descriptor::descriptor::DescriptorDesc;
+        use $crate::descriptor::descriptor::ShaderStages;
         use $crate::descriptor::pipeline_layout::PipelineLayout;
         use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
         use $crate::descriptor::pipeline_layout::UnsafePipelineLayout;
+
+        #[derive(Debug, Copy, Clone)]
+        pub struct PushConstants {
+            $(pub $pc_f: $pc_t,)*
+        }
 
         pub struct CustomPipeline {
             inner: UnsafePipelineLayout
@@ -44,8 +51,14 @@ macro_rules! pipeline_layout {
                     ),*
                 ];
 
+                let push_constants = if mem::size_of::<PushConstants>() >= 1 {
+                    Some((0, mem::size_of::<PushConstants>(), ShaderStages::all()))
+                } else {
+                    None
+                };
+
                 let inner = unsafe {
-                    try!(UnsafePipelineLayout::new(device, layouts.iter()))
+                    try!(UnsafePipelineLayout::new(device, layouts.iter(), push_constants))
                 };
 
                 Ok(Arc::new(CustomPipeline {
@@ -83,6 +96,10 @@ macro_rules! pipeline_layout {
         }*/
 
         pipeline_layout!{__inner__ (0) $($name: {$($field: $ty),*})*}
+    };
+
+    ($($name:ident: { $($field:ident: $ty:ty),* }),*) => {
+        pipeline_layout!{ push_constants: {} $(, $name: {$($field: $ty),*})* }
     };
 
     (__inner__ ($num:expr) $name:ident: { $($field:ident: $ty:ty),* } $($rest:tt)*) => {

@@ -220,7 +220,7 @@ fn main() {
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
                 color: [0.0, 0.0, 1.0, 1.0]
             })
-            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone())
+            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone(), &())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

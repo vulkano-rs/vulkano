@@ -237,7 +237,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, ([0.0, 0.0, 1.0, 1.0],))
-            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), ())
+            .draw(&pipeline, vertex_buffer.clone(), &vulkano::command_buffer::DynamicState::none(), (), &())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

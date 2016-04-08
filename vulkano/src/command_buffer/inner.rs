@@ -686,15 +686,15 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
-    pub unsafe fn draw<V, Pv, Pl, L, Rp>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+    pub unsafe fn draw<V, Pv, Pl, L, Rp, Pc>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
-                             sets: L) -> InnerCommandBufferBuilder
+                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone
     {
         // FIXME: add buffers to the resources
 
-        self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
+        self.bind_gfx_pipeline_state(pipeline, dynamic, sets, push_constants);
 
         let vertices = pipeline.vertex_definition().decode(vertices);
 
@@ -727,17 +727,18 @@ impl InnerCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexed`.
     // FIXME: push constants
-    pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibb>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+    pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibb, Pc>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
-                                                          sets: L) -> InnerCommandBufferBuilder
+                                                          sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
         where L: DescriptorSetsCollection + Send + Sync,
               Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
-              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static
+              Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
+              Pc: 'static + Clone
     {
         // FIXME: add buffers to the resources
 
-        self.bind_gfx_pipeline_state(pipeline, dynamic, sets);
+        self.bind_gfx_pipeline_state(pipeline, dynamic, sets, push_constants);
 
 
         let indices = indices.into();
@@ -830,10 +831,10 @@ impl InnerCommandBufferBuilder {
         }
     }
 
-    fn bind_gfx_pipeline_state<V, Pl, L, Rp>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
-                                             dynamic: &DynamicState, sets: L)
+    fn bind_gfx_pipeline_state<V, Pl, L, Rp, Pc>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
+                                                 dynamic: &DynamicState, sets: L, push_constants: &Pc)
         where V: 'static + VertexDefinition + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone
     {
         unsafe {
             //assert!(sets.is_compatible_with(pipeline.layout()));
@@ -904,6 +905,18 @@ impl InnerCommandBufferBuilder {
             }
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
             let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner_descriptor_set().internal_object()).collect::<SmallVec<[_; 32]>>());
+
+            if mem::size_of_val(push_constants) >= 1 {
+                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let size = mem::size_of_val(push_constants);
+                let push_constants = push_constants.clone();
+                assert!((size % 4) == 0);
+
+                self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdPushConstants(cmd, pipeline, 0x7fffffff, 0, size as u32,
+                                        &push_constants as *const Pc as *const _);
+                }));
+            }
 
             // FIXME: input attachments of descriptor sets have to be checked against input
             //        attachments of the render pass

@@ -216,7 +216,7 @@ fn main() {
                  depth: 1.0,
              })
             .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
-                          &vulkano::command_buffer::DynamicState::none(), &set)
+                          &vulkano::command_buffer::DynamicState::none(), &set, &())
             .draw_end()
             .build().unwrap()
     }).collect::<Vec<_>>();

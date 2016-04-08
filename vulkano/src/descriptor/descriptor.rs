@@ -314,7 +314,7 @@ impl DescriptorType {
 }
 
 /// Describes which shader stages have access to a descriptor.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStages {
     /// `True` means that the descriptor will be used by the vertex shader.
     pub vertex: bool,
@@ -341,6 +341,19 @@ impl ShaderStages {
             geometry: true,
             fragment: true,
             compute: true,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct will all stages set to `false`.
+    #[inline]
+    pub fn none() -> ShaderStages {
+        ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: false,
         }
     }
 

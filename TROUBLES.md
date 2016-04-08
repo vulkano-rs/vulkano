@@ -29,3 +29,5 @@
 - This repository contains the `vulkano-shaders` library, which generates Rust code that uses the `vulkano` library. If the API of `vulkano` gets
   a breaking change, there is no way to enforce or to check the fact that the user uses a correct combination of versions for `vulkano-shaders`
   and `vulkano`.
+
+- No way to set the alignment of a struct member, or to force the size of a struct to be a multiple of a certain size.

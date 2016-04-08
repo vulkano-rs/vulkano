@@ -18,6 +18,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
+use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 
@@ -33,16 +34,19 @@ impl UnsafePipelineLayout {
     /// Creates a new `UnsafePipelineLayout`.
     // TODO: is this function unsafe?
     #[inline]
-    pub unsafe fn new<'a, I>(device: &Arc<Device>, layouts: I)
-                             -> Result<UnsafePipelineLayout, OomError>
-        where I: IntoIterator<Item = &'a Arc<UnsafeDescriptorSetLayout>>
+    pub unsafe fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
+                                -> Result<UnsafePipelineLayout, OomError>
+        where I: IntoIterator<Item = &'a Arc<UnsafeDescriptorSetLayout>>,
+              P: IntoIterator<Item = (usize, usize, ShaderStages)>,
     {
-        UnsafePipelineLayout::new_inner(device, layouts.into_iter().map(|e| e.clone()).collect())
+        UnsafePipelineLayout::new_inner(device, layouts.into_iter().map(|e| e.clone()).collect(),
+                                        push_constants.into_iter().collect())
     }
 
     // TODO: is this function unsafe?
     unsafe fn new_inner(device: &Arc<Device>,
-                        layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>)
+                        layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+                        push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
                         -> Result<UnsafePipelineLayout, OomError>
     {
         let vk = device.pointers();
@@ -51,6 +55,21 @@ impl UnsafePipelineLayout {
         let layouts_ids = layouts.iter().map(|l| l.internal_object())
                                  .collect::<SmallVec<[_; 16]>>();
 
+        let push_constants = push_constants.iter().map(|pc| {
+            // TODO: error
+            assert!(pc.2 != ShaderStages::none());
+            assert!(pc.1 > 0);
+            assert!((pc.1 % 4) == 0);
+            assert!(pc.0 + pc.1 <=
+                    device.physical_device().limits().max_push_constants_size() as usize);
+
+            vk::PushConstantRange {
+                stageFlags: pc.2.into(),
+                offset: pc.0 as u32,
+                size: pc.1 as u32,
+            }
+        }).collect::<SmallVec<[_; 8]>>();
+
         let layout = {
             let infos = vk::PipelineLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -58,8 +77,8 @@ impl UnsafePipelineLayout {
                 flags: 0,   // reserved
                 setLayoutCount: layouts_ids.len() as u32,
                 pSetLayouts: layouts_ids.as_ptr(),
-                pushConstantRangeCount: 0,      // TODO: unimplemented
-                pPushConstantRanges: ptr::null(),    // TODO: unimplemented
+                pushConstantRangeCount: push_constants.len() as u32,
+                pPushConstantRanges: push_constants.as_ptr(),
             };
 
             let mut output = mem::uninitialized();
