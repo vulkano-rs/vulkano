@@ -155,6 +155,10 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             });
 
             if let Some(ref gs) = params.geometry_shader {
+                if !device.enabled_features().geometry_shader {
+                    return Err(GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled);
+                }
+
                 stages.push(vk::PipelineShaderStageCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     pNext: ptr::null(),
@@ -778,6 +782,9 @@ pub enum GraphicsPipelineCreationError {
 
     /// The primitives topology does not match what the geometry shader expects.
     TopologyNotMatchingGeometryShader,
+
+    /// The `geometry_shader` feature must be enabled in order to use geometry shaders.
+    GeometryShaderFeatureNotEnabled,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -846,6 +853,9 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => {
                 "the primitives topology does not match what the geometry shader expects"
+            },
+            GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => {
+                "the `geometry_shader` feature must be enabled in order to use geometry shaders"
             },
         }
     }
