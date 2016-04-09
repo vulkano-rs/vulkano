@@ -130,6 +130,6 @@ mod tests {
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _layout = unsafe { UnsafePipelineLayout::new(&device, iter::empty()) };
+        let _layout = unsafe { UnsafePipelineLayout::new(&device, iter::empty(), iter::empty()) };
     }
 }
