@@ -7,6 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Depth and stencil operations description.
+//! 
+//! After the fragment shader has finished running, each fragment goes through the depth
+//! and stencil tests.
+//! 
+//! The depth test passes of fails depending on how the depth value of each fragment compares
+//! to the existing depth value in the depth buffer at that fragment's location. Depth values
+//! are always between 0.0 and 1.0.
+//! 
+//! The stencil test passes or fails depending on how a reference value compares to the existing
+//! value in the stencil buffer at each fragment's location. Depending on the outcome of the
+//! depth and stencil tests, the value of the stencil buffer at that location can be updated.
+
 use std::ops::Range;
 use std::u32;
 use vk;
