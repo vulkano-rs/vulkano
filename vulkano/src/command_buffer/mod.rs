@@ -54,6 +54,25 @@ pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
 pub use self::pool::CommandBufferPool;
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DrawIndirectCommand {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DrawIndexedIndirectCommand {
+    pub index_count: u32,
+    pub instance_count: u32,
+    pub first_index: u32,
+    pub vertex_offset: u32,
+    pub first_instance: u32,
+}
+
 mod inner;
 mod outer;
 mod pool;
