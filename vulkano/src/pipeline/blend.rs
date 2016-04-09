@@ -64,7 +64,7 @@ impl Blend {
         Blend {
             logic_op: None,
             attachments: AttachmentsBlend::Collective(AttachmentBlend {
-                enabled: false,
+                enabled: true,
                 color_op: BlendOp::Add,
                 color_src: BlendFactor::SrcAlpha,
                 color_dst: BlendFactor::OneMinusSrcAlpha,
