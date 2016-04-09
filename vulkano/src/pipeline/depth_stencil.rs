@@ -46,6 +46,19 @@ pub struct DepthStencil {
 }
 
 impl DepthStencil {
+    /// Creates a `DepthStencil` where both the depth and stencil tests are disabled and have
+    /// no effect.
+    #[inline]
+    pub fn disabled() -> DepthStencil {
+        DepthStencil {
+            depth_write: false,
+            depth_compare: Compare::Always,
+            depth_bounds_test: DepthBounds::Disabled,
+            stencil_front: Default::default(),
+            stencil_back: Default::default(),
+        }
+    }
+
     /// Creates a `DepthStencil` with a `Less` depth test, `depth_write` set to true, and stencil
     /// testing disabled.
     #[inline]
@@ -63,13 +76,7 @@ impl DepthStencil {
 impl Default for DepthStencil {
     #[inline]
     fn default() -> DepthStencil {
-        DepthStencil {
-            depth_write: false,
-            depth_compare: Compare::Always,
-            depth_bounds_test: DepthBounds::Disabled,
-            stencil_front: Default::default(),
-            stencil_back: Default::default(),
-        }
+        DepthStencil::disabled()
     }
 }
 
