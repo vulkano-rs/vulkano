@@ -36,6 +36,7 @@ pub struct Blend {
 }
 
 impl Blend {
+    /// Returns a `Blend` object that directly writes colors and alpha on the surface.
     #[inline]
     pub fn pass_through() -> Blend {
         Blend {
@@ -48,6 +49,28 @@ impl Blend {
                 alpha_op: BlendOp::Add,
                 alpha_src: BlendFactor::Zero,
                 alpha_dst: BlendFactor::One,
+                mask_red: true,
+                mask_green: true,
+                mask_blue: true,
+                mask_alpha: true,
+            }),
+            blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
+        }
+    }
+
+    /// Returns a `Blend` object that adds transparent objects over others.
+    #[inline]
+    pub fn alpha_blending() -> Blend {
+        Blend {
+            logic_op: None,
+            attachments: AttachmentsBlend::Collective(AttachmentBlend {
+                enabled: false,
+                color_op: BlendOp::Add,
+                color_src: BlendFactor::SrcAlpha,
+                color_dst: BlendFactor::OneMinusSrcAlpha,
+                alpha_op: BlendOp::Add,
+                alpha_src: BlendFactor::SrcAlpha,
+                alpha_dst: BlendFactor::OneMinusSrcAlpha,
                 mask_red: true,
                 mask_green: true,
                 mask_blue: true,
