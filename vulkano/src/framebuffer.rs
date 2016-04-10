@@ -375,7 +375,7 @@ macro_rules! ordered_passes_renderpass {
                 $atch_name:ident: {
                     load: $load:ident,
                     store: $store:ident,
-                    format: $format:ident,
+                    format: $format:ty,
                 }
             ),*
         },
@@ -398,12 +398,22 @@ macro_rules! ordered_passes_renderpass {
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
 
+        #[derive(Debug, Clone)]
+        pub struct Formats {
+            $(
+                pub $atch_name: ($format, u32),
+            )*
+        }
+
         pub struct CustomRenderPass {
-            render_pass: UnsafeRenderPass
+            render_pass: UnsafeRenderPass,
+            formats: Formats,
         }
 
         impl CustomRenderPass {
-            pub fn new(device: &Arc<Device>) -> Result<Arc<CustomRenderPass>, OomError> {
+            pub fn new(device: &Arc<Device>, formats: &Formats)
+                       -> Result<Arc<CustomRenderPass>, OomError>
+            {
                 #![allow(unsafe_code)]
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
@@ -415,8 +425,8 @@ macro_rules! ordered_passes_renderpass {
                         num += 1;
 
                         $crate::framebuffer::LayoutAttachmentDescription {
-                            format: $crate::format::FormatDesc::format(&$crate::format::$format),      // FIXME: only works with markers
-                            samples: 1,                         // FIXME:
+                            format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
+                            samples: formats.$atch_name.1,
                             load: $crate::framebuffer::LoadOp::$load,
                             store: $crate::framebuffer::StoreOp::$store,
                             initial_layout: initial_layout,
@@ -480,7 +490,8 @@ macro_rules! ordered_passes_renderpass {
                 });
 
                 Ok(Arc::new(CustomRenderPass {
-                    render_pass: rp
+                    render_pass: rp,
+                    formats: formats.clone(),
                 }))
             }
         }
@@ -596,7 +607,7 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format $load,)*] }
+        ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
 
         unsafe impl $crate::framebuffer::RenderPassClearValues<ClearValues> for CustomRenderPass {
             type ClearValuesIter = ClearValuesIter;
@@ -608,18 +619,18 @@ macro_rules! ordered_passes_renderpass {
         }
     };
 
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ident Clear, $($rest:tt)*]) => {
+    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
         ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }
     };
 
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ident $misc:ident, $($rest:tt)*]) => {
+    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, $misc:ident, $($rest:tt)*]) => {
         ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
     };
 
-    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ident,)+] []) => {
+    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ty,)+] []) => {
         pub struct ClearValues {
             $(
-                pub $atch: <$crate::format::$format as $crate::format::FormatDesc>::ClearValue,
+                pub $atch: <$format as $crate::format::FormatDesc>::ClearValue,
             )+
         }
 

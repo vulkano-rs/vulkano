@@ -72,6 +72,13 @@ impl SwapchainImage {
         let dims = self.image.dimensions();
         [dims.width(), dims.height()]
     }
+
+    /// Returns the format of the image.
+    // TODO: return `ColorFormat` or something like this instead, for stronger typing
+    #[inline]
+    pub fn format(&self) -> Format {
+        self.format
+    }
 }
 
 unsafe impl Image for SwapchainImage {

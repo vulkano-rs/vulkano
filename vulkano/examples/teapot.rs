@@ -68,9 +68,9 @@ fn main() {
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes[0];
         let usage = caps.supported_usage_flags;
+        let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(&device, &surface, 3,
-                                           vulkano::format::B8G8R8A8Srgb, dimensions, 1,
+        vulkano::swapchain::Swapchain::new(&device, &surface, 3, format, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true).expect("failed to create swapchain")
@@ -143,12 +143,12 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: B8G8R8A8Srgb,
+                    format: ::vulkano::format::Format,
                 },
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: D16Unorm,
+                    format: ::vulkano::format::D16Unorm,
                 }
             },
             pass: {
@@ -158,7 +158,10 @@ fn main() {
         }
     }
 
-    let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
+    let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
+        color: (images[0].format(), 1),
+        depth: (vulkano::format::D16Unorm, 1)
+    }).unwrap();
 
     let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
 
@@ -212,7 +215,7 @@ fn main() {
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
-                 color: [0.0, 0.0, 1.0, 1.0],
+                 color: [0.0, 0.0, 1.0, 1.0].into(),
                  depth: 1.0,
              })
             .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
