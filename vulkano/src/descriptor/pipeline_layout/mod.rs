@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub use self::empty::EmptyPipeline;
 pub use self::sys::UnsafePipelineLayout;
 pub use self::traits::PipelineLayout;
 pub use self::traits::PipelineLayoutDesc;
@@ -15,6 +16,7 @@ pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 
 pub mod custom_pipeline_macro;
+pub mod empty;
 
 mod sys;
 mod traits;
