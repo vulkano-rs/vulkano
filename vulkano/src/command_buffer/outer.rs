@@ -15,6 +15,7 @@ use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
 use command_buffer::CommandBufferPool;
+use command_buffer::DrawIndirectCommand;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
 use command_buffer::inner::Submission;
@@ -563,6 +564,27 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         unsafe {
             SecondaryGraphicsCommandBufferBuilder {
                 inner: self.inner.draw_indexed(pipeline, vertices, indices, dynamic, sets, push_constants),
+                render_pass: self.render_pass,
+                render_pass_subpass: self.render_pass_subpass,
+                framebuffer: self.framebuffer,
+            }
+        }
+    }
+
+    /// Calls `vkCmdDrawIndirect`.
+    pub fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+                             vertices: V, dynamic: &DynamicState,
+                             sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
+        where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + 'static + Send + Sync, Pc: 'static + Clone,
+              I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
+    {
+        assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
+        assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
+
+        unsafe {
+            SecondaryGraphicsCommandBufferBuilder {
+                inner: self.inner.draw_indirect(buffer, pipeline, vertices, dynamic, sets, push_constants),
                 render_pass: self.render_pass,
                 render_pass_subpass: self.render_pass_subpass,
                 framebuffer: self.framebuffer,

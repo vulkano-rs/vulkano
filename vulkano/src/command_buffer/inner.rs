@@ -27,6 +27,7 @@ use buffer::BufferSlice;
 use buffer::TypedBuffer;
 use buffer::traits::AccessRange as BufferAccessRange;
 use command_buffer::CommandBufferPool;
+use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayout;
@@ -780,6 +781,53 @@ impl InnerCommandBufferBuilder {
                 vk.CmdBindIndexBuffer(cmd, indices, indices_offset, indices_ty);
                 vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
                 vk.CmdDrawIndexed(cmd, indices_len, num_instances, 0, 0, 0);  // FIXME: params
+            }));
+        }
+
+        self
+    }
+
+    /// Calls `vkCmdDrawIndirect`.
+    // FIXME: push constants
+    pub unsafe fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(mut self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
+                             vertices: V, dynamic: &DynamicState,
+                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
+        where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone,
+              I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
+    {
+        // FIXME: add buffers to the resources
+
+        self.bind_gfx_pipeline_state(pipeline, dynamic, sets, push_constants);
+
+        let vertices = pipeline.vertex_definition().decode(vertices);
+
+        let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
+        let ids = vertices.0.map(|b| {
+            assert!(b.inner_buffer().usage_vertex_buffer());
+            self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
+                                            vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                            vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
+            b.inner_buffer().internal_object()
+        }).collect::<SmallVec<[_; 8]>>();
+
+        self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size(),
+                                        vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                                        vk::ACCESS_INDIRECT_COMMAND_READ_BIT);
+
+        {
+            let mut ids = Some(ids);
+            let mut offsets = Some(offsets);
+            let buffer_internal = buffer.inner_buffer().internal_object();
+            let buffer_draw_count = buffer.len() as u32;
+            let buffer_size = buffer.size() as u32;
+
+            self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
+                let ids = ids.take().unwrap();
+                let offsets = offsets.take().unwrap();
+
+                vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
+                vk.CmdDrawIndirect(cmd, buffer_internal, 0, buffer_draw_count, buffer_size);
             }));
         }
 
