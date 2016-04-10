@@ -305,6 +305,26 @@ impl Usage {
         }
     }
 
+    /// Builds a `Usage` with `indirect_buffer` set to true and the rest to false.
+    #[inline]
+    pub fn indirect_buffer() -> Usage {
+        Usage {
+            indirect_buffer: true,
+            .. Usage::none()
+        }
+    }
+
+    /// Builds a `Usage` with `indirect_buffer` and `transfer_dest` set to true and the rest
+    /// to false.
+    #[inline]
+    pub fn indirect_buffer_transfer_dest() -> Usage {
+        Usage {
+            indirect_buffer: true,
+            transfer_dest: true,
+            .. Usage::none()
+        }
+    }
+
     #[inline]
     #[doc(hidden)]
     // TODO: shouldn't be public (it's just temporarily public)
