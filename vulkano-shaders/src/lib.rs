@@ -102,14 +102,14 @@ impl {name} {{
 
         "#, name = name));
 
-        // checking whether each required capability is supported by the vulkan implementation
+        // checking whether each required capability is enabled in the vulkan device
         for i in doc.instructions.iter() {
             if let &parse::Instruction::Capability(ref cap) = i {
                 if let Some(cap) = capability_name(cap) {
                     output.push_str(&format!(r#"
                         if !device.enabled_features().{cap} {{
-                            panic!("capability {{:?}} not supported", "{cap}")  // FIXME: error
-                            //return Err(CapabilityNotSupported);
+                            panic!("capability {{:?}} not enabled", "{cap}")  // FIXME: error
+                            //return Err(CapabilityNotEnabled);
                         }}"#, cap = cap));
                 }
             }
