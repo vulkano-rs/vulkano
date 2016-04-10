@@ -17,6 +17,7 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use std::u64;
 use fnv::FnvHasher;
 use smallvec::SmallVec;
@@ -1958,8 +1959,8 @@ impl Submission {
 
     /// Waits until the submission has finished being executed by the device.
     #[inline]
-    pub fn wait(&self, timeout_ns: u64) -> Result<(), FenceWaitError> {
-        self.fence.wait(timeout_ns)
+    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
+        self.fence.wait(timeout)
     }
 
     /// Returns the `queue` the command buffers were submitted to.
@@ -1972,7 +1973,8 @@ impl Submission {
 impl Drop for Submission {
     #[inline]
     fn drop(&mut self) {
-        match self.fence.wait(u64::MAX) {
+        let timeout = Duration::new(u64::MAX / 1_000_000_000, (u64::MAX % 1_000_000_000) as u32);
+        match self.fence.wait(timeout) {
             Ok(_) => (),
             Err(FenceWaitError::DeviceLostError) => (),
             Err(FenceWaitError::Timeout) => panic!(),       // The driver has some sort of problem.

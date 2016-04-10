@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+use std::time::Duration;
 use smallvec::SmallVec;
 
 use buffer::sys::UnsafeBuffer;
@@ -160,8 +161,8 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
     /// that uses it will block until you unlock it.
     // TODO: this could be misleading as there's no difference between `read` and `write`
     #[inline]
-    pub fn read(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
-        self.write(timeout_ns)
+    pub fn read(&self, timeout: Duration) -> Result<CpuAccess<T>, FenceWaitError> {
+        self.write(timeout)
     }
 
     /// Locks the buffer in order to write its content.
@@ -173,11 +174,11 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it will block until you unlock it.
     #[inline]
-    pub fn write(&self, timeout_ns: u64) -> Result<CpuAccess<T>, FenceWaitError> {
+    pub fn write(&self, timeout: Duration) -> Result<CpuAccess<T>, FenceWaitError> {
         let submission = self.latest_submission.lock().unwrap();
 
         if let Some(submission) = submission.as_ref().and_then(|s| s.upgrade()) {
-            try!(submission.wait(timeout_ns));
+            try!(submission.wait(timeout));
         }
 
         Ok(CpuAccess {

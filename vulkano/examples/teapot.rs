@@ -24,6 +24,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::time::Duration;
 
 mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
 mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
@@ -89,7 +90,7 @@ fn main() {
                                        .expect("failed to create buffer");
 
     {
-        let mut mapping = vertex_buffer.write(0).unwrap();
+        let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::VERTICES.iter()) {
             *o = *i;
         }
@@ -101,7 +102,7 @@ fn main() {
                                         .expect("failed to create buffer");
 
     {
-        let mut mapping = normals_buffer.write(0).unwrap();
+        let mut mapping = normals_buffer.write(Duration::new(0, 0)).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::NORMALS.iter()) {
             *o = *i;
         }
@@ -113,7 +114,7 @@ fn main() {
                                       .expect("failed to create buffer");
 
     {
-        let mut mapping = index_buffer.write(0).unwrap();
+        let mut mapping = index_buffer.write(Duration::new(0, 0)).unwrap();
         for (o, i) in mapping.iter_mut().zip(teapot::INDICES.iter()) {
             *o = *i;
         }
@@ -129,7 +130,7 @@ fn main() {
                                ::new(&device, &vulkano::buffer::Usage::all(), Some(queue.family()))
                                .expect("failed to create buffer");
     {
-        let mut mapping = uniform_buffer.write(0).unwrap();
+        let mut mapping = uniform_buffer.write(Duration::new(0, 0)).unwrap();
         mapping.worldview = (view * scale).into();
         mapping.proj = proj.into();
     }
@@ -229,7 +230,7 @@ fn main() {
     loop {
         submissions.retain(|s| s.destroying_would_block());
 
-        let image_num = swapchain.acquire_next_image(1000000).unwrap();
+        let image_num = swapchain.acquire_next_image(Duration::from_millis(1)).unwrap();
         submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
         swapchain.present(&queue, image_num).unwrap();
 

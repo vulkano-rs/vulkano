@@ -27,6 +27,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use smallvec::SmallVec;
 
 use device::Device;
@@ -172,9 +173,12 @@ impl Fence {
     /// timeout has elapsed.
     ///
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
-    pub fn wait(&self, timeout_ns: u64) -> Result<(), FenceWaitError> {
+    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
         unsafe {
             if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
+
+            let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
+                                              .saturating_add(timeout.subsec_nanos() as u64);
 
             let vk = self.device.pointers();
             let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
@@ -198,7 +202,7 @@ impl Fence {
     /// # Panic
     ///
     /// Panicks if not all fences belong to the same device.
-    pub fn multi_wait<'a, I>(iter: I, timeout_ns: u64) -> Result<(), FenceWaitError>
+    pub fn multi_wait<'a, I>(iter: I, timeout: Duration) -> Result<(), FenceWaitError>
         where I: IntoIterator<Item = &'a Fence>
     {
         let mut device = None;
@@ -216,6 +220,9 @@ impl Fence {
                 Some(fence.fence)
             }
         }).collect();
+
+        let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
+                                          .saturating_add(timeout.subsec_nanos() as u64);
 
         let r = if let Some(device) = device {
             unsafe {
@@ -503,6 +510,7 @@ impl Drop for Event {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
     use sync::Event;
     use sync::Fence;
     use sync::Semaphore;
@@ -529,7 +537,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let fence = Fence::signaled(&device).unwrap();
-        fence.wait(10).unwrap();
+        fence.wait(Duration::new(0, 10)).unwrap();
     }
 
     #[test]

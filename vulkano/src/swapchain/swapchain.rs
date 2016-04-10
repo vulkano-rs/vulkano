@@ -13,6 +13,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use crossbeam::sync::MsQueue;
 
 use device::Device;
@@ -191,7 +192,7 @@ impl Swapchain {
     ///
     /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
     /// behavior may change).
-    pub fn acquire_next_image(&self, timeout_ns: u64) -> Result<usize, AcquireError> {
+    pub fn acquire_next_image(&self, timeout: Duration) -> Result<usize, AcquireError> {
         let vk = self.device.pointers();
 
         unsafe {
@@ -199,6 +200,9 @@ impl Swapchain {
             //let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore from \
             //                                                       the swapchain semaphores pool");
             let semaphore = Semaphore::new(&self.device).unwrap();
+
+            let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
+                                              .saturating_add(timeout.subsec_nanos() as u64);
 
             let mut out = mem::uninitialized();
             let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
