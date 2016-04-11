@@ -827,7 +827,8 @@ impl InnerCommandBufferBuilder {
                 let offsets = offsets.take().unwrap();
 
                 vk.CmdBindVertexBuffers(cmd, 0, ids.len() as u32, ids.as_ptr(), offsets.as_ptr());
-                vk.CmdDrawIndirect(cmd, buffer_internal, 0, buffer_draw_count, buffer_size);
+                vk.CmdDrawIndirect(cmd, buffer_internal, 0, buffer_draw_count,
+                                   mem::size_of::<DrawIndirectCommand>() as u32);
             }));
         }
 
