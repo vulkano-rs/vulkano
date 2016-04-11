@@ -234,27 +234,26 @@ impl From<Error> for FramebufferCreationError {
 
 #[cfg(test)]
 mod tests {
-    // TODO: restore these tests
-    /*use framebuffer::Framebuffer;
-    use framebuffer::UnsafeRenderPass;
+    use framebuffer::EmptySinglePassRenderPass;
+    use framebuffer::Framebuffer;
     use framebuffer::FramebufferCreationError;
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn empty_renderpass_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = UnsafeRenderPass::empty_single_pass(&device).unwrap();
+        let _ = EmptySinglePassRenderPass::new(&device).unwrap();
     }
 
     #[test]
     #[ignore]       // TODO: crashes on AMD+Windows
     fn framebuffer_too_large() {
         let (device, _) = gfx_dev_and_queue!();
-        let renderpass = UnsafeRenderPass::empty_single_pass(&device).unwrap();
+        let renderpass = EmptySinglePassRenderPass::new(&device).unwrap();
 
         match Framebuffer::new(&renderpass, (0xffffffff, 0xffffffff, 0xffffffff), ()) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }
-    }*/
+    }
 }
