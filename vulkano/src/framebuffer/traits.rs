@@ -12,6 +12,7 @@ use std::sync::Arc;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
+use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use image::Layout as ImageLayout;
 use image::traits::Image;
@@ -61,6 +62,37 @@ pub unsafe trait RenderPassDesc {
     #[inline]
     fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
         self.passes().skip(subpass as usize).next().map(|p| p.color_attachments.len() as u32)
+    }
+
+    /// Returns the number of samples of the attachments of a subpass. Returns `None` if out of
+    /// range or if the subpass has no attachment. TODO: return an enum instead?
+    #[inline]
+    fn num_samples(&self, subpass: u32) -> Option<u32> {
+        self.passes().skip(subpass as usize).next().and_then(|p| {
+            // TODO: chain input attachments as well?
+            p.color_attachments.iter().cloned().chain(p.depth_stencil.clone().into_iter())
+                               .filter_map(|a| self.attachments().skip(a.0).next())
+                               .next().map(|a| a.samples)
+        })
+    }
+
+    /// Returns a tuple whose first element is `true` if there's a depth attachment, and whose
+    /// second element is `true` if there's a stencil attachment. Returns `None` if out of range.
+    #[inline]
+    fn has_depth_stencil_attachment(&self, subpass: u32) -> Option<(bool, bool)> {
+        self.passes().skip(subpass as usize).next().map(|p| {
+            let atch_num = match p.depth_stencil {
+                Some((d, _)) => d,
+                None => return (false, false)
+            };
+
+            match self.attachments().skip(atch_num).next().unwrap().format.ty() {
+                FormatTy::Depth => (true, false),
+                FormatTy::Stencil => (false, true),
+                FormatTy::DepthStencil => (true, true),
+                _ => unreachable!()
+            }
+        })
     }
 }
 
@@ -307,14 +339,15 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
     /// Returns true if the subpass has any color or depth/stencil attachment.
     #[inline]
     pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
-        unimplemented!()
+        self.num_color_attachments() >= 1 ||
+        self.render_pass.has_depth_stencil_attachment(self.subpass_id).unwrap() != (false, false)
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
     /// if there is no such attachment in this subpass.
     #[inline]
     pub fn num_samples(&self) -> Option<u32> {
-        unimplemented!()
+        self.render_pass.num_samples(self.subpass_id)
     }
 }
 
@@ -332,8 +365,8 @@ impl<'a, L: 'a> Subpass<'a, L> {
     }
 }
 
-// we need manual verifications, otherwise Copy/Clone are only implemented if `L`
-// implements Copy/Clone
+// We need manual implementations, otherwise Copy/Clone are only implemented if `L` implements
+// Copy/Clone.
 impl<'a, L: 'a> Copy for Subpass<'a, L> {}
 impl<'a, L: 'a> Clone for Subpass<'a, L> {
     #[inline]

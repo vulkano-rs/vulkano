@@ -105,8 +105,17 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
     }
 
     #[inline]
-    fn num_samples(&self, subpass: u32) -> Option<u32> {
+    fn num_samples(&self, _: u32) -> Option<u32> {
         None
+    }
+
+    #[inline]
+    fn has_depth_stencil_attachment(&self, subpass: u32) -> Option<(bool, bool)> {
+        if subpass == 0 {
+            Some((false, false))
+        } else {
+            None
+        }
     }
 }
 
