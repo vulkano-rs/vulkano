@@ -1,7 +1,7 @@
 image: ubuntu:xenial
 
 before_script:
-  - apt-get -y install sudo curl
+  - apt-get -y install sudo curl git
   - curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh
   - multirust default stable
 
