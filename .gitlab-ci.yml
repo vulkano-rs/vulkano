@@ -16,19 +16,15 @@ job1:
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
     - cargo build -v --manifest-path vulkano/Cargo.toml
 
-docs:
+pages:
   stage: deploy
   only:
     - master
   script:
     - cargo doc --manifest-path vulkano/Cargo.toml
-
-pages:
-  stage: deploy
-  script:
+    - rm -rf public
+    - mkdir public
     - cp target/doc/* public
-  dependencies:
-    - docs
   artifacts:
     paths:
     - public
