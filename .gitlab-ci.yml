@@ -1,10 +1,21 @@
-image: dockingbay/fedora-rust:nightly
+image: ubuntu:xenial
+
+before_script:
+  - curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh
+  - multirust default stable
 
 stages:
   - test
+  - deploy
 
 job1:
   stage: test
   script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
+    - cargo build -v --manifest-path vulkano/Cargo.toml
+
+docs:
+  stage: deploy
+  script:
+    - cargo doc --manifest-path vulkano/Cargo.toml
