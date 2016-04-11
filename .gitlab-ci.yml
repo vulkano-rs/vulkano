@@ -25,7 +25,7 @@ pages:
     - cargo doc --manifest-path vulkano/Cargo.toml
     - rm -rf public
     - mkdir public
-    - cp target/doc/* public
+    - cp vulkano/target/doc/* public
   artifacts:
     paths:
     - public
