@@ -9,6 +9,7 @@
 
 pub use self::empty::EmptyPipeline;
 pub use self::sys::UnsafePipelineLayout;
+pub use self::sys::UnsafePipelineLayoutCreationError;
 pub use self::traits::PipelineLayout;
 pub use self::traits::PipelineLayoutDesc;
 pub use self::traits::PipelineLayoutSuperset;

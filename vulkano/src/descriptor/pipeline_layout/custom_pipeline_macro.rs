@@ -25,13 +25,13 @@ macro_rules! pipeline_layout {
         use std::mem;
         use std::sync::Arc;
         use std::vec::IntoIter as VecIntoIter;
-        use $crate::OomError;
         use $crate::device::Device;
         use $crate::descriptor::descriptor::DescriptorDesc;
         use $crate::descriptor::descriptor::ShaderStages;
         use $crate::descriptor::pipeline_layout::PipelineLayout;
         use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
         use $crate::descriptor::pipeline_layout::UnsafePipelineLayout;
+        use $crate::descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
 
         #[derive(Debug, Copy, Clone)]
         pub struct PushConstants {
@@ -44,7 +44,9 @@ macro_rules! pipeline_layout {
 
         impl CustomPipeline {
             #[allow(unsafe_code)]
-            pub fn new(device: &Arc<Device>) -> Result<Arc<CustomPipeline>, OomError> {
+            pub fn new(device: &Arc<Device>)
+                       -> Result<Arc<CustomPipeline>, UnsafePipelineLayoutCreationError>
+            {
                 let layouts = vec![
                     $(
                         try!($name::build_set_layout(device))

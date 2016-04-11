@@ -16,7 +16,7 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::UnsafePipelineLayout;
-use OomError;
+use descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
 
 /// Implementation of `PipelineLayout` for an empty pipeline.
 pub struct EmptyPipeline {
@@ -25,7 +25,7 @@ pub struct EmptyPipeline {
 
 impl EmptyPipeline {
     /// Builds a new empty pipeline.
-    pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, OomError> {
+    pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, UnsafePipelineLayoutCreationError> {
         let inner = {
             try!(UnsafePipelineLayout::new(device, iter::empty(), iter::empty()))
         };
