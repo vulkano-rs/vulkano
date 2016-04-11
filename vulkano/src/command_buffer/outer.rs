@@ -27,6 +27,7 @@ use framebuffer::Framebuffer;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPass;
+use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassClearValues;
 use framebuffer::Subpass;
 use image::traits::Image;
@@ -212,7 +213,8 @@ impl PrimaryCommandBufferBuilder {
     pub fn draw_inline<R, F, C>(self, renderpass: &Arc<R>,
                                 framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                 -> PrimaryCommandBufferBuilderInlineDraw
-        where F: RenderPass + RenderPassClearValues<C> + 'static, R: RenderPass + 'static
+        where F: RenderPass + RenderPassDesc + RenderPassClearValues<C> + 'static,
+              R: RenderPass + RenderPassDesc + 'static
     {
         // FIXME: check for compatibility
 
@@ -245,8 +247,8 @@ impl PrimaryCommandBufferBuilder {
     pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<R>,
                                    framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
                                    -> PrimaryCommandBufferBuilderSecondaryDraw
-        where F: RenderPass + RenderPassClearValues<C> + 'static,
-              R: RenderPass + 'static
+        where F: RenderPass + RenderPassDesc + RenderPassClearValues<C> + 'static,
+              R: RenderPass + RenderPassDesc + 'static
     {
         // FIXME: check for compatibility
 
@@ -507,7 +509,7 @@ pub struct SecondaryGraphicsCommandBufferBuilder<R> {
 }
 
 impl<R> SecondaryGraphicsCommandBufferBuilder<R>
-    where R: RenderPass + 'static
+    where R: RenderPass + RenderPassDesc + 'static
 {
     /// Builds a new secondary command buffer and start recording commands in it.
     ///
@@ -533,7 +535,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
-              Rp: RenderPass + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
+              Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               R: RenderPassCompatible<Rp>, Pc: 'static + Clone
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
@@ -554,7 +556,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
-              Rp: RenderPass + 'static + Send + Sync,
+              Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone
     {
@@ -576,7 +578,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + 'static + Send + Sync, Pc: 'static + Clone,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, Pc: 'static + Clone,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));

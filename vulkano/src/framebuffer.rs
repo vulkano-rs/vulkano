@@ -71,6 +71,7 @@ use std::fmt;
 use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::mem;
+use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -103,12 +104,36 @@ pub unsafe trait RenderPass: 'static + Send + Sync {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
     fn render_pass(&self) -> &UnsafeRenderPass;
+}
+
+pub unsafe trait RenderPassDesc {
+    /// Iterator returned by the `attachments` method.
+    type AttachmentsIter: ExactSizeIterator<Item = LayoutAttachmentDescription>;
+    /// Iterator returned by the `passes` method.
+    type PassesIter: ExactSizeIterator<Item = LayoutPassDescription>;
+    /// Iterator returned by the `dependencies` method.
+    type DependenciesIter: ExactSizeIterator<Item = LayoutPassDependencyDescription>;
+
+    /// Returns an iterator that describes the list of attachments of this render pass.
+    fn attachments(&self) -> Self::AttachmentsIter;
+
+    /// Returns an iterator that describes the list of passes of this render pass.
+    fn passes(&self) -> Self::PassesIter;
+
+    /// Returns an iterator that describes the list of inter-pass dependencies of this render pass.
+    fn dependencies(&self) -> Self::DependenciesIter;
 
     /// Returns the number of subpasses within the render pass.
-    fn num_subpasses(&self) -> u32;
+    #[inline]
+    fn num_subpasses(&self) -> u32 {
+        self.passes().len() as u32
+    }
 
     /// Returns the number of color attachments in a subpass. Returns `None` if out of range.
-    fn num_color_attachments(&self, subpass: u32) -> Option<u32>;
+    #[inline]
+    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
+        self.passes().skip(subpass as usize).next().map(|p| p.color_attachments.len() as u32)
+    }
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
@@ -309,6 +334,34 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
     fn render_pass(&self) -> &UnsafeRenderPass {
         &self.render_pass
     }
+}
+
+
+unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
+    type AttachmentsIter = EmptyIter<LayoutAttachmentDescription>;
+    type PassesIter = OptionIntoIter<LayoutPassDescription>;
+    type DependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
+
+    #[inline]
+    fn attachments(&self) -> Self::AttachmentsIter {
+        iter::empty()
+    }
+
+    #[inline]
+    fn passes(&self) -> Self::PassesIter {
+        Some(LayoutPassDescription {
+            color_attachments: vec![],
+            depth_stencil: None,
+            input_attachments: vec![],
+            resolve_attachments: vec![],
+            preserve_attachments: vec![],
+        }).into_iter()
+    }
+
+    #[inline]
+    fn dependencies(&self) -> Self::DependenciesIter {
+        iter::empty()
+    }
 
     #[inline]
     fn num_subpasses(&self) -> u32 {
@@ -390,11 +443,16 @@ macro_rules! ordered_passes_renderpass {
         ]
     ) => {
         use std;        // TODO: import everything instead
+        use std::vec::IntoIter as VecIntoIter;
         use std::sync::Arc;
         use $crate::OomError;
         use $crate::device::Device;
         use $crate::format::ClearValue;
         use $crate::framebuffer::UnsafeRenderPass;
+        use $crate::framebuffer::RenderPassDesc;
+        use $crate::framebuffer::LayoutAttachmentDescription;
+        use $crate::framebuffer::LayoutPassDescription;
+        use $crate::framebuffer::LayoutPassDependencyDescription;
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
 
@@ -415,78 +473,9 @@ macro_rules! ordered_passes_renderpass {
                        -> Result<Arc<CustomRenderPass>, OomError>
             {
                 #![allow(unsafe_code)]
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-
-                let attachments = {
-                    let mut num = 0;
-                    vec![$({
-                        let (initial_layout, final_layout) = attachment_layouts(num);
-                        num += 1;
-
-                        $crate::framebuffer::LayoutAttachmentDescription {
-                            format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
-                            samples: formats.$atch_name.1,
-                            load: $crate::framebuffer::LoadOp::$load,
-                            store: $crate::framebuffer::StoreOp::$store,
-                            initial_layout: initial_layout,
-                            final_layout: final_layout,
-                        }
-                    }),*]
-                };
-
-                let passes = {
-                    let mut attachment_num = 0;
-                    $(
-                        let $atch_name = attachment_num;
-                        attachment_num += 1;
-                    )*
-
-                    vec![
-                        $({
-                            let mut depth = None;
-                            $(
-                                depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
-                            )*
-
-                            $crate::framebuffer::LayoutPassDescription {
-                                color_attachments: vec![
-                                    $(
-                                        ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
-                                    ),*
-                                ],
-                                depth_stencil: depth,
-                                input_attachments: vec![
-                                    $(
-                                        ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
-                                    ),*
-                                ],
-                                resolve_attachments: vec![],
-                                preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                                    $(if a == $color_atch { return false; })*
-                                    $(if a == $depth_atch { return false; })*
-                                    $(if a == $input_atch { return false; })*
-                                    true
-                                }).collect()
-                            }
-                        }),*
-                    ]
-                };
-
-                // TODO: could use a custom iterator
-                let pass_dependencies = (1 .. passes.len()).flat_map(|p2| {
-                    (0 .. p2.clone()).map(move |p1| {
-                        $crate::framebuffer::LayoutPassDependencyDescription {
-                            source_subpass: p1,
-                            destination_subpass: p2,
-                            by_region: false,
-                        }
-                    })
-                }).collect::<Vec<_>>();
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::new(device, attachments.into_iter(), passes.into_iter(),
-                                          pass_dependencies.into_iter())
+                    UnsafeRenderPass::new(device, attachments(formats), passes(), dependencies())
                 });
 
                 Ok(Arc::new(CustomRenderPass {
@@ -496,6 +485,117 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
+            #[inline]
+            fn render_pass(&self) -> &UnsafeRenderPass {
+                &self.render_pass
+            }
+        }
+
+        unsafe impl RenderPassDesc for CustomRenderPass {
+            type AttachmentsIter = VecIntoIter<LayoutAttachmentDescription>;
+            type PassesIter = VecIntoIter<LayoutPassDescription>;
+            type DependenciesIter = VecIntoIter<LayoutPassDependencyDescription>;
+
+            #[inline]
+            fn attachments(&self) -> Self::AttachmentsIter {
+                attachments(&self.formats)
+            }
+
+            #[inline]
+            fn passes(&self) -> Self::PassesIter {
+                passes()
+            }
+
+            #[inline]
+            fn dependencies(&self) -> Self::DependenciesIter {
+                dependencies()
+            }
+        }
+
+        /// Returns an iterator to the list of attachments of this render pass.
+        #[inline]
+        fn attachments(formats: &Formats) -> VecIntoIter<LayoutAttachmentDescription> {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+
+            let mut num = 0;
+            vec![$({
+                let (initial_layout, final_layout) = attachment_layouts(num);
+                num += 1;
+
+                $crate::framebuffer::LayoutAttachmentDescription {
+                    format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
+                    samples: formats.$atch_name.1,
+                    load: $crate::framebuffer::LoadOp::$load,
+                    store: $crate::framebuffer::StoreOp::$store,
+                    initial_layout: initial_layout,
+                    final_layout: final_layout,
+                }
+            }),*].into_iter()
+        }
+
+        /// Returns an iterator to the list of passes of this render pass.
+        #[inline]
+        fn passes() -> VecIntoIter<LayoutPassDescription> {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+
+            let mut attachment_num = 0;
+            $(
+                let $atch_name = attachment_num;
+                attachment_num += 1;
+            )*
+
+            vec![
+                $({
+                    let mut depth = None;
+                    $(
+                        depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                    )*
+
+                    $crate::framebuffer::LayoutPassDescription {
+                        color_attachments: vec![
+                            $(
+                                ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                            ),*
+                        ],
+                        depth_stencil: depth,
+                        input_attachments: vec![
+                            $(
+                                ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
+                            ),*
+                        ],
+                        resolve_attachments: vec![],
+                        preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                            $(if a == $color_atch { return false; })*
+                            $(if a == $depth_atch { return false; })*
+                            $(if a == $input_atch { return false; })*
+                            true
+                        }).collect()
+                    }
+                }),*
+            ].into_iter()
+        }
+
+        /// Returns an iterator to the list of pass dependencies of this render pass.
+        #[inline]
+        fn dependencies() -> VecIntoIter<LayoutPassDependencyDescription> {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+
+            (1 .. passes().len()).flat_map(|p2| {
+                (0 .. p2.clone()).map(move |p1| {
+                    $crate::framebuffer::LayoutPassDependencyDescription {
+                        source_subpass: p1,
+                        destination_subpass: p2,
+                        by_region: false,
+                    }
+                })
+            }).collect::<Vec<_>>().into_iter()
+        }
+
+        /// Returns the initial and final layout of an attachment, given its num.
         fn attachment_layouts(num: u32) -> ($crate::image::Layout, $crate::image::Layout) {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
@@ -539,43 +639,6 @@ macro_rules! ordered_passes_renderpass {
             })*
 
             (initial_layout.unwrap(), final_layout.unwrap())
-        }
-
-        unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
-            #[inline]
-            fn render_pass(&self) -> &UnsafeRenderPass {
-                &self.render_pass
-            }
-
-            #[inline]
-            fn num_subpasses(&self) -> u32 {
-                #![allow(unused_variables)]
-                let mut attachment_num = 0;
-                $(
-                    $(let $depth_atch = attachment_num;)*    // necessary to make the macro compile
-                    attachment_num += 1;
-                )*
-                attachment_num
-            }
-
-            #[inline]
-            fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-                #![allow(unused_variables)]
-                #![allow(unused_assignments)]
-                let mut subpass_num = 0;
-
-                $(
-                    if subpass == subpass_num {
-                        let mut num_color = 0;
-                        $(let $color_atch = 0; num_color += 1;)*
-                        return Some(num_color);
-                    }
-
-                    subpass_num += 1;
-                )*
-
-                None
-            }
         }
 
         #[allow(non_camel_case_types)]
@@ -727,8 +790,6 @@ pub enum LoadOp {
 pub struct UnsafeRenderPass {
     renderpass: vk::RenderPass,
     device: Arc<Device>,
-    num_passes: u32,
-    num_color_attachments: SmallVec<[u32; 8]>,
 }
 
 impl UnsafeRenderPass {
@@ -898,8 +959,6 @@ impl UnsafeRenderPass {
         Ok(UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
-            num_passes: passes.len() as u32,
-            num_color_attachments: passes.iter().map(|p| p.colorAttachmentCount).collect(),
         })
     }
 
@@ -907,12 +966,6 @@ impl UnsafeRenderPass {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-
-    /// Returns the number of subpasses.
-    #[inline]
-    pub fn num_subpasses(&self) -> u32 {
-        self.num_passes
     }
 
     // TODO: add a `subpass` method that takes `Arc<Self>` as parameter
@@ -931,16 +984,6 @@ unsafe impl RenderPass for UnsafeRenderPass {
     #[inline]
     fn render_pass(&self) -> &UnsafeRenderPass {
         self
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> u32 {
-        self.num_subpasses()
-    }
-
-    #[inline]
-    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-        self.num_color_attachments.get(subpass as usize).map(|&n| n)
     }
 }
 
@@ -966,13 +1009,13 @@ pub struct Subpass<'a, L: 'a> {
     subpass_id: u32,
 }
 
-impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass {
+impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
         where L: RenderPass
     {
-        if id < render_pass.render_pass().num_passes {
+        if id < render_pass.num_subpasses() {
             Some(Subpass {
                 render_pass: render_pass,
                 subpass_id: id,
@@ -981,18 +1024,6 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass {
         } else {
             None
         }
-    }
-
-    /// Returns the render pass of this subpass.
-    #[inline]
-    pub fn render_pass(&self) -> &'a Arc<L> {
-        self.render_pass
-    }
-
-    /// Returns the index of this subpass within the renderpass.
-    #[inline]
-    pub fn index(&self) -> u32 {
-        self.subpass_id
     }
 
     /// Returns the number of color attachments in this subpass.
@@ -1012,6 +1043,20 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass {
     #[inline]
     pub fn num_samples(&self) -> Option<u32> {
         unimplemented!()
+    }
+}
+
+impl<'a, L: 'a> Subpass<'a, L> {
+    /// Returns the render pass of this subpass.
+    #[inline]
+    pub fn render_pass(&self) -> &'a Arc<L> {
+        self.render_pass
+    }
+
+    /// Returns the index of this subpass within the renderpass.
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.subpass_id
     }
 }
 

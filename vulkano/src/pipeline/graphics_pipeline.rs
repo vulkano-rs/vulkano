@@ -20,6 +20,7 @@ use descriptor::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
+use framebuffer::RenderPassDesc;
 use framebuffer::Subpass;
 use Error;
 use OomError;
@@ -89,7 +90,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where Vdef: VertexDefinition, L: PipelineLayout, Rp: RenderPass
+    where Vdef: VertexDefinition, L: PipelineLayout, Rp: RenderPass + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
     #[inline]
@@ -632,7 +633,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPass
+    where Rp: RenderPass + RenderPassDesc
 {
     /// Returns the pass used in the constructor.
     #[inline]

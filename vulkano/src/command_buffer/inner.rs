@@ -37,6 +37,7 @@ use format::FormatDesc;
 use format::FormatTy;
 use format::PossibleFloatFormatDesc;
 use framebuffer::RenderPass;
+use framebuffer::RenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use image::Image;
