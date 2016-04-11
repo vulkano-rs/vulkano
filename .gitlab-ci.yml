@@ -2,8 +2,8 @@ image: ubuntu:xenial
 
 before_script:
   - apt-get update
-  - apt-get -y install sudo curl git bash
-  - curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh
+  - apt-get -y install sudo curl git
+  - curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh -s -- --yes
   - multirust default nightly
 
 stages:
