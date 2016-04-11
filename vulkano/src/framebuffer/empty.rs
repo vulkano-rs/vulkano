@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use device::Device;
 use format::ClearValue;
-use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::UnsafeRenderPass;
 use framebuffer::traits::RenderPass;
 use framebuffer::traits::RenderPassDesc;
@@ -65,7 +64,6 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
     }
 }
 
-
 unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
     type AttachmentsIter = EmptyIter<LayoutAttachmentDescription>;
     type PassesIter = OptionIntoIter<LayoutPassDescription>;
@@ -105,6 +103,11 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
             None
         }
     }
+
+    #[inline]
+    fn num_samples(&self, subpass: u32) -> Option<u32> {
+        None
+    }
 }
 
 unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
@@ -122,5 +125,16 @@ unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
     #[inline]
     fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
         iter::empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use framebuffer::EmptySinglePassRenderPass;
+
+    #[test]
+    fn create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = EmptySinglePassRenderPass::new(&device).unwrap();
     }
 }
