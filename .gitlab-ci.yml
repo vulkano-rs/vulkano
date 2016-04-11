@@ -1,6 +1,7 @@
 image: ubuntu:xenial
 
 before_script:
+  - sudo apt-get install curl
   - curl -sf https://raw.githubusercontent.com/brson/multirust/master/blastoff.sh | sh
   - multirust default stable
 
@@ -17,5 +18,17 @@ job1:
 
 docs:
   stage: deploy
+  only:
+    - master
   script:
     - cargo doc --manifest-path vulkano/Cargo.toml
+
+pages:
+  stage: deploy
+  script:
+    - cp target/doc/* public
+  dependencies:
+    - docs
+  artifacts:
+    paths:
+    - public
