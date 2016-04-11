@@ -53,17 +53,20 @@ macro_rules! ordered_passes_renderpass {
             ),*
         ]
     ) => {
-        use std;        // TODO: import everything instead
         use std::vec::IntoIter as VecIntoIter;
         use std::sync::Arc;
         use $crate::OomError;
         use $crate::device::Device;
         use $crate::format::ClearValue;
         use $crate::framebuffer::UnsafeRenderPass;
+        use $crate::framebuffer::RenderPass;
         use $crate::framebuffer::RenderPassDesc;
+        use $crate::framebuffer::RenderPassClearValues;
+        use $crate::framebuffer::RenderPassAttachmentsList;
         use $crate::framebuffer::LayoutAttachmentDescription;
         use $crate::framebuffer::LayoutPassDescription;
         use $crate::framebuffer::LayoutPassDependencyDescription;
+        use $crate::image::Layout;
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
 
@@ -96,7 +99,7 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        unsafe impl $crate::framebuffer::RenderPass for CustomRenderPass {
+        unsafe impl RenderPass for CustomRenderPass {
             #[inline]
             fn render_pass(&self) -> &UnsafeRenderPass {
                 &self.render_pass
@@ -162,19 +165,19 @@ macro_rules! ordered_passes_renderpass {
                 $({
                     let mut depth = None;
                     $(
-                        depth = Some(($depth_atch, $crate::image::Layout::DepthStencilAttachmentOptimal));
+                        depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
                     )*
 
                     $crate::framebuffer::LayoutPassDescription {
                         color_attachments: vec![
                             $(
-                                ($color_atch, $crate::image::Layout::ColorAttachmentOptimal)
+                                ($color_atch, Layout::ColorAttachmentOptimal)
                             ),*
                         ],
                         depth_stencil: depth,
                         input_attachments: vec![
                             $(
-                                ($input_atch, $crate::image::Layout::ShaderReadOnlyOptimal)
+                                ($input_atch, Layout::ShaderReadOnlyOptimal)
                             ),*
                         ],
                         resolve_attachments: vec![],
@@ -197,7 +200,7 @@ macro_rules! ordered_passes_renderpass {
 
             (1 .. passes().len()).flat_map(|p2| {
                 (0 .. p2.clone()).map(move |p1| {
-                    $crate::framebuffer::LayoutPassDependencyDescription {
+                    LayoutPassDependencyDescription {
                         source_subpass: p1,
                         destination_subpass: p2,
                         by_region: false,
@@ -207,7 +210,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         /// Returns the initial and final layout of an attachment, given its num.
-        fn attachment_layouts(num: u32) -> ($crate::image::Layout, $crate::image::Layout) {
+        fn attachment_layouts(num: u32) -> (Layout, Layout) {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
 
@@ -224,27 +227,27 @@ macro_rules! ordered_passes_renderpass {
                 $(
                     if $depth_atch == num {
                         if initial_layout.is_none() {
-                            initial_layout = Some($crate::image::Layout::DepthStencilAttachmentOptimal);
+                            initial_layout = Some(Layout::DepthStencilAttachmentOptimal);
                         }
-                        final_layout = Some($crate::image::Layout::DepthStencilAttachmentOptimal);
+                        final_layout = Some(Layout::DepthStencilAttachmentOptimal);
                     }
                 )*
 
                 $(
                     if $color_atch == num {
                         if initial_layout.is_none() {
-                            initial_layout = Some($crate::image::Layout::ColorAttachmentOptimal);
+                            initial_layout = Some(Layout::ColorAttachmentOptimal);
                         }
-                        final_layout = Some($crate::image::Layout::ColorAttachmentOptimal);
+                        final_layout = Some(Layout::ColorAttachmentOptimal);
                     }
                 )*
 
                 $(
                     if $input_atch == num {
                         if initial_layout.is_none() {
-                            initial_layout = Some($crate::image::Layout::ShaderReadOnlyOptimal);
+                            initial_layout = Some(Layout::ShaderReadOnlyOptimal);
                         }
-                        final_layout = Some($crate::image::Layout::ShaderReadOnlyOptimal);
+                        final_layout = Some(Layout::ShaderReadOnlyOptimal);
                     }
                 )*
             })*
@@ -260,9 +263,9 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[allow(non_camel_case_types)]
-        unsafe impl<'a, $($atch_name: 'static + ImageView),*> $crate::framebuffer::RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
+        unsafe impl<'a, $($atch_name: 'static + ImageView),*> RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
             // TODO: shouldn't build a Vec
-            type AttachmentsIter = std::vec::IntoIter<(Arc<ImageView>, Arc<Image>, $crate::image::Layout, $crate::image::Layout)>;
+            type AttachmentsIter = VecIntoIter<(Arc<ImageView>, Arc<Image>, Layout, Layout)>;
 
             #[inline]
             fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Self::AttachmentsIter {
@@ -283,7 +286,7 @@ macro_rules! ordered_passes_renderpass {
 
         ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
 
-        unsafe impl $crate::framebuffer::RenderPassClearValues<ClearValues> for CustomRenderPass {
+        unsafe impl RenderPassClearValues<ClearValues> for CustomRenderPass {
             type ClearValuesIter = ClearValuesIter;
 
             #[inline]
