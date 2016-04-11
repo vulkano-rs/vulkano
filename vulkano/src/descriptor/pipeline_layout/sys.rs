@@ -23,7 +23,6 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 
 /// Low-level struct that represents the layout of the resources available to your shaders.
-// TODO: push constants.
 pub struct UnsafePipelineLayout {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
@@ -32,10 +31,9 @@ pub struct UnsafePipelineLayout {
 
 impl UnsafePipelineLayout {
     /// Creates a new `UnsafePipelineLayout`.
-    // TODO: is this function unsafe?
     #[inline]
-    pub unsafe fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
-                                -> Result<UnsafePipelineLayout, OomError>
+    pub fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
+                         -> Result<UnsafePipelineLayout, OomError>
         where I: IntoIterator<Item = &'a Arc<UnsafeDescriptorSetLayout>>,
               P: IntoIterator<Item = (usize, usize, ShaderStages)>,
     {
@@ -43,11 +41,9 @@ impl UnsafePipelineLayout {
                                         push_constants.into_iter().collect())
     }
 
-    // TODO: is this function unsafe?
-    unsafe fn new_inner(device: &Arc<Device>,
-                        layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
-                        push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
-                        -> Result<UnsafePipelineLayout, OomError>
+    fn new_inner(device: &Arc<Device>, layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+                 push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
+                 -> Result<UnsafePipelineLayout, OomError>
     {
         let vk = device.pointers();
 
@@ -70,7 +66,7 @@ impl UnsafePipelineLayout {
             }
         }).collect::<SmallVec<[_; 8]>>();
 
-        let layout = {
+        let layout = unsafe {
             let infos = vk::PipelineLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 pNext: ptr::null(),
@@ -101,6 +97,12 @@ impl UnsafePipelineLayout {
     pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layouts.get(index)
     }
+
+    /// Returns the device used to create this pipeline layout.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 unsafe impl VulkanObject for UnsafePipelineLayout {
@@ -130,6 +132,6 @@ mod tests {
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _layout = unsafe { UnsafePipelineLayout::new(&device, iter::empty(), iter::empty()) };
+        let _layout = UnsafePipelineLayout::new(&device, iter::empty(), iter::empty());
     }
 }

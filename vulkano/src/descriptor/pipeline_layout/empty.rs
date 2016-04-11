@@ -26,7 +26,7 @@ pub struct EmptyPipeline {
 impl EmptyPipeline {
     /// Builds a new empty pipeline.
     pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, OomError> {
-        let inner = unsafe {
+        let inner = {
             try!(UnsafePipelineLayout::new(device, iter::empty(), iter::empty()))
         };
 

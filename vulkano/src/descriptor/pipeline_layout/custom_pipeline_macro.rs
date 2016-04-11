@@ -57,7 +57,7 @@ macro_rules! pipeline_layout {
                     None
                 };
 
-                let inner = unsafe {
+                let inner = {
                     try!(UnsafePipelineLayout::new(device, layouts.iter(), push_constants))
                 };
 
