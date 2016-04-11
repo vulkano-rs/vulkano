@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -20,8 +21,8 @@ use VulkanPointers;
 use vk;
 
 use buffer::Buffer;
-use descriptor::descriptor::DescriptorWrite;
-use descriptor::descriptor::DescriptorWriteInner;
+use buffer::BufferSlice;
+use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use device::Device;
@@ -109,7 +110,7 @@ impl UnsafeDescriptorSet {
         let self_set = self.set;
 
         let buffer_descriptors = write.iter().filter_map(|write| {
-            match *write.inner().2 {
+            match write.inner {
                 DescriptorWriteInner::UniformBuffer { ref buffer, offset, size } |
                 DescriptorWriteInner::DynamicUniformBuffer { ref buffer, offset, size } => {
                     assert!(buffer.inner_buffer().usage_uniform_buffer());
@@ -135,7 +136,7 @@ impl UnsafeDescriptorSet {
         }).collect::<SmallVec<[_; 64]>>();
 
         let image_descriptors = write.iter().filter_map(|write| {
-            match *write.inner().2 {
+            match write.inner {
                 DescriptorWriteInner::Sampler(ref sampler) => {
                     self_resources_samplers.push(sampler.clone());
                     Some(vk::DescriptorImageInfo {
@@ -208,7 +209,7 @@ impl UnsafeDescriptorSet {
         let mut next_image_desc = 0;
 
         let vk_writes = write.iter().map(|write| {
-            let (buffer_info, image_info) = match *write.inner().2 {
+            let (buffer_info, image_info) = match write.inner {
                 DescriptorWriteInner::Sampler(_) | DescriptorWriteInner::CombinedImageSampler(_, _, _, _) |
                 DescriptorWriteInner::SampledImage(_, _, _) | DescriptorWriteInner::StorageImage(_, _, _) |
                 DescriptorWriteInner::InputAttachment(_, _, _) => {
@@ -231,8 +232,8 @@ impl UnsafeDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),
                 dstSet: self_set,
-                dstBinding: write.inner().0,
-                dstArrayElement: write.inner().1,
+                dstBinding: write.binding,
+                dstArrayElement: write.first_array_element,
                 descriptorCount: 1,
                 descriptorType: write.ty() as u32,
                 pImageInfo: image_info,
@@ -288,6 +289,234 @@ impl Drop for UnsafeDescriptorSet {
             let vk = self.pool.device().pointers();
             vk.FreeDescriptorSets(self.pool.device().internal_object(),
                                   *self.pool.internal_object_guard(), 1, &self.set);
+        }
+    }
+}
+
+/// Represents a single write entry to a descriptor set.
+pub struct DescriptorWrite {
+    binding: u32,
+    first_array_element: u32,
+    inner: DescriptorWriteInner,
+}
+
+// FIXME: incomplete
+#[derive(Clone)]        // TODO: Debug
+enum DescriptorWriteInner {
+    StorageImage(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
+    Sampler(Arc<Sampler>),
+    SampledImage(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
+    CombinedImageSampler(Arc<Sampler>, Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
+    //UniformTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
+    //StorageTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
+    UniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
+    StorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
+    DynamicUniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
+    DynamicStorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
+    InputAttachment(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
+}
+
+impl DescriptorWrite {
+    #[inline]
+    pub fn storage_image<I>(binding: u32, image: &Arc<I>) -> DescriptorWrite
+        where I: ImageView + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::StorageImage(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn sampler(binding: u32, sampler: &Arc<Sampler>) -> DescriptorWrite {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::Sampler(sampler.clone())
+        }
+    }
+
+    #[inline]
+    pub fn sampled_image<I>(binding: u32, image: &Arc<I>) -> DescriptorWrite
+        where I: ImageView + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::SampledImage(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn combined_image_sampler<I>(binding: u32, sampler: &Arc<Sampler>, image: &Arc<I>) -> DescriptorWrite
+        where I: ImageView + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::CombinedImageSampler(sampler.clone(), image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::UniformBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_uniform_buffer<B>(binding: u32, buffer: &Arc<B>, range: Range<usize>)
+                                              -> DescriptorWrite
+        where B: Buffer + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::UniformBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::StorageBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_storage_buffer<B>(binding: u32, buffer: &Arc<B>, range: Range<usize>)
+                                              -> DescriptorWrite
+        where B: Buffer + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::StorageBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn dynamic_uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::DynamicUniformBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_dynamic_uniform_buffer<B>(binding: u32, buffer: &Arc<B>, range: Range<usize>)
+                                                      -> DescriptorWrite
+        where B: Buffer + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::DynamicUniformBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn dynamic_storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'static
+    {
+        let buffer = buffer.into();
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::DynamicStorageBuffer {
+                buffer: buffer.buffer().clone(),
+                offset: buffer.offset(),
+                size: buffer.size(),
+            }
+        }
+    }
+
+    #[inline]
+    pub unsafe fn unchecked_dynamic_storage_buffer<B>(binding: u32, buffer: &Arc<B>, range: Range<usize>)
+                                                      -> DescriptorWrite
+        where B: Buffer + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::DynamicStorageBuffer {
+                buffer: buffer.clone(),
+                offset: range.start,
+                size: range.end - range.start,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn input_attachment<I>(binding: u32, image: &Arc<I>) -> DescriptorWrite
+        where I: ImageView + 'static
+    {
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::InputAttachment(image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    /// Returns the type corresponding to this write.
+    #[inline]
+    pub fn ty(&self) -> DescriptorType {
+        match self.inner {
+            DescriptorWriteInner::Sampler(_) => DescriptorType::Sampler,
+            DescriptorWriteInner::CombinedImageSampler(_, _, _, _) => DescriptorType::CombinedImageSampler,
+            DescriptorWriteInner::SampledImage(_, _, _) => DescriptorType::SampledImage,
+            DescriptorWriteInner::StorageImage(_, _, _) => DescriptorType::StorageImage,
+            //DescriptorWriteInner::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
+            //DescriptorWriteInner::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
+            DescriptorWriteInner::UniformBuffer { .. } => DescriptorType::UniformBuffer,
+            DescriptorWriteInner::StorageBuffer { .. } => DescriptorType::StorageBuffer,
+            DescriptorWriteInner::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
+            DescriptorWriteInner::DynamicStorageBuffer { .. } => DescriptorType::StorageBufferDynamic,
+            DescriptorWriteInner::InputAttachment(_, _, _) => DescriptorType::InputAttachment,
         }
     }
 }

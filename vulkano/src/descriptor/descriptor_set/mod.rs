@@ -12,6 +12,7 @@ use descriptor::descriptor::DescriptorDesc;
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
 pub use self::sys::UnsafeDescriptorSet;
+pub use self::sys::DescriptorWrite;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 mod collection;

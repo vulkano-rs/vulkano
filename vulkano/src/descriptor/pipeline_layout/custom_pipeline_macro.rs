@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorType;
-use descriptor::descriptor::DescriptorWrite;
+use descriptor::descriptor_set::DescriptorWrite;
 use image::ImageView;
 use sampler::Sampler;
 
@@ -112,13 +112,13 @@ macro_rules! pipeline_layout {
             use $crate::OomError;
             use $crate::device::Device;
             use $crate::descriptor::descriptor::DescriptorDesc;
-            use $crate::descriptor::descriptor::DescriptorWrite;
             use $crate::descriptor::descriptor::ShaderStages;
             use $crate::descriptor::descriptor_set::DescriptorPool;
             use $crate::descriptor::descriptor_set::DescriptorSet;
             use $crate::descriptor::descriptor_set::DescriptorSetDesc;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+            use $crate::descriptor::descriptor_set::DescriptorWrite;
             use $crate::descriptor::pipeline_layout::PipelineLayout;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
