@@ -31,6 +31,10 @@ pub struct UnsafePipelineLayout {
 
 impl UnsafePipelineLayout {
     /// Creates a new `UnsafePipelineLayout`.
+    ///
+    /// # Panic
+    ///
+    /// Panicks if one of the `UnsafeDescriptorSetLayout` was not created with `device`.
     #[inline]
     pub fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
                          -> Result<UnsafePipelineLayout, OomError>
@@ -41,15 +45,18 @@ impl UnsafePipelineLayout {
                                         push_constants.into_iter().collect())
     }
 
+    /// Same as `new` but won't be inlined.
     fn new_inner(device: &Arc<Device>, layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
                  push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
                  -> Result<UnsafePipelineLayout, OomError>
     {
         let vk = device.pointers();
 
-        // FIXME: check that they belong to the right device
-        let layouts_ids = layouts.iter().map(|l| l.internal_object())
-                                 .collect::<SmallVec<[_; 16]>>();
+        let layouts_ids = layouts.iter().map(|l| {
+                                    assert_eq!(&**l.device() as *const Device,
+                                               &**device as *const Device);
+                                    l.internal_object()
+                                 }).collect::<SmallVec<[_; 16]>>();
 
         let push_constants = push_constants.iter().map(|pc| {
             // TODO: error
@@ -127,11 +134,26 @@ impl Drop for UnsafePipelineLayout {
 #[cfg(test)]
 mod tests {
     use std::iter;
+    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
     use descriptor::pipeline_layout::sys::UnsafePipelineLayout;
 
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
         let _layout = UnsafePipelineLayout::new(&device, iter::empty(), iter::empty());
+    }
+
+    #[test]
+    #[should_panic]
+    fn wrong_device_panic() {
+        let (device1, _) = gfx_dev_and_queue!();
+        let (device2, _) = gfx_dev_and_queue!();
+
+        let set = match UnsafeDescriptorSetLayout::new(&device1, iter::empty()) {
+            Ok(s) => s,
+            Err(_) => return
+        };
+
+        UnsafePipelineLayout::new(&device2, Some(&set), iter::empty());
     }
 }
