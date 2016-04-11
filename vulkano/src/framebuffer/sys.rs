@@ -208,8 +208,6 @@ impl UnsafeRenderPass {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
-
-    // TODO: add a `subpass` method that takes `Arc<Self>` as parameter
 }
 
 unsafe impl VulkanObject for UnsafeRenderPass {

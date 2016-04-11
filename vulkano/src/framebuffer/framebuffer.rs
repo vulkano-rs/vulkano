@@ -144,6 +144,12 @@ impl<L> Framebuffer<L> {
         self.dimensions.2
     }
 
+    /// Returns the device that was used to create this framebuffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
     pub fn render_pass(&self) -> &Arc<L> {
