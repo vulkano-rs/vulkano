@@ -26,6 +26,9 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 
 /// Low-level struct that represents the layout of the resources available to your shaders.
+///
+/// Despite its name, this type is technically not unsafe. However it serves the same purpose
+/// in the API as other types whose names start with `Unsafe`.
 pub struct UnsafePipelineLayout {
     device: Arc<Device>,
     layout: vk::PipelineLayout,

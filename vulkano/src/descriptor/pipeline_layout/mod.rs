@@ -7,6 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Describes the layout of descriptors and push constants used by a pipeline.
+//! 
+//! This module contains all the structs and traits related to describing the layout of
+//! descriptors and push constants used by the shaders of a graphics or compute pipeline.
+//! 
+//! The layout itself only **describes** the descriptors and push constants, and does not contain
+//! the content of the push constants or the actual list of resources that are going to be available
+//! through the descriptors. Push constants are set when you submit a draw command, and the list
+//! of resources is set by creating *descriptor set* objects and passing these sets when you
+//! submit a draw command.
+
 pub use self::empty::EmptyPipeline;
 pub use self::sys::UnsafePipelineLayout;
 pub use self::sys::UnsafePipelineLayoutCreationError;
@@ -17,7 +28,7 @@ pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 
 pub mod custom_pipeline_macro;
-pub mod empty;
 
+mod empty;
 mod sys;
 mod traits;
