@@ -102,7 +102,13 @@ pub unsafe trait RenderPassDesc {
 /// # Safety
 ///
 /// This trait is unsafe because it's the job of the implementation to check whether the
-/// attachments list is correct.
+/// attachments list is correct. What needs to be checked:
+///
+/// - That the attachments' format and samples count match the render pass layout.
+/// - That the attachments have been created with the proper usage flags.
+/// - That the attachments only expose one mipmap.
+/// - That the attachments use identity components swizzling.
+/// TODO: more stuff with aliasing
 ///
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     /// A decoded `A`.

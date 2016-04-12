@@ -85,7 +85,7 @@ impl<L> Framebuffer<L> {
 
                 let atch_dims = a.parent().dimensions();
                 if atch_dims.width() < dimensions.0 || atch_dims.height() < dimensions.1 ||
-                   atch_dims.array_layers() < dimensions.2
+                   atch_dims.array_layers() < dimensions.2      // TODO: wrong, since it must be the array layers of the view and not of the image
                 {
                     return Err(FramebufferCreationError::AttachmentTooSmall);
                 }
