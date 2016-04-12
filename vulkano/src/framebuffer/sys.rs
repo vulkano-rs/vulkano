@@ -148,13 +148,17 @@ impl UnsafeRenderPass {
                 flags: 0,   // reserved
                 pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
                 inputAttachmentCount: pass.input_attachments.len() as u32,
-                pInputAttachments: input_attachments,
+                pInputAttachments: if pass.input_attachments.is_empty() { ptr::null() }
+                                   else { input_attachments },
                 colorAttachmentCount: pass.color_attachments.len() as u32,
-                pColorAttachments: color_attachments,
-                pResolveAttachments: if pass.resolve_attachments.len() == 0 { ptr::null() } else { resolve_attachments },
+                pColorAttachments: if pass.color_attachments.is_empty() { ptr::null() }
+                                   else { color_attachments },
+                pResolveAttachments: if pass.resolve_attachments.is_empty() { ptr::null() }
+                                     else { resolve_attachments },
                 pDepthStencilAttachment: depth_stencil,
                 preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                pPreserveAttachments: preserve_attachments,
+                pPreserveAttachments: if pass.preserve_attachments.is_empty() { ptr::null() }
+                                      else { preserve_attachments },
             }
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -184,11 +188,13 @@ impl UnsafeRenderPass {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 attachmentCount: attachments.len() as u32,
-                pAttachments: attachments.as_ptr(),
+                pAttachments: if attachments.is_empty() { ptr::null() }
+                              else { attachments.as_ptr() },
                 subpassCount: passes.len() as u32,
-                pSubpasses: passes.as_ptr(),
+                pSubpasses: if passes.is_empty() { ptr::null() } else { passes.as_ptr() },
                 dependencyCount: dependencies.len() as u32,
-                pDependencies: dependencies.as_ptr(),
+                pDependencies: if dependencies.is_empty() { ptr::null() }
+                               else { dependencies.as_ptr() },
             };
 
             let mut output = mem::uninitialized();
