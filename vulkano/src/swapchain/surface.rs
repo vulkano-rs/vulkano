@@ -20,8 +20,8 @@ use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
-use swapchain::DisplayMode;
-use swapchain::DisplayPlane;
+use swapchain::display::DisplayMode;
+use swapchain::display::DisplayPlane;
 
 use check_errors;
 use Error;
@@ -50,15 +50,16 @@ impl Surface {
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, SurfaceCreationError>
     {
-        if !display_mode.display.physical_device().instance().loaded_extensions().khr_display {
+        unimplemented!()        // TODO:
+        /*if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
             return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
         }
 
-        assert_eq!(display_mode.display.physical_device().internal_object(),
+        assert_eq!(display_mode.display().physical_device().internal_object(),
                    plane.physical_device().internal_object());
         assert!(plane.supports(display_mode.display()));
 
-        let instance = display_mode.display.physical_device().instance();
+        let instance = display_mode.display().physical_device().instance();
         let vk = instance.pointers();
 
         let surface = unsafe {
@@ -66,7 +67,7 @@ impl Surface {
                 sType: vk::STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                displayMode: display_mode.display_mode,
+                displayMode: display_mode.internal_object(),
                 planeIndex: plane.index,
                 planeStackIndex: plane.properties.currentStackIndex,
                 transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,      // TODO: let user choose
@@ -87,7 +88,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
-        }))
+        }))*/
     }
 
     /// Creates a `Surface` from a Win32 window.
