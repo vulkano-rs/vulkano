@@ -76,10 +76,24 @@ impl<L> Framebuffer<L> {
             }
         }
 
-        let ids = attachments.iter().map(|&(ref a, _, _, _)| {
-            debug_assert!(a.identity_swizzle());
-            a.inner_view().internal_object()
-        }).collect::<SmallVec<[_; 8]>>();
+        let ids = {
+            let mut ids = SmallVec::<[_; 8]>::new();
+
+            for &(ref a, _, _, _) in attachments.iter() {
+                debug_assert!(a.identity_swizzle());
+
+                let atch_dims = a.parent().dimensions();
+                if atch_dims.width() < dimensions.0 || atch_dims.height() < dimensions.1 ||
+                   atch_dims.array_layers() < dimensions.2
+                {
+                    return Err(FramebufferCreationError::AttachmentTooSmall);
+                }
+
+                ids.push(a.inner_view().internal_object());
+            }
+
+            ids
+        };
 
         let framebuffer = unsafe {
             let infos = vk::FramebufferCreateInfo {
@@ -193,6 +207,8 @@ pub enum FramebufferCreationError {
     DimensionsTooLarge,
     /// One of the attachments has a component swizzle that is different from identity.
     AttachmentNotIdentitySwizzled,
+    /// One of the attachments is too small compared to the requested framebuffer dimensions.
+    AttachmentTooSmall,
 }
 
 impl From<OomError> for FramebufferCreationError {
@@ -211,6 +227,10 @@ impl error::Error for FramebufferCreationError {
                                                              are too large",
             FramebufferCreationError::AttachmentNotIdentitySwizzled => {
                 "one of the attachments has a component swizzle that is different from identity"
+            },
+            FramebufferCreationError::AttachmentTooSmall => {
+                "one of the attachments is too small compared to the requested framebuffer \
+                 dimensions"
             },
         }
     }
@@ -289,6 +309,22 @@ mod tests {
         let alist = example::AList { color: &image };
         match Framebuffer::new(&render_pass, (0xffffffff, 0xffffffff, 0xffffffff), alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn attachment_too_small() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
+            color: (R8G8B8A8Unorm, 1)
+        }).unwrap();
+        let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
+
+        let alist = example::AList { color: &image };
+        match Framebuffer::new(&render_pass, (600, 600, 1), alist) {
+            Err(FramebufferCreationError::AttachmentTooSmall) => (),
             _ => panic!()
         }
     }

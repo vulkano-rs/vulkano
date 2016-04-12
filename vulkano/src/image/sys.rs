@@ -778,6 +778,17 @@ impl Dimensions {
     }
 
     #[inline]
+    pub fn depth(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { .. } => 1,
+            Dimensions::Dim2d { .. } => 1,
+            Dimensions::Dim2dArray { .. } => 1,
+            Dimensions::Dim3d { depth, .. }  => depth,
+        }
+    }
+
+    #[inline]
     pub fn array_layers(&self) -> u32 {
         match *self {
             Dimensions::Dim1d { .. } => 1,
