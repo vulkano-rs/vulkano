@@ -63,9 +63,10 @@ impl<L> Framebuffer<L> {
         let vk = render_pass.render_pass().device().pointers();
         let device = render_pass.render_pass().device().clone();
 
-        let attachments = render_pass.convert_attachments_list(attachments).collect::<SmallVec<[_; 8]>>();
+        let attachments = try!(render_pass.convert_attachments_list(attachments))
+                                .collect::<SmallVec<[_; 8]>>();
 
-        // checking the dimensions against the limits
+        // Checking the dimensions against the limits.
         {
             let limits = render_pass.render_pass().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
@@ -76,7 +77,7 @@ impl<L> Framebuffer<L> {
         }
 
         let ids = attachments.iter().map(|&(ref a, _, _, _)| {
-            assert!(a.identity_swizzle());
+            debug_assert!(a.identity_swizzle());
             a.inner_view().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
@@ -190,6 +191,8 @@ pub enum FramebufferCreationError {
     OomError(OomError),
     /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
+    /// One of the attachments has a component swizzle that is different from identity.
+    AttachmentNotIdentitySwizzled,
 }
 
 impl From<OomError> for FramebufferCreationError {
@@ -206,6 +209,9 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::OomError(_) => "no memory available",
             FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
                                                              are too large",
+            FramebufferCreationError::AttachmentNotIdentitySwizzled => {
+                "one of the attachments has a component swizzle that is different from identity"
+            },
         }
     }
 

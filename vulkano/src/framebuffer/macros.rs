@@ -66,6 +66,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::LayoutAttachmentDescription;
         use $crate::framebuffer::LayoutPassDescription;
         use $crate::framebuffer::LayoutPassDependencyDescription;
+        use $crate::framebuffer::FramebufferCreationError;
         use $crate::image::Layout;
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
@@ -268,19 +269,25 @@ macro_rules! ordered_passes_renderpass {
             type AttachmentsIter = VecIntoIter<(Arc<ImageView>, Arc<Image>, Layout, Layout)>;
 
             #[inline]
-            fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Self::AttachmentsIter {
+            fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Result<Self::AttachmentsIter, FramebufferCreationError> {
                 #![allow(unused_assignments)]
 
                 let mut result = Vec::new();
 
                 let mut num = 0;
                 $({
+                    if !l.$atch_name.identity_swizzle() {
+                        return Err(FramebufferCreationError::AttachmentNotIdentitySwizzled);
+                    }
+
+                    // FIXME: lots of checks missing (format, samples, layout, etc.)
+
                     let (initial_layout, final_layout) = attachment_layouts(num);
                     num += 1;
                     result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), initial_layout, final_layout));
                 })*
 
-                result.into_iter()
+                Ok(result.into_iter())
             }
         }
 

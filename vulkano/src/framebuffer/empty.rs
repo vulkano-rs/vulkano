@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use device::Device;
 use format::ClearValue;
+use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::UnsafeRenderPass;
 use framebuffer::traits::RenderPass;
 use framebuffer::traits::RenderPassDesc;
@@ -123,8 +124,10 @@ unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
     type AttachmentsIter = EmptyIter<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
 
     #[inline]
-    fn convert_attachments_list(&self, _: ()) -> Self::AttachmentsIter {
-        iter::empty()
+    fn convert_attachments_list(&self, _: ())
+                                -> Result<Self::AttachmentsIter, FramebufferCreationError>
+    {
+        Ok(iter::empty())
     }
 }
 

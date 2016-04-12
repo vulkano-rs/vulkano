@@ -14,6 +14,7 @@ use format::Format;
 use format::FormatDesc;
 use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
+use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
@@ -109,7 +110,10 @@ pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     type AttachmentsIter: ExactSizeIterator<Item = (Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
 
     /// Decodes a `A` into a list of attachments.
-    fn convert_attachments_list(&self, A) -> Self::AttachmentsIter;
+    ///
+    /// Returns an error if one of the attachments is wrong.
+    fn convert_attachments_list(&self, A) -> Result<Self::AttachmentsIter,
+                                                    FramebufferCreationError>;
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
