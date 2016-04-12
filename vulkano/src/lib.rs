@@ -69,7 +69,7 @@ pub mod image;
 pub mod instance;
 pub mod memory;
 pub mod pipeline;
-//pub mod query;
+pub mod query;
 pub mod sampler;
 pub mod swapchain;
 pub mod sync;

@@ -12,53 +12,84 @@
 //! In Vulkan, queries are not created individually. Instead you manipulate **query pools**, which
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.
+
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use vk;
-
 use device::Device;
 
-macro_rules! query_pool {
-    ($name:ident, $query_type:expr) => {
-        pub struct $name {
-            device: Arc<Device>,
-            pool: VkQueryPool,
-            num_slots: u32,
-        }
+use check_errors;
+use OomError;
+use VulkanObject;
+use VulkanPointers;
+use vk;
 
-        impl $name {
-            /// Builds a new query pool.
-            pub fn new(device: Arc<Device>, num_slots: u32) -> Arc<$name> {
-                let create_infos = VkQueryPoolCreateInfo {
-                    sType: vk::QUERY_POOL_CREATE_INFO,
-                    pNext: ptr::null(),
-                    flags: 0,
-                    queryType: $query_type,
-                    num_slots: num_slots,
-                    pipelineStatistics: 0,      // TODO: 
-                };
-
-                let mut output = mem::uninitialized();
-                vkCreateQueryPool(device.internal_object(), &create_infos, ptr::null(), &mut output);
-            }
-
-            /// Returns the number of slots of that query pool.
-            #[inline]
-            pub fn num_slots(&self) -> u32 {
-                self.num_slots
-            }
-        }
-
-        impl Drop for $name {
-            fn drop(&mut self) {
-                unsafe {
-                    vkDestroyQueryPool
-                }
-            }
-        }
-    };
+pub struct OcclusionQueriesPool {
+    pool: vk::QueryPool,
+    num_slots: u32,
+    device: Arc<Device>,
 }
 
-query_pool!(OcclusionQueriesPool, vk::QUERY_TYPE_OCCLUSION);
+impl OcclusionQueriesPool {
+    /// Builds a new query pool.
+    pub fn new(device: &Arc<Device>, num_slots: u32)
+               -> Result<Arc<OcclusionQueriesPool>, OomError>
+    {
+        let vk = device.pointers();
+
+        let pool = unsafe {
+            let infos = vk::QueryPoolCreateInfo {
+                sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                queryType: vk::QUERY_TYPE_OCCLUSION,
+                queryCount: num_slots,
+                pipelineStatistics: 0,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateQueryPool(device.internal_object(), &infos,
+                                                 ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(OcclusionQueriesPool {
+            pool: pool,
+            num_slots: num_slots,
+            device: device.clone(),
+        }))
+    }
+
+    /// Returns the number of slots of that query pool.
+    #[inline]
+    pub fn num_slots(&self) -> u32 {
+        self.num_slots
+    }
+
+    /// Returns the device that was used to create this pool.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl Drop for OcclusionQueriesPool {
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyQueryPool(self.device.internal_object(), self.pool, ptr::null());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use query::OcclusionQueriesPool;
+
+    #[test]
+    fn occlusion_create() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = OcclusionQueriesPool::new(&device, 256).unwrap();
+    }
+}
