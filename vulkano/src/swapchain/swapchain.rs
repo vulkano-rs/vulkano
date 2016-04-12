@@ -232,7 +232,7 @@ impl Swapchain {
     ///
     /// The actual behavior depends on the present mode that you passed when creating the
     /// swapchain.
-    pub fn present(&self, queue: &Arc<Queue>, index: usize) -> Result<(), OomError> {     // FIXME: wrong error
+    pub fn present(&self, queue: &Arc<Queue>, index: usize) -> Result<(), PresentError> {
         let vk = self.device.pointers();
 
         let wait_semaphore = {
@@ -354,6 +354,65 @@ impl From<Error> for AcquireError {
             Error::DeviceLost => AcquireError::DeviceLost,
             Error::SurfaceLost => AcquireError::SurfaceLost,
             Error::OutOfDate => AcquireError::OutOfDate,
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+/// Error that can happen when calling `acquire_next_image`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum PresentError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The connection to the device has been lost.
+    DeviceLost,
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    /// The surface has changed in a way that makes the swapchain unusable. You must query the
+    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
+    OutOfDate,
+}
+
+impl error::Error for PresentError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            PresentError::OomError(_) => "not enough memory",
+            PresentError::DeviceLost => "the connection to the device has been lost",
+            PresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            PresentError::OutOfDate => "the swapchain needs to be recreated",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            PresentError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for PresentError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for PresentError {
+    #[inline]
+    fn from(err: Error) -> PresentError {
+        match err {
+            err @ Error::OutOfHostMemory => PresentError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => PresentError::OomError(OomError::from(err)),
+            Error::DeviceLost => PresentError::DeviceLost,
+            Error::SurfaceLost => PresentError::SurfaceLost,
+            Error::OutOfDate => PresentError::OutOfDate,
             _ => panic!("unexpected error: {:?}", err)
         }
     }

@@ -47,6 +47,7 @@ pub use self::surface::ColorSpace;
 pub use self::surface::SurfaceCreationError;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::AcquireError;
+pub use self::swapchain::PresentError;
 
 pub mod display;
 mod surface;
