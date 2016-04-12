@@ -234,24 +234,54 @@ impl From<Error> for FramebufferCreationError {
 
 #[cfg(test)]
 mod tests {
-    use framebuffer::EmptySinglePassRenderPass;
+    use format::R8G8B8A8Unorm;
     use framebuffer::Framebuffer;
     use framebuffer::FramebufferCreationError;
+    use image::attachment::AttachmentImage;
 
-    #[test]
-    #[ignore]       // TODO: crashes on AMD+Windows
-    fn empty_renderpass_create() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _ = EmptySinglePassRenderPass::new(&device).unwrap();
+    mod example {
+        use format::R8G8B8A8Unorm;
+
+        single_pass_renderpass! {
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: R8G8B8A8Unorm,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        }
     }
 
     #[test]
-    #[ignore]       // TODO: crashes on AMD+Windows
+    fn simple_create() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
+            color: (R8G8B8A8Unorm, 1)
+        }).unwrap();
+        let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
+
+        let _ = Framebuffer::new(&render_pass, (1024, 768, 1), example::AList {
+            color: &image
+        }).unwrap();
+    }
+
+    #[test]
     fn framebuffer_too_large() {
         let (device, _) = gfx_dev_and_queue!();
-        let renderpass = EmptySinglePassRenderPass::new(&device).unwrap();
 
-        match Framebuffer::new(&renderpass, (0xffffffff, 0xffffffff, 0xffffffff), ()) {
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
+            color: (R8G8B8A8Unorm, 1)
+        }).unwrap();
+        let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
+
+        let alist = example::AList { color: &image };
+        match Framebuffer::new(&render_pass, (0xffffffff, 0xffffffff, 0xffffffff), alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }

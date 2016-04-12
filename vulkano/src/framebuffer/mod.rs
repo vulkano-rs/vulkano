@@ -82,8 +82,9 @@ pub use self::traits::StoreOp;
 pub use self::traits::LoadOp;
 pub use self::traits::Subpass;
 
+#[macro_use]
+mod macros;
 mod empty;
 mod framebuffer;
-mod macros;
 mod sys;
 #[doc(hidden)] pub mod traits;      // TODO: pub-hidden because of that trait visibility bug
