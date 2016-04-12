@@ -16,6 +16,7 @@ addons:
     - g++-4.8       # required to compile glslang
     - clang
     - cmake
+    - cmake-data
 
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
