@@ -300,8 +300,20 @@ impl Drop for Swapchain {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum AcquireError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The connection to the device has been lost.
+    DeviceLost,
+
+    /// The timeout of the function has been reached before an image was available.
     Timeout,
+
+    /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
+
+    /// The surface has changed in a way that makes the swapchain unusable. You must query the
+    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 }
 
@@ -309,9 +321,19 @@ impl error::Error for AcquireError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            AcquireError::OomError(_) => "not enough memory",
+            AcquireError::DeviceLost => "the connection to the device has been lost",
             AcquireError::Timeout => "no image is available for acquiring yet",
             AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
             AcquireError::OutOfDate => "the swapchain needs to be recreated",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            AcquireError::OomError(ref err) => Some(err),
+            _ => None
         }
     }
 }
@@ -327,6 +349,9 @@ impl From<Error> for AcquireError {
     #[inline]
     fn from(err: Error) -> AcquireError {
         match err {
+            err @ Error::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
+            Error::DeviceLost => AcquireError::DeviceLost,
             Error::SurfaceLost => AcquireError::SurfaceLost,
             Error::OutOfDate => AcquireError::OutOfDate,
             _ => panic!("unexpected error: {:?}", err)
