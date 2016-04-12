@@ -19,7 +19,6 @@ use std::vec::IntoIter;
 
 use instance::Instance;
 use instance::PhysicalDevice;
-use swapchain::Surface;
 
 use check_errors;
 use OomError;

@@ -38,20 +38,6 @@
 //! - `VK_KHR_win32_surface`
 //!
 
-use std::ffi::CStr;
-use std::ptr;
-use std::sync::Arc;
-use std::vec::IntoIter;
-
-use instance::Instance;
-use instance::PhysicalDevice;
-
-use check_errors;
-use OomError;
-use VulkanObject;
-use VulkanPointers;
-use vk;
-
 pub use self::surface::Capabilities;
 pub use self::surface::Surface;
 pub use self::surface::PresentMode;
