@@ -18,6 +18,7 @@ use crossbeam::sync::MsQueue;
 
 use device::Device;
 use device::Queue;
+use format::Format;
 use format::FormatDesc;
 use image::sys::Dimensions;
 use image::sys::UnsafeImage;
@@ -77,14 +78,15 @@ impl Swapchain {
     /// - Panicks if the device and the surface don't belong to the same instance.
     /// - Panicks if `color_attachment` is false in `usage`.
     ///
+    #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
-        where F: FormatDesc + Clone, S: Into<SharingMode>
+        where F: FormatDesc, S: Into<SharingMode>
     {
-        Swapchain::new_inner(device, surface, num_images, format, dimensions, layers, usage,
-                             sharing, transform, alpha, mode, clipped)
+        Swapchain::new_inner(device, surface, num_images, format.format(), dimensions, layers,
+                             usage, sharing.into(), transform, alpha, mode, clipped)
     }
 
     // TODO:
@@ -92,11 +94,10 @@ impl Swapchain {
 
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
-    fn new_inner<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
-                       dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
-                       transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                       clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
-        where F: FormatDesc + Clone, S: Into<SharingMode>
+    fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
+                 dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: SharingMode,
+                 transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
+                 clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         // FIXME: check that the parameters are supported
 
@@ -122,7 +123,7 @@ impl Swapchain {
                 flags: 0,   // reserved
                 surface: surface.internal_object(),
                 minImageCount: num_images,
-                imageFormat: format.format() as u32,
+                imageFormat: format as u32,
                 imageColorSpace: vk::COLORSPACE_SRGB_NONLINEAR_KHR,     // only available value
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
@@ -166,9 +167,9 @@ impl Swapchain {
         };
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
-            let unsafe_image = UnsafeImage::from_raw(device, image, usage, format.format(),
+            let unsafe_image = UnsafeImage::from_raw(device, image, usage, format,
                                                      Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1);
-            SwapchainImage::from_raw(unsafe_image, format.format(), &swapchain, id as u32).unwrap()     // TODO: propagate error
+            SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 
         {
