@@ -81,6 +81,7 @@ impl<L> Framebuffer<L> {
 
             for &(ref a, _, _, _) in attachments.iter() {
                 debug_assert!(a.identity_swizzle());
+                // TODO: add more checks with debug_assert!
 
                 let atch_dims = a.parent().dimensions();
                 if atch_dims.width() < dimensions.0 || atch_dims.height() < dimensions.1 ||
