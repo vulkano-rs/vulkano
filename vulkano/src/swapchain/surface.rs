@@ -645,3 +645,64 @@ impl ColorSpace {
         ColorSpace::SrgbNonLinear
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ptr;
+    use swapchain::Surface;
+    use swapchain::SurfaceCreationError;
+
+    #[test]
+    fn khr_win32_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_hwnd(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_xcb_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_xlib_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_wayland_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_wayland(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_mir_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_mir(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_android_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_anativewindow(&instance, ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+}
