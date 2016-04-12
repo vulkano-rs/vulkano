@@ -10,10 +10,12 @@ addons:
   apt:
     sources:
     - ubuntu-toolchain-r-test
+    - george-edison55-precise-backports     # recent version of cmake
     packages:
     - gcc-4.8
     - g++-4.8       # required to compile glslang
     - clang
+    - cmake
 
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
