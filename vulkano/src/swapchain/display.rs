@@ -7,6 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Allows you to create surfaces that fill a whole display, outside of the windowing system.
+//! 
+//! As far as the author knows, no existing device supports these features. Therefore the code here
+//! is mostly a draft and needs rework in both the API and the implementation.
+
 use std::ffi::CStr;
 use std::ptr;
 use std::sync::Arc;
