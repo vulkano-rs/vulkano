@@ -62,8 +62,11 @@ impl UnsafeRenderPass {
         let vk = device.pointers();
 
         // TODO: check the validity of the renderpass layout with debug_assert!
+        //   - If the first use of an attachment in this render pass is as an input attachment, and the attachment is not also used as a color or depth/stencil attachment in the same subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
 
         let attachments = attachments.clone().map(|attachment| {
+            debug_assert!(attachment.samples.is_power_of_two());
+
             vk::AttachmentDescription {
                 flags: 0,       // FIXME: may alias flag
                 format: attachment.format as u32,
@@ -84,8 +87,40 @@ impl UnsafeRenderPass {
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
         let attachment_references = passes.clone().flat_map(|pass| {
+            // Performing some validation with debug asserts.
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
+            debug_assert!(pass.resolve_attachments.iter().all(|a| {
+                              attachments[a.0].samples == 1
+                          }));
+            debug_assert!(pass.resolve_attachments.is_empty() ||
+                          pass.color_attachments.iter().all(|a| {
+                              attachments[a.0].samples > 1
+                          }));
+            debug_assert!(pass.resolve_attachments.is_empty() ||
+                          pass.resolve_attachments.iter().zip(pass.color_attachments.iter())
+                              .all(|(r, c)| {
+                                  attachments[r.0].format == attachments[c.0].format
+                              }));
+            debug_assert!(pass.color_attachments.iter().cloned()
+                              .chain(pass.depth_stencil.clone().into_iter())
+                              .chain(pass.input_attachments.iter().cloned())
+                              .chain(pass.resolve_attachments.iter().cloned())
+                              .all(|(a, _)| {
+                                  pass.preserve_attachments.iter().find(|&&b| a == b).is_none()
+                              }));
+            debug_assert!(pass.color_attachments.iter().cloned()
+                              .chain(pass.depth_stencil.clone().into_iter())
+                              .all(|(atch, layout)| {
+                                  if let Some(r) = pass.input_attachments.iter()
+                                                                         .find(|r| r.0 == atch)
+                                  {
+                                      r.1 == layout
+                                  } else {
+                                      true
+                                  }
+                              }));
+
             let resolve = pass.resolve_attachments.into_iter().map(|(offset, img_la)| {
                 debug_assert!(offset < attachments.len());
                 vk::AttachmentReference { attachment: offset as u32, layout: img_la as u32, }
