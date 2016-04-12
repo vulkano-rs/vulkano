@@ -197,10 +197,9 @@ impl Swapchain {
         let vk = self.device.pointers();
 
         unsafe {
-            // TODO: AMD driver crashes when we use the pool
-            //let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore from \
-            //                                                       the swapchain semaphores pool");
-            let semaphore = Semaphore::new(&self.device).unwrap();
+            let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore \
+                                                                   from the swapchain semaphores \
+                                                                   pool");
 
             let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
                                               .saturating_add(timeout.subsec_nanos() as u64);
@@ -242,7 +241,7 @@ impl Swapchain {
                                                     not acquired")
         };
 
-        // FIXME: the semaphore will be destroyed ; need to return it
+        // FIXME: the semaphore may be destroyed ; need to return it
 
         unsafe {
             let mut result = mem::uninitialized();
@@ -265,7 +264,7 @@ impl Swapchain {
             //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
         }
 
-        //self.semaphores_pool.push(wait_semaphore);        // TODO: AMD driver crashes when we use the pool
+        self.semaphores_pool.push(wait_semaphore);
         Ok(())
     }
 
