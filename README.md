@@ -7,8 +7,20 @@ It follows the Rust philosophy, which is that as long as you don't use unsafe co
 be able to trigger any undefined behavior. In the case of Vulkan, this means that non-unsafe code
 should always conform to valid API usage.
 
-Vulkano is *not* a high level library. It provides only the minimal features required to make
-using the Vulkan API safe.
+What does vulkano do?
+
+- Provides a low-levelish API around Vulkan. It doesn't hide what it does, but provides some
+  confort types.
+- Plans to prevents all invalid API usages, even the most obscure ones. The purpose of vulkano
+  is not to draw a teapot, but to cover all possible usages of Vulkan and detect all the
+  possible problems. Invalid API usage is prevented thanks to both compile-time checks and
+  runtime checks.
+- Handles synchronization on the GPU side for you, as this aspect of Vulkan is both annoying
+  to handle and error-prone. Dependencies between submissions are automatically detected, and
+  semaphores are managed automatically. The behavior of the library can be customized thanks
+  to unsafe trait implementations.
+- Tries to be convenient to use. Nobody is going to use a library that requires you to browse
+  the documentation for hours for every single operation.
 
 **Warning: this library breaks every five minutes for the moment.**
 
@@ -20,7 +32,7 @@ This repository contains three libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
-- `glsl-to-spirv` can compile GLSL to SPIR-V.
+- `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`.
 
 ## License
 
