@@ -11,6 +11,7 @@ use std::mem;
 use std::ptr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::ops::Range;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
@@ -176,17 +177,20 @@ impl MappedDeviceMemory {
     ///   the `MappedDeviceMemory`.
     ///
     #[inline]
-    pub unsafe fn read_write<T: ?Sized>(&self) -> CpuAccess<T> where T: Content + 'static {
+    pub unsafe fn read_write<T: ?Sized>(&self, range: Range<usize>) -> CpuAccess<T>
+        where T: Content + 'static
+    {
         let vk = self.memory.device().pointers();
-        let pointer = T::ref_from_ptr(self.pointer, self.memory.size()).unwrap();       // TODO: error
+        let pointer = T::ref_from_ptr((self.pointer as usize + range.start) as *mut _,
+                                      range.end - range.start).unwrap();       // TODO: error
 
         if !self.coherent {
             let range = vk::MappedMemoryRange {
                 sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
                 pNext: ptr::null(),
                 memory: self.memory.internal_object(),
-                offset: 0,
-                size: vk::WHOLE_SIZE,
+                offset: range.start as u64,
+                size: (range.end - range.start) as u64,
             };
 
             // TODO: check result?
@@ -194,9 +198,10 @@ impl MappedDeviceMemory {
         }
 
         CpuAccess {
+            pointer: pointer,
             mem: self,
             coherent: self.coherent,
-            pointer: pointer,
+            range: range,
         }
     }
 }
@@ -219,6 +224,7 @@ pub struct CpuAccess<'a, T: ?Sized + 'a> {
     pointer: *mut T,
     mem: &'a MappedDeviceMemory,
     coherent: bool,
+    range: Range<usize>,
 }
 
 impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
@@ -231,6 +237,7 @@ impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
             pointer: f(self.pointer),
             mem: self.mem,
             coherent: self.coherent,
+            range: self.range.clone(),  // TODO: ?
         }
     }
 }
@@ -265,8 +272,8 @@ impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
                 sType: vk::STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
                 pNext: ptr::null(),
                 memory: self.mem.memory().internal_object(),
-                offset: 0,
-                size: vk::WHOLE_SIZE,
+                offset: self.range.start as u64,
+                size: (self.range.end - self.range.start) as u64,
             };
 
             // TODO: check result?

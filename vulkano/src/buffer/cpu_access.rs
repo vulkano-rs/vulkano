@@ -184,8 +184,11 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
             try!(submission.wait(timeout));
         }
 
+        let offset = self.memory.offset();
+        let range = offset .. offset + self.inner.size();
+
         Ok(CpuAccess {
-            inner: unsafe { self.memory.mapped_memory().unwrap().read_write() },
+            inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
             lock: submission,
         })
     }
@@ -206,7 +209,8 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
 
     #[inline]
     fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
+        let offset = self.memory.offset();
+        offset .. offset + self.size()
     }
 
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
