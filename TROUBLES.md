@@ -31,3 +31,7 @@
   and `vulkano`.
 
 - No way to set the alignment of a struct member, or to force the size of a struct to be a multiple of a certain size.
+
+- The fact that is legal to implement `Deref` and return a different object every time means that it is dangerous to interface with a `Foo`
+  through a `P where P: Deref<Foo>`. That `P` could return several different `Foo`s, and the implementation can't rely on the fact that the
+  object will be the same every time.
