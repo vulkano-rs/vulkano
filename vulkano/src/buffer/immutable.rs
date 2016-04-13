@@ -37,17 +37,19 @@ use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
-use memory::DeviceMemory;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 use OomError;
 
 /// Buffer that is written once then read for as long as it is alive.
-pub struct ImmutableBuffer<T: ?Sized> {
+pub struct ImmutableBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 
-    memory: DeviceMemory,
+    memory: A::Alloc,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -118,11 +120,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             device_local.chain(any).next().unwrap()
         };
 
-        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
-        //       fulfill any alignment requirement
-
-        let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-        try!(buffer.bind_memory(&mem, 0));
+        let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
+                                         mem_reqs.size, mem_reqs.alignment));
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        try!(buffer.bind_memory(mem.memory(), mem.offset()));
 
         Ok(Arc::new(ImmutableBuffer {
             inner: buffer,
@@ -133,7 +134,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             marker: PhantomData,
         }))
     }
+}
 
+impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -150,7 +153,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     }
 }
 
-unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
@@ -163,7 +168,8 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + S
 
     #[inline]
     fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
+        let offset = self.memory.offset();
+        offset .. offset + self.size()
     }
 
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
@@ -224,6 +230,8 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + S
     }
 }
 
-unsafe impl<T: ?Sized> TypedBuffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> TypedBuffer for ImmutableBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     type Content = T;
 }

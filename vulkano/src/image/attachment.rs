@@ -59,12 +59,14 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::Transition;
-use memory::DeviceMemory;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 /// Image whose purpose is to be used as a framebuffer attachment.
 #[derive(Debug)]
-pub struct AttachmentImage<F> {
+pub struct AttachmentImage<F, A = StdMemoryPool> where A: MemoryPool {
     // Inner implementation.
     image: UnsafeImage,
 
@@ -72,7 +74,7 @@ pub struct AttachmentImage<F> {
     view: UnsafeImageView,
 
     // Memory used to back the image.
-    memory: DeviceMemory,
+    memory: A::Alloc,
 
     // Format.
     format: F,
@@ -161,11 +163,10 @@ impl<F> AttachmentImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
-        //       fulfill any alignment requirement
-
-        let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-        unsafe { try!(image.bind_memory(&mem, 0)); }
+        let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
+                                         mem_reqs.size, mem_reqs.alignment));
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
             try!(UnsafeImageView::new(&image, 0 .. 1, 0 .. 1))
@@ -184,7 +185,9 @@ impl<F> AttachmentImage<F> {
             }),
         }))
     }
+}
 
+impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
@@ -193,7 +196,7 @@ impl<F> AttachmentImage<F> {
     }
 }
 
-unsafe impl<F> Image for AttachmentImage<F> where F: 'static + Send + Sync {
+unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
@@ -262,8 +265,8 @@ unsafe impl<F> Image for AttachmentImage<F> where F: 'static + Send + Sync {
     }
 }
 
-unsafe impl<F> ImageClearValue<F::ClearValue> for AttachmentImage<F>
-    where F: FormatDesc + 'static + Send + Sync
+unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
+    where F: FormatDesc + 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
@@ -271,14 +274,18 @@ unsafe impl<F> ImageClearValue<F::ClearValue> for AttachmentImage<F>
     }
 }
 
-unsafe impl<P, F> ImageContent<P> for AttachmentImage<F> where F: 'static + Send + Sync {
+unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn matches_format(&self) -> bool {
         true        // FIXME:
     }
 }
 
-unsafe impl<F: 'static> ImageView for AttachmentImage<F> where F: 'static + Send + Sync {
+unsafe impl<F, A> ImageView for AttachmentImage<F, A>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn parent(&self) -> &Image {
         self

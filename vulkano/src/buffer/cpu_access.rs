@@ -37,8 +37,9 @@ use device::Device;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
-use memory::DeviceMemory;
-use memory::MappedDeviceMemory;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdMemoryPool;
 use sync::FenceWaitError;
 use sync::Sharing;
 
@@ -46,12 +47,12 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized> {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: MappedDeviceMemory,
+    memory: A::Alloc,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -119,11 +120,11 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                            .filter(|t| t.is_host_visible())
                            .next().unwrap();    // Vk specs guarantee that this can't fail
 
-        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
-        //       fulfill any alignment requirement
-
-        let mem = try!(DeviceMemory::alloc_and_map(device, &mem_ty, mem_reqs.size));
-        try!(buffer.bind_memory(mem.memory(), 0));
+        let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
+                                         mem_reqs.size, mem_reqs.alignment));
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!(mem.mapped_memory().is_some());
+        try!(buffer.bind_memory(mem.memory(), mem.offset()));
 
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
@@ -133,7 +134,9 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             marker: PhantomData,
         }))
     }
+}
 
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where A: MemoryPool {
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -150,7 +153,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     }
 }
 
-impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: MemoryPool {
     /// Locks the buffer in order to write its content.
     ///
     /// If the buffer is currently in use by the GPU, this function will block until either the
@@ -181,14 +184,19 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> where T: Content + 'static {
             try!(submission.wait(timeout));
         }
 
+        let offset = self.memory.offset();
+        let range = offset .. offset + self.inner.size();
+
         Ok(CpuAccess {
-            inner: unsafe { self.memory.read_write() },
+            inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
             lock: submission,
         })
     }
 }
 
-unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn inner_buffer(&self) -> &UnsafeBuffer {
         &self.inner
@@ -201,7 +209,8 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> where T: 'static + Send
 
     #[inline]
     fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
+        let offset = self.memory.offset();
+        offset .. offset + self.size()
     }
 
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
@@ -240,7 +249,9 @@ unsafe impl<T: ?Sized> Buffer for CpuAccessibleBuffer<T> where T: 'static + Send
     }
 }
 
-unsafe impl<T: ?Sized> TypedBuffer for CpuAccessibleBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     type Content = T;
 }
 
