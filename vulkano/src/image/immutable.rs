@@ -27,17 +27,19 @@ use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use instance::QueueFamily;
-use memory::DeviceMemory;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it. TODO: clarify because of blit operations
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F> {
+pub struct ImmutableImage<F, A = StdMemoryPool> where A: MemoryPool {
     image: UnsafeImage,
     view: UnsafeImageView,
-    memory: DeviceMemory,
+    memory: A::Alloc,
     format: F,
 }
 
@@ -76,11 +78,9 @@ impl<F> ImmutableImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
-        //       fulfill any alignment requirement
-
-        let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-        unsafe { try!(image.bind_memory(&mem, 0)); }
+        let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
+                                         mem_reqs.size, mem_reqs.alignment));
+        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
             try!(UnsafeImageView::new(&image, 0 .. image.mipmap_levels(),
@@ -94,14 +94,16 @@ impl<F> ImmutableImage<F> {
             format: format,
         }))
     }
+}
 
+impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
         self.image.dimensions()
     }
 }
 
-unsafe impl<F> Image for ImmutableImage<F> where F: 'static + Send + Sync {
+unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
@@ -155,14 +157,18 @@ unsafe impl<F> Image for ImmutableImage<F> where F: 'static + Send + Sync {
     }
 }
 
-unsafe impl<P, F> ImageContent<P> for ImmutableImage<F> where F: 'static + Send + Sync {
+unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn matches_format(&self) -> bool {
         true        // FIXME:
     }
 }
 
-unsafe impl<F: 'static> ImageView for ImmutableImage<F> where F: 'static + Send + Sync {
+unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
     fn parent(&self) -> &Image {
         self

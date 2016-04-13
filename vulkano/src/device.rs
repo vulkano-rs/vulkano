@@ -26,6 +26,7 @@ use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
+use memory::pool::StdMemoryPool;
 use sync::Semaphore;
 
 use Error;
@@ -44,6 +45,7 @@ pub struct Device {
     physical_device: usize,
     device: vk::Device,
     vk: vk::DevicePointers,
+    standard_pool: Mutex<Option<Arc<StdMemoryPool>>>,
     features: Features,
     extensions: DeviceExtensions,
 }
@@ -182,9 +184,16 @@ impl Device {
             physical_device: phys.index(),
             device: device,
             vk: vk,
+            standard_pool: Mutex::new(None),
             features: requested_features.clone(),
             extensions: extensions.clone(),
         });
+
+        // Creating the memory pool.
+        {
+            let mut pool_dest = device.standard_pool.lock().unwrap();
+            *pool_dest = Some(StdMemoryPool::new(&device));
+        }
 
         // querying the queues
         let output_queues = output_queues.into_iter().map(|(family, id)| {
@@ -240,6 +249,12 @@ impl Device {
     pub fn loaded_extensions(&self) -> &DeviceExtensions {
         &self.extensions
     }
+
+    /// Returns the standard memory pool used by default if you don't provide any other pool.
+    #[inline]
+    pub fn standard_pool(&self) -> Arc<StdMemoryPool> {
+        self.standard_pool.lock().unwrap().clone().unwrap()
+    }
 }
 
 impl fmt::Debug for Device {
@@ -270,6 +285,8 @@ impl VulkanPointers for Device {
 impl Drop for Device {
     #[inline]
     fn drop(&mut self) {
+        let _ = self.standard_pool.lock().unwrap().take();
+
         unsafe {
             self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());

@@ -16,59 +16,58 @@ use fnv::FnvHasher;
 
 use device::Device;
 use instance::MemoryType;
-use memory::pool::HostVisibleMemoryTypePool;
-use memory::pool::HostVisibleMemoryTypePoolAlloc;
-use memory::pool::NonHostVisibleMemoryTypePool;
-use memory::pool::NonHostVisibleMemoryTypePoolAlloc;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdHostVisibleMemoryTypePool;
+use memory::pool::StdHostVisibleMemoryTypePoolAlloc;
+use memory::pool::StdNonHostVisibleMemoryTypePool;
+use memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
 use OomError;
 
-pub struct MemoryPool {
+#[derive(Debug)]
+pub struct StdMemoryPool {
     device: Arc<Device>,
 
     // For each memory type index, stores the associated pool.
     pools: Mutex<HashMap<u32, Pool, BuildHasherDefault<FnvHasher>>>,
 }
 
-impl MemoryPool {
+impl StdMemoryPool {
     /// Creates a new pool.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<MemoryPool> {
+    pub fn new(device: &Arc<Device>) -> Arc<StdMemoryPool> {
         let cap = device.physical_device().memory_types().len();
         let hasher = BuildHasherDefault::<FnvHasher>::default();
 
-        Arc::new(MemoryPool {
+        Arc::new(StdMemoryPool {
             device: device.clone(),
             pools: Mutex::new(HashMap::with_capacity_and_hasher(cap, hasher)),
         })
     }
+}
 
-    /// Allocates memory from the pool.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if `device` and `memory_type` don't belong to the same physical device.
-    /// - Panicks if `size` is 0.
-    /// - Panicks if `alignment` is 0.
-    ///
-    pub fn alloc(&self, memory_type: MemoryType, size: usize, alignment: usize)
-                 -> Result<MemoryPoolAlloc, OomError>
+unsafe impl MemoryPool for StdMemoryPool {
+    type Alloc = StdMemoryPoolAlloc;
+
+    fn alloc(me: &Arc<Self>, memory_type: MemoryType, size: usize, alignment: usize)
+             -> Result<StdMemoryPoolAlloc, OomError>
     {
-        let mut pools = self.pools.lock().unwrap();
+        let mut pools = me.pools.lock().unwrap();
 
         match pools.entry(memory_type.id()) {
             Entry::Occupied(entry) => {
                 match entry.get() {
                     &Pool::HostVisible(ref pool) => {
-                        let alloc = try!(HostVisibleMemoryTypePool::alloc(&pool, size, alignment));
-                        let inner = MemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(MemoryPoolAlloc { inner: inner })
+                        let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
+                        Ok(StdMemoryPoolAlloc { inner: inner })
                     },
                     &Pool::NonHostVisible(ref pool) => {
-                        let alloc = try!(NonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
-                        let inner = MemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(MemoryPoolAlloc { inner: inner })
+                        let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
+                        Ok(StdMemoryPoolAlloc { inner: inner })
                     },
                 }
             },
@@ -76,18 +75,18 @@ impl MemoryPool {
             Entry::Vacant(entry) => {
                 match memory_type.is_host_visible() {
                     true => {
-                        let pool = HostVisibleMemoryTypePool::new(&self.device, memory_type);
+                        let pool = StdHostVisibleMemoryTypePool::new(&me.device, memory_type);
                         entry.insert(Pool::HostVisible(pool.clone()));
-                        let alloc = try!(HostVisibleMemoryTypePool::alloc(&pool, size, alignment));
-                        let inner = MemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(MemoryPoolAlloc { inner: inner })
+                        let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
+                        Ok(StdMemoryPoolAlloc { inner: inner })
                     },
                     false => {
-                        let pool = NonHostVisibleMemoryTypePool::new(&self.device, memory_type);
+                        let pool = StdNonHostVisibleMemoryTypePool::new(&me.device, memory_type);
                         entry.insert(Pool::NonHostVisible(pool.clone()));
-                        let alloc = try!(NonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
-                        let inner = MemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(MemoryPoolAlloc { inner: inner })
+                        let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
+                        Ok(StdMemoryPoolAlloc { inner: inner })
                     },
                 }
             },
@@ -95,47 +94,55 @@ impl MemoryPool {
     }
 }
 
+#[derive(Debug)]
 enum Pool {
-    HostVisible(Arc<HostVisibleMemoryTypePool>),
-    NonHostVisible(Arc<NonHostVisibleMemoryTypePool>),
+    HostVisible(Arc<StdHostVisibleMemoryTypePool>),
+    NonHostVisible(Arc<StdNonHostVisibleMemoryTypePool>),
 }
 
-pub struct MemoryPoolAlloc {
-    inner: MemoryPoolAllocInner
+#[derive(Debug)]
+pub struct StdMemoryPoolAlloc {
+    inner: StdMemoryPoolAllocInner
 }
 
-impl MemoryPoolAlloc {
-    #[inline]
-    pub fn memory(&self) -> Memory {
-        match self.inner {
-            MemoryPoolAllocInner::NonHostVisible(ref mem) => Memory::Unmapped(mem.memory()),
-            MemoryPoolAllocInner::HostVisible(ref mem) => Memory::Mapped(mem.memory()),
-        }
-    }
-
-    #[inline]
-    pub fn offset(&self) -> usize {
-        match self.inner {
-            MemoryPoolAllocInner::NonHostVisible(ref mem) => mem.offset(),
-            MemoryPoolAllocInner::HostVisible(ref mem) => mem.offset(),
-        }
-    }
-
+impl StdMemoryPoolAlloc {
     #[inline]
     pub fn size(&self) -> usize {
         match self.inner {
-            MemoryPoolAllocInner::NonHostVisible(ref mem) => mem.size(),
-            MemoryPoolAllocInner::HostVisible(ref mem) => mem.size(),
+            StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.size(),
+            StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.size(),
         }
     }
 }
 
-enum MemoryPoolAllocInner {
-    NonHostVisible(NonHostVisibleMemoryTypePoolAlloc),
-    HostVisible(HostVisibleMemoryTypePoolAlloc),
+unsafe impl MemoryPoolAlloc for StdMemoryPoolAlloc {
+    #[inline]
+    fn memory(&self) -> &DeviceMemory {
+        match self.inner {
+            StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.memory(),
+            StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.memory().memory(),
+        }
+    }
+
+    #[inline]
+    fn mapped_memory(&self) -> Option<&MappedDeviceMemory> {
+        match self.inner {
+            StdMemoryPoolAllocInner::NonHostVisible(_) => None,
+            StdMemoryPoolAllocInner::HostVisible(ref mem) => Some(mem.memory()),
+        }
+    }
+
+    #[inline]
+    fn offset(&self) -> usize {
+        match self.inner {
+            StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.offset(),
+            StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.offset(),
+        }
+    }
 }
 
-pub enum Memory<'a> {
-    Unmapped(&'a DeviceMemory),
-    Mapped(&'a MappedDeviceMemory),
+#[derive(Debug)]
+enum StdMemoryPoolAllocInner {
+    NonHostVisible(StdNonHostVisibleMemoryTypePoolAlloc),
+    HostVisible(StdHostVisibleMemoryTypePoolAlloc),
 }
