@@ -80,6 +80,7 @@ impl<F> ImmutableImage<F> {
 
         let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment));
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
