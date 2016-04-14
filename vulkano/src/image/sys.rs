@@ -481,7 +481,7 @@ impl UnsafeImage {
     #[inline]
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
     {
-        self.bind_memory_raw(memory, offset);
+        self.bind_memory_raw(memory, offset).unwrap()
     }
 
     #[inline]
