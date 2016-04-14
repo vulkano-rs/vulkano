@@ -55,6 +55,13 @@ pub struct Swapchain {
     semaphores_pool: MsQueue<Arc<Semaphore>>,
 
     images_semaphores: Mutex<Vec<Option<Arc<Semaphore>>>>,
+
+    // If true, that means we have used this swapchain to recreate a new swapchain. The current
+    // swapchain can no longer be used for anything except presenting already-acquired images.
+    //
+    // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
+    // we acquire the image.
+    stale: Mutex<bool>,
 }
 
 impl Swapchain {
@@ -82,11 +89,12 @@ impl Swapchain {
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                     clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+                     clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
+                     -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
         where F: FormatDesc, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format.format(), dimensions, layers,
-                             usage, sharing.into(), transform, alpha, mode, clipped)
+                             usage, sharing.into(), transform, alpha, mode, clipped, old_swapchain)
     }
 
     // TODO:
@@ -97,9 +105,24 @@ impl Swapchain {
     fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
                  dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: SharingMode,
                  transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                 clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+                 clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
+                 -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
-        // FIXME: check that the parameters are supported
+        // Checking that the requested parameters match the capabilities.
+        let capabilities = try!(surface.get_capabilities(&device.physical_device()));
+        // TODO: return errors instead
+        assert!(num_images >= capabilities.image_count.start);
+        assert!(num_images < capabilities.image_count.end);
+        assert!(capabilities.supported_formats.iter().find(|&&(f, _)| f == format).is_some());
+        assert!(dimensions[0] >= capabilities.min_image_extent[0]);
+        assert!(dimensions[1] >= capabilities.min_image_extent[1]);
+        assert!(dimensions[0] <= capabilities.max_image_extent[0]);
+        assert!(dimensions[1] <= capabilities.max_image_extent[1]);
+        assert!(layers <= capabilities.max_image_array_layers);
+        assert!((usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) == usage.to_usage_bits());
+        assert!(capabilities.supported_transforms.iter().find(|&&t| t == transform).is_some());
+        assert!(capabilities.supported_composite_alpha.iter().find(|&&a| a == alpha).is_some());
+        assert!(capabilities.present_modes.iter().find(|&&m| m == mode).is_some());
 
         // FIXME: check that the device and the surface belong to the same instance
         let vk = device.pointers();
@@ -109,6 +132,10 @@ impl Swapchain {
         let usage = usage.to_usage_bits();
 
         let sharing = sharing.into();
+
+        if let Some(ref old_swapchain) = old_swapchain {
+            *old_swapchain.stale.lock().unwrap() = false;
+        }
 
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
@@ -135,7 +162,11 @@ impl Swapchain {
                 compositeAlpha: alpha as u32,
                 presentMode: mode as u32,
                 clipped: if clipped { vk::TRUE } else { vk::FALSE },
-                oldSwapchain: 0,      // TODO:
+                oldSwapchain: if let Some(ref old_swapchain) = old_swapchain {
+                    old_swapchain.swapchain
+                } else {
+                    0
+                },
             };
 
             let mut output = mem::uninitialized();
@@ -150,6 +181,7 @@ impl Swapchain {
             swapchain: swapchain,
             semaphores_pool: MsQueue::new(),
             images_semaphores: Mutex::new(Vec::new()),
+            stale: Mutex::new(false),
         });
 
         let images = unsafe {
@@ -196,9 +228,14 @@ impl Swapchain {
     /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
     /// behavior may change).
     pub fn acquire_next_image(&self, timeout: Duration) -> Result<usize, AcquireError> {
-        let vk = self.device.pointers();
-
         unsafe {
+            let stale = self.stale.lock().unwrap();
+            if *stale {
+                return Err(AcquireError::OutOfDate);
+            }
+
+            let vk = self.device.pointers();
+
             let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore \
                                                                    from the swapchain semaphores \
                                                                    pool");
