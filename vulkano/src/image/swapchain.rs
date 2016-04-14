@@ -124,7 +124,8 @@ unsafe impl Image for SwapchainImage {
         let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
         let dependency = dependency.and_then(|d| d.upgrade());
 
-        let signal = Semaphore::new(submission.queue().device()).unwrap();
+        // TODO: use try!()?
+        let signal = Semaphore::new(submission.queue().device());
         let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
 
         if guarded.present_layout {

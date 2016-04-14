@@ -48,21 +48,47 @@ pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
 impl<D> Fence<D> where D: Deref<Target = Device> {
     /// Builds a new fence.
     #[inline]
-    pub fn new(device: &D) -> Result<Arc<Fence<D>>, OomError>
+    pub fn raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         Fence::new_impl(device, false)
     }
 
+    /// Builds a new fence.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &D) -> Arc<Fence<D>>
+        where D: Clone
+    {
+        Arc::new(Fence::raw(device).unwrap())
+    }
+
     /// Builds a new fence already in the "signaled" state.
     #[inline]
-    pub fn signaled(device: &D) -> Result<Arc<Fence<D>>, OomError>
+    pub fn signaled_raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         Fence::new_impl(device, true)
     }
 
-    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Arc<Fence<D>>, OomError>
+    /// Builds a new fence already in the "signaled" state.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn signaled(device: &D) -> Arc<Fence<D>>
+        where D: Clone
+    {
+        Arc::new(Fence::signaled_raw(device).unwrap())
+    }
+
+    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         let device: &Device = &*device_ptr;
@@ -81,12 +107,12 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
             output
         };
 
-        Ok(Arc::new(Fence {
+        Ok(Fence {
             fence: fence,
             device: device_ptr.clone(),
             device_raw: device.internal_object(),
             signaled: AtomicBool::new(signaled),
-        }))
+        })
     }
 
     /// Returns true if the fence is signaled.

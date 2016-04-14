@@ -37,7 +37,7 @@ pub struct Event {
 impl Event {
     /// Builds a new event.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Result<Arc<Event>, OomError> {
+    pub fn raw(device: &Arc<Device>) -> Result<Event, OomError> {
         let vk = device.pointers();
 
         let event = unsafe {
@@ -54,10 +54,21 @@ impl Event {
             output
         };
 
-        Ok(Arc::new(Event {
+        Ok(Event {
             device: device.clone(),
             event: Mutex::new(event),
-        }))
+        })
+    }
+    
+    /// Builds a new event.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>) -> Arc<Event> {
+        Arc::new(Event::raw(device).unwrap())
     }
 
     /// Returns true if the event is signaled.
@@ -80,7 +91,7 @@ impl Event {
     ///
     /// If a command buffer is waiting on this event, it is then unblocked.
     #[inline]
-    pub fn set(&self) -> Result<(), OomError> {
+    pub fn set_raw(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
             let event = self.event.lock().unwrap();
@@ -89,15 +100,39 @@ impl Event {
         }
     }
 
+    /// Changes the `Event` to the signaled state.
+    ///
+    /// If a command buffer is waiting on this event, it is then unblocked.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn set(&self) {
+        self.set_raw().unwrap();
+    }
+
     /// Changes the `Event` to the unsignaled state.
     #[inline]
-    pub fn reset(&self) -> Result<(), OomError> {
+    pub fn reset_raw(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
             let event = self.event.lock().unwrap();
             try!(check_errors(vk.ResetEvent(self.device.internal_object(), *event)).map(|_| ()));
             Ok(())
         }
+    }
+
+    /// Changes the `Event` to the unsignaled state.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn reset(&self) {
+        self.reset_raw().unwrap();
     }
 }
 

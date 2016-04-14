@@ -31,7 +31,7 @@ pub struct Semaphore {
 impl Semaphore {
     /// Builds a new semaphore.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Result<Arc<Semaphore>, OomError> {
+    pub fn raw(device: &Arc<Device>) -> Result<Semaphore, OomError> {
         let vk = device.pointers();
 
         let semaphore = unsafe {
@@ -48,10 +48,21 @@ impl Semaphore {
             output
         };
 
-        Ok(Arc::new(Semaphore {
+        Ok(Semaphore {
             device: device.clone(),
             semaphore: semaphore,
-        }))
+        })
+    }
+    
+    /// Builds a new semaphore.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>) -> Arc<Semaphore> {
+        Arc::new(Semaphore::raw(device).unwrap())
     }
 }
 
