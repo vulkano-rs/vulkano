@@ -39,7 +39,7 @@ pub struct EmptySinglePassRenderPass {
 
 impl EmptySinglePassRenderPass {
     /// Builds the render pass.
-    pub fn new(device: &Arc<Device>) -> Result<Arc<EmptySinglePassRenderPass>, OomError> {
+    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, OomError> {
         let rp = try!(unsafe {
             let pass = LayoutPassDescription {
                 color_attachments: vec![],
@@ -52,9 +52,20 @@ impl EmptySinglePassRenderPass {
             UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
         });
 
-        Ok(Arc::new(EmptySinglePassRenderPass {
+        Ok(EmptySinglePassRenderPass {
             render_pass: rp
-        }))
+        })
+    }
+    
+    /// Builds the render pass.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>) -> Arc<EmptySinglePassRenderPass> {
+        Arc::new(EmptySinglePassRenderPass::raw(device).unwrap())
     }
 }
 

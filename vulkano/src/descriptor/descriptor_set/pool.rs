@@ -90,6 +90,7 @@ impl DescriptorPool {
     /// - Panicks if the device or host ran out of memory.
     ///
     // FIXME: capacity of the pool
+    #[inline]
     pub fn new(device: &Arc<Device>) -> Arc<DescriptorPool> {
         Arc::new(DescriptorPool::raw(device).unwrap())
     }
