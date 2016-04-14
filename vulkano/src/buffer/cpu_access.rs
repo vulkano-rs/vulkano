@@ -12,7 +12,9 @@
 //! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
 //! but may not perform as well as other buffer types.
 //! 
-//! Each access from the CPU or from the GPU locks the whole buffer.
+//! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
+//! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
+//! or write and write simultaneously will block.
 
 use std::marker::PhantomData;
 use std::mem;
@@ -21,7 +23,9 @@ use std::ops::DerefMut;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::MutexGuard;
+use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
+use std::sync::RwLockWriteGuard;
 use std::sync::Weak;
 use std::time::Duration;
 use smallvec::SmallVec;
@@ -59,10 +63,16 @@ pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool
 
     // Latest submission that uses this buffer.
     // Also used to block any attempt to submit this buffer while it is accessed by the CPU.
-    latest_submission: Mutex<Option<Weak<Submission>>>,      // TODO: can use `Weak::new()` once it's stabilized
+    latest_submission: RwLock<LatestSubmission>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
+}
+
+#[derive(Debug)]
+struct LatestSubmission {
+    read_submissions: Mutex<Vec<Weak<Submission>>>,
+    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<T> CpuAccessibleBuffer<T> {
@@ -130,7 +140,10 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
-            latest_submission: Mutex::new(None),
+            latest_submission: RwLock::new(LatestSubmission {
+                read_submissions: Mutex::new(vec![]),
+                write_submission: None,
+            }),
             marker: PhantomData,
         }))
     }
@@ -162,10 +175,23 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it will block until you unlock it.
-    // TODO: this could be misleading as there's no difference between `read` and `write`
+    // TODO: remove timeout parameter since CPU-side locking can't use it
     #[inline]
-    pub fn read(&self, timeout: Duration) -> Result<CpuAccess<T>, FenceWaitError> {
-        self.write(timeout)
+    pub fn read(&self, timeout: Duration) -> Result<ReadLock<T>, FenceWaitError> {
+        let submission = self.latest_submission.read().unwrap();
+
+        // TODO: should that set the write_submission to None?
+        if let Some(submission) = submission.write_submission.clone().and_then(|s| s.upgrade()) {
+            try!(submission.wait(timeout));
+        }
+
+        let offset = self.memory.offset();
+        let range = offset .. offset + self.inner.size();
+
+        Ok(ReadLock {
+            inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
+            lock: submission,
+        })
     }
 
     /// Locks the buffer in order to write its content.
@@ -176,18 +202,28 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it will block until you unlock it.
+    // TODO: remove timeout parameter since CPU-side locking can't use it
     #[inline]
-    pub fn write(&self, timeout: Duration) -> Result<CpuAccess<T>, FenceWaitError> {
-        let submission = self.latest_submission.lock().unwrap();
+    pub fn write(&self, timeout: Duration) -> Result<WriteLock<T>, FenceWaitError> {
+        let mut submission = self.latest_submission.write().unwrap();
 
-        if let Some(submission) = submission.as_ref().and_then(|s| s.upgrade()) {
+        {
+            let mut read_submissions = submission.read_submissions.get_mut().unwrap();
+            for submission in read_submissions.drain(..) {
+                if let Some(submission) = submission.upgrade() {
+                    try!(submission.wait(timeout));
+                }
+            }
+        }
+
+        if let Some(submission) = submission.write_submission.take().and_then(|s| s.upgrade()) {
             try!(submission.wait(timeout));
         }
 
         let offset = self.memory.offset();
         let range = offset .. offset + self.inner.size();
 
-        Ok(CpuAccess {
+        Ok(WriteLock {
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
             lock: submission,
         })
@@ -222,8 +258,8 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
         true
     }
 
-    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>, submission: &Arc<Submission>)
-                         -> GpuAccessResult
+    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
+                         submission: &Arc<Submission>) -> GpuAccessResult
     {
         let queue_id = submission.queue().family().id();
         if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
@@ -231,18 +267,36 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
                    queue_id, self.queue_families);
         }
 
-        let dependency = {
-            let mut latest_submission = self.latest_submission.lock().unwrap();
-            mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
+        let is_written = {
+            let mut written = false;
+            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
+            written
         };
-        let dependency = dependency.and_then(|d| d.upgrade());
+
+        let dependencies = if is_written {
+            let mut submissions = self.latest_submission.write().unwrap();
+
+            let write_dep = mem::replace(&mut submissions.write_submission,
+                                         Some(Arc::downgrade(submission)));
+
+            let mut read_submissions = submissions.read_submissions.get_mut().unwrap();
+            let read_submissions = mem::replace(&mut *read_submissions, Vec::new());
+            read_submissions.into_iter()
+                            .chain(write_dep.into_iter())
+                            .filter_map(|s| s.upgrade())
+                            .collect::<Vec<_>>()
+
+        } else {
+            let submissions = self.latest_submission.read().unwrap();
+
+            let mut read_submissions = submissions.read_submissions.lock().unwrap();
+            read_submissions.push(Arc::downgrade(submission));
+
+            submissions.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
+        };
 
         GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
+            dependencies: dependencies,
             additional_wait_semaphore: None,
             additional_signal_semaphore: None,
         }
@@ -257,27 +311,27 @@ unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
 
 /// Object that can be used to read or write the content of a `CpuAccessBuffer`.
 ///
-/// Note that this object holds a mutex guard on the chunk. If another thread tries to access
+/// Note that this object holds a rwlock read guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
-pub struct CpuAccess<'a, T: ?Sized + 'a> {
+pub struct ReadLock<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: MutexGuard<'a, Option<Weak<Submission>>>,
+    lock: RwLockReadGuard<'a, LatestSubmission>,
 }
 
-impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
-    /// Makes a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
+impl<'a, T: ?Sized + 'a> ReadLock<'a, T> {
+    /// Makes a new `ReadLock` to access a sub-part of the current `ReadLock`.
     #[inline]
-    pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U>
+    pub fn map<U: ?Sized + 'a, F>(self, f: F) -> ReadLock<'a, U>
         where F: FnOnce(&mut T) -> &mut U
     {
-        CpuAccess {
+        ReadLock {
             inner: self.inner.map(|ptr| unsafe { f(&mut *ptr) as *mut _ }),
             lock: self.lock,
         }
     }
 }
 
-impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
+impl<'a, T: ?Sized + 'a> Deref for ReadLock<'a, T> {
     type Target = T;
 
     #[inline]
@@ -286,7 +340,38 @@ impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + 'a> DerefMut for CpuAccess<'a, T> {
+/// Object that can be used to read or write the content of a `CpuAccessBuffer`.
+///
+/// Note that this object holds a rwlock write guard on the chunk. If another thread tries to access
+/// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
+pub struct WriteLock<'a, T: ?Sized + 'a> {
+    inner: MemCpuAccess<'a, T>,
+    lock: RwLockWriteGuard<'a, LatestSubmission>,
+}
+
+impl<'a, T: ?Sized + 'a> WriteLock<'a, T> {
+    /// Makes a new `WriteLock` to access a sub-part of the current `WriteLock`.
+    #[inline]
+    pub fn map<U: ?Sized + 'a, F>(self, f: F) -> WriteLock<'a, U>
+        where F: FnOnce(&mut T) -> &mut U
+    {
+        WriteLock {
+            inner: self.inner.map(|ptr| unsafe { f(&mut *ptr) as *mut _ }),
+            lock: self.lock,
+        }
+    }
+}
+
+impl<'a, T: ?Sized + 'a> Deref for WriteLock<'a, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        self.inner.deref()
+    }
+}
+
+impl<'a, T: ?Sized + 'a> DerefMut for WriteLock<'a, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.inner.deref_mut()
