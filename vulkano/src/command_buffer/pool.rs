@@ -41,8 +41,8 @@ impl CommandBufferPool {
     /// Panicks if the queue family doesn't belong to the same physical device as `device`.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, queue_family: &QueueFamily)
-               -> Result<Arc<CommandBufferPool>, OomError>
+    pub fn raw(device: &Arc<Device>, queue_family: &QueueFamily)
+               -> Result<CommandBufferPool, OomError>
     {
         assert_eq!(device.physical_device().internal_object(),
                    queue_family.physical_device().internal_object());
@@ -63,11 +63,28 @@ impl CommandBufferPool {
             output
         };
 
-        Ok(Arc::new(CommandBufferPool {
+        Ok(CommandBufferPool {
             pool: Mutex::new(pool),
             device: device.clone(),
             queue_family_index: queue_family.id(),
-        }))
+        })
+    }
+    
+    /// Creates a new pool.
+    ///
+    /// The command buffers created with this pool can only be executed on queues of the given
+    /// family.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the queue family doesn't belong to the same physical device as `device`.
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>, queue_family: &QueueFamily)
+               -> Arc<CommandBufferPool>
+    {
+        Arc::new(CommandBufferPool::raw(device, queue_family).unwrap())
     }
 
     /// Returns the device this command pool was created with.
