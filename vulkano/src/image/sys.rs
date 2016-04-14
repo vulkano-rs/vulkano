@@ -458,8 +458,8 @@ impl UnsafeImage {
         }
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
-                              -> Result<(), OomError>
+    pub unsafe fn bind_memory_raw(&self, memory: &DeviceMemory, offset: usize)
+                                  -> Result<(), OomError>
     {
         let vk = self.device.pointers();
 
@@ -476,6 +476,12 @@ impl UnsafeImage {
         try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
                                              memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())
+    }
+
+    #[inline]
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
+    {
+        self.bind_memory_raw(memory, offset);
     }
 
     #[inline]
@@ -623,7 +629,7 @@ impl UnsafeImageView {
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
     /// as a framebuffer attachment.
-    pub unsafe fn new(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
+    pub unsafe fn raw(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
                       -> Result<UnsafeImageView, OomError>
     {
         let vk = image.device.pointers();
@@ -673,6 +679,21 @@ impl UnsafeImageView {
             identity_swizzle: true,     // FIXME:
             format: image.format,
         })
+    }
+    
+    /// Creates a new view from an image.
+    ///
+    /// Note that you must create the view with identity swizzling if you want to use this view
+    /// as a framebuffer attachment.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    #[inline]
+    pub unsafe fn new(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
+                      -> UnsafeImageView
+    {
+        UnsafeImageView::raw(image, mipmap_levels, array_layers).unwrap()
     }
 
     #[inline]

@@ -53,9 +53,9 @@ impl UnsafeDescriptorSet {
     /// - Panicks if the pool and the layout were not created from the same `Device`.
     ///
     // FIXME: this has to check whether there's still enough room in the pool
-    pub unsafe fn uninitialized(pool: &Arc<DescriptorPool>,
-                                layout: &Arc<UnsafeDescriptorSetLayout>)
-                                -> Result<UnsafeDescriptorSet, OomError>
+    pub unsafe fn uninitialized_raw(pool: &Arc<DescriptorPool>,
+                                    layout: &Arc<UnsafeDescriptorSetLayout>)
+                                    -> Result<UnsafeDescriptorSet, OomError>
     {
         assert_eq!(&**pool.device() as *const Device, &**layout.device() as *const Device);
 
@@ -88,6 +88,22 @@ impl UnsafeDescriptorSet {
             resources_image_views: Vec::new(),
             resources_buffers: Vec::new(),
         })
+    }
+    
+    /// Builds a new descriptor set.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the pool and the layout were not created from the same `Device`.
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // FIXME: this has to check whether there's still enough room in the pool
+    #[inline]
+    pub unsafe fn uninitialized(pool: &Arc<DescriptorPool>,
+                                layout: &Arc<UnsafeDescriptorSetLayout>)
+                                -> UnsafeDescriptorSet
+    {
+        UnsafeDescriptorSet::uninitialized_raw(pool, layout).unwrap()
     }
 
     /// Modifies a descriptor set without checking that the writes are correct.

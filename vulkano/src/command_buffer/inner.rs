@@ -1867,7 +1867,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             let mut infos = SmallVec::<[_; 3]>::new();
 
             if !before_command_buffers.is_empty() {
-                // TODO: Use try!()?
+                // TODO: Use try!()? - Mixthos
                 let semaphore = Semaphore::new(queue.device());
                 let semaphore_id = semaphore.internal_object();
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
@@ -1888,7 +1888,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             }
 
             let after_semaphore = if !after_command_buffers.is_empty() {
-                // TODO: Use try!()?
+                // TODO: Use try!()? - Mixthos
                 let semaphore = Semaphore::new(queue.device());
                 let semaphore_id = semaphore.internal_object();
                 post_semaphores_ids.push(semaphore.internal_object());

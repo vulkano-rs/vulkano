@@ -84,8 +84,8 @@ macro_rules! ordered_passes_renderpass {
         }
 
         impl CustomRenderPass {
-            pub fn new(device: &Arc<Device>, formats: &Formats)
-                       -> Result<Arc<CustomRenderPass>, OomError>
+            pub fn raw(device: &Arc<Device>, formats: &Formats)
+                       -> Result<CustomRenderPass, OomError>
             {
                 #![allow(unsafe_code)]
 
@@ -93,10 +93,17 @@ macro_rules! ordered_passes_renderpass {
                     UnsafeRenderPass::new(device, attachments(formats), passes(), dependencies())
                 });
 
-                Ok(Arc::new(CustomRenderPass {
+                Ok(CustomRenderPass {
                     render_pass: rp,
                     formats: formats.clone(),
-                }))
+                })
+            }
+            
+            #[inline]
+            pub fn new(device: &Arc<Device>, formats: &Formats)
+                       -> Arc<CustomRenderPass>
+            {
+                CustomRenderPass::raw(device, formats)
             }
         }
 

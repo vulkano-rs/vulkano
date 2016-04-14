@@ -49,7 +49,7 @@ impl EmptySinglePassRenderPass {
                 preserve_attachments: vec![],
             };
 
-            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
+            UnsafeRenderPass::raw(device, iter::empty(), Some(pass).into_iter(), iter::empty())
         });
 
         Ok(EmptySinglePassRenderPass {
