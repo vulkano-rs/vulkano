@@ -149,7 +149,7 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     ///
     /// Panicks if not all fences belong to the same device.
     pub fn multi_wait<'a, I>(iter: I, timeout: Duration) -> Result<(), FenceWaitError>
-        where I: IntoIterator<Item = &'a Fence>
+        where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
     {
         let mut device: Option<&Device> = None;
 
@@ -157,7 +157,8 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
             match &mut device {
                 dev @ &mut None => *dev = Some(&*fence.device),
                 &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
-                _ => panic!("Tried to wait for multiple fences that didn't belong to the same device"),
+                _ => panic!("Tried to wait for multiple fences that didn't belong to the \
+                             same device"),
             };
 
             if fence.signaled.load(Ordering::Relaxed) {
@@ -207,7 +208,7 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     ///
     /// Panicks if not all fences belong to the same device.
     pub fn multi_reset<'a, I>(iter: I)
-        where I: IntoIterator<Item = &'a Fence>
+        where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
     {
         let mut device: Option<&Device> = None;
 
@@ -342,5 +343,29 @@ mod tests {
         let fence = Fence::signaled(&device).unwrap();
         fence.reset();
         assert!(!fence.ready().unwrap());
+    }
+
+    #[test]
+    #[should_panic = "Tried to wait for multiple fences that didn't belong to the same device"]
+    fn multiwait_different_devices() {
+        let (device1, _) = gfx_dev_and_queue!();
+        let (device2, _) = gfx_dev_and_queue!();
+
+        let fence1 = Fence::signaled(&device1).unwrap();
+        let fence2 = Fence::signaled(&device2).unwrap();
+
+        let _ = Fence::multi_wait([&*fence1, &*fence2].iter().cloned(), Duration::new(0, 10));
+    }
+
+    #[test]
+    #[should_panic = "Tried to reset multiple fences that didn't belong to the same device"]
+    fn multireset_different_devices() {
+        let (device1, _) = gfx_dev_and_queue!();
+        let (device2, _) = gfx_dev_and_queue!();
+
+        let fence1 = Fence::signaled(&device1).unwrap();
+        let fence2 = Fence::signaled(&device2).unwrap();
+
+        let _ = Fence::multi_reset([&*fence1, &*fence2].iter().cloned());
     }
 }
