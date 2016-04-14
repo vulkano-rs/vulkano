@@ -49,7 +49,7 @@ macro_rules! pipeline_layout {
             {
                 let layouts = vec![
                     $(
-                        try!($name::build_set_layout(device))
+                        Arc::new(try!($name::build_set_layout_raw(device)))
                     ),*
                 ];
 
@@ -160,18 +160,28 @@ macro_rules! pipeline_layout {
             impl Set {
                 #[inline]
                 #[allow(non_camel_case_types)]
-                pub fn new<$($field: ValidParameter<$ty>),*>
+                pub fn raw<$($field: ValidParameter<$ty>),*>
                           (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
                            descriptors: &Descriptors<$($field),*>)
-                           -> Result<Arc<Set>, OomError>
+                           -> Result<Set, OomError>
                 {
                     #![allow(unsafe_code)]
                     unsafe {
                         let layout = layout.inner_pipeline_layout().descriptor_set_layout($num).unwrap();
-                        let mut set = try!(UnsafeDescriptorSet::uninitialized(pool, layout));
+                        let mut set = try!(UnsafeDescriptorSet::uninitialized_raw(pool, layout));
                         set.write(descriptors.writes());
-                        Ok(Arc::new(Set { inner: set }))
+                        Ok(Set { inner: set })
                     }
+                }
+                
+                #[inline]
+                #[allow(non_camel_case_types)]
+                pub fn new<$($field: ValidParameter<$ty>),*>
+                          (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
+                           descriptors: &Descriptors<$($field),*>)
+                           -> Arc<Set>
+                {
+                    Arc::new(Set::raw(pool, layout, descriptors).unwrap())
                 }
             }
 
@@ -195,8 +205,8 @@ macro_rules! pipeline_layout {
             }
 
             #[allow(unused_assignments)]
-            pub fn build_set_layout(device: &Arc<Device>)
-                                    -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
+            pub fn build_set_layout_raw(device: &Arc<Device>)
+                                        -> Result<UnsafeDescriptorSetLayout, OomError>
             {
                 let mut descriptors = Vec::new();
                 let mut binding = 0;
@@ -213,7 +223,14 @@ macro_rules! pipeline_layout {
                     binding += 1;
                 )*
 
-                UnsafeDescriptorSetLayout::new(device, descriptors.into_iter())
+                UnsafeDescriptorSetLayout::raw(device, descriptors.into_iter())
+            }
+
+            #[inline]
+            pub fn build_set_layout(device: &Arc<Device>)
+                                    -> Arc<UnsafeDescriptorSetLayout>
+            {
+                Arc::new(build_set_layout_raw(device).unwrap())
             }
         }
 

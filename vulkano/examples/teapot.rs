@@ -78,8 +78,7 @@ fn main() {
     };
 
 
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family())
-                                                  .expect("failed to create command buffer pool");
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family());
 
 
     let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
@@ -162,9 +161,9 @@ fn main() {
     let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
         color: (images[0].format(), 1),
         depth: (vulkano::format::D16Unorm, 1)
-    }).unwrap();
+    });
 
-    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
 
     mod pipeline_layout {
         pipeline_layout!{
@@ -177,7 +176,7 @@ fn main() {
     let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
     let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
         uniforms: &uniform_buffer
-    }).unwrap();
+    });
 
     let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
@@ -214,7 +213,7 @@ fn main() {
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
+        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool)
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
                  color: [0.0, 0.0, 1.0, 1.0].into(),
                  depth: 1.0,
@@ -222,7 +221,7 @@ fn main() {
             .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
                           &vulkano::command_buffer::DynamicState::none(), &set, &())
             .draw_end()
-            .build().unwrap()
+            .build()
     }).collect::<Vec<_>>();
 
     let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();

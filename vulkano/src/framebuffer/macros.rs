@@ -90,7 +90,7 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unsafe_code)]
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::new(device, attachments(formats), passes(), dependencies())
+                    UnsafeRenderPass::raw(device, attachments(formats), passes(), dependencies())
                 });
 
                 Ok(CustomRenderPass {
@@ -103,7 +103,7 @@ macro_rules! ordered_passes_renderpass {
             pub fn new(device: &Arc<Device>, formats: &Formats)
                        -> Arc<CustomRenderPass>
             {
-                CustomRenderPass::raw(device, formats)
+                Arc::new(CustomRenderPass::raw(device, formats).unwrap())
             }
         }
 
