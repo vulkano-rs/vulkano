@@ -41,7 +41,7 @@ macro_rules! ptrs {
                             extern "system" fn $name($(_: $param_ty),*) { panic!("function pointer `{}` not loaded", stringify!($name)) }
                             let name = CString::new(concat!("vk", stringify!($name)).to_owned()).unwrap();
                             let val = f(&name);
-                            if val.is_null() { mem::transmute($name) } else { mem::transmute(val) }
+                            if val.is_null() { mem::transmute($name as *const ()) } else { mem::transmute(val) }
                         },
                     )+
                 }
