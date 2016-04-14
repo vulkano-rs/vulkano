@@ -10,6 +10,7 @@
 use std::error;
 use std::fmt;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -32,9 +33,11 @@ use vk;
 /// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
 /// when the CPU can access a ressource again, a fence has to be used.
 #[derive(Debug)]
-pub struct Fence {
-    device: Arc<Device>,
+pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
     fence: vk::Fence,
+
+    device: D,
+    device_raw: vk::Device,
 
     // If true, we know that the `Fence` is signaled. If false, we don't know.
     // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
@@ -42,20 +45,27 @@ pub struct Fence {
     signaled: AtomicBool,
 }
 
-impl Fence {
+impl<D> Fence<D> where D: Deref<Target = Device> {
     /// Builds a new fence.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Result<Arc<Fence>, OomError> {
+    pub fn new(device: &D) -> Result<Arc<Fence<D>>, OomError>
+        where D: Clone
+    {
         Fence::new_impl(device, false)
     }
 
     /// Builds a new fence already in the "signaled" state.
     #[inline]
-    pub fn signaled(device: &Arc<Device>) -> Result<Arc<Fence>, OomError> {
+    pub fn signaled(device: &D) -> Result<Arc<Fence<D>>, OomError>
+        where D: Clone
+    {
         Fence::new_impl(device, true)
     }
 
-    fn new_impl(device: &Arc<Device>, signaled: bool) -> Result<Arc<Fence>, OomError> {
+    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Arc<Fence<D>>, OomError>
+        where D: Clone
+    {
+        let device: &Device = &*device_ptr;
         let vk = device.pointers();
 
         let fence = unsafe {
@@ -66,13 +76,15 @@ impl Fence {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFence(device.internal_object(), &infos, ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateFence(device.internal_object(), &infos,
+                                             ptr::null(), &mut output)));
             output
         };
 
         Ok(Arc::new(Fence {
-            device: device.clone(),
             fence: fence,
+            device: device_ptr.clone(),
+            device_raw: device.internal_object(),
             signaled: AtomicBool::new(signaled),
         }))
     }
@@ -81,10 +93,13 @@ impl Fence {
     #[inline]
     pub fn ready(&self) -> Result<bool, OomError> {
         unsafe {
+            let device: &Device = &*self.device;
+            assert_eq!(device.internal_object(), self.device_raw);
+
             if self.signaled.load(Ordering::Relaxed) { return Ok(true); }
 
-            let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetFenceStatus(self.device.internal_object(),
+            let vk = device.pointers();
+            let result = try!(check_errors(vk.GetFenceStatus(device.internal_object(),
                                                              self.fence)));
             match result {
                 Success::Success => {
@@ -103,13 +118,16 @@ impl Fence {
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
     pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
         unsafe {
+            let device: &Device = &*self.device;
+            assert_eq!(device.internal_object(), self.device_raw);
+
             if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
 
             let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
                                               .saturating_add(timeout.subsec_nanos() as u64);
 
-            let vk = self.device.pointers();
-            let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
+            let vk = device.pointers();
+            let r = try!(check_errors(vk.WaitForFences(device.internal_object(), 1,
                                                        &self.fence, vk::TRUE, timeout_ns)));
 
             match r {
@@ -133,13 +151,13 @@ impl Fence {
     pub fn multi_wait<'a, I>(iter: I, timeout: Duration) -> Result<(), FenceWaitError>
         where I: IntoIterator<Item = &'a Fence>
     {
-        let mut device = None;
+        let mut device: Option<&Device> = None;
 
         let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().filter_map(|fence| {
             match &mut device {
-                dev @ &mut None => *dev = Some(fence.device.clone()),
+                dev @ &mut None => *dev = Some(&*fence.device),
                 &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
-                _ => panic!("Tried to wait for  multiple fences that didn't belong to the same device"),
+                _ => panic!("Tried to wait for multiple fences that didn't belong to the same device"),
             };
 
             if fence.signaled.load(Ordering::Relaxed) {
@@ -174,8 +192,11 @@ impl Fence {
     #[inline]
     pub fn reset(&self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.ResetFences(self.device.internal_object(), 1, &self.fence);
+            let device: &Device = &*self.device;
+            assert_eq!(device.internal_object(), self.device_raw);
+
+            let vk = device.pointers();
+            vk.ResetFences(device.internal_object(), 1, &self.fence);
             self.signaled.store(false, Ordering::Relaxed);
         }
     }
@@ -188,11 +209,11 @@ impl Fence {
     pub fn multi_reset<'a, I>(iter: I)
         where I: IntoIterator<Item = &'a Fence>
     {
-        let mut device = None;
+        let mut device: Option<&Device> = None;
 
         let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().map(|fence| {
             match &mut device {
-                dev @ &mut None => *dev = Some(fence.device.clone()),
+                dev @ &mut None => *dev = Some(&*fence.device),
                 &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
                 _ => panic!("Tried to reset multiple fences that didn't belong to the same device"),
             };
@@ -210,7 +231,7 @@ impl Fence {
     }
 }
 
-unsafe impl VulkanObject for Fence {
+unsafe impl<D> VulkanObject for Fence<D> where D: Deref<Target = Device> {
     type Object = vk::Fence;
 
     #[inline]
@@ -219,12 +240,15 @@ unsafe impl VulkanObject for Fence {
     }
 }
 
-impl Drop for Fence {
+impl<D> Drop for Fence<D> where D: Deref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyFence(self.device.internal_object(), self.fence, ptr::null());
+            let device: &Device = &*self.device;
+            assert_eq!(device.internal_object(), self.device_raw);
+
+            let vk = device.pointers();
+            vk.DestroyFence(device.internal_object(), self.fence, ptr::null());
         }
     }
 }
