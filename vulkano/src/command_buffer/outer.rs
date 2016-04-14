@@ -63,11 +63,24 @@ pub struct PrimaryCommandBufferBuilder {
 impl PrimaryCommandBufferBuilder {
     /// Builds a new primary command buffer and start recording commands in it.
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>)
+    pub fn raw(pool: &Arc<CommandBufferPool>)
                -> Result<PrimaryCommandBufferBuilder, OomError>
     {
         let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None));
         Ok(PrimaryCommandBufferBuilder { inner: inner })
+    }
+    
+    /// Builds a new primary command buffer and start recording commands in it.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(pool: &Arc<CommandBufferPool>)
+               -> PrimaryCommandBufferBuilder
+    {
+        PrimaryCommandBufferBuilder::raw(pool).unwrap()
     }
 
     /// Writes data to a buffer.
@@ -268,9 +281,20 @@ impl PrimaryCommandBufferBuilder {
 
     /// Finish recording commands and build the command buffer.
     #[inline]
-    pub fn build(self) -> Result<Arc<PrimaryCommandBuffer>, OomError> {
+    pub fn build_raw(self) -> Result<PrimaryCommandBuffer, OomError> {
         let inner = try!(self.inner.build());
-        Ok(Arc::new(PrimaryCommandBuffer { inner: inner }))
+        Ok(PrimaryCommandBuffer { inner: inner })
+    }
+
+    /// Finish recording commands and build the command buffer.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn build(self) -> Arc<PrimaryCommandBuffer> {
+        Arc::new(self.build_raw().unwrap())
     }
 }
 
@@ -515,7 +539,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     ///
     /// The `framebuffer` parameter is optional and can be used as an optimisation.
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
+    pub fn raw(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
                framebuffer: Option<&Arc<Framebuffer<R>>>)
                -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
         where R: 'static + Send + Sync
@@ -527,6 +551,23 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
             render_pass_subpass: subpass.index(),
             framebuffer: framebuffer.map(|fb| fb.clone()),
         })
+    }
+
+    /// Builds a new secondary command buffer and start recording commands in it.
+    ///
+    /// The `framebuffer` parameter is optional and can be used as an optimisation.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
+               framebuffer: Option<&Arc<Framebuffer<R>>>)
+               -> SecondaryGraphicsCommandBufferBuilder<R>
+        where R: 'static + Send + Sync
+    {
+        SecondaryGraphicsCommandBufferBuilder::raw(pool, subpass, framebuffer).unwrap()
     }
 
     /// Calls `vkCmdDraw`.
@@ -596,14 +637,25 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
     /// Finish recording commands and build the command buffer.
     #[inline]
-    pub fn build(self) -> Result<Arc<SecondaryGraphicsCommandBuffer<R>>, OomError> {
+    pub fn build_raw(self) -> Result<SecondaryGraphicsCommandBuffer<R>, OomError> {
         let inner = try!(self.inner.build());
 
-        Ok(Arc::new(SecondaryGraphicsCommandBuffer {
+        Ok(SecondaryGraphicsCommandBuffer {
             inner: inner,
             render_pass: self.render_pass,
             render_pass_subpass: self.render_pass_subpass,
-        }))
+        })
+    }
+
+    /// Finish recording commands and build the command buffer.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn build(self) -> Arc<SecondaryGraphicsCommandBuffer<R>> {
+        Arc::new(self.build_raw().unwrap())
     }
 }
 
@@ -628,11 +680,24 @@ pub struct SecondaryComputeCommandBufferBuilder {
 impl SecondaryComputeCommandBufferBuilder {
     /// Builds a new secondary command buffer and start recording commands in it.
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>)
+    pub fn raw(pool: &Arc<CommandBufferPool>)
                -> Result<SecondaryComputeCommandBufferBuilder, OomError>
     {
         let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None));
         Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
+    }
+
+    /// Builds a new secondary command buffer and start recording commands in it.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(pool: &Arc<CommandBufferPool>)
+               -> SecondaryComputeCommandBufferBuilder
+    {
+        SecondaryComputeCommandBufferBuilder::raw(pool).unwrap()
     }
 
     /// Writes data to a buffer.
@@ -686,9 +751,20 @@ impl SecondaryComputeCommandBufferBuilder {
 
     /// Finish recording commands and build the command buffer.
     #[inline]
-    pub fn build(self) -> Result<Arc<SecondaryComputeCommandBuffer>, OomError> {
+    pub fn build_raw(self) -> Result<SecondaryComputeCommandBuffer, OomError> {
         let inner = try!(self.inner.build());
-        Ok(Arc::new(SecondaryComputeCommandBuffer { inner: inner }))
+        Ok(SecondaryComputeCommandBuffer { inner: inner })
+    }
+
+    /// Finish recording commands and build the command buffer.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn build(self) -> Arc<SecondaryComputeCommandBuffer> {
+        Arc::new(self.build_raw().unwrap())
     }
 }
 
