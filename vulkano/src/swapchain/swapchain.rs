@@ -99,7 +99,21 @@ impl Swapchain {
                  transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                  clipped: bool) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
-        // FIXME: check that the parameters are supported
+        // Checking that the requested parameters match the capabilities.
+        let capabilities = try!(surface.get_capabilities(&device.physical_device()));
+        // TODO: return errors instead
+        assert!(num_images >= capabilities.image_count.start);
+        assert!(num_images < capabilities.image_count.end);
+        assert!(capabilities.supported_formats.iter().find(|&&(f, _)| f == format).is_some());
+        assert!(dimensions[0] >= capabilities.min_image_extent[0]);
+        assert!(dimensions[1] >= capabilities.min_image_extent[1]);
+        assert!(dimensions[0] <= capabilities.max_image_extent[0]);
+        assert!(dimensions[1] <= capabilities.max_image_extent[1]);
+        assert!(layers <= capabilities.max_image_array_layers);
+        assert!((usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) == usage.to_usage_bits());
+        assert!(capabilities.supported_transforms.iter().find(|&&t| t == transform).is_some());
+        assert!(capabilities.supported_composite_alpha.iter().find(|&&a| a == alpha).is_some());
+        assert!(capabilities.present_modes.iter().find(|&&m| m == mode).is_some());
 
         // FIXME: check that the device and the surface belong to the same instance
         let vk = device.pointers();
