@@ -385,6 +385,7 @@ impl Surface {
                                                                modes.as_mut_ptr())
                 ));
                 modes.set_len(num as usize);
+                debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
                 modes
             };
 
@@ -512,7 +513,7 @@ pub struct Capabilities {
     pub supported_usage_flags: ImageUsage,
     pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
 
-    /// List of present modes that are supported.
+    /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
     pub present_modes: Vec<PresentMode>,
 }
 
@@ -530,6 +531,8 @@ pub enum PresentMode {
 
     /// The action of presenting an image adds it to a queue of images. At each vertical blanking
     /// period, the queue is poped and an image is presented.
+    ///
+    /// Guaranteed to be always supported.
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of 1.
     Fifo = vk::PRESENT_MODE_FIFO_KHR,
