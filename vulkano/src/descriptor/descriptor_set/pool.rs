@@ -34,7 +34,7 @@ pub struct DescriptorPool {
 impl DescriptorPool {
     /// Initializes a new pool.
     // FIXME: capacity of the pool
-    pub fn new(device: &Arc<Device>) -> Result<Arc<DescriptorPool>, OomError> {
+    pub fn raw(device: &Arc<Device>) -> Result<DescriptorPool, OomError> {
         let vk = device.pointers();
 
         // FIXME: arbitrary
@@ -77,10 +77,21 @@ impl DescriptorPool {
             output
         };
 
-        Ok(Arc::new(DescriptorPool {
+        Ok(DescriptorPool {
             pool: Mutex::new(pool),
             device: device.clone(),
-        }))
+        })
+    }
+    
+    /// Initializes a new pool.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // FIXME: capacity of the pool
+    pub fn new(device: &Arc<Device>) -> Arc<DescriptorPool> {
+        Arc::new(DescriptorPool::raw(device).unwrap())
     }
 
     /// Returns the device this pool was created from.
