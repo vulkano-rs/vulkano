@@ -219,11 +219,26 @@ impl Device {
     /// This is the Vulkan equivalent of `glFinish`.
     // FIXME: must synchronize all queuees
     #[inline]
-    pub fn wait(&self) -> Result<(), OomError> {
+    pub fn wait_raw(&self) -> Result<(), OomError> {
         unsafe {
             try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
             Ok(())
         }
+    }
+
+    /// Waits until all work on this device has finished. You should never need to call
+    /// this function, but it can be useful for debugging or benchmarking purposes.
+    ///
+    /// This is the Vulkan equivalent of `glFinish`.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // FIXME: must synchronize all queuees
+    #[inline]
+    pub fn wait(&self) {
+        self.wait_raw().unwrap();
     }
 
     /// Returns the instance used to create this device.
@@ -373,13 +388,26 @@ impl Queue {
     ///
     /// Just like `Device::wait()`, you shouldn't have to call this function.
     #[inline]
-    pub fn wait(&self) -> Result<(), OomError> {
+    pub fn wait_raw(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
             let queue = self.queue.lock().unwrap();
             try!(check_errors(vk.QueueWaitIdle(*queue)));
             Ok(())
         }
+    }
+    
+    /// Waits until all work on this queue has finished.
+    ///
+    /// Just like `Device::wait()`, you shouldn't have to call this function.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn wait(&self) {
+        self.wait_raw().unwrap();
     }
 
     // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
