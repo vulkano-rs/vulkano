@@ -74,7 +74,7 @@ fn main() {
         vulkano::swapchain::Swapchain::new(&device, &surface, 3, format, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
-                                           present, true).expect("failed to create swapchain")
+                                           present, true, None).expect("failed to create swapchain")
     };
 
 
