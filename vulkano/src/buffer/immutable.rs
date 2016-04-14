@@ -198,7 +198,7 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
         };
 
         if write {
-            assert!(self.started_reading.load(Ordering::AcqRel) == false);
+            assert!(self.started_reading.load(Ordering::Acquire) == false);
         }
 
         let dependency = {
@@ -213,9 +213,9 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
         let dependency = dependency.and_then(|d| d.upgrade());
 
         if write {
-            assert!(self.started_reading.load(Ordering::AcqRel) == false);
+            assert!(self.started_reading.load(Ordering::Acquire) == false);
         } else {        
-            self.started_reading.store(true, Ordering::AcqRel);
+            self.started_reading.store(true, Ordering::Release);
         }
 
         GpuAccessResult {
