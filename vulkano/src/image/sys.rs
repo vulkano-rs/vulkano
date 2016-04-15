@@ -458,7 +458,7 @@ impl UnsafeImage {
         }
     }
 
-    pub unsafe fn bind_memory_raw(&self, memory: &DeviceMemory, offset: usize)
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
                                   -> Result<(), OomError>
     {
         let vk = self.device.pointers();
@@ -476,12 +476,6 @@ impl UnsafeImage {
         try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
                                              memory.internal_object(), offset as vk::DeviceSize)));
         Ok(())
-    }
-
-    #[inline]
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
-    {
-        self.bind_memory_raw(memory, offset).unwrap()
     }
 
     #[inline]
