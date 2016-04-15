@@ -91,7 +91,7 @@ macro_rules! ordered_passes_renderpass {
 
                 let rp = try!(unsafe {
                     UnsafeRenderPass::raw(device, AttachmentsIter(formats.clone(), 0),
-                                          PassesIter(0), dependencies())
+                                          PassesIter(0), DependenciesIter(0, 0))
                 });
 
                 Ok(CustomRenderPass {
@@ -118,7 +118,7 @@ macro_rules! ordered_passes_renderpass {
         unsafe impl RenderPassDesc for CustomRenderPass {
             type AttachmentsIter = AttachmentsIter;
             type PassesIter = PassesIter;
-            type DependenciesIter = VecIntoIter<LayoutPassDependencyDescription>;
+            type DependenciesIter = DependenciesIter;
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsIter {
@@ -132,7 +132,7 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn dependencies(&self) -> Self::DependenciesIter {
-                dependencies()
+                DependenciesIter(0, 0)
             }
         }
 
@@ -249,21 +249,42 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        /// Returns an iterator to the list of pass dependencies of this render pass.
-        #[inline]
-        fn dependencies() -> VecIntoIter<LayoutPassDependencyDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
+        #[derive(Debug, Clone)]
+        pub struct DependenciesIter(usize, usize);
+        impl ExactSizeIterator for DependenciesIter {}
+        impl Iterator for DependenciesIter {
+            type Item = LayoutPassDependencyDescription;
 
-            (1 .. PassesIter(0).len()).flat_map(|p2| {
-                (0 .. p2.clone()).map(move |p1| {
-                    LayoutPassDependencyDescription {
-                        source_subpass: p1,
-                        destination_subpass: p2,
-                        by_region: false,
-                    }
+            #[inline]
+            fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
+                let num_passes = PassesIter(0).len();
+
+                self.1 += 1;
+                if self.1 >= num_passes {
+                    self.0 += 1;
+                    self.1 = self.0 + 1;
+                }
+
+                if self.0 >= num_passes || self.1 >= num_passes {
+                    return None;
+                }
+
+                Some(LayoutPassDependencyDescription {
+                    source_subpass: self.0,
+                    destination_subpass: self.1,
+                    by_region: false,
                 })
-            }).collect::<Vec<_>>().into_iter()
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let num_passes = PassesIter(0).len();
+
+                let out = (num_passes - self.1 - 1) +
+                          ((self.0 + 1) .. num_passes).map(|p| p * (num_passes - p - 1))
+                                                      .fold(0, |a, b| a + b);
+                (out, Some(out))
+            }
         }
 
         /// Returns the initial and final layout of an attachment, given its num.
