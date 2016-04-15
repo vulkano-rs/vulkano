@@ -91,7 +91,7 @@ macro_rules! ordered_passes_renderpass {
 
                 let rp = try!(unsafe {
                     UnsafeRenderPass::raw(device, AttachmentsIter(formats.clone(), 0),
-                                          passes(), dependencies())
+                                          PassesIter(0), dependencies())
                 });
 
                 Ok(CustomRenderPass {
@@ -117,7 +117,7 @@ macro_rules! ordered_passes_renderpass {
 
         unsafe impl RenderPassDesc for CustomRenderPass {
             type AttachmentsIter = AttachmentsIter;
-            type PassesIter = VecIntoIter<LayoutPassDescription>;
+            type PassesIter = PassesIter;
             type DependenciesIter = VecIntoIter<LayoutPassDependencyDescription>;
 
             #[inline]
@@ -127,7 +127,7 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn passes(&self) -> Self::PassesIter {
-                passes()
+                PassesIter(0)
             }
 
             #[inline]
@@ -181,47 +181,70 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        /// Returns an iterator to the list of passes of this render pass.
-        #[inline]
-        fn passes() -> VecIntoIter<LayoutPassDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
+        #[derive(Debug, Clone)]
+        pub struct PassesIter(usize);
+        impl ExactSizeIterator for PassesIter {}
+        impl Iterator for PassesIter {
+            type Item = LayoutPassDescription;
 
-            let mut attachment_num = 0;
-            $(
-                let $atch_name = attachment_num;
-                attachment_num += 1;
-            )*
+            #[inline]
+            fn next(&mut self) -> Option<LayoutPassDescription> {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
 
-            vec![
+                let mut attachment_num = 0;
+                $(
+                    let $atch_name = attachment_num;
+                    attachment_num += 1;
+                )*
+
+                let mut cur_pass_num = 0;
+
                 $({
-                    let mut depth = None;
-                    $(
-                        depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
-                    )*
+                    if self.0 == cur_pass_num {
+                        self.0 += 1;
 
-                    $crate::framebuffer::LayoutPassDescription {
-                        color_attachments: vec![
-                            $(
-                                ($color_atch, Layout::ColorAttachmentOptimal)
-                            ),*
-                        ],
-                        depth_stencil: depth,
-                        input_attachments: vec![
-                            $(
-                                ($input_atch, Layout::ShaderReadOnlyOptimal)
-                            ),*
-                        ],
-                        resolve_attachments: vec![],
-                        preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                            $(if a == $color_atch { return false; })*
-                            $(if a == $depth_atch { return false; })*
-                            $(if a == $input_atch { return false; })*
-                            true
-                        }).collect()
+                        let mut depth = None;
+                        $(
+                            depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
+                        )*
+
+                        return Some(LayoutPassDescription {
+                            color_attachments: vec![
+                                $(
+                                    ($color_atch, Layout::ColorAttachmentOptimal)
+                                ),*
+                            ],
+                            depth_stencil: depth,
+                            input_attachments: vec![
+                                $(
+                                    ($input_atch, Layout::ShaderReadOnlyOptimal)
+                                ),*
+                            ],
+                            resolve_attachments: vec![],
+                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                                $(if a == $color_atch { return false; })*
+                                $(if a == $depth_atch { return false; })*
+                                $(if a == $input_atch { return false; })*
+                                true
+                            }).collect()
+                        });
                     }
+
+                    cur_pass_num += 1;
                 }),*
-            ].into_iter()
+
+                None
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                let mut num = 0;
+                $($(let $color_atch = num;)* num += 1;)*
+                (num, Some(num))
+            }
         }
 
         /// Returns an iterator to the list of pass dependencies of this render pass.
@@ -230,7 +253,7 @@ macro_rules! ordered_passes_renderpass {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
 
-            (1 .. passes().len()).flat_map(|p2| {
+            (1 .. PassesIter(0).len()).flat_map(|p2| {
                 (0 .. p2.clone()).map(move |p1| {
                     LayoutPassDependencyDescription {
                         source_subpass: p1,
