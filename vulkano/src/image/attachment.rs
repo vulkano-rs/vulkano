@@ -169,7 +169,7 @@ impl<F> AttachmentImage<F> {
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
-            try!(UnsafeImageView::new(&image, 0 .. 1, 0 .. 1))
+            try!(UnsafeImageView::raw(&image, 0 .. 1, 0 .. 1))
         };
 
         Ok(Arc::new(AttachmentImage {

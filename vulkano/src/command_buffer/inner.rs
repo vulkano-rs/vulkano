@@ -1694,7 +1694,9 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     assert_eq!(queue.device().internal_object(), me.pool.device().internal_object());
     assert_eq!(queue.family().id(), me.pool.queue_family().id());
 
-    let fence = try!(Fence::new(queue.device()));
+    // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
+    //let fence = try!(Fence::new(queue.device()));
+    let fence = Arc::new(try!(Fence::raw(queue.device())));
 
     let mut keep_alive_semaphores = SmallVec::<[_; 8]>::new();
     let mut post_semaphores_ids = SmallVec::<[_; 8]>::new();
@@ -1706,7 +1708,9 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     // TODO: for now that's not true ^  as semaphores are only used once then destroyed ;
     //       waiting on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
     {
-        let signalled = try!(Semaphore::new(queue.device()));
+        // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
+        //let signalled = try!(Semaphore::new(queue.device()));
+        let signalled = Arc::new(try!(Semaphore::raw(queue.device())));
         let wait = unsafe { queue.dedicated_semaphore(signalled.clone()) };
         if let Some(wait) = wait {
             pre_semaphores_ids.push(wait.internal_object());
@@ -1723,7 +1727,9 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     let semaphores_to_signal = {
         let mut list = SmallVec::new();
         for _ in 0 .. queue_transitions_hint {
-            let sem = try!(Semaphore::new(queue.device()));
+            // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
+            //let sem = try!(Semaphore::new(queue.device()));
+            let sem = Arc::new(try!(Semaphore::raw(queue.device())));
             post_semaphores_ids.push(sem.internal_object());
             keep_alive_semaphores.push(sem.clone());
             list.push(sem);
@@ -1861,7 +1867,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             let mut infos = SmallVec::<[_; 3]>::new();
 
             if !before_command_buffers.is_empty() {
-                let semaphore = Semaphore::new(queue.device()).unwrap();
+                // TODO: Use try!()? - Mixthos
+                let semaphore = Semaphore::new(queue.device());
                 let semaphore_id = semaphore.internal_object();
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
                 pre_semaphores_ids.push(semaphore.internal_object());
@@ -1881,7 +1888,8 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             }
 
             let after_semaphore = if !after_command_buffers.is_empty() {
-                let semaphore = Semaphore::new(queue.device()).unwrap();
+                // TODO: Use try!()? - Mixthos
+                let semaphore = Semaphore::new(queue.device());
                 let semaphore_id = semaphore.internal_object();
                 post_semaphores_ids.push(semaphore.internal_object());
                 keep_alive_semaphores.push(semaphore);

@@ -31,9 +31,9 @@ pub struct UnsafeDescriptorSetLayout {
 }
 
 impl UnsafeDescriptorSetLayout {
-    /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
-    pub fn new<I>(device: &Arc<Device>, descriptors: I)
-                  -> Result<Arc<UnsafeDescriptorSetLayout>, OomError>
+    /// See the docs of new().
+    pub fn raw<I>(device: &Arc<Device>, descriptors: I)
+                  -> Result<UnsafeDescriptorSetLayout, OomError>
         where I: IntoIterator<Item = DescriptorDesc>
     {
         let vk = device.pointers();
@@ -63,10 +63,23 @@ impl UnsafeDescriptorSetLayout {
             output
         };
 
-        Ok(Arc::new(UnsafeDescriptorSetLayout {
+        Ok(UnsafeDescriptorSetLayout {
             layout: layout,
             device: device.clone(),
-        }))
+        })
+    }
+    
+    /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new<I>(device: &Arc<Device>, descriptors: I) -> Arc<UnsafeDescriptorSetLayout>
+        where I: IntoIterator<Item = DescriptorDesc>
+    {
+        Arc::new(UnsafeDescriptorSetLayout::raw(device, descriptors).unwrap())
     }
 
     /// Returns the device used to create this layout.

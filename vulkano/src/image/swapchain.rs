@@ -49,7 +49,7 @@ impl SwapchainImage {
     pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
-        let view = try!(UnsafeImageView::new(&image, 0 .. 1, 0 .. 1));
+        let view = try!(UnsafeImageView::raw(&image, 0 .. 1, 0 .. 1));
 
         Ok(Arc::new(SwapchainImage {
             image: image,
@@ -124,7 +124,8 @@ unsafe impl Image for SwapchainImage {
         let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
         let dependency = dependency.and_then(|d| d.upgrade());
 
-        let signal = Semaphore::new(submission.queue().device()).unwrap();
+        // TODO: use try!()? - Mixthos
+        let signal = Semaphore::new(submission.queue().device());
         let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
 
         if guarded.present_layout {

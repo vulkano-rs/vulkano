@@ -39,8 +39,8 @@ pub struct DisplayPlane {
 }
 
 impl DisplayPlane {
-    /// Enumerates all the display planes that are available on a given physical device.
-    pub fn enumerate(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
+    /// See the docs of enumerate().
+    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let vk = device.instance().pointers();
 
         assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
@@ -89,6 +89,18 @@ impl DisplayPlane {
             }
         }).collect::<Vec<_>>().into_iter())
     }
+    
+    /// Enumerates all the display planes that are available on a given physical device.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // TODO: move iterator creation here from raw constructor?
+    #[inline]
+    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<DisplayPlane> {
+        DisplayPlane::enumerate_raw(device).unwrap()
+    }
 
     /// Returns the physical device that was used to create this display.
     #[inline]
@@ -117,8 +129,8 @@ pub struct Display {
 }
 
 impl Display {
-    /// Enumerates all the displays that are available on a given physical device.
-    pub fn enumerate(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
+    /// See the docs of enumerate().
+    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let vk = device.instance().pointers();
         assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
 
@@ -147,6 +159,18 @@ impl Display {
             }
         }).collect::<Vec<_>>().into_iter())
     }
+    
+    /// Enumerates all the displays that are available on a given physical device.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // TODO: move iterator creation here from raw constructor?
+    #[inline]
+    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<Display> {
+        Display::enumerate_raw(device).unwrap()
+    }
 
     /// Returns the name of the display.
     #[inline]
@@ -170,8 +194,8 @@ impl Display {
         [r.width, r.height]
     }
 
-    /// Returns a list of all modes available on this display.
-    pub fn display_modes(&self) -> Result<IntoIter<DisplayMode>, OomError> {
+    /// See the docs of display_modes().
+    pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
         let vk = self.instance.pointers();
 
         let num = unsafe {
@@ -199,6 +223,18 @@ impl Display {
                 parameters: mode.parameters,
             }
         }).collect::<Vec<_>>().into_iter())
+    }
+    
+    /// Returns a list of all modes available on this display.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    // TODO: move iterator creation here from display_modes_raw?
+    #[inline]
+    pub fn display_modes(&self) -> IntoIter<DisplayMode> {
+        self.display_modes_raw().unwrap()
     }
 }
 

@@ -46,23 +46,49 @@ pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
 }
 
 impl<D> Fence<D> where D: Deref<Target = Device> {
-    /// Builds a new fence.
+    /// See the docs of new().
     #[inline]
-    pub fn new(device: &D) -> Result<Arc<Fence<D>>, OomError>
+    pub fn raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         Fence::new_impl(device, false)
     }
 
-    /// Builds a new fence already in the "signaled" state.
+    /// Builds a new fence.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
     #[inline]
-    pub fn signaled(device: &D) -> Result<Arc<Fence<D>>, OomError>
+    pub fn new(device: &D) -> Arc<Fence<D>>
+        where D: Clone
+    {
+        Arc::new(Fence::raw(device).unwrap())
+    }
+
+    /// See the docs of signaled().
+    #[inline]
+    pub fn signaled_raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         Fence::new_impl(device, true)
     }
 
-    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Arc<Fence<D>>, OomError>
+    /// Builds a new fence already in the "signaled" state.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn signaled(device: &D) -> Arc<Fence<D>>
+        where D: Clone
+    {
+        Arc::new(Fence::signaled_raw(device).unwrap())
+    }
+
+    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Fence<D>, OomError>
         where D: Clone
     {
         let device: &Device = &*device_ptr;
@@ -81,12 +107,12 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
             output
         };
 
-        Ok(Arc::new(Fence {
+        Ok(Fence {
             fence: fence,
             device: device_ptr.clone(),
             device_raw: device.internal_object(),
             signaled: AtomicBool::new(signaled),
-        }))
+        })
     }
 
     /// Returns true if the fence is signaled.
@@ -315,7 +341,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::new(&device).unwrap();
+        let fence = Fence::new(&device);
         assert!(!fence.ready().unwrap());
     }
 
@@ -323,7 +349,7 @@ mod tests {
     fn fence_create_signaled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         assert!(fence.ready().unwrap());
     }
 
@@ -331,7 +357,7 @@ mod tests {
     fn fence_signaled_wait() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         fence.wait(Duration::new(0, 10)).unwrap();
     }
 
@@ -340,7 +366,7 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         fence.reset();
         assert!(!fence.ready().unwrap());
     }
@@ -351,8 +377,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1).unwrap();
-        let fence2 = Fence::signaled(&device2).unwrap();
+        let fence1 = Fence::signaled(&device1);
+        let fence2 = Fence::signaled(&device2);
 
         let _ = Fence::multi_wait([&*fence1, &*fence2].iter().cloned(), Duration::new(0, 10));
     }
@@ -363,8 +389,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1).unwrap();
-        let fence2 = Fence::signaled(&device2).unwrap();
+        let fence1 = Fence::signaled(&device1);
+        let fence2 = Fence::signaled(&device2);
 
         let _ = Fence::multi_reset([&*fence1, &*fence2].iter().cloned());
     }

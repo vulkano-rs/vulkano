@@ -32,9 +32,9 @@ pub struct OcclusionQueriesPool {
 }
 
 impl OcclusionQueriesPool {
-    /// Builds a new query pool.
-    pub fn new(device: &Arc<Device>, num_slots: u32)
-               -> Result<Arc<OcclusionQueriesPool>, OomError>
+    /// See the docs of new().
+    pub fn raw(device: &Arc<Device>, num_slots: u32)
+               -> Result<OcclusionQueriesPool, OomError>
     {
         let vk = device.pointers();
 
@@ -54,11 +54,24 @@ impl OcclusionQueriesPool {
             output
         };
 
-        Ok(Arc::new(OcclusionQueriesPool {
+        Ok(OcclusionQueriesPool {
             pool: pool,
             num_slots: num_slots,
             device: device.clone(),
-        }))
+        })
+    }
+
+    /// Builds a new query pool.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>, num_slots: u32)
+               -> Arc<OcclusionQueriesPool>
+    {
+       Arc::new(OcclusionQueriesPool::raw(device, num_slots).unwrap())
     }
 
     /// Returns the number of slots of that query pool.
@@ -90,6 +103,6 @@ mod tests {
     #[test]
     fn occlusion_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = OcclusionQueriesPool::new(&device, 256).unwrap();
+        let _ = OcclusionQueriesPool::new(&device, 256);
     }
 }

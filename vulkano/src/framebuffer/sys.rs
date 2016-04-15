@@ -34,25 +34,8 @@ pub struct UnsafeRenderPass {
 }
 
 impl UnsafeRenderPass {
-    /// Builds a new renderpass.
-    ///
-    /// This function calls the methods of the `Layout` implementation and builds the
-    /// corresponding Vulkan object.
-    ///
-    /// # Safety
-    ///
-    /// This function doesn't check whether all the restrictions in the attachments, passes and
-    /// passes dependencies were enforced.
-    ///
-    /// See the documentation of the structs of this module for more info about these restrictions.
-    ///
-    /// # Panic
-    ///
-    /// Can panick if it detects some violations in the restrictions. Only unexpensive checks are
-    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
-    /// mode.
-    ///
-    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
+    /// See the docs of new().
+    pub unsafe fn raw<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
                                   pass_dependencies: Id)
                -> Result<UnsafeRenderPass, OomError>
         where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
@@ -242,6 +225,36 @@ impl UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
         })
+    }
+    
+    /// Builds a new renderpass.
+    ///
+    /// This function calls the methods of the `Layout` implementation and builds the
+    /// corresponding Vulkan object.
+    ///
+    /// # Safety
+    ///
+    /// This function doesn't check whether all the restrictions in the attachments, passes and
+    /// passes dependencies were enforced.
+    ///
+    /// See the documentation of the structs of this module for more info about these restrictions.
+    ///
+    /// # Panic
+    ///
+    /// - Can panick if it detects some violations in the restrictions. Only unexpensive checks are
+    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
+    /// mode.
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    ///
+    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
+                                  pass_dependencies: Id)
+               -> UnsafeRenderPass
+        where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
+              Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
+              Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
+    {
+        UnsafeRenderPass::raw(device, attachments, passes, pass_dependencies).unwrap()
     }
 
     /// Returns the device that was used to create this render pass.
