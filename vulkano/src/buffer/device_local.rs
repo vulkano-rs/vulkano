@@ -125,7 +125,6 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        debug_assert!(mem.mapped_memory().is_some());
         try!(buffer.bind_memory(mem.memory(), mem.offset()));
 
         Ok(Arc::new(DeviceLocalBuffer {
