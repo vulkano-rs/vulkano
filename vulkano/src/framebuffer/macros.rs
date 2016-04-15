@@ -177,6 +177,7 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unused_mut)]
                 let mut num = 0;
                 $(let $atch_name = num; num += 1;)*
+                num -= self.1;
                 (num, Some(num))
             }
         }
@@ -243,6 +244,7 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unused_mut)]
                 let mut num = 0;
                 $($(let $color_atch = num;)* num += 1;)*
+                num -= self.0;
                 (num, Some(num))
             }
         }
