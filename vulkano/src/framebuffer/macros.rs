@@ -90,7 +90,8 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unsafe_code)]
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::raw(device, attachments(formats), passes(), dependencies())
+                    UnsafeRenderPass::raw(device, AttachmentsIter(formats.clone(), 0),
+                                          passes(), dependencies())
                 });
 
                 Ok(CustomRenderPass {
@@ -98,7 +99,7 @@ macro_rules! ordered_passes_renderpass {
                     formats: formats.clone(),
                 })
             }
-            
+
             #[inline]
             pub fn new(device: &Arc<Device>, formats: &Formats)
                        -> Arc<CustomRenderPass>
@@ -115,13 +116,13 @@ macro_rules! ordered_passes_renderpass {
         }
 
         unsafe impl RenderPassDesc for CustomRenderPass {
-            type AttachmentsIter = VecIntoIter<LayoutAttachmentDescription>;
+            type AttachmentsIter = AttachmentsIter;
             type PassesIter = VecIntoIter<LayoutPassDescription>;
             type DependenciesIter = VecIntoIter<LayoutPassDependencyDescription>;
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsIter {
-                attachments(&self.formats)
+                AttachmentsIter(self.formats.clone(), 0)
             }
 
             #[inline]
@@ -135,26 +136,49 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        /// Returns an iterator to the list of attachments of this render pass.
-        #[inline]
-        fn attachments(formats: &Formats) -> VecIntoIter<LayoutAttachmentDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
+        #[derive(Debug, Clone)]
+        pub struct AttachmentsIter(Formats, usize);
+        impl ExactSizeIterator for AttachmentsIter {}
+        impl Iterator for AttachmentsIter {
+            type Item = LayoutAttachmentDescription;
 
-            let mut num = 0;
-            vec![$({
-                let (initial_layout, final_layout) = attachment_layouts(num);
-                num += 1;
+            #[inline]
+            fn next(&mut self) -> Option<LayoutAttachmentDescription> {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
 
-                $crate::framebuffer::LayoutAttachmentDescription {
-                    format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
-                    samples: formats.$atch_name.1,
-                    load: $crate::framebuffer::LoadOp::$load,
-                    store: $crate::framebuffer::StoreOp::$store,
-                    initial_layout: initial_layout,
-                    final_layout: final_layout,
-                }
-            }),*].into_iter()
+                let mut num = 0;
+
+                $({
+                    if self.1 == num {
+                        self.1 += 1;
+
+                        let (initial_layout, final_layout) = attachment_layouts(num);
+
+                        return Some($crate::framebuffer::LayoutAttachmentDescription {
+                            format: $crate::format::FormatDesc::format(&(self.0).$atch_name.0),
+                            samples: (self.0).$atch_name.1,
+                            load: $crate::framebuffer::LoadOp::$load,
+                            store: $crate::framebuffer::StoreOp::$store,
+                            initial_layout: initial_layout,
+                            final_layout: final_layout,
+                        });
+                    }
+
+                    num += 1;
+                })*
+
+                None
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                let mut num = 0;
+                $(let $atch_name = num; num += 1;)*
+                (num, Some(num))
+            }
         }
 
         /// Returns an iterator to the list of passes of this render pass.
@@ -218,7 +242,9 @@ macro_rules! ordered_passes_renderpass {
         }
 
         /// Returns the initial and final layout of an attachment, given its num.
-        fn attachment_layouts(num: u32) -> (Layout, Layout) {
+        ///
+        /// The value always correspond to the first and last usages of an attachment.
+        fn attachment_layouts(num: usize) -> (Layout, Layout) {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
 
