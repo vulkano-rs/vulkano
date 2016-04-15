@@ -213,10 +213,7 @@ impl Device {
         Ok((device, output_queues))
     }
 
-    /// Waits until all work on this device has finished. You should never need to call
-    /// this function, but it can be useful for debugging or benchmarking purposes.
-    ///
-    /// This is the Vulkan equivalent of `glFinish`.
+    /// See the docs of wait().
     // FIXME: must synchronize all queuees
     #[inline]
     pub fn wait_raw(&self) -> Result<(), OomError> {
@@ -384,9 +381,7 @@ impl Queue {
         self.id
     }
 
-    /// Waits until all work on this queue has finished.
-    ///
-    /// Just like `Device::wait()`, you shouldn't have to call this function.
+    /// See the docs of wait().
     #[inline]
     pub fn wait_raw(&self) -> Result<(), OomError> {
         unsafe {

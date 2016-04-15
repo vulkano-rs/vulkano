@@ -35,7 +35,7 @@ pub struct Event {
 }
 
 impl Event {
-    /// Builds a new event.
+    /// See the docs of new().
     #[inline]
     pub fn raw(device: &Arc<Device>) -> Result<Event, OomError> {
         let vk = device.pointers();
@@ -87,9 +87,7 @@ impl Event {
         }
     }
 
-    /// Changes the `Event` to the signaled state.
-    ///
-    /// If a command buffer is waiting on this event, it is then unblocked.
+    /// See the docs of set().
     #[inline]
     pub fn set_raw(&self) -> Result<(), OomError> {
         unsafe {
@@ -113,7 +111,7 @@ impl Event {
         self.set_raw().unwrap();
     }
 
-    /// Changes the `Event` to the unsignaled state.
+    /// See the docs of reset().
     #[inline]
     pub fn reset_raw(&self) -> Result<(), OomError> {
         unsafe {

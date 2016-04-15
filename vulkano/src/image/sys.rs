@@ -619,10 +619,7 @@ pub struct UnsafeImageView {
 }
 
 impl UnsafeImageView {
-    /// Creates a new view from an image.
-    ///
-    /// Note that you must create the view with identity swizzling if you want to use this view
-    /// as a framebuffer attachment.
+    /// See the docs of new().
     pub unsafe fn raw(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
                       -> Result<UnsafeImageView, OomError>
     {

@@ -61,7 +61,7 @@ pub struct PrimaryCommandBufferBuilder {
 }
 
 impl PrimaryCommandBufferBuilder {
-    /// Builds a new primary command buffer and start recording commands in it.
+    /// See the docs of new().
     #[inline]
     pub fn raw(pool: &Arc<CommandBufferPool>)
                -> Result<PrimaryCommandBufferBuilder, OomError>
@@ -279,7 +279,7 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    /// Finish recording commands and build the command buffer.
+    /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<PrimaryCommandBuffer, OomError> {
         let inner = try!(self.inner.build());
@@ -535,9 +535,7 @@ pub struct SecondaryGraphicsCommandBufferBuilder<R> {
 impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     where R: RenderPass + RenderPassDesc + 'static
 {
-    /// Builds a new secondary command buffer and start recording commands in it.
-    ///
-    /// The `framebuffer` parameter is optional and can be used as an optimisation.
+    /// See the docs of new().
     #[inline]
     pub fn raw(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
                framebuffer: Option<&Arc<Framebuffer<R>>>)
@@ -635,7 +633,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         }
     }
 
-    /// Finish recording commands and build the command buffer.
+    /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<SecondaryGraphicsCommandBuffer<R>, OomError> {
         let inner = try!(self.inner.build());
@@ -678,7 +676,7 @@ pub struct SecondaryComputeCommandBufferBuilder {
 }
 
 impl SecondaryComputeCommandBufferBuilder {
-    /// Builds a new secondary command buffer and start recording commands in it.
+    /// See the docs of new().
     #[inline]
     pub fn raw(pool: &Arc<CommandBufferPool>)
                -> Result<SecondaryComputeCommandBufferBuilder, OomError>
@@ -749,7 +747,7 @@ impl SecondaryComputeCommandBufferBuilder {
         }
     }
 
-    /// Finish recording commands and build the command buffer.
+    /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<SecondaryComputeCommandBuffer, OomError> {
         let inner = try!(self.inner.build());

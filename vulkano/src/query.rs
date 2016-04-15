@@ -32,7 +32,7 @@ pub struct OcclusionQueriesPool {
 }
 
 impl OcclusionQueriesPool {
-    /// Builds a new query pool.
+    /// See the docs of new().
     pub fn raw(device: &Arc<Device>, num_slots: u32)
                -> Result<OcclusionQueriesPool, OomError>
     {

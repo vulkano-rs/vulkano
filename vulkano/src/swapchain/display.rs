@@ -39,7 +39,7 @@ pub struct DisplayPlane {
 }
 
 impl DisplayPlane {
-    /// Enumerates all the display planes that are available on a given physical device.
+    /// See the docs of enumerate().
     pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let vk = device.instance().pointers();
 
@@ -129,7 +129,7 @@ pub struct Display {
 }
 
 impl Display {
-    /// Enumerates all the displays that are available on a given physical device.
+    /// See the docs of enumerate().
     pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let vk = device.instance().pointers();
         assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
@@ -194,7 +194,7 @@ impl Display {
         [r.width, r.height]
     }
 
-    /// Returns a list of all modes available on this display.
+    /// See the docs of display_modes().
     pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
         let vk = self.instance.pointers();
 

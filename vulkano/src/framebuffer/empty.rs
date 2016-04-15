@@ -38,7 +38,7 @@ pub struct EmptySinglePassRenderPass {
 }
 
 impl EmptySinglePassRenderPass {
-    /// Builds the render pass.
+    /// See the docs of new().
     pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, OomError> {
         let rp = try!(unsafe {
             let pass = LayoutPassDescription {

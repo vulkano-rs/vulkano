@@ -32,7 +32,7 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
-    /// Initializes a new pool.
+    /// See the docs of new().
     // FIXME: capacity of the pool
     pub fn raw(device: &Arc<Device>) -> Result<DescriptorPool, OomError> {
         let vk = device.pointers();

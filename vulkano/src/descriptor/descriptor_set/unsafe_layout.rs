@@ -31,7 +31,7 @@ pub struct UnsafeDescriptorSetLayout {
 }
 
 impl UnsafeDescriptorSetLayout {
-    /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
+    /// See the docs of new().
     pub fn raw<I>(device: &Arc<Device>, descriptors: I)
                   -> Result<UnsafeDescriptorSetLayout, OomError>
         where I: IntoIterator<Item = DescriptorDesc>

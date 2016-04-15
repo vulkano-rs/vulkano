@@ -46,7 +46,7 @@ pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
 }
 
 impl<D> Fence<D> where D: Deref<Target = Device> {
-    /// Builds a new fence.
+    /// See the docs of new().
     #[inline]
     pub fn raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone
@@ -67,7 +67,7 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
         Arc::new(Fence::raw(device).unwrap())
     }
 
-    /// Builds a new fence already in the "signaled" state.
+    /// See the docs of signaled().
     #[inline]
     pub fn signaled_raw(device: &D) -> Result<Fence<D>, OomError>
         where D: Clone

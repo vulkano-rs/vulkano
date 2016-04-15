@@ -46,12 +46,7 @@ pub struct UnsafeDescriptorSet {
 }
 
 impl UnsafeDescriptorSet {
-    /// Builds a new descriptor set.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if the pool and the layout were not created from the same `Device`.
-    ///
+    /// See the docs of uninitialized().
     // FIXME: this has to check whether there's still enough room in the pool
     pub unsafe fn uninitialized_raw(pool: &Arc<DescriptorPool>,
                                     layout: &Arc<UnsafeDescriptorSetLayout>)

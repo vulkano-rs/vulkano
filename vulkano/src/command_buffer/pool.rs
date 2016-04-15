@@ -31,15 +31,7 @@ pub struct CommandBufferPool {
 }
 
 impl CommandBufferPool {
-    /// Creates a new pool.
-    ///
-    /// The command buffers created with this pool can only be executed on queues of the given
-    /// family.
-    ///
-    /// # Panic
-    ///
-    /// Panicks if the queue family doesn't belong to the same physical device as `device`.
-    ///
+    /// See the docs of new().
     #[inline]
     pub fn raw(device: &Arc<Device>, queue_family: &QueueFamily)
                -> Result<CommandBufferPool, OomError>

@@ -34,24 +34,7 @@ pub struct UnsafeRenderPass {
 }
 
 impl UnsafeRenderPass {
-    /// Builds a new renderpass.
-    ///
-    /// This function calls the methods of the `Layout` implementation and builds the
-    /// corresponding Vulkan object.
-    ///
-    /// # Safety
-    ///
-    /// This function doesn't check whether all the restrictions in the attachments, passes and
-    /// passes dependencies were enforced.
-    ///
-    /// See the documentation of the structs of this module for more info about these restrictions.
-    ///
-    /// # Panic
-    ///
-    /// Can panick if it detects some violations in the restrictions. Only unexpensive checks are
-    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
-    /// mode.
-    ///
+    /// See the docs of new().
     pub unsafe fn raw<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
                                   pass_dependencies: Id)
                -> Result<UnsafeRenderPass, OomError>

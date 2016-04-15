@@ -29,7 +29,7 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    /// Builds a new semaphore.
+    /// See the docs of new().
     #[inline]
     pub fn raw(device: &Arc<Device>) -> Result<Semaphore, OomError> {
         let vk = device.pointers();
