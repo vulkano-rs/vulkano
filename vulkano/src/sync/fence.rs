@@ -341,7 +341,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::new(&device).unwrap();
+        let fence = Fence::new(&device);
         assert!(!fence.ready().unwrap());
     }
 
@@ -349,7 +349,7 @@ mod tests {
     fn fence_create_signaled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         assert!(fence.ready().unwrap());
     }
 
@@ -357,7 +357,7 @@ mod tests {
     fn fence_signaled_wait() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         fence.wait(Duration::new(0, 10)).unwrap();
     }
 
@@ -366,7 +366,7 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device).unwrap();
+        let fence = Fence::signaled(&device);
         fence.reset();
         assert!(!fence.ready().unwrap());
     }
@@ -377,8 +377,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1).unwrap();
-        let fence2 = Fence::signaled(&device2).unwrap();
+        let fence1 = Fence::signaled(&device1);
+        let fence2 = Fence::signaled(&device2);
 
         let _ = Fence::multi_wait([&*fence1, &*fence2].iter().cloned(), Duration::new(0, 10));
     }
@@ -389,8 +389,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1).unwrap();
-        let fence2 = Fence::signaled(&device2).unwrap();
+        let fence1 = Fence::signaled(&device1);
+        let fence2 = Fence::signaled(&device2);
 
         let _ = Fence::multi_reset([&*fence1, &*fence2].iter().cloned());
     }

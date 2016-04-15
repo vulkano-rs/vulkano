@@ -163,17 +163,17 @@ mod tests {
     #[test]
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(&device).unwrap();
+        let event = Event::new(&device);
         assert!(!event.signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(&device).unwrap();
+        let event = Event::new(&device);
         assert!(!event.signaled().unwrap());
 
-        event.set().unwrap();
+        event.set();
         assert!(event.signaled().unwrap());
     }
 
@@ -181,11 +181,11 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let event = Event::new(&device).unwrap();
-        event.set().unwrap();
+        let event = Event::new(&device);
+        event.set();
         assert!(event.signaled().unwrap());
 
-        event.reset().unwrap();
+        event.reset();
         assert!(!event.signaled().unwrap());
     }
 }

@@ -129,13 +129,13 @@ mod tests {
     #[test]
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = DescriptorPool::new(&device).unwrap();
+        let _ = DescriptorPool::new(&device);
     }
 
     #[test]
     fn device() {
         let (device, _) = gfx_dev_and_queue!();
-        let pool = DescriptorPool::new(&device).unwrap();
+        let pool = DescriptorPool::new(&device);
         assert_eq!(&**pool.device() as *const _, &*device as *const _);
     }
 }

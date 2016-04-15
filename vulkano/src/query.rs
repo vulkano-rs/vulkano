@@ -103,6 +103,6 @@ mod tests {
     #[test]
     fn occlusion_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = OcclusionQueriesPool::new(&device, 256).unwrap();
+        let _ = OcclusionQueriesPool::new(&device, 256);
     }
 }

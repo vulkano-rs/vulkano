@@ -290,7 +290,7 @@ mod tests {
 
         let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
             color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        });
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let _ = Framebuffer::new(&render_pass, (1024, 768, 1), example::AList {
@@ -304,7 +304,7 @@ mod tests {
 
         let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
             color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        });
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: &image };
@@ -320,7 +320,7 @@ mod tests {
 
         let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
             color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        });
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: &image };

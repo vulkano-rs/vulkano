@@ -159,6 +159,6 @@ mod tests {
     #[ignore]       // TODO: crashes on AMD+Windows
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = EmptySinglePassRenderPass::new(&device).unwrap();
+        let _ = EmptySinglePassRenderPass::new(&device);
     }
 }

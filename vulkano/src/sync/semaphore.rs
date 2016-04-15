@@ -92,6 +92,6 @@ mod tests {
     #[test]
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = Semaphore::new(&device).unwrap();
+        let _ = Semaphore::new(&device);
     }
 }
