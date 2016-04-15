@@ -91,7 +91,7 @@ pub enum Sharing<I> where I: Iterator<Item = u32> {
 
 macro_rules! pipeline_stages {
     ($($elem:ident => $val:expr,)+) => (
-        #[derive(Debug, Copy, Clone)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         pub struct PipelineStages {
             $(
                 pub $elem: bool,

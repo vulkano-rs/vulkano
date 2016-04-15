@@ -50,6 +50,7 @@ pub struct UnsafeBuffer {
     device: Arc<Device>,
     size: usize,
     usage: vk::BufferUsageFlags,
+    exclusive_sharing_mode: bool,
 }
 
 impl UnsafeBuffer {
@@ -86,11 +87,13 @@ impl UnsafeBuffer {
             return Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled);
         }
 
-        let buffer = {
+        let (buffer, exclusive_sharing_mode) = {
             let (sh_mode, sh_indices) = match sharing {
                 Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
                 Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
             };
+
+            let exclusive_sharing_mode = sh_mode == vk::SHARING_MODE_EXCLUSIVE;
 
             let infos = vk::BufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -106,7 +109,7 @@ impl UnsafeBuffer {
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateBuffer(device.internal_object(), &infos,
                                               ptr::null(), &mut output)));
-            output
+            (output, exclusive_sharing_mode)
         };
 
         let mem_reqs = {
@@ -144,6 +147,7 @@ impl UnsafeBuffer {
             device: device.clone(),
             size: size as usize,
             usage: usage_bits,
+            exclusive_sharing_mode: exclusive_sharing_mode,
         };
 
         Ok((obj, mem_reqs))
@@ -193,6 +197,13 @@ impl UnsafeBuffer {
     #[inline]
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    /// If true, this buffer was created with the exclusive sharing mode. If false, it was created
+    /// with the concurrent sharing mode.
+    #[inline]
+    pub fn exclusive_sharing_mode(&self) -> bool {
+        self.exclusive_sharing_mode
     }
 
     #[inline]

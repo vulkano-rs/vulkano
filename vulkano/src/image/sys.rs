@@ -59,6 +59,7 @@ pub struct UnsafeImage {
     dimensions: Dimensions,
     samples: u32,
     mipmaps: u32,
+    exclusive_sharing_mode: bool,
 
     // Features that are supported for this particular format.
     format_features: vk::FormatFeatureFlagBits,
@@ -432,6 +433,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: num_samples,
             mipmaps: mipmaps,
+            exclusive_sharing_mode: sh_mode == vk::SHARING_MODE_EXCLUSIVE,
             format_features: format_features,
             needs_destruction: true,
         };
@@ -443,8 +445,8 @@ impl UnsafeImage {
     ///
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw(device: &Arc<Device>, handle: u64, usage: u32, format: Format,
-                           dimensions: Dimensions, samples: u32, mipmaps: u32)
-                           -> UnsafeImage
+                           dimensions: Dimensions, samples: u32, mipmaps: u32,
+                           exclusive_sharing_mode: bool) -> UnsafeImage
     {
         let vk_i = device.instance().pointers();
         let physical_device = device.physical_device().internal_object();
@@ -462,6 +464,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: samples,
             mipmaps: mipmaps,
+            exclusive_sharing_mode: exclusive_sharing_mode,
             format_features: output.optimalTilingFeatures,
             needs_destruction: false,       // TODO: pass as parameter
         }
@@ -507,6 +510,13 @@ impl UnsafeImage {
         self.samples
     }
 
+    /// If true, this image was created with the exclusive sharing mode. If false, it was created
+    /// with the concurrent sharing mode.
+    #[inline]
+    pub fn exclusive_sharing_mode(&self) -> bool {
+        self.exclusive_sharing_mode
+    }
+
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     pub fn supports_blit_source(&self) -> bool {
@@ -517,6 +527,46 @@ impl UnsafeImage {
     #[inline]
     pub fn supports_blit_destination(&self) -> bool {
         (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
+    }
+    
+    #[inline]
+    pub fn usage_transfer_src(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_dest(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_sampled(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_storage(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_color_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transient_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_input_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
     }
 }
 
