@@ -21,6 +21,7 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
+use std::time::Duration;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -70,8 +71,7 @@ fn main() {
     };
 
 
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family())
-                                                  .expect("failed to create command buffer pool");
+    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family());
 
 
 
@@ -89,7 +89,7 @@ fn main() {
     {
         // The `write` function would return `Err` if the buffer was in use by the GPU. This
         // obviously can't happen here, since we haven't ask the GPU to do anything yet.
-        let mut mapping = vertex_buffer.write(0).unwrap();
+        let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
         mapping[0].position = [-0.5, -0.5];
         mapping[1].position = [-0.5,  0.5];
         mapping[2].position = [ 0.5, -0.5];
@@ -108,7 +108,7 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: B8G8R8A8Srgb,
+                    format: ::vulkano::format::B8G8R8A8Srgb,
                 }
             },
             pass: {
@@ -118,7 +118,9 @@ fn main() {
         }
     }
 
-    let renderpass = renderpass::CustomRenderPass::new(&device).unwrap();
+    let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
+        color: (vulkano::format::B8G8R8A8Srgb, 1)
+    });
 
     let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::sys::Dimensions::Dim2d { width: 93, height: 93 },
                                                                  vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
@@ -135,7 +137,7 @@ fn main() {
                                            Some(queue.family())).expect("failed to create buffer");
 
         {
-            let mut mapping = pixel_buffer.write(0).unwrap();
+            let mut mapping = pixel_buffer.write(Duration::new(0, 0)).unwrap();
             for (o, i) in mapping.iter_mut().zip(image_data.chunks(4)) {
                 o[0] = i[0];
                 o[1] = i[1];
@@ -155,7 +157,7 @@ fn main() {
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device).unwrap();
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
     mod pipeline_layout {
         pipeline_layout!{
             set0: {
@@ -167,41 +169,35 @@ fn main() {
     let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
     let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
         tex: (&sampler, &texture)
-    }).unwrap();
+    });
 
-    let pipeline = {
-        let ia = vulkano::pipeline::input_assembly::InputAssembly {
+
+    let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+        vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
+        vertex_shader: vs.main_entry_point(),
+        input_assembly: vulkano::pipeline::input_assembly::InputAssembly {
             topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleStrip,
             primitive_restart_enable: false,
-        };
-
-        let raster = Default::default();
-        let ms = vulkano::pipeline::multisample::Multisample::disabled();
-        let blend = vulkano::pipeline::blend::Blend {
-            logic_op: None,
-            blend_constants: Some([0.0; 4]),
-        };
-
-        let viewports = vulkano::pipeline::viewport::ViewportsState::Fixed {
+        },
+        geometry_shader: None,
+        viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
             data: vec![(
                 vulkano::pipeline::viewport::Viewport {
                     origin: [0.0, 0.0],
-                    dimensions: [1244.0, 699.0],
-                    depth_range: 0.0 .. 1.0
+                    depth_range: 0.0 .. 1.0,
+                    dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
                 },
-                vulkano::pipeline::viewport::Scissor {
-                    origin: [0, 0],
-                    dimensions: [1244, 699],
-                }
+                vulkano::pipeline::viewport::Scissor::irrelevant()
             )],
-        };
-
-        vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::vertex::SingleBufferDefinition::new(),
-                                                 &vs.main_entry_point(), &ia, &viewports,
-                                                 &raster, &ms, &blend, &fs.main_entry_point(),
-                                                 &pipeline_layout, vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap())
-                                                 .unwrap()
-    };
+        },
+        raster: Default::default(),
+        multisample: vulkano::pipeline::multisample::Multisample::disabled(),
+        fragment_shader: fs.main_entry_point(),
+        depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
+        blend: vulkano::pipeline::blend::Blend::pass_through(),
+        layout: &pipeline_layout,
+        render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
+    }).unwrap();
 
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {
@@ -213,20 +209,21 @@ fn main() {
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool).unwrap()
+        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool)
             .copy_buffer_to_color_image(&pixel_buffer, &texture, 0, 0 .. 1, [0, 0, 0],
                                         [texture.dimensions().width(), texture.dimensions().height(), 1])
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
                 color: [0.0, 0.0, 1.0, 1.0]
             })
-            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(), set.clone(), &())
+            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(),
+                  &set, &())
             .draw_end()
-            .build().unwrap()
+            .build()
     }).collect::<Vec<_>>();
 
     loop {
-        let image_num = swapchain.acquire_next_image(1000000).unwrap();
+        let image_num = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
         vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap();
         swapchain.present(&queue, image_num).unwrap();
 

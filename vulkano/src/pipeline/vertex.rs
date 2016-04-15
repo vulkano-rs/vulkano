@@ -27,7 +27,7 @@
 //! 
 //! # Example
 //! 
-//! ```no_run
+//! ```ignore       // TODO:
 //! # #[macro_use] extern crate vulkano
 //! # fn main() {
 //! # use std::sync::Arc;

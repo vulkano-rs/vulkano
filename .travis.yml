@@ -21,7 +21,7 @@ addons:
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
-    - cargo build -v --manifest-path vulkano/Cargo.toml     # TODO: should be "cargo test --no-run"
+    - cargo test --no-run -v --manifest-path vulkano/Cargo.toml
 
 after_success: 
     - |
