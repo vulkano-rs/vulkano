@@ -40,6 +40,8 @@ macro_rules! ordered_passes_renderpass {
                     load: $load:ident,
                     store: $store:ident,
                     format: $format:ty,
+                    $(initial_layout: $init_layout:expr,)*
+                    $(final_layout: $final_layout:expr,)*
                 }
             ),*
         },
@@ -330,6 +332,11 @@ macro_rules! ordered_passes_renderpass {
                         final_layout = Some(Layout::ShaderReadOnlyOptimal);
                     }
                 )*
+            })*
+
+            $(if $atch_name == num {
+                $(initial_layout = Some($init_layout);)*
+                $(final_layout = Some($final_layout);)*
             })*
 
             (initial_layout.unwrap(), final_layout.unwrap())
