@@ -90,7 +90,8 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unsafe_code)]
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::raw(device, attachments(formats), passes(), dependencies())
+                    UnsafeRenderPass::raw(device, AttachmentsIter(formats.clone(), 0),
+                                          PassesIter(0), DependenciesIter(0, 0))
                 });
 
                 Ok(CustomRenderPass {
@@ -98,7 +99,7 @@ macro_rules! ordered_passes_renderpass {
                     formats: formats.clone(),
                 })
             }
-            
+
             #[inline]
             pub fn new(device: &Arc<Device>, formats: &Formats)
                        -> Arc<CustomRenderPass>
@@ -115,110 +116,181 @@ macro_rules! ordered_passes_renderpass {
         }
 
         unsafe impl RenderPassDesc for CustomRenderPass {
-            type AttachmentsIter = VecIntoIter<LayoutAttachmentDescription>;
-            type PassesIter = VecIntoIter<LayoutPassDescription>;
-            type DependenciesIter = VecIntoIter<LayoutPassDependencyDescription>;
+            type AttachmentsIter = AttachmentsIter;
+            type PassesIter = PassesIter;
+            type DependenciesIter = DependenciesIter;
 
             #[inline]
             fn attachments(&self) -> Self::AttachmentsIter {
-                attachments(&self.formats)
+                AttachmentsIter(self.formats.clone(), 0)
             }
 
             #[inline]
             fn passes(&self) -> Self::PassesIter {
-                passes()
+                PassesIter(0)
             }
 
             #[inline]
             fn dependencies(&self) -> Self::DependenciesIter {
-                dependencies()
+                DependenciesIter(0, 0)
             }
         }
 
-        /// Returns an iterator to the list of attachments of this render pass.
-        #[inline]
-        fn attachments(formats: &Formats) -> VecIntoIter<LayoutAttachmentDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
+        #[derive(Debug, Clone)]
+        pub struct AttachmentsIter(Formats, usize);
+        impl ExactSizeIterator for AttachmentsIter {}
+        impl Iterator for AttachmentsIter {
+            type Item = LayoutAttachmentDescription;
 
-            let mut num = 0;
-            vec![$({
-                let (initial_layout, final_layout) = attachment_layouts(num);
-                num += 1;
+            #[inline]
+            fn next(&mut self) -> Option<LayoutAttachmentDescription> {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
 
-                $crate::framebuffer::LayoutAttachmentDescription {
-                    format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
-                    samples: formats.$atch_name.1,
-                    load: $crate::framebuffer::LoadOp::$load,
-                    store: $crate::framebuffer::StoreOp::$store,
-                    initial_layout: initial_layout,
-                    final_layout: final_layout,
-                }
-            }),*].into_iter()
-        }
+                let mut num = 0;
 
-        /// Returns an iterator to the list of passes of this render pass.
-        #[inline]
-        fn passes() -> VecIntoIter<LayoutPassDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
-
-            let mut attachment_num = 0;
-            $(
-                let $atch_name = attachment_num;
-                attachment_num += 1;
-            )*
-
-            vec![
                 $({
-                    let mut depth = None;
-                    $(
-                        depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
-                    )*
+                    if self.1 == num {
+                        self.1 += 1;
 
-                    $crate::framebuffer::LayoutPassDescription {
-                        color_attachments: vec![
-                            $(
-                                ($color_atch, Layout::ColorAttachmentOptimal)
-                            ),*
-                        ],
-                        depth_stencil: depth,
-                        input_attachments: vec![
-                            $(
-                                ($input_atch, Layout::ShaderReadOnlyOptimal)
-                            ),*
-                        ],
-                        resolve_attachments: vec![],
-                        preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                            $(if a == $color_atch { return false; })*
-                            $(if a == $depth_atch { return false; })*
-                            $(if a == $input_atch { return false; })*
-                            true
-                        }).collect()
+                        let (initial_layout, final_layout) = attachment_layouts(num);
+
+                        return Some($crate::framebuffer::LayoutAttachmentDescription {
+                            format: $crate::format::FormatDesc::format(&(self.0).$atch_name.0),
+                            samples: (self.0).$atch_name.1,
+                            load: $crate::framebuffer::LoadOp::$load,
+                            store: $crate::framebuffer::StoreOp::$store,
+                            initial_layout: initial_layout,
+                            final_layout: final_layout,
+                        });
                     }
-                }),*
-            ].into_iter()
+
+                    num += 1;
+                })*
+
+                None
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                let mut num = 0;
+                $(let $atch_name = num; num += 1;)*
+                num -= self.1;
+                (num, Some(num))
+            }
         }
 
-        /// Returns an iterator to the list of pass dependencies of this render pass.
-        #[inline]
-        fn dependencies() -> VecIntoIter<LayoutPassDependencyDescription> {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
+        #[derive(Debug, Clone)]
+        pub struct PassesIter(usize);
+        impl ExactSizeIterator for PassesIter {}
+        impl Iterator for PassesIter {
+            type Item = LayoutPassDescription;
 
-            (1 .. passes().len()).flat_map(|p2| {
-                (0 .. p2.clone()).map(move |p1| {
-                    LayoutPassDependencyDescription {
-                        source_subpass: p1,
-                        destination_subpass: p2,
-                        by_region: false,
+            #[inline]
+            fn next(&mut self) -> Option<LayoutPassDescription> {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+
+                let mut attachment_num = 0;
+                $(
+                    let $atch_name = attachment_num;
+                    attachment_num += 1;
+                )*
+
+                let mut cur_pass_num = 0;
+
+                $({
+                    if self.0 == cur_pass_num {
+                        self.0 += 1;
+
+                        let mut depth = None;
+                        $(
+                            depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
+                        )*
+
+                        return Some(LayoutPassDescription {
+                            color_attachments: vec![
+                                $(
+                                    ($color_atch, Layout::ColorAttachmentOptimal)
+                                ),*
+                            ],
+                            depth_stencil: depth,
+                            input_attachments: vec![
+                                $(
+                                    ($input_atch, Layout::ShaderReadOnlyOptimal)
+                                ),*
+                            ],
+                            resolve_attachments: vec![],
+                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                                $(if a == $color_atch { return false; })*
+                                $(if a == $depth_atch { return false; })*
+                                $(if a == $input_atch { return false; })*
+                                true
+                            }).collect()
+                        });
                     }
+
+                    cur_pass_num += 1;
+                }),*
+
+                None
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                let mut num = 0;
+                $($(let $color_atch = num;)* num += 1;)*
+                num -= self.0;
+                (num, Some(num))
+            }
+        }
+
+        #[derive(Debug, Clone)]
+        pub struct DependenciesIter(usize, usize);
+        impl ExactSizeIterator for DependenciesIter {}
+        impl Iterator for DependenciesIter {
+            type Item = LayoutPassDependencyDescription;
+
+            #[inline]
+            fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
+                let num_passes = PassesIter(0).len();
+
+                self.1 += 1;
+                if self.1 >= num_passes {
+                    self.0 += 1;
+                    self.1 = self.0 + 1;
+                }
+
+                if self.0 >= num_passes || self.1 >= num_passes {
+                    return None;
+                }
+
+                Some(LayoutPassDependencyDescription {
+                    source_subpass: self.0,
+                    destination_subpass: self.1,
+                    by_region: false,
                 })
-            }).collect::<Vec<_>>().into_iter()
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let num_passes = PassesIter(0).len();
+
+                let out = (num_passes - self.1 - 1) +
+                          ((self.0 + 1) .. num_passes).map(|p| p * (num_passes - p - 1))
+                                                      .fold(0, |a, b| a + b);
+                (out, Some(out))
+            }
         }
 
         /// Returns the initial and final layout of an attachment, given its num.
-        fn attachment_layouts(num: u32) -> (Layout, Layout) {
+        ///
+        /// The value always correspond to the first and last usages of an attachment.
+        fn attachment_layouts(num: usize) -> (Layout, Layout) {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
 
