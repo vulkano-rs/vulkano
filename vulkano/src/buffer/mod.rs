@@ -61,12 +61,14 @@ use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 
+pub use self::device_local::DeviceLocalBuffer;
 pub use self::sys::Usage;
 pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
 pub use self::view::BufferView;
 
 pub mod cpu_access;
+pub mod device_local;
 pub mod immutable;
 pub mod sys;
 pub mod traits;
