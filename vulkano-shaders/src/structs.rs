@@ -40,6 +40,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     let mut current_rust_offset = Some(0);
 
     for (num, &member) in members.iter().enumerate() {
+        // Compute infos about the member.
         let (ty, rust_size, rust_align) = type_from_id(doc, member);
         let member_name = ::member_name_from_id(doc, struct_id, num as u32);
 
@@ -49,26 +50,13 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             return String::new();
         }
 
+        // Finding offset of the current member, as requested by the SPIR-V code.
         let spirv_offset = doc.instructions.iter().filter_map(|i| {
             match *i {
                 parse::Instruction::MemberDecorate { target_id, member,
                                                    decoration: enums::Decoration::DecorationOffset,
                                                    ref params } if target_id == struct_id &&
                                                                    member as usize == num =>
-                {
-                    return Some(params[0]);
-                },
-                _ => ()
-            };
-
-            None
-        }).next();
-
-        let spirv_stride = doc.instructions.iter().filter_map(|i| {
-            match *i {
-                parse::Instruction::Decorate { target_id,
-                                               decoration: enums::Decoration::DecorationArrayStride,
-                                               ref params } if target_id == member =>
                 {
                     return Some(params[0]);
                 },
@@ -98,7 +86,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
 
             if spirv_offset != *current_rust_offset {
                 let diff = spirv_offset.checked_sub(*current_rust_offset).unwrap();
-                members_defs.push(format!("_dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
+                members_defs.push(format!("pub _dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
                 *current_rust_offset += diff;
             }
         }
@@ -110,8 +98,45 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("pub {name}: {ty}  /* offset: {offset}, stride: {stride:?} */",
-                                  name = member_name, ty = ty, offset = spirv_offset, stride = spirv_stride));
+        members_defs.push(format!("pub {name}: {ty} /* offset: {offset} */",
+                                  name = member_name, ty = ty, offset = spirv_offset));
+    }
+
+    // Try determine the total size of the struct in order to add padding at the end of the struct.
+    let spirv_req_total_size = doc.instructions.iter().filter_map(|i| {
+        match *i {
+            parse::Instruction::Decorate { target_id,
+                                           decoration: enums::Decoration::DecorationArrayStride,
+                                           ref params } =>
+            {
+                for inst in doc.instructions.iter() {
+                    match *inst {
+                        parse::Instruction::TypeArray { result_id, type_id, .. }
+                            if result_id == target_id && type_id == struct_id =>
+                        {
+                            return Some(params[0]);
+                        },
+                        parse::Instruction::TypeRuntimeArray { result_id, type_id }
+                            if result_id == target_id && type_id == struct_id =>
+                        {
+                            return Some(params[0]);
+                        },
+                        _ => ()
+                    }
+                }
+
+                None
+            },
+            _ => None
+        }
+    }).fold(None, |a, b| if let Some(a) = a { assert_eq!(a, b); Some(a) } else { Some(b) });
+
+    // Adding the final padding members.
+    if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
+        let diff = req_size.checked_sub(cur_size as u32).unwrap();
+        if diff >= 1 {
+            members_defs.push(format!("pub _dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
+        }
     }
 
     // We can only derive common traits if there's no unsized member in the struct.
@@ -122,8 +147,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     };
 
     format!("#[repr(C)]\n{derive}\
-             pub struct {name} {{\n\t{members}\n}}\n",
-            derive = derive, name = name, members = members_defs.join(",\n\t"))
+             pub struct {name} {{\n\t{members}\n}} /* total_size: {t:?} */\n",
+            derive = derive, name = name, members = members_defs.join(",\n\t"), t = spirv_req_total_size)
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
@@ -150,15 +175,21 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, us
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                return ("bool".to_owned(), Some(mem::size_of::<bool>()), mem::align_of::<bool>())
+                #[repr(C)] struct Foo { data: bool, after: u8 }
+                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                return ("bool".to_owned(), Some(size), mem::align_of::<Foo>())
             },
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
                 // FIXME: width
-                return ("i32".to_owned(), Some(mem::size_of::<i32>()), mem::align_of::<i32>())
+                #[repr(C)] struct Foo { data: i32, after: u8 }
+                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                return ("i32".to_owned(), Some(size), mem::align_of::<Foo>())
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
                 // FIXME: width
-                return ("f32".to_owned(), Some(mem::size_of::<f32>()), mem::align_of::<f32>())
+                #[repr(C)] struct Foo { data: f32, after: u8 }
+                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                return ("f32".to_owned(), Some(size), mem::align_of::<Foo>())
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
