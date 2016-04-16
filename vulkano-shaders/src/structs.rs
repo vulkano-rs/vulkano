@@ -64,6 +64,20 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             None
         }).next();
 
+        let spirv_stride = doc.instructions.iter().filter_map(|i| {
+            match *i {
+                parse::Instruction::Decorate { target_id,
+                                               decoration: enums::Decoration::DecorationArrayStride,
+                                               ref params } if target_id == member =>
+                {
+                    return Some(params[0]);
+                },
+                _ => ()
+            };
+
+            None
+        }).next();
+
         // Some structs don't have `Offset` decorations, in the case they are used as local
         // variables only. Ignoring these.
         let spirv_offset = match spirv_offset {
@@ -96,8 +110,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("pub {name}: {ty}  /* offset: {offset} */",
-                                  name = member_name, ty = ty, offset = spirv_offset));
+        members_defs.push(format!("pub {name}: {ty}  /* offset: {offset}, stride: {stride:?} */",
+                                  name = member_name, ty = ty, offset = spirv_offset, stride = spirv_stride));
     }
 
     // We can only derive common traits if there's no unsized member in the struct.
