@@ -8,6 +8,12 @@
 // according to those terms.
 
 use std::ffi::CString;
+use std::ptr;
+
+use OomError;
+use VK_ENTRY;
+use vk;
+use check_errors;
 
 macro_rules! extensions {
     ($sname:ident, $($ext:ident => $s:expr,)*) => (
@@ -39,7 +45,57 @@ macro_rules! extensions {
     );
 }
 
-extensions! {
+macro_rules! instance_extensions {
+    ($sname:ident, $($ext:ident => $s:expr,)*) => (
+        extensions! {
+            $sname,
+            $( $ext => $s,)*
+        }
+        
+        impl $sname {
+            /// See the docs of supported_by_core().
+            pub fn supported_by_core_raw() -> Result<$sname, OomError> {
+                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                    let mut num = 0;
+                    try!(check_errors(VK_ENTRY.EnumerateInstanceExtensionProperties(
+                        ptr::null(), &mut num, ptr::null_mut())));
+                    
+                    let mut properties = Vec::with_capacity(num as usize);
+                    try!(check_errors(VK_ENTRY.EnumerateInstanceExtensionProperties(
+                        ptr::null(), &mut num, properties.as_mut_ptr())));
+                    properties.set_len(num as usize);
+                    properties
+                };
+                
+                let mut extensions = $sname::none();
+                for property in properties {
+                    let name = property.extensionName;
+                    $(
+                        // TODO: this is VERY inefficient
+                        // TODO: Check specVersion?
+                        let same = {
+                            let mut i = 0;
+                            while name[i] != 0 && $s[i] != 0 && name[i] as u8 == $s[i] && i < $s.len() { i += 1; }
+                            name[i] == 0 && (i >= $s.len() || name[i] as u8 == $s[i])
+                        };
+                        if same {
+                            extensions.$ext = true;
+                        }
+                    )*
+                }
+                
+                Ok(extensions)
+            }
+            
+            /// Returns an `Extensions` object with extensions supported by the core driver.
+            pub fn supported_by_core() -> $sname {
+                $sname::supported_by_core_raw().unwrap()
+            }
+        }
+    );
+}
+
+instance_extensions! {
     InstanceExtensions,
     khr_surface => b"VK_KHR_surface",
     khr_display => b"VK_KHR_display",
