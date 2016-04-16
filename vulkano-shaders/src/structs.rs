@@ -96,7 +96,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("pub {name}: {ty}", name = member_name, ty = ty));
+        members_defs.push(format!("pub {name}: {ty}  /* offset: {offset} */",
+                                  name = member_name, ty = ty, offset = spirv_offset));
     }
 
     // We can only derive common traits if there's no unsized member in the struct.
