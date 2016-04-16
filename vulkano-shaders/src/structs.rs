@@ -33,7 +33,10 @@ pub fn write_structs(doc: &parse::Spirv) -> String {
 fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     let name = ::name_from_id(doc, struct_id);
 
+    // Strings of each member definition.
     let mut members_defs = Vec::with_capacity(members.len());
+    // Padding structs will be named `_paddingN` where `N` is determined by this variable.
+    let mut next_padding_num = 0;
 
     // Contains the offset of the next field.
     // Equals to `None` if there's a runtime-sized field in there.
@@ -86,7 +89,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
 
             if spirv_offset != *current_rust_offset {
                 let diff = spirv_offset.checked_sub(*current_rust_offset).unwrap();
-                members_defs.push(format!("pub _dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
+                let padding_num = next_padding_num; next_padding_num += 1;
+                members_defs.push(format!("pub _dummy{}: [u8; {}]", padding_num, diff));
                 *current_rust_offset += diff;
             }
         }
@@ -135,7 +139,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
         let diff = req_size.checked_sub(cur_size as u32).unwrap();
         if diff >= 1 {
-            members_defs.push(format!("pub _dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
+            let padding_num = next_padding_num; next_padding_num += 1;
+            members_defs.push(format!("pub _dummy{}: [u8; {}]", padding_num, diff));
         }
     }
 
