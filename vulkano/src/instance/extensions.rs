@@ -89,7 +89,7 @@ macro_rules! instance_extensions {
             
             /// Returns an `Extensions` object with extensions supported by the core driver.
             pub fn supported_by_core() -> $sname {
-                $sname::supported_raw().unwrap()
+                $sname::supported_by_core_raw().unwrap()
             }
         }
     );
