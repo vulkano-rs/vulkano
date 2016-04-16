@@ -53,8 +53,8 @@ macro_rules! instance_extensions {
         }
         
         impl $sname {
-            /// See the docs of supported().
-            pub fn supported_raw() -> Result<$sname, OomError> {
+            /// See the docs of supported_by_core().
+            pub fn supported_by_core_raw() -> Result<$sname, OomError> {
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
                     try!(check_errors(VK_ENTRY.EnumerateInstanceExtensionProperties(
@@ -87,8 +87,8 @@ macro_rules! instance_extensions {
                 Ok(extensions)
             }
             
-            /// Returns an `Extensions` object with known supported extensions.
-            pub fn supported() -> $sname {
+            /// Returns an `Extensions` object with extensions supported by the core driver.
+            pub fn supported_by_core() -> $sname {
                 $sname::supported_raw().unwrap()
             }
         }
