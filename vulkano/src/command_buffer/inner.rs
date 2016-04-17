@@ -63,6 +63,12 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+// TODO: that sucks but we have to lock everything when submitting a command buffer to a queue
+//       this is because of synchronization issues when querying resources for their dependencies
+lazy_static! {
+    static ref GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
+}
+
 /// Actual implementation of all command buffer builders.
 ///
 /// Doesn't check whether the command type is appropriate for the command buffer type.
@@ -1689,6 +1695,9 @@ pub struct InnerCommandBuffer {
 pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
               queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type
 {
+    // TODO: see comment of GLOBAL_MUTEX
+    let _global_lock = GLOBAL_MUTEX.lock().unwrap();
+
     let vk = me.device.pointers();
 
     assert_eq!(queue.device().internal_object(), me.pool.device().internal_object());
