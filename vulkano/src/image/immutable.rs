@@ -7,9 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::mem;
 use std::iter::Empty;
 use std::ops::Range;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::Weak;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use command_buffer::Submission;
@@ -41,6 +46,13 @@ pub struct ImmutableImage<F, A = StdMemoryPool> where A: MemoryPool {
     view: UnsafeImageView,
     memory: A::Alloc,
     format: F,
+    per_layer: SmallVec<[PerLayer; 1]>,
+}
+
+#[derive(Debug)]
+struct PerLayer {
+    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
+    started_reading: AtomicBool,
 }
 
 impl<F> ImmutableImage<F> {
@@ -93,6 +105,16 @@ impl<F> ImmutableImage<F> {
             view: view,
             memory: mem,
             format: format,
+            per_layer: {
+                let mut v = SmallVec::new();
+                for _ in 0 .. dimensions.array_layers() {
+                    v.push(PerLayer {
+                        latest_write_submission: Mutex::new(None),
+                        started_reading: AtomicBool::new(false),
+                    });
+                }
+                v
+            },
         }))
     }
 }
@@ -111,8 +133,8 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
     }
 
     #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
+    fn blocks(&self, _: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)> {
+        array_layers.map(|l| (0, l)).collect()
     }
 
     #[inline]
@@ -141,6 +163,7 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
         (Layout::ShaderReadOnlyOptimal, false, false)
     }
 
+    #[inline]
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
         Some(false)
     }
@@ -148,8 +171,31 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
     unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult
     {
+        // FIXME: check queue family
+
+        let mut dependencies = Vec::with_capacity(access.size_hint().1.unwrap_or(0));
+
+        while let Some(access) = access.next() {
+            let per_layer = &self.per_layer[access.block.1 as usize];
+
+            if access.write {
+                assert!(per_layer.started_reading.load(Ordering::Acquire) == false);
+            }
+
+            let mut latest_submission = per_layer.latest_write_submission.lock().unwrap();
+            let dependency = if access.write {
+                mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
+            } else {
+                latest_submission.clone()
+            };
+
+            if let Some(dep) = dependency.and_then(|d| d.upgrade()) {
+                dependencies.push(dep);
+            }
+        }
+
         GpuAccessResult {
-            dependencies: vec![],
+            dependencies: dependencies,
             additional_wait_semaphore: None,
             additional_signal_semaphore: None,
             before_transitions: vec![],
