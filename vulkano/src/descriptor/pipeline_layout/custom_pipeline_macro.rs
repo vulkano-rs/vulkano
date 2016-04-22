@@ -126,6 +126,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::InputAttachment;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::ValidParameter;
 
             // This constant is part of the API, but Rust sees it as dead code.
@@ -296,6 +297,23 @@ unsafe impl<'a, I> ValidParameter<CombinedImageSampler> for (&'a Arc<Sampler>, &
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::combined_image_sampler(binding, self.0, self.1)
+    }
+}
+
+pub struct InputAttachment;
+unsafe impl DescriptorMarker for InputAttachment {
+    #[inline]
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::InputAttachment
+    }
+}
+
+unsafe impl<'a, I> ValidParameter<InputAttachment> for &'a Arc<I>
+    where I: ImageView + 'static
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::input_attachment(binding, self)
     }
 }
 
