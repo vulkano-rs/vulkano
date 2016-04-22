@@ -95,6 +95,86 @@ pub unsafe trait RenderPassDesc {
             }
         })
     }
+
+    /// Returns true if a subpass has a depth attachment or a depth-stencil attachment.
+    #[inline]
+    fn has_depth(&self, subpass: u32) -> Option<bool> {
+        self.passes().skip(subpass as usize).next().map(|p| {
+            let atch_num = match p.depth_stencil {
+                Some((d, _)) => d,
+                None => return false
+            };
+
+            match self.attachments().skip(atch_num).next().unwrap().format.ty() {
+                FormatTy::Depth => true,
+                FormatTy::Stencil => false,
+                FormatTy::DepthStencil => true,
+                _ => unreachable!()
+            }
+        })
+    }
+
+    /// Returns true if a subpass has a depth attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
+        self.passes().skip(subpass as usize).next().map(|p| {
+            let atch_num = match p.depth_stencil {
+                Some((d, l)) => {
+                    if l == ImageLayout::DepthStencilReadOnlyOptimal { return false; }
+                    d
+                },
+                None => return false
+            };
+
+            match self.attachments().skip(atch_num).next().unwrap().format.ty() {
+                FormatTy::Depth => true,
+                FormatTy::Stencil => false,
+                FormatTy::DepthStencil => true,
+                _ => unreachable!()
+            }
+        })
+    }
+
+    /// Returns true if a subpass has a stencil attachment or a depth-stencil attachment.
+    #[inline]
+    fn has_stencil(&self, subpass: u32) -> Option<bool> {
+        self.passes().skip(subpass as usize).next().map(|p| {
+            let atch_num = match p.depth_stencil {
+                Some((d, _)) => d,
+                None => return false
+            };
+
+            match self.attachments().skip(atch_num).next().unwrap().format.ty() {
+                FormatTy::Depth => false,
+                FormatTy::Stencil => true,
+                FormatTy::DepthStencil => true,
+                _ => unreachable!()
+            }
+        })
+    }
+
+    /// Returns true if a subpass has a stencil attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
+        self.passes().skip(subpass as usize).next().map(|p| {
+            let atch_num = match p.depth_stencil {
+                Some((d, l)) => {
+                    if l == ImageLayout::DepthStencilReadOnlyOptimal { return false; }
+                    d
+                },
+                None => return false
+            };
+
+            match self.attachments().skip(atch_num).next().unwrap().format.ty() {
+                FormatTy::Depth => false,
+                FormatTy::Stencil => true,
+                FormatTy::DepthStencil => true,
+                _ => unreachable!()
+            }
+        })
+    }
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
@@ -344,6 +424,32 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
     #[inline]
     pub fn num_color_attachments(&self) -> u32 {
         self.render_pass.num_color_attachments(self.subpass_id).unwrap()
+    }
+
+    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment.
+    #[inline]
+    pub fn has_depth(&self) -> bool {
+        self.render_pass.has_depth(self.subpass_id).unwrap()
+    }
+
+    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    pub fn has_writable_depth(&self) -> bool {
+        self.render_pass.has_writable_depth(self.subpass_id).unwrap()
+    }
+
+    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
+    #[inline]
+    pub fn has_stencil(&self) -> bool {
+        self.render_pass.has_stencil(self.subpass_id).unwrap()
+    }
+
+    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    pub fn has_writable_stencil(&self) -> bool {
+        self.render_pass.has_writable_stencil(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has any color or depth/stencil attachment.
