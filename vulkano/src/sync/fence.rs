@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 use std::mem;
-use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -21,6 +20,7 @@ use smallvec::SmallVec;
 use device::Device;
 use Error;
 use OomError;
+use SafeDeref;
 use Success;
 use VulkanObject;
 use VulkanPointers;
@@ -33,11 +33,10 @@ use vk;
 /// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
 /// when the CPU can access a ressource again, a fence has to be used.
 #[derive(Debug)]
-pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
+pub struct Fence<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     fence: vk::Fence,
 
     device: D,
-    device_raw: vk::Device,
 
     // If true, we know that the `Fence` is signaled. If false, we don't know.
     // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
@@ -45,7 +44,7 @@ pub struct Fence<D = Arc<Device>> where D: Deref<Target = Device> {
     signaled: AtomicBool,
 }
 
-impl<D> Fence<D> where D: Deref<Target = Device> {
+impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// See the docs of new().
     #[inline]
     pub fn raw(device: &D) -> Result<Fence<D>, OomError>
@@ -88,10 +87,9 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
         Arc::new(Fence::signaled_raw(device).unwrap())
     }
 
-    fn new_impl(device_ptr: &D, signaled: bool) -> Result<Fence<D>, OomError>
+    fn new_impl(device: &D, signaled: bool) -> Result<Fence<D>, OomError>
         where D: Clone
     {
-        let device: &Device = &*device_ptr;
         let vk = device.pointers();
 
         let fence = unsafe {
@@ -109,8 +107,7 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
 
         Ok(Fence {
             fence: fence,
-            device: device_ptr.clone(),
-            device_raw: device.internal_object(),
+            device: device.clone(),
             signaled: AtomicBool::new(signaled),
         })
     }
@@ -119,13 +116,10 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     #[inline]
     pub fn ready(&self) -> Result<bool, OomError> {
         unsafe {
-            let device: &Device = &*self.device;
-            assert_eq!(device.internal_object(), self.device_raw);
-
             if self.signaled.load(Ordering::Relaxed) { return Ok(true); }
 
-            let vk = device.pointers();
-            let result = try!(check_errors(vk.GetFenceStatus(device.internal_object(),
+            let vk = self.device.pointers();
+            let result = try!(check_errors(vk.GetFenceStatus(self.device.internal_object(),
                                                              self.fence)));
             match result {
                 Success::Success => {
@@ -144,16 +138,13 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
     pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
         unsafe {
-            let device: &Device = &*self.device;
-            assert_eq!(device.internal_object(), self.device_raw);
-
             if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
 
             let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
                                               .saturating_add(timeout.subsec_nanos() as u64);
 
-            let vk = device.pointers();
-            let r = try!(check_errors(vk.WaitForFences(device.internal_object(), 1,
+            let vk = self.device.pointers();
+            let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
                                                        &self.fence, vk::TRUE, timeout_ns)));
 
             match r {
@@ -219,11 +210,8 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     #[inline]
     pub fn reset(&self) {
         unsafe {
-            let device: &Device = &*self.device;
-            assert_eq!(device.internal_object(), self.device_raw);
-
-            let vk = device.pointers();
-            vk.ResetFences(device.internal_object(), 1, &self.fence);
+            let vk = self.device.pointers();
+            vk.ResetFences(self.device.internal_object(), 1, &self.fence);
             self.signaled.store(false, Ordering::Relaxed);
         }
     }
@@ -258,7 +246,7 @@ impl<D> Fence<D> where D: Deref<Target = Device> {
     }
 }
 
-unsafe impl<D> VulkanObject for Fence<D> where D: Deref<Target = Device> {
+unsafe impl<D> VulkanObject for Fence<D> where D: SafeDeref<Target = Device> {
     type Object = vk::Fence;
 
     #[inline]
@@ -267,15 +255,12 @@ unsafe impl<D> VulkanObject for Fence<D> where D: Deref<Target = Device> {
     }
 }
 
-impl<D> Drop for Fence<D> where D: Deref<Target = Device> {
+impl<D> Drop for Fence<D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let device: &Device = &*self.device;
-            assert_eq!(device.internal_object(), self.device_raw);
-
-            let vk = device.pointers();
-            vk.DestroyFence(device.internal_object(), self.fence, ptr::null());
+            let vk = self.device.pointers();
+            vk.DestroyFence(self.device.internal_object(), self.fence, ptr::null());
         }
     }
 }

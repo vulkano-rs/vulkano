@@ -19,6 +19,7 @@ use instance::MemoryType;
 use device::Device;
 use memory::Content;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -26,15 +27,14 @@ use vk;
 
 /// Represents memory that has been allocated.
 #[derive(Debug)]
-pub struct DeviceMemory<D = Arc<Device>> where D: Deref<Target = Device> {
+pub struct DeviceMemory<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     memory: vk::DeviceMemory,
     device: D,
-    device_raw: vk::Device,
     size: usize,
     memory_type_index: u32,
 }
 
-impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
+impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// Allocates a chunk of memory from the device.
     ///
     /// Some platforms may have a limit on the maximum size of a single allocation. For example,
@@ -47,12 +47,10 @@ impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
     ///
     // TODO: VK_ERROR_TOO_MANY_OBJECTS error
     #[inline]
-    pub fn alloc(device_ptr: &D, memory_type: &MemoryType, size: usize)
+    pub fn alloc(device: &D, memory_type: &MemoryType, size: usize)
                  -> Result<DeviceMemory<D>, OomError>
         where D: Clone
     {
-        let device: &Device = &**device_ptr;
-
         assert!(size >= 1);
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
@@ -79,8 +77,7 @@ impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
 
         Ok(DeviceMemory {
             memory: memory,
-            device: device_ptr.clone(),
-            device_raw: device.internal_object(),
+            device: device.clone(),
             size: size,
             memory_type_index: memory_type.id(),
         })
@@ -93,16 +90,14 @@ impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
     /// - Panicks if `memory_type` doesn't belong to the same physical device as `device`.
     /// - Panicks if the memory type is not host-visible.
     ///
-    pub fn alloc_and_map(device_ptr: &D, memory_type: &MemoryType, size: usize)
+    pub fn alloc_and_map(device: &D, memory_type: &MemoryType, size: usize)
                          -> Result<MappedDeviceMemory<D>, OomError>
         where D: Clone
     {
-        let device: &Device = &**device_ptr;
-
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
-        let mem = try!(DeviceMemory::alloc(device_ptr, memory_type, size));     // FIXME: shouldn't pass device for safety
+        let mem = try!(DeviceMemory::alloc(device, memory_type, size));
 
         let coherent = memory_type.is_host_coherent();
 
@@ -124,9 +119,7 @@ impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
     /// Returns the memory type this chunk was allocated on.
     #[inline]
     pub fn memory_type(&self) -> MemoryType {
-        let device: &Device = &*self.device;
-        assert_eq!(device.internal_object(), self.device_raw);
-        device.physical_device().memory_type_by_id(self.memory_type_index).unwrap()
+        self.device.physical_device().memory_type_by_id(self.memory_type_index).unwrap()
     }
 
     /// Returns the size in bytes of that memory chunk.
@@ -138,13 +131,11 @@ impl<D> DeviceMemory<D> where D: Deref<Target = Device> {
     /// Returns the device associated with this allocation.
     #[inline]
     pub fn device(&self) -> &Device {
-        let device: &Device = &*self.device;
-        assert_eq!(device.internal_object(), self.device_raw);
-        device
+        &self.device
     }
 }
 
-unsafe impl<D> VulkanObject for DeviceMemory<D> where D: Deref<Target = Device> {
+unsafe impl<D> VulkanObject for DeviceMemory<D> where D: SafeDeref<Target = Device> {
     type Object = vk::DeviceMemory;
 
     #[inline]
@@ -153,7 +144,7 @@ unsafe impl<D> VulkanObject for DeviceMemory<D> where D: Deref<Target = Device> 
     }
 }
 
-impl<D> Drop for DeviceMemory<D> where D: Deref<Target = Device> {
+impl<D> Drop for DeviceMemory<D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -166,13 +157,13 @@ impl<D> Drop for DeviceMemory<D> where D: Deref<Target = Device> {
 
 /// Represents memory that has been allocated and mapped in CPU accessible space.
 #[derive(Debug)]
-pub struct MappedDeviceMemory<D = Arc<Device>> where D: Deref<Target = Device> {
+pub struct MappedDeviceMemory<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     memory: DeviceMemory<D>,
     pointer: *mut c_void,
     coherent: bool,
 }
 
-impl<D> MappedDeviceMemory<D> where D: Deref<Target = Device> {
+impl<D> MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// Returns the underlying `DeviceMemory`.
     // TODO: impl AsRef instead
     #[inline]
@@ -219,10 +210,10 @@ impl<D> MappedDeviceMemory<D> where D: Deref<Target = Device> {
     }
 }
 
-unsafe impl<D> Send for MappedDeviceMemory<D> where D: Deref<Target = Device> {}
-unsafe impl<D> Sync for MappedDeviceMemory<D> where D: Deref<Target = Device> {}
+unsafe impl<D> Send for MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {}
+unsafe impl<D> Sync for MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {}
 
-impl<D> Drop for MappedDeviceMemory<D> where D: Deref<Target = Device> {
+impl<D> Drop for MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -234,14 +225,14 @@ impl<D> Drop for MappedDeviceMemory<D> where D: Deref<Target = Device> {
 }
 
 /// Object that can be used to read or write the content of a `MappedDeviceMemory`.
-pub struct CpuAccess<'a, T: ?Sized + 'a, D = Arc<Device>> where D: Deref<Target = Device> + 'a {
+pub struct CpuAccess<'a, T: ?Sized + 'a, D = Arc<Device>> where D: SafeDeref<Target = Device> + 'a {
     pointer: *mut T,
     mem: &'a MappedDeviceMemory<D>,
     coherent: bool,
     range: Range<usize>,
 }
 
-impl<'a, T: ?Sized + 'a, D: 'a> CpuAccess<'a, T, D> where D: Deref<Target = Device> {
+impl<'a, T: ?Sized + 'a, D: 'a> CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
     /// Makes a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
     #[inline]
     pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U, D>
@@ -256,10 +247,10 @@ impl<'a, T: ?Sized + 'a, D: 'a> CpuAccess<'a, T, D> where D: Deref<Target = Devi
     }
 }
 
-unsafe impl<'a, T: ?Sized + 'a, D: 'a> Send for CpuAccess<'a, T, D> where D: Deref<Target = Device> {}
-unsafe impl<'a, T: ?Sized + 'a, D: 'a> Sync for CpuAccess<'a, T, D> where D: Deref<Target = Device> {}
+unsafe impl<'a, T: ?Sized + 'a, D: 'a> Send for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {}
+unsafe impl<'a, T: ?Sized + 'a, D: 'a> Sync for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {}
 
-impl<'a, T: ?Sized + 'a, D: 'a> Deref for CpuAccess<'a, T, D> where D: Deref<Target = Device> {
+impl<'a, T: ?Sized + 'a, D: 'a> Deref for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
     type Target = T;
 
     #[inline]
@@ -268,14 +259,14 @@ impl<'a, T: ?Sized + 'a, D: 'a> Deref for CpuAccess<'a, T, D> where D: Deref<Tar
     }
 }
 
-impl<'a, T: ?Sized + 'a, D: 'a> DerefMut for CpuAccess<'a, T, D> where D: Deref<Target = Device> {
+impl<'a, T: ?Sized + 'a, D: 'a> DerefMut for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.pointer }
     }
 }
 
-impl<'a, T: ?Sized + 'a, D: 'a> Drop for CpuAccess<'a, T, D> where D: Deref<Target = Device> {
+impl<'a, T: ?Sized + 'a, D: 'a> Drop for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         // If the memory doesn't have the `coherent` flag, we need to flush the data.
