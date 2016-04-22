@@ -22,6 +22,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         set: u32,
         binding: u32,
         desc_ty: String,
+        readonly: bool,
     }
 
     // Looping to find all the elements that have the `DescriptorSet` decoration.
@@ -49,7 +50,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         }).next().expect(&format!("Uniform `{}` is missing a binding", name));
 
         // Find informations about the kind of binding for this descriptor.
-        let desc_ty = doc.instructions.iter().filter_map(|i| {
+        let (desc_ty, readonly) = doc.instructions.iter().filter_map(|i| {
             match i {
                 &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                     // Determine whether there's a Block or BufferBlock decoration.
@@ -65,28 +66,31 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                         }
                     }).next().expect("Found a buffer uniform with neither the Block nor BufferBlock decorations");
 
+                    // Determine whether there's a NonWritable decoration.
+                    let non_writable = false;       // TODO: tricky because the decoration is on struct members
+
                     Some(if !is_ssbo {
-                        "DescriptorType::UniformBuffer"
+                        ("DescriptorType::UniformBuffer", true)
                     } else {
-                        "DescriptorType::StorageBuffer"
+                        ("DescriptorType::StorageBuffer", non_writable)
                     })
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(true) =>
                 {
-                    Some("DescriptorType::SampledImage")
+                    Some(("DescriptorType::SampledImage", true))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(false) =>
                 {
-                    Some("DescriptorType::InputAttachment")       // FIXME: can be `StorageImage`
+                    Some(("DescriptorType::InputAttachment", true))       // FIXME: can be `StorageImage`
                 },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
                                                                     if result_id == pointed_ty =>
                 {
-                    Some("DescriptorType::CombinedImageSampler")
+                    Some(("DescriptorType::CombinedImageSampler", true))
                 },
                 _ => None,      // TODO: other types
             }
@@ -97,6 +101,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             desc_ty: desc_ty.to_owned(),
             set: descriptor_set,
             binding: binding,
+            readonly: readonly,
         });
     }
 
@@ -117,8 +122,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                                 ty: {desc_ty},
                                                 array_count: 1,
                                                 stages: ShaderStages::all(),        // TODO:
-                                                readonly: false,                    // TODO:
-                                            }}", binding = d.binding, desc_ty = d.desc_ty)
+                                                readonly: {readonly},
+                                            }}", binding = d.binding, desc_ty = d.desc_ty,
+                                                 readonly = if d.readonly { "true" } else { "false" })
                                })
                                .collect::<Vec<_>>();
 
