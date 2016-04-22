@@ -635,6 +635,12 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     where Rp: RenderPass + RenderPassDesc
 {
+    /// Returns the render pass used in the constructor.
+    #[inline]
+    pub fn render_pass(&self) -> &Arc<Rp> {
+        &self.render_pass
+    }
+
     /// Returns the pass used in the constructor.
     #[inline]
     pub fn subpass(&self) -> Subpass<Rp> {
