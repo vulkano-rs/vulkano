@@ -77,7 +77,9 @@ pub mod sync;
 use std::error;
 use std::fmt;
 use std::mem;
+use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::MutexGuard;
 
 mod vk {
@@ -108,6 +110,11 @@ lazy_static! {
         })
     };
 }
+
+/// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
+pub unsafe trait SafeDeref: Deref {}
+unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
+unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
 
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
