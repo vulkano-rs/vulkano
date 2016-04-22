@@ -235,7 +235,7 @@ macro_rules! ordered_passes_renderpass {
                     }
 
                     cur_pass_num += 1;
-                }),*
+                })*
 
                 None
             }
