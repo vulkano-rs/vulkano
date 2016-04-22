@@ -469,6 +469,25 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
             };
 
+            if params.depth_stencil.depth_write && !params.render_pass.has_writable_depth() {
+                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+            }
+
+            if params.depth_stencil.depth_compare != Compare::Always &&
+               !params.render_pass.has_depth()
+            {
+                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+            }
+
+            if (!params.depth_stencil.stencil_front.always_keep() ||
+                !params.depth_stencil.stencil_back.always_keep()) &&
+                !params.render_pass.has_stencil()
+            {
+                return Err(GraphicsPipelineCreationError::NoStencilAttachment);
+            }
+
+            // FIXME: stencil writability
+
             vk::PipelineDepthStencilStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -828,6 +847,14 @@ pub enum GraphicsPipelineCreationError {
 
     /// The `logic_op` feature must be enabled in order to use logic operations.
     LogicOpFeatureNotEnabled,
+
+    /// The depth test requires a depth attachment but render pass has no depth attachment, or
+    /// depth writing is enabled and the depth attachment is read-only.
+    NoDepthAttachment,
+
+    /// The stencil test requires a stencil attachment but render pass has no stencil attachment, or
+    /// stencil writing is enabled and the stencil attachment is read-only.
+    NoStencilAttachment,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -910,6 +937,12 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::LogicOpFeatureNotEnabled => {
                 "the `logic_op` feature must be enabled in order to use logic operations"
+            },
+            GraphicsPipelineCreationError::NoDepthAttachment => {
+                "the depth attachment of the render pass does not match the depth test"
+            },
+            GraphicsPipelineCreationError::NoStencilAttachment => {
+                "the stencil attachment of the render pass does not match the stencil test"
             },
         }
     }

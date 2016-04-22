@@ -129,6 +129,42 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
             None
         }
     }
+
+    #[inline]
+    fn has_depth(&self, subpass: u32) -> Option<bool> {
+        if subpass == 0 {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
+        if subpass == 0 {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn has_stencil(&self, subpass: u32) -> Option<bool> {
+        if subpass == 0 {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
+        if subpass == 0 {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
 unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
