@@ -13,8 +13,9 @@ use vulkano::swapchain::SurfaceCreationError;
 use winit::WindowBuilder;
 use winit::CreationError as WindowCreationError;
 
-pub fn required_instances() -> InstanceExtensions {
+pub fn required_extensions() -> InstanceExtensions {
     let ideal = InstanceExtensions {
+        khr_surface: true,
         khr_xlib_surface: true,
         khr_xcb_surface: true,
         khr_wayland_surface: true,
