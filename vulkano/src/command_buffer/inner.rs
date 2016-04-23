@@ -601,6 +601,75 @@ impl InnerCommandBufferBuilder {
         self
     }
 
+    /// Copies data from a color image to a buffer.
+    ///
+    /// This operation can be performed by any kind of queue.
+    ///
+    /// # Safety
+    ///
+    /// - Care must be taken to respect the rules about secondary command buffers.
+    ///
+    pub unsafe fn copy_color_image_to_buffer<'a, P, S, Sb, Img>(mut self, dest: S, image: &Arc<Img>,
+                                                                mip_level: u32, array_layers_range: Range<u32>,
+                                                                offset: [u32; 3], extent: [u32; 3])
+                                                             -> InnerCommandBufferBuilder
+        where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
+              Sb: Buffer + 'static
+    {
+        // FIXME: check the parameters
+
+        debug_assert!(self.render_pass_staging_commands.is_empty());
+
+        //assert!(image.format().is_float_or_compressed());
+
+        let dest = dest.into();
+        self.add_buffer_resource_outside(dest.buffer().clone() as Arc<_>, true,
+                                         dest.offset() .. dest.offset() + dest.size(),
+                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                         vk::ACCESS_TRANSFER_WRITE_BIT);
+        self.add_image_resource_outside(image.clone() as Arc<_>, mip_level .. mip_level + 1,
+                                        array_layers_range.clone(), false,
+                                        ImageLayout::TransferSrcOptimal,
+                                        vk::PIPELINE_STAGE_TRANSFER_BIT,
+                                        vk::ACCESS_TRANSFER_READ_BIT);
+
+        {
+            let dest_offset = dest.offset() as vk::DeviceSize;
+            let dest = dest.buffer().inner_buffer().internal_object();
+            let image = image.inner_image().internal_object();
+
+            self.staging_commands.push(Box::new(move |vk, cmd| {
+                let region = vk::BufferImageCopy {
+                    bufferOffset: dest_offset,
+                    bufferRowLength: 0,
+                    bufferImageHeight: 0,
+                    imageSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                        mipLevel: mip_level,
+                        baseArrayLayer: array_layers_range.start,
+                        layerCount: array_layers_range.end - array_layers_range.start,
+                    },
+                    imageOffset: vk::Offset3D {
+                        x: offset[0] as i32,
+                        y: offset[1] as i32,
+                        z: offset[2] as i32,
+                    },
+                    imageExtent: vk::Extent3D {
+                        width: extent[0],
+                        height: extent[1],
+                        depth: extent[2],
+                    },
+                };
+
+                vk.CmdCopyImageToBuffer(cmd, image,
+                                        vk::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL /* FIXME */,
+                                        dest, 1, &region);
+            }));
+        }
+
+        self
+    }
+
     pub unsafe fn blit<Si, Di>(mut self, source: &Arc<Si>, source_mip_level: u32,
                                source_array_layers: Range<u32>, src_coords: [Range<i32>; 3],
                                destination: &Arc<Di>, dest_mip_level: u32,
