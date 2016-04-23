@@ -20,6 +20,7 @@ use framebuffer::RenderPass;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::LoadOp;
 use image::traits::Image;
 use image::traits::ImageView;
 
@@ -61,8 +62,22 @@ impl UnsafeRenderPass {
     {
         let vk = device.pointers();
 
-        // TODO: check the validity of the renderpass layout with debug_assert!
-        //   - If the first use of an attachment in this render pass is as an input attachment, and the attachment is not also used as a color or depth/stencil attachment in the same subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
+        // If the first use of an attachment in this render pass is as an input attachment, and
+        // the attachment is not also used as a color or depth/stencil attachment in the same
+        // subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
+        debug_assert!(attachments.clone().enumerate().all(|(atch_num, attachment)| {
+            if attachment.load != LoadOp::Clear {
+                return true;
+            }
+
+            for p in passes.clone() {
+                if p.color_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return true; }
+                if let Some((a, _)) = p.depth_stencil { if a == atch_num { return true; } }
+                if p.input_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return false; }
+            }
+
+            true
+        }));
 
         let attachments = attachments.clone().map(|attachment| {
             debug_assert!(attachment.samples.is_power_of_two());

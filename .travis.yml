@@ -21,7 +21,8 @@ addons:
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
-    - cargo test --lib --no-run -v --manifest-path vulkano/Cargo.toml       # TODO: remove `--lib` when it works
+    # We run the main build with `-j 1` or we have a chance to reach travis' memory limit
+    - cargo test --lib --no-run -j 1 -v --manifest-path vulkano/Cargo.toml       # TODO: remove `--lib` when it works
 
 after_success: 
     - |
