@@ -15,7 +15,7 @@ job1:
   script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
-    - cargo build -v --manifest-path vulkano/Cargo.toml
+    - cargo test --no-run -v --manifest-path vulkano/Cargo.toml
 
 pages:
   stage: deploy

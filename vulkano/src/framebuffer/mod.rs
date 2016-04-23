@@ -53,7 +53,7 @@
 //! use vulkano::framebuffer::EmptySinglePassRenderPass;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let renderpass = EmptySinglePassRenderPass::new(&device).unwrap();
+//! let renderpass = EmptySinglePassRenderPass::new(&device);
 //! ```
 //!
 //! # Framebuffers
