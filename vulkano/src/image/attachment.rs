@@ -107,6 +107,7 @@ impl<F> AttachmentImage<F> {
     {
         let usage = Usage {
             transfer_source: true,
+            transfer_dest: true,
             sampled: true,
             .. Usage::none()
         };
