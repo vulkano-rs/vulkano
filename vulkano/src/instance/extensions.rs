@@ -41,6 +41,16 @@ macro_rules! extensions {
                 $(if self.$ext { data.push(CString::new(&$s[..]).unwrap()); })*
                 data
             }
+
+            /// Returns the intersection of this list and another list.
+            #[inline]
+            pub fn intersection(&self, other: &$sname) -> $sname {
+                $sname {
+                    $(
+                        $ext: self.$ext && other.$ext,
+                    )*
+                }
+            }
         }
     );
 }

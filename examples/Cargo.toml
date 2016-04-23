@@ -1,0 +1,16 @@
+[package]
+name = "examples"
+version = "0.1.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+vulkano = { path = "../vulkano" }
+vulkano-win = { path = "../vulkano-win" }
+cgmath = "0.7.0"
+image = "0.6.1"
+winit = { git = "https://github.com/tomaka/winit" }
+
+[build-dependencies]
+vk-sys = { path = "../vk-sys" }
+vulkano-shaders = { path = "../vulkano-shaders" }

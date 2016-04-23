@@ -146,9 +146,9 @@ fn main() {
     // can now use to load the shader.
     //
     // Because of some restrictions with the `include!` macro, we need to use a module.
-    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/triangle_vs.glsl")} }
+    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_vs.glsl")} }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/triangle_fs.glsl")} }
+    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL

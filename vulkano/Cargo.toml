@@ -14,9 +14,3 @@ lazy_static = "0.1.15"
 
 [build-dependencies]
 vk-sys = { path = "../vk-sys" }
-vulkano-shaders = { path = "../vulkano-shaders" }
-
-[dev-dependencies]
-cgmath = "0.7.0"
-image = "0.6.1"
-winit = { git = "https://github.com/tomaka/winit" }

@@ -8,6 +8,7 @@
 // according to those terms.
 
 extern crate cgmath;
+extern crate image;
 extern crate winit;
 
 #[cfg(windows)]
@@ -16,18 +17,11 @@ use winit::os::windows::WindowExt;
 #[macro_use]
 extern crate vulkano;
 
-#[path = "support/teapot.rs"]
-mod teapot;
-
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
-use std::sync::Arc;
 use std::time::Duration;
-
-mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
-mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -40,7 +34,7 @@ fn main() {
         khr_win32_surface: true,
         .. vulkano::instance::InstanceExtensions::none()
     };
-    let instance = vulkano::instance::Instance::new(Some(&app), &extensions, None).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(Some(&app), &extensions, &[]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -57,9 +51,8 @@ fn main() {
         khr_swapchain: true,
         .. vulkano::device::DeviceExtensions::none()
     };
-
     let (device, queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
-                                                        &device_ext, None, [(queue, 0.5)].iter().cloned())
+                                                        &device_ext, &[], [(queue, 0.5)].iter().cloned())
                                                                 .expect("failed to create device");
     let queue = queues.into_iter().next().unwrap();
 
@@ -69,9 +62,9 @@ fn main() {
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes[0];
         let usage = caps.supported_usage_flags;
-        let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(&device, &surface, 3, format, dimensions, 1,
+        vulkano::swapchain::Swapchain::new(&device, &surface, 3,
+                                           vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
@@ -81,60 +74,32 @@ fn main() {
     let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family());
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
-    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                               ::array(&device, teapot::VERTICES.len(),
-                                       &vulkano::buffer::Usage::all(), Some(queue.family()))
-                                       .expect("failed to create buffer");
 
+
+    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
+                               ::array(&device, 4, &vulkano::buffer::Usage::all(),
+                                       Some(queue.family())).expect("failed to create buffer");
+
+    struct Vertex { position: [f32; 2] }
+    impl_vertex!(Vertex, position);
+
+    // The buffer that we created contains uninitialized data.
+    // In order to fill it with data, we have to *map* it.
     {
+        // The `write` function would return `Err` if the buffer was in use by the GPU. This
+        // obviously can't happen here, since we haven't ask the GPU to do anything yet.
         let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::VERTICES.iter()) {
-            *o = *i;
-        }
+        mapping[0].position = [-0.5, -0.5];
+        mapping[1].position = [-0.5,  0.5];
+        mapping[2].position = [ 0.5, -0.5];
+        mapping[3].position = [ 0.5,  0.5];
     }
 
-    let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::array(&device, teapot::NORMALS.len(),
-                                        &vulkano::buffer::Usage::all(), Some(queue.family()))
-                                        .expect("failed to create buffer");
 
-    {
-        let mut mapping = normals_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::NORMALS.iter()) {
-            *o = *i;
-        }
-    }
-
-    let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                              ::array(&device, teapot::INDICES.len(),
-                                      &vulkano::buffer::Usage::all(), Some(queue.family()))
-                                      .expect("failed to create buffer");
-
-    {
-        let mut mapping = index_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::INDICES.iter()) {
-            *o = *i;
-        }
-    }
-
-    // note: this teapot was meant for OpenGL where the origin is at the lower left
-    //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
-    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
-    let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
-    let scale = cgmath::Matrix4::from_scale(0.01);
-
-    let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::new(&device, &vulkano::buffer::Usage::all(), Some(queue.family()))
-                               .expect("failed to create buffer");
-    {
-        let mut mapping = uniform_buffer.write(Duration::new(0, 0)).unwrap();
-        mapping.worldview = (view * scale).into();
-        mapping.proj = proj.into();
-    }
-
+    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_vs.glsl")} }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
+    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     mod renderpass {
@@ -143,45 +108,77 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: ::vulkano::format::Format,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: ::vulkano::format::D16Unorm,
+                    format: ::vulkano::format::B8G8R8A8Srgb,
                 }
             },
             pass: {
                 color: [color],
-                depth_stencil: {depth}
+                depth_stencil: {}
             }
         }
     }
 
     let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
-        color: (images[0].format(), 1),
-        depth: (vulkano::format::D16Unorm, 1)
+        color: (vulkano::format::B8G8R8A8Srgb, 1)
     }).unwrap();
 
-    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
+    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::sys::Dimensions::Dim2d { width: 93, height: 93 },
+                                                                 vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
+
+    let pixel_buffer = {
+        let image = image::load_from_memory_with_format(include_bytes!("image_img.png"),
+                                                        image::ImageFormat::PNG).unwrap().to_rgba();
+        let image_data = image.into_raw().clone();
+
+        // TODO: staging buffer instead
+        let pixel_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
+                                   ::array(&device, image_data.len(), &vulkano::buffer::Usage::all(),
+                                           Some(queue.family())).expect("failed to create buffer");
+
+        {
+            let mut mapping = pixel_buffer.write(Duration::new(0, 0)).unwrap();
+            for (o, i) in mapping.iter_mut().zip(image_data.chunks(4)) {
+                o[0] = i[0];
+                o[1] = i[1];
+                o[2] = i[2];
+                o[3] = i[3];
+            }
+        }
+
+        pixel_buffer
+    };
+
+
+    let sampler = vulkano::sampler::Sampler::new(&device, vulkano::sampler::Filter::Linear,
+                                                 vulkano::sampler::Filter::Linear, vulkano::sampler::MipmapMode::Nearest,
+                                                 vulkano::sampler::SamplerAddressMode::Repeat,
+                                                 vulkano::sampler::SamplerAddressMode::Repeat,
+                                                 vulkano::sampler::SamplerAddressMode::Repeat,
+                                                 0.0, 1.0, 0.0, 0.0).unwrap();
+
+    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
     mod pipeline_layout {
         pipeline_layout!{
             set0: {
-                uniforms: UniformBuffer<::vs::ty::Data>
+                tex: CombinedImageSampler
             }
         }
     }
 
     let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
     let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
-        uniforms: &uniform_buffer
+        tex: (&sampler, &texture)
     });
 
+
     let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
-        vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
+        vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
         vertex_shader: vs.main_entry_point(),
-        input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
+        input_assembly: vulkano::pipeline::input_assembly::InputAssembly {
+            topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleStrip,
+            primitive_restart_enable: false,
+        },
         geometry_shader: None,
         viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
             data: vec![(
@@ -205,32 +202,29 @@ fn main() {
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {
             color: &image,
-            depth: &depth_buffer,
         };
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (image.dimensions()[0], image.dimensions()[1], 1), attachments).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
         vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool)
+            .copy_buffer_to_color_image(&pixel_buffer, &texture, 0, 0 .. 1, [0, 0, 0],
+                                        [texture.dimensions().width(), texture.dimensions().height(), 1])
+            //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
-                 color: [0.0, 0.0, 1.0, 1.0],
-                 depth: 1.0,
-             })
-            .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
-                          &vulkano::command_buffer::DynamicState::none(), &set, &())
+                color: [0.0, 0.0, 1.0, 1.0]
+            })
+            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(),
+                  &set, &())
             .draw_end()
             .build()
     }).collect::<Vec<_>>();
 
-    let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();
-
     loop {
-        submissions.retain(|s| s.destroying_would_block());
-
-        let image_num = swapchain.acquire_next_image(Duration::from_millis(1)).unwrap();
-        submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
+        let image_num = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
+        vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap();
         swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.poll_events() {
