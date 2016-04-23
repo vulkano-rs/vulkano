@@ -57,7 +57,6 @@ macro_rules! ordered_passes_renderpass {
     ) => {
         use std::vec::IntoIter as VecIntoIter;
         use std::sync::Arc;
-        use $crate::OomError;
         use $crate::device::Device;
         use $crate::format::ClearValue;
         use $crate::framebuffer::UnsafeRenderPass;
@@ -69,6 +68,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::LayoutPassDescription;
         use $crate::framebuffer::LayoutPassDependencyDescription;
         use $crate::framebuffer::FramebufferCreationError;
+        use $crate::framebuffer::RenderPassCreationError;
         use $crate::image::Layout;
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
@@ -87,12 +87,12 @@ macro_rules! ordered_passes_renderpass {
 
         impl CustomRenderPass {
             pub fn raw(device: &Arc<Device>, formats: &Formats)
-                       -> Result<CustomRenderPass, OomError>
+                       -> Result<CustomRenderPass, RenderPassCreationError>
             {
                 #![allow(unsafe_code)]
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::raw(device, AttachmentsIter(formats.clone(), 0),
+                    UnsafeRenderPass::new(device, AttachmentsIter(formats.clone(), 0),
                                           PassesIter(0), DependenciesIter(0, 0))
                 });
 
@@ -104,9 +104,9 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             pub fn new(device: &Arc<Device>, formats: &Formats)
-                       -> Arc<CustomRenderPass>
+                       -> Result<Arc<CustomRenderPass>, RenderPassCreationError>
             {
-                Arc::new(CustomRenderPass::raw(device, formats).unwrap())
+                Ok(Arc::new(try!(CustomRenderPass::raw(device, formats))))
             }
         }
 

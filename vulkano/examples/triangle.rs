@@ -180,7 +180,7 @@ fn main() {
 
     let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
         color: (vulkano::format::B8G8R8A8Srgb, 1)
-    });
+    }).unwrap();
 
     let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
