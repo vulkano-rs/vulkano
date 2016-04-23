@@ -145,7 +145,7 @@ impl PrimaryCommandBufferBuilder {
     }
 
     pub fn copy_buffer_to_color_image<'a, P, S, Img, Sb>(self, source: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
-                                                                offset: [u32; 3], extent: [u32; 3])
+                                                         offset: [u32; 3], extent: [u32; 3])
                                                     -> PrimaryCommandBufferBuilder
         where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
               Img: ImageContent<P> + 'static
@@ -153,6 +153,20 @@ impl PrimaryCommandBufferBuilder {
         unsafe {
             PrimaryCommandBufferBuilder {
                 inner: self.inner.copy_buffer_to_color_image(source, destination, mip_level,
+                                                             array_layers_range, offset, extent),
+            }
+        }
+    }
+
+    pub fn copy_color_image_to_buffer<'a, P, S, Img, Sb>(self, dest: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
+                                                         offset: [u32; 3], extent: [u32; 3])
+                                                    -> PrimaryCommandBufferBuilder
+        where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
+              Img: ImageContent<P> + 'static
+    {
+        unsafe {
+            PrimaryCommandBufferBuilder {
+                inner: self.inner.copy_color_image_to_buffer(dest, destination, mip_level,
                                                              array_layers_range, offset, extent),
             }
         }
