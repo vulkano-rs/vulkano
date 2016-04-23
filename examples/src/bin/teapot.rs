@@ -7,27 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+extern crate examples;
 extern crate cgmath;
 extern crate winit;
 
-#[cfg(windows)]
-use winit::os::windows::WindowExt;
-
 #[macro_use]
 extern crate vulkano;
+extern crate vulkano_win;
 
-#[path = "support/teapot.rs"]
-mod teapot;
+use vulkano_win::VkSurfaceBuild;
 
 use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::time::Duration;
 
-mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_vs.glsl")} }
-mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/examples/teapot_fs.glsl")} }
+mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/teapot_vs.glsl")} }
+mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/teapot_fs.glsl")} }
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -46,11 +43,10 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let window = winit::WindowBuilder::new().build().unwrap();
-    let surface = unsafe { vulkano::swapchain::Surface::from_hwnd(&instance, ptr::null() as *const () /* FIXME */, window.get_hwnd()).unwrap() };
+    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
 
     let queue = physical.queue_families().find(|q| q.supports_graphics() &&
-                                                   surface.is_supported(q).unwrap_or(false))
+                                                   window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
     let device_ext = vulkano::device::DeviceExtensions {
@@ -64,14 +60,14 @@ fn main() {
     let queue = queues.into_iter().next().unwrap();
 
     let (swapchain, images) = {
-        let caps = surface.get_capabilities(&physical).expect("failed to get surface capabilities");
+        let caps = window.surface().get_capabilities(&physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes[0];
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(&device, &surface, 3, format, dimensions, 1,
+        vulkano::swapchain::Swapchain::new(&device, &window.surface(), 3, format, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
@@ -84,37 +80,37 @@ fn main() {
     let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                               ::array(&device, teapot::VERTICES.len(),
+                               ::array(&device, examples::VERTICES.len(),
                                        &vulkano::buffer::Usage::all(), Some(queue.family()))
                                        .expect("failed to create buffer");
 
     {
         let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::VERTICES.iter()) {
+        for (o, i) in mapping.iter_mut().zip(examples::VERTICES.iter()) {
             *o = *i;
         }
     }
 
     let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::array(&device, teapot::NORMALS.len(),
+                                ::array(&device, examples::NORMALS.len(),
                                         &vulkano::buffer::Usage::all(), Some(queue.family()))
                                         .expect("failed to create buffer");
 
     {
         let mut mapping = normals_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::NORMALS.iter()) {
+        for (o, i) in mapping.iter_mut().zip(examples::NORMALS.iter()) {
             *o = *i;
         }
     }
 
     let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                              ::array(&device, teapot::INDICES.len(),
+                              ::array(&device, examples::INDICES.len(),
                                       &vulkano::buffer::Usage::all(), Some(queue.family()))
                                       .expect("failed to create buffer");
 
     {
         let mut mapping = index_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(teapot::INDICES.iter()) {
+        for (o, i) in mapping.iter_mut().zip(examples::INDICES.iter()) {
             *o = *i;
         }
     }
@@ -233,7 +229,7 @@ fn main() {
         submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
         swapchain.present(&queue, image_num).unwrap();
 
-        for ev in window.poll_events() {
+        for ev in window.window().poll_events() {
             match ev {
                 winit::Event::Closed => return,
                 _ => ()

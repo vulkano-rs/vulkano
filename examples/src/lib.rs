@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#[macro_use]
+extern crate vulkano;
+
 #[derive(Copy, Clone)]
 pub struct Vertex {
     position: (f32, f32, f32)

@@ -1,0 +1,8 @@
+[package]
+name = "vulkano-win"
+version = "0.1.0"
+authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
+
+[dependencies]
+vulkano = { version = "0.1", path = "../vulkano" }
+winit = { git = "https://github.com/tomaka/winit" }
