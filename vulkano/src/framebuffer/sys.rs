@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -21,6 +23,7 @@ use framebuffer::LayoutPassDependencyDescription;
 use image::traits::Image;
 use image::traits::ImageView;
 
+use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -34,10 +37,24 @@ pub struct UnsafeRenderPass {
 }
 
 impl UnsafeRenderPass {
-    /// See the docs of new().
-    pub unsafe fn raw<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
+    /// Builds a new renderpass.
+    ///
+    /// # Safety
+    ///
+    /// This function doesn't check whether all the restrictions in the attachments, passes and
+    /// passes dependencies were enforced.
+    ///
+    /// See the documentation of the structs of this module for more info about these restrictions.
+    ///
+    /// # Panic
+    ///
+    /// - Can panick if it detects some violations in the restrictions. Only unexpensive checks are
+    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
+    /// mode.
+    ///
+    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
                                   pass_dependencies: Id)
-               -> Result<UnsafeRenderPass, OomError>
+                                  -> Result<UnsafeRenderPass, RenderPassCreationError>
         where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
               Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
               Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
@@ -136,54 +153,64 @@ impl UnsafeRenderPass {
         }).collect::<SmallVec<[_; 16]>>();
 
         // Now iterating over passes.
-        // `ref_index` and `preserve_ref_index` are increased during the loop and point to the
-        // next element to use in respectively `attachment_references` and
-        // `preserve_attachments_references`.
-        let mut ref_index = 0usize;
-        let mut preserve_ref_index = 0usize;
-        let passes = passes.clone().map(|pass| {
-            assert!(pass.color_attachments.len() as u32 <=
-                    device.physical_device().limits().max_color_attachments());
+        let passes = {
+            // `ref_index` and `preserve_ref_index` are increased during the loop and point to the
+            // next element to use in respectively `attachment_references` and
+            // `preserve_attachments_references`.
+            let mut ref_index = 0usize;
+            let mut preserve_ref_index = 0usize;
+            let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
-            let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-            ref_index += pass.color_attachments.len();
-            let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-            ref_index += pass.input_attachments.len();
-            let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
-            ref_index += pass.resolve_attachments.len();
-            let depth_stencil = if pass.depth_stencil.is_some() {
-                let a = attachment_references.as_ptr().offset(ref_index as isize);
-                ref_index += 1;
-                a
-            } else {
-                ptr::null()
-            };
+            for pass in passes.clone() {
+                if pass.color_attachments.len() as u32 >
+                   device.physical_device().limits().max_color_attachments()
+                {
+                    return Err(RenderPassCreationError::ColorAttachmentsLimitExceeded);
+                }
 
-            let preserve_attachments = preserve_attachments_references.as_ptr().offset(preserve_ref_index as isize);
-            preserve_ref_index += pass.preserve_attachments.len();
+                let color_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.color_attachments.len();
+                let input_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.input_attachments.len();
+                let resolve_attachments = attachment_references.as_ptr().offset(ref_index as isize);
+                ref_index += pass.resolve_attachments.len();
+                let depth_stencil = if pass.depth_stencil.is_some() {
+                    let a = attachment_references.as_ptr().offset(ref_index as isize);
+                    ref_index += 1;
+                    a
+                } else {
+                    ptr::null()
+                };
 
-            vk::SubpassDescription {
-                flags: 0,   // reserved
-                pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                inputAttachmentCount: pass.input_attachments.len() as u32,
-                pInputAttachments: if pass.input_attachments.is_empty() { ptr::null() }
-                                   else { input_attachments },
-                colorAttachmentCount: pass.color_attachments.len() as u32,
-                pColorAttachments: if pass.color_attachments.is_empty() { ptr::null() }
-                                   else { color_attachments },
-                pResolveAttachments: if pass.resolve_attachments.is_empty() { ptr::null() }
-                                     else { resolve_attachments },
-                pDepthStencilAttachment: depth_stencil,
-                preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                pPreserveAttachments: if pass.preserve_attachments.is_empty() { ptr::null() }
-                                      else { preserve_attachments },
+                let preserve_attachments = preserve_attachments_references.as_ptr()
+                                                              .offset(preserve_ref_index as isize);
+                preserve_ref_index += pass.preserve_attachments.len();
+
+                out.push(vk::SubpassDescription {
+                    flags: 0,   // reserved
+                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
+                    inputAttachmentCount: pass.input_attachments.len() as u32,
+                    pInputAttachments: if pass.input_attachments.is_empty() { ptr::null() }
+                                       else { input_attachments },
+                    colorAttachmentCount: pass.color_attachments.len() as u32,
+                    pColorAttachments: if pass.color_attachments.is_empty() { ptr::null() }
+                                       else { color_attachments },
+                    pResolveAttachments: if pass.resolve_attachments.is_empty() { ptr::null() }
+                                         else { resolve_attachments },
+                    pDepthStencilAttachment: depth_stencil,
+                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
+                    pPreserveAttachments: if pass.preserve_attachments.is_empty() { ptr::null() }
+                                          else { preserve_attachments },
+                });
             }
-        }).collect::<SmallVec<[_; 16]>>();
 
-        assert!(!passes.is_empty());
-        // If these assertions fails, there's a serious bug in the code above ^.
-        debug_assert!(ref_index == attachment_references.len());
-        debug_assert!(preserve_ref_index == preserve_attachments_references.len());
+            assert!(!out.is_empty());
+            // If these assertions fails, there's a serious bug in the code above ^.
+            debug_assert!(ref_index == attachment_references.len());
+            debug_assert!(preserve_ref_index == preserve_attachments_references.len());
+
+            out
+        };
 
         let dependencies = pass_dependencies.map(|dependency| {
             debug_assert!(dependency.source_subpass < passes.len());
@@ -226,36 +253,6 @@ impl UnsafeRenderPass {
             renderpass: renderpass,
         })
     }
-    
-    /// Builds a new renderpass.
-    ///
-    /// This function calls the methods of the `Layout` implementation and builds the
-    /// corresponding Vulkan object.
-    ///
-    /// # Safety
-    ///
-    /// This function doesn't check whether all the restrictions in the attachments, passes and
-    /// passes dependencies were enforced.
-    ///
-    /// See the documentation of the structs of this module for more info about these restrictions.
-    ///
-    /// # Panic
-    ///
-    /// - Can panick if it detects some violations in the restrictions. Only unexpensive checks are
-    /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
-    /// mode.
-    ///
-    /// - Panicks if the device or host ran out of memory.
-    ///
-    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
-                                  pass_dependencies: Id)
-               -> UnsafeRenderPass
-        where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
-              Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
-              Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
-    {
-        UnsafeRenderPass::raw(device, attachments, passes, pass_dependencies).unwrap()
-    }
 
     /// Returns the device that was used to create this render pass.
     #[inline]
@@ -286,6 +283,113 @@ impl Drop for UnsafeRenderPass {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating a compute pipeline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RenderPassCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// The maximum number of color attachments has been exceeded.
+    ColorAttachmentsLimitExceeded,
+}
+
+impl error::Error for RenderPassCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            RenderPassCreationError::OomError(_) => "not enough memory available",
+            RenderPassCreationError::ColorAttachmentsLimitExceeded => {
+                "the maximum number of color attachments has been exceeded"
+            },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            RenderPassCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for RenderPassCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for RenderPassCreationError {
+    #[inline]
+    fn from(err: OomError) -> RenderPassCreationError {
+        RenderPassCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for RenderPassCreationError {
+    #[inline]
+    fn from(err: Error) -> RenderPassCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                RenderPassCreationError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                RenderPassCreationError::OomError(OomError::from(err))
+            },
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use format::R8G8B8A8Unorm;
+    use framebuffer::RenderPassCreationError;
+
+    #[test]
+    fn too_many_color_atch() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        if device.physical_device().limits().max_color_attachments() >= 10 {
+            return;     // test ignored
+        }
+
+        mod example {
+            use format::R8G8B8A8Unorm;
+            single_pass_renderpass! {
+                attachments: {
+                    a1: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a2: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a3: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a4: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a5: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a6: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a7: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a8: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a9: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, },
+                    a10: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, }
+                },
+                pass: {
+                    color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
+                    depth_stencil: {}
+                }
+            }
+        }
+
+        let formats = example::Formats {
+            a1: (R8G8B8A8Unorm, 1), a2: (R8G8B8A8Unorm, 1), a3: (R8G8B8A8Unorm, 1),
+            a4: (R8G8B8A8Unorm, 1), a5: (R8G8B8A8Unorm, 1), a6: (R8G8B8A8Unorm, 1),
+            a7: (R8G8B8A8Unorm, 1), a8: (R8G8B8A8Unorm, 1), a9: (R8G8B8A8Unorm, 1),
+            a10: (R8G8B8A8Unorm, 1),
+        };
+
+        match example::CustomRenderPass::new(&device, &formats) {
+            Err(RenderPassCreationError::ColorAttachmentsLimitExceeded) => (),
+            _ => panic!()
         }
     }
 }

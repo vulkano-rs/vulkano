@@ -161,7 +161,7 @@ fn main() {
     let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
         color: (images[0].format(), 1),
         depth: (vulkano::format::D16Unorm, 1)
-    });
+    }).unwrap();
 
     let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
 

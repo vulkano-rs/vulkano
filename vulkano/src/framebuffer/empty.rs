@@ -16,6 +16,7 @@ use device::Device;
 use format::ClearValue;
 use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::UnsafeRenderPass;
+use framebuffer::sys::RenderPassCreationError;
 use framebuffer::traits::RenderPass;
 use framebuffer::traits::RenderPassDesc;
 use framebuffer::traits::RenderPassAttachmentsList;
@@ -27,8 +28,6 @@ use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
 
-use OomError;
-
 /// Implementation of `RenderPass` with no attachment at all and a single pass.
 ///
 /// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
@@ -39,7 +38,7 @@ pub struct EmptySinglePassRenderPass {
 
 impl EmptySinglePassRenderPass {
     /// See the docs of new().
-    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, OomError> {
+    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
         let rp = try!(unsafe {
             let pass = LayoutPassDescription {
                 color_attachments: vec![],
@@ -49,7 +48,7 @@ impl EmptySinglePassRenderPass {
                 preserve_attachments: vec![],
             };
 
-            UnsafeRenderPass::raw(device, iter::empty(), Some(pass).into_iter(), iter::empty())
+            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
         });
 
         Ok(EmptySinglePassRenderPass {
