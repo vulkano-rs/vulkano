@@ -168,7 +168,7 @@ macro_rules! formats {
         }
 
         $(
-            #[derive(Debug, Copy, Clone)]
+            #[derive(Debug, Copy, Clone, Default)]
             #[allow(missing_docs)]
             #[allow(non_camel_case_types)]
             pub struct $name;

@@ -378,15 +378,6 @@ macro_rules! ordered_passes_renderpass {
         }
 
         ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
-
-        unsafe impl RenderPassClearValues<ClearValues> for CustomRenderPass {
-            type ClearValuesIter = ClearValuesIter;
-
-            #[inline]
-            fn convert_clear_values(&self, val: ClearValues) -> ClearValuesIter {
-                ClearValuesIter(val, 0)
-            }
-        }
     };
 
     (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
@@ -398,27 +389,48 @@ macro_rules! ordered_passes_renderpass {
     };
 
     (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ty,)+] []) => {
-        pub struct ClearValues {
+        #[allow(non_camel_case_types)]
+        pub struct ClearValues<$($atch),+> {
             $(
-                pub $atch: <$format as $crate::format::FormatDesc>::ClearValue,
+                pub $atch: $atch,
             )+
         }
 
-        pub struct ClearValuesIter(ClearValues, usize);
+        #[allow(non_camel_case_types)]
+        unsafe impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),*>
+            RenderPassClearValues<ClearValues<$($atch),*>> for CustomRenderPass
+        {
+            type ClearValuesIter = ClearValuesIter<$($atch),+>;
 
-        impl Iterator for ClearValuesIter {
+            #[inline]
+            fn convert_clear_values(&self, val: ClearValues<$($atch),+>)
+                                    -> ClearValuesIter<$($atch),+>
+            {
+                ClearValuesIter(self.formats.clone(), val, 0)
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        pub struct ClearValuesIter<$($atch),*>(Formats, ClearValues<$($atch),+>, usize);
+
+        #[allow(non_camel_case_types)]
+        impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),+>
+            Iterator for ClearValuesIter<$($atch),+>
+        {
             type Item = $crate::format::ClearValue;
 
             #[inline]
             fn next(&mut self) -> Option<Self::Item> {
+                use $crate::format::FormatDesc;
+
                 $(
-                    if self.1 == $num {
-                        self.1 += 1;
-                        return Some(ClearValue::from((self.0).$atch));        // FIXME: should use Format::decode_clear_value instead
+                    if self.2 == $num {
+                        self.2 += 1;
+                        return Some((self.0).$atch.0.decode_clear_value((self.1).$atch.clone().into()));
                     }
                 )+
 
-                if self.1 >= $total {
+                if self.2 >= $total {
                     None
                 } else {
                     Some(ClearValue::None)
@@ -427,18 +439,29 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn size_hint(&self) -> (usize, Option<usize>) {
-                let len = $total - self.1;
+                let len = $total - self.2;
                 (len, Some(len))
             }
         }
 
-        impl ExactSizeIterator for ClearValuesIter {}
+        #[allow(non_camel_case_types)]
+        impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),+>
+            ExactSizeIterator for ClearValuesIter<$($atch),+> {}
     };
 
     (__impl_clear_values__ [$total:expr] [] []) => {
         pub type ClearValues = ();
 
-        pub struct ClearValuesIter((), usize);
+        unsafe impl RenderPassClearValues<()> for CustomRenderPass {
+            type ClearValuesIter = ClearValuesIter;
+
+            #[inline]
+            fn convert_clear_values(&self, val: ()) -> ClearValuesIter {
+                ClearValuesIter
+            }
+        }
+
+        pub struct ClearValuesIter;
 
         impl Iterator for ClearValuesIter {
             type Item = $crate::format::ClearValue;
