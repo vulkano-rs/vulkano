@@ -123,8 +123,8 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError>
 {
     use winit::os::unix::WindowExt;
-    Surface::from_xlib(instance, window.get_xlib_display().unwrap(),
-                       window.get_xlib_window().unwrap())
+    Surface::from_xlib(instance, win.get_xlib_display().unwrap(),
+                       win.get_xlib_window().unwrap())
 }
 
 #[cfg(windows)]
