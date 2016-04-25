@@ -645,7 +645,15 @@ impl UnsafeImageView {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 image: image.internal_object(),
-                viewType: vk::IMAGE_VIEW_TYPE_2D,     // FIXME:
+                viewType: match (image.dimensions(), array_layers.end - array_layers.start) {
+                    (Dimensions::Dim1d { .. }, _) => vk::IMAGE_VIEW_TYPE_1D,
+                    (Dimensions::Dim1dArray { .. }, 1) => vk::IMAGE_VIEW_TYPE_1D,
+                    (Dimensions::Dim1dArray { .. }, _) => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
+                    (Dimensions::Dim2d { .. }, _) => vk::IMAGE_VIEW_TYPE_2D,
+                    (Dimensions::Dim2dArray { .. }, 1) => vk::IMAGE_VIEW_TYPE_2D,
+                    (Dimensions::Dim2dArray { .. }, _) => vk::IMAGE_VIEW_TYPE_2D_ARRAY,
+                    (Dimensions::Dim3d { .. }, _) => vk::IMAGE_VIEW_TYPE_3D,
+                },      // TODO: cube
                 format: image.format as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
