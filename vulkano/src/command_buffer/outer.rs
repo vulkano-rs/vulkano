@@ -99,7 +99,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static + Send + Sync
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -326,7 +326,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
                               -> PrimaryCommandBufferBuilderInlineDraw
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
-              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone
+              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         // FIXME: check subpass
 
@@ -345,7 +345,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
                                               sets: L, push_constants: &Pc) -> PrimaryCommandBufferBuilderInlineDraw
         where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
-              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone
+              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         // FIXME: check subpass
 
@@ -589,7 +589,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                               -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
-              R: RenderPassCompatible<Rp>, Pc: 'static + Clone
+              R: RenderPassCompatible<Rp>, Pc: 'static + Clone + Send + Sync
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
@@ -611,7 +611,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone
+              L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
         assert_eq!(self.render_pass_subpass, pipeline.subpass().index());
@@ -631,7 +631,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, Pc: 'static + Clone,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
+              Pc: 'static + Clone + Send + Sync,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
     {
         assert!(self.render_pass.is_compatible_with(pipeline.subpass().render_pass()));
@@ -728,7 +729,7 @@ impl SecondaryComputeCommandBufferBuilder {
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static
+        where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static + Send + Sync
     {
         unsafe {
             SecondaryComputeCommandBufferBuilder {

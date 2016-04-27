@@ -103,7 +103,7 @@ pub struct InnerCommandBufferBuilder {
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer. Doesn't
     // include commands that were submitted within a render pass.
-    staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
+    staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer) + Send + Sync>>,
 
     // List of resources accesses made by the comands in `staging_commands`. Doesn't include
     // commands added to the current render pass.
@@ -112,7 +112,7 @@ pub struct InnerCommandBufferBuilder {
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
     // inside a render pass. Flushed when `end_renderpass` is called.
-    render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer)>>,
+    render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer) + Send + Sync>>,
 
     // List of resources accesses made by the current render pass. Merged with
     // `staging_required_buffer_accesses` and `staging_required_image_accesses` when
@@ -356,7 +356,7 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn update_buffer<'a, B, T, Bt>(mut self, buffer: B, data: &T)
                                               -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + 'static
+        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + Send + Sync + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
@@ -770,7 +770,8 @@ impl InnerCommandBufferBuilder {
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
+              Pc: 'static + Clone + Send + Sync
     {
         // FIXME: add buffers to the resources
 
@@ -814,7 +815,7 @@ impl InnerCommandBufferBuilder {
               Pv: 'static + VertexDefinition + VertexSource<V>,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
-              Pc: 'static + Clone
+              Pc: 'static + Clone + Send + Sync
     {
         // FIXME: add buffers to the resources
 
@@ -869,7 +870,7 @@ impl InnerCommandBufferBuilder {
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
         where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone,
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone + Send + Sync,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
     {
         // FIXME: add buffers to the resources
@@ -962,7 +963,7 @@ impl InnerCommandBufferBuilder {
     fn bind_gfx_pipeline_state<V, Pl, L, Rp, Pc>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                                  dynamic: &DynamicState, sets: L, push_constants: &Pc)
         where V: 'static + VertexDefinition + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone
+              Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         unsafe {
             //assert!(sets.is_compatible_with(pipeline.layout()));
