@@ -59,6 +59,7 @@
 //!
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 
 pub use self::device_local::DeviceLocalBuffer;
@@ -108,6 +109,43 @@ impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    /// Builds a slice that contains an element from inside the buffer.
+    ///
+    /// This method builds an object that represents a slice of the buffer. No actual operation
+    /// is performed.
+    ///
+    /// # Example
+    ///
+    /// TODO
+    ///
+    /// # Safety
+    ///
+    /// The object whose reference is passed to the closure is uninitialized. Therefore you
+    /// **must not** access the content of the object.
+    ///
+    /// You **must** return a reference to an element from the parameter. The closure **must not**
+    /// panic.
+    #[inline]
+    pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<'a, R, B>
+        where F: for<'r> FnOnce(&'r T) -> &'r R
+        // TODO: bounds on R
+    {
+        let data: &T = mem::zeroed();
+        let result = f(data);
+        let size = mem::size_of_val(result);
+        let result = result as *const R as *const () as usize;
+
+        assert!(result <= self.size());
+        assert!(result + size <= self.size());
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + result,
+            size: size,
+        }
+    }
 }
 
 impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
@@ -115,6 +153,36 @@ impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
     #[inline]
     pub fn len(&self) -> usize {
         self.size() / mem::size_of::<T>()
+    }
+
+    /// Reduces the slice to just one element of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn index(self, index: usize) -> Option<BufferSlice<'a, T, B>> {
+        if index >= self.len() { return None; }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + index * mem::size_of::<T>(),
+            size: mem::size_of::<T>(),
+        })
+    }
+
+    /// Reduces the slice to just a range of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<'a, [T], B>> {
+        if range.end > self.len() { return None; }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + range.start * mem::size_of::<T>(),
+            size: (range.end - range.start) * mem::size_of::<T>(),
+        })
     }
 }
 
