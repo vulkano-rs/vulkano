@@ -326,9 +326,7 @@ impl Usage {
     }
 
     #[inline]
-    #[doc(hidden)]
-    // TODO: shouldn't be public (it's just temporarily public)
-    pub fn to_usage_bits(&self) -> vk::BufferUsageFlagBits {
+    fn to_usage_bits(&self) -> vk::BufferUsageFlagBits {
         let mut result = 0;
         if self.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
         if self.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
