@@ -39,6 +39,7 @@ use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
+use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
@@ -128,7 +129,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         };
 
         let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment));
+                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         try!(buffer.bind_memory(mem.memory(), mem.offset()));
 

@@ -16,6 +16,7 @@ use fnv::FnvHasher;
 
 use device::Device;
 use instance::MemoryType;
+use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdHostVisibleMemoryTypePool;
@@ -31,7 +32,7 @@ pub struct StdMemoryPool {
     device: Arc<Device>,
 
     // For each memory type index, stores the associated pool.
-    pools: Mutex<HashMap<u32, Pool, BuildHasherDefault<FnvHasher>>>,
+    pools: Mutex<HashMap<(u32, AllocLayout), Pool, BuildHasherDefault<FnvHasher>>>,
 }
 
 impl StdMemoryPool {
@@ -51,12 +52,12 @@ impl StdMemoryPool {
 unsafe impl MemoryPool for StdMemoryPool {
     type Alloc = StdMemoryPoolAlloc;
 
-    fn alloc(me: &Arc<Self>, memory_type: MemoryType, size: usize, alignment: usize)
-             -> Result<StdMemoryPoolAlloc, OomError>
+    fn alloc(me: &Arc<Self>, memory_type: MemoryType, size: usize, alignment: usize,
+             layout: AllocLayout) -> Result<StdMemoryPoolAlloc, OomError>
     {
         let mut pools = me.pools.lock().unwrap();
 
-        match pools.entry(memory_type.id()) {
+        match pools.entry((memory_type.id(), layout)) {
             Entry::Occupied(entry) => {
                 match entry.get() {
                     &Pool::HostVisible(ref pool) => {
