@@ -32,6 +32,7 @@ use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use instance::QueueFamily;
+use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
@@ -91,7 +92,7 @@ impl<F> ImmutableImage<F> {
         };
 
         let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment));
+                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 

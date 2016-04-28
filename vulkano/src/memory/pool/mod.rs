@@ -38,7 +38,7 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
     /// - Panicks if `size` is 0.
     /// - Panicks if `alignment` is 0.
     ///
-    fn alloc(&Arc<Self>, ty: MemoryType, size: usize, alignment: usize)
+    fn alloc(&Arc<Self>, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
              -> Result<Self::Alloc, OomError>;
 }
 
@@ -54,4 +54,14 @@ pub unsafe trait MemoryPoolAlloc: 'static + Send + Sync {
     /// Returns the offset at the start of the memory where the first byte of this allocation
     /// resides.
     fn offset(&self) -> usize;
+}
+
+/// Layout of the object being allocated.
+///
+/// When a linear object is allocated next to an optimal object, they have to be aligned to
+/// the value of the `bufferImageGranularity` limit.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AllocLayout {
+    Linear,
+    Optimal,
 }
