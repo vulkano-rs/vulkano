@@ -17,14 +17,13 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 //use alloc::Alloc;
+use instance::loader;
 use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
 use vk;
-use VK_ENTRY;
-use VK_STATIC;
 
 use features::Features;
 use version::Version;
@@ -88,6 +87,8 @@ impl Instance {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
 
+        let entry_points = loader::entry_points().unwrap();     // TODO: return proper error
+
         // Creating the Vulkan instance.
         let instance = unsafe {
             let mut output = mem::uninitialized();
@@ -106,14 +107,17 @@ impl Instance {
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
-            try!(check_errors(VK_ENTRY.CreateInstance(&infos, ptr::null(), &mut output)));
+            try!(check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output)));
             output
         };
 
         // Loading the function pointers of the newly-created instance.
-        let vk = vk::InstancePointers::load(|name| unsafe {
-            mem::transmute(VK_STATIC.GetInstanceProcAddr(instance, name.as_ptr()))
-        });
+        let vk = {
+            let f = loader::static_functions().unwrap();        // TODO: return proper error
+            vk::InstancePointers::load(|name| unsafe {
+                mem::transmute(f.GetInstanceProcAddr(instance, name.as_ptr()))
+            })
+        };
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {

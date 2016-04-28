@@ -15,18 +15,20 @@ use std::vec::IntoIter;
 use check_errors;
 use OomError;
 use vk;
-use VK_ENTRY;
+use instance::loader;
 use version::Version;
 
 /// Queries the list of layers that are available when creating an instance.
 pub fn layers_list() -> Result<LayersIterator, OomError> {
     unsafe {
+        let entry_points = loader::entry_points().unwrap();     // TODO: return proper error
+
         let mut num = 0;
-        try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
+        try!(check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
-        try!(check_errors(VK_ENTRY.EnumerateInstanceLayerProperties(&mut num,
-                                                                    layers.as_mut_ptr())));
+        try!(check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num,
+                                                                        layers.as_mut_ptr())));
         layers.set_len(num as usize);
 
         Ok(LayersIterator {

@@ -62,9 +62,11 @@ pub use self::instance::Limits;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
+pub use self::loader::LoadingError;
 
 pub mod debug;
 
 mod extensions;
 mod instance;
 mod layers;
+mod loader;

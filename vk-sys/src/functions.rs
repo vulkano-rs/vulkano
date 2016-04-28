@@ -32,8 +32,8 @@ macro_rules! ptrs {
         unsafe impl Sync for $struct_name {}
 
         impl $struct_name {
-            pub fn load<F>(f: F) -> $struct_name
-                where F: Fn(&CStr) -> *const c_void
+            pub fn load<F>(mut f: F) -> $struct_name
+                where F: FnMut(&CStr) -> *const c_void
             {
                 $struct_name {
                     $(
