@@ -76,9 +76,7 @@ pub mod sync;
 
 use std::error;
 use std::fmt;
-use std::mem;
 use std::ops::Deref;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::MutexGuard;
 
@@ -88,27 +86,6 @@ mod vk {
     #![allow(non_snake_case)]
     #![allow(non_camel_case_types)]
     include!(concat!(env!("OUT_DIR"), "/vk_bindings.rs"));
-}
-
-lazy_static! {
-    static ref VK_LIB: shared_library::dynamic_library::DynamicLibrary = {
-        #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
-        #[cfg(unix)] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
-        let path = get_path();
-        shared_library::dynamic_library::DynamicLibrary::open(Some(path)).unwrap()
-    };
-
-    static ref VK_STATIC: vk::Static = {
-        vk::Static::load(|name| unsafe {
-            VK_LIB.symbol(name.to_str().unwrap()).unwrap()      // TODO: error handling
-        })
-    };
-
-    static ref VK_ENTRY: vk::EntryPoints = {
-        vk::EntryPoints::load(|name| unsafe {
-            mem::transmute(VK_STATIC.GetInstanceProcAddr(0, name.as_ptr()))
-        })
-    };
 }
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
