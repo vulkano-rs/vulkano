@@ -19,6 +19,10 @@
 - When `T` is unsized, there's no way to create a `*mut T` pointer from a `*mut c_void` and a size. This had to be implemented in a hacky
   (and very dangerous) way with a custom trait.
 
+- Vulkano users are encouraged to manipulate objects through `Arc`s. However there is no way to add a method `pub fn foo(self: Arc<Self>)`
+  to an object that would capture the `Arc` that holds it. This has to be done through a trait, forcing the user to import the trait and making
+  the API a bit more difficult to use.
+
 - https://github.com/rust-lang/rust/issues/29701 The fact that is legal to implement `Deref` and make `deref()` return a different object every
   time means that it is dangerous to interface with a `Foo` through a `P where P: Deref<Foo>`. That `P` could return several different
   `Foo`s every time you deref it, and the implementation can't rely on the fact that the object will be the same every time.
