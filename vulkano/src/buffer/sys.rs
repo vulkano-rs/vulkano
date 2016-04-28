@@ -7,6 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Low level implementation of buffers.
+//! 
+//! Wraps directly around Vulkan buffers, with the exceptions of a few safety checks.
+//! 
+//! The `UnsafeBuffer` type is the lowest-level buffer object provided by this library. It is used
+//! internally by the higher-level buffer types. You are strongly encouraged to have excellent
+//! knowledge of the Vulkan specs if you want to use an `UnsafeBuffer`.
+//! 
+//! Here is what you must take care of when you use an `UnsafeBuffer`:
+//! 
+//! - Synchronization, ie. avoid reading and writing simultaneously to the same buffer.
+//! - Memory aliasing considerations. If you use the same memory to back multiple resources, you
+//!   must ensure that they are not used together and must enable some additional flags.
+//! - Binding memory correctly and only once. If you use sparse binding, respect the rules of
+//!   sparse binding.
+//! - Type safety.
+
 use std::error;
 use std::fmt;
 use std::mem;
@@ -27,14 +44,6 @@ use VulkanPointers;
 use vk;
 
 /// Data storage in a GPU-accessible location.
-///
-/// # Safety
-///
-/// - Doesn't handle synchronization.
-/// - Doesn't handle memory aliasing problems.
-/// - Doesn't check that memory was correctly bound and only once.
-/// - Doesn't enforce type safety.
-///
 #[derive(Debug)]
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
