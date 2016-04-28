@@ -30,10 +30,12 @@ What does vulkano do?
 
 ## [Differences between Vulkan and vulkano](FEATURES.md)
 
-This repository contains three libraries:
+This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
+- `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
+  a window where to render to.
 - `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`.
 
 ## License
