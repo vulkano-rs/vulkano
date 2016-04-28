@@ -30,6 +30,9 @@
 - This library was designed with specialization in mind. There are several `is_compatible` trait methods that perform deep comparisons between
   layouts. With specialization available, these methods could be specialized as `true` for layouts that are known to always be compatible.
 
+- Placement new syntax would make it easier and less error-prone to create buffers, as you wouldn't have to create uninitialized buffers first.
+  https://github.com/rust-lang/rust/issues/27779
+
 - https://github.com/rust-lang/rust/issues/29328
 
 - "Source trait is private" errors when traits are declared in private modules but reexported publicly from a parent module. Not sure if that's
