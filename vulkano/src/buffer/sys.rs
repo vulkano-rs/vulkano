@@ -60,7 +60,7 @@ impl UnsafeBuffer {
     {
         let vk = device.pointers();
 
-        let usage = usage.to_usage_bits();
+        let usage_bits = usage.to_usage_bits();
 
         // Checking sparse features.
         assert!(sparse.sparse || !sparse.sparse_residency, "Can't enable sparse residency without \
@@ -88,7 +88,7 @@ impl UnsafeBuffer {
                 pNext: ptr::null(),
                 flags: sparse.to_flags(),
                 size: size as u64,
-                usage: usage,
+                usage: usage_bits,
                 sharingMode: sh_mode,
                 queueFamilyIndexCount: sh_indices.len() as u32,
                 pQueueFamilyIndices: sh_indices.as_ptr(),
@@ -100,11 +100,33 @@ impl UnsafeBuffer {
             output
         };
 
-        let mem_reqs: vk::MemoryRequirements = {
-            let mut output = mem::uninitialized();
+        let mem_reqs = {
+            #[inline] fn align(val: usize, al: usize) -> usize { al * (1 + (val - 1) / al) }
+
+            let mut output: vk::MemoryRequirements = mem::uninitialized();
             vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
             debug_assert!(output.size >= size as u64);
             debug_assert!(output.memoryTypeBits != 0);
+
+            let mut output: MemoryRequirements = output.into();
+
+            // We have to manually enforce some additional requirements for some buffer types.
+            let limits = device.physical_device().limits();
+            if usage.uniform_texel_buffer || usage.storage_texel_buffer {
+                output.alignment = align(output.alignment,
+                                         limits.min_texel_buffer_offset_alignment() as usize);
+            }
+
+            if usage.storage_buffer {
+                output.alignment = align(output.alignment,
+                                         limits.min_storage_buffer_offset_alignment() as usize);
+            }
+
+            if usage.uniform_buffer {
+                output.alignment = align(output.alignment,
+                                         limits.min_uniform_buffer_offset_alignment() as usize);
+            }
+
             output
         };
 
@@ -112,10 +134,10 @@ impl UnsafeBuffer {
             buffer: buffer,
             device: device.clone(),
             size: size as usize,
-            usage: usage,
+            usage: usage_bits,
         };
 
-        Ok((obj, mem_reqs.into()))
+        Ok((obj, mem_reqs))
     }
 
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
@@ -132,6 +154,20 @@ impl UnsafeBuffer {
             (offset as u64 % mem_reqs.alignment) == 0 &&
             mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
         });
+
+        // Check for alignment correctness.
+        {
+            let limits = self.device().physical_device().limits();
+            if self.usage_uniform_texel_buffer() || self.usage_storage_texel_buffer() {
+                debug_assert!(offset % limits.min_texel_buffer_offset_alignment() as usize == 0);
+            }
+            if self.usage_storage_buffer() {
+                debug_assert!(offset % limits.min_storage_buffer_offset_alignment() as usize == 0);
+            }
+            if self.usage_uniform_buffer() {
+                debug_assert!(offset % limits.min_uniform_buffer_offset_alignment() as usize == 0);
+            }
+        }
 
         try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
                                               memory.internal_object(), offset as vk::DeviceSize)));
