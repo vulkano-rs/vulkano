@@ -77,12 +77,27 @@ pub mod view;
 
 /// A subpart of a buffer.
 ///
-/// This object doesn't correspond to any Vulkan object. It exists for the programmer's
-/// convenience.
+/// This object doesn't correspond to any Vulkan object. It exists for API convenience.
 ///
 /// # Example
 ///
-/// TODO: example
+/// Creating a slice:
+///
+/// ```no_run
+/// use vulkano::buffer::BufferSlice;
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
+///                                                         unsafe { std::mem::uninitialized() };
+/// let _slice = BufferSlice::from(&buffer);
+/// ```
+///
+/// Selecting a slice of a buffer that contains `[T]`:
+///
+/// ```no_run
+/// use vulkano::buffer::BufferSlice;
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
+///                                                         unsafe { std::mem::uninitialized() };
+/// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
+/// ```
 ///
 #[derive(Clone)]
 pub struct BufferSlice<'a, T: ?Sized, B: 'a> {
