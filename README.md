@@ -1,6 +1,8 @@
 # Vulkano
 
-**Note: requires Rust 1.8**
+**Note: requires Rust 1.8**. This library would highly benefit from multiple upcoming features in
+Rust. Therefore it is likely that in the future you will need to update your version of Rust to
+continue using vulkano.
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
