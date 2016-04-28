@@ -63,6 +63,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 pub use self::device_local::DeviceLocalBuffer;
+pub use self::sys::BufferCreationError;
 pub use self::sys::Usage;
 pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;

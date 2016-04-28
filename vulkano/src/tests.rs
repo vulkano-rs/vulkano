@@ -55,6 +55,11 @@ macro_rules! gfx_dev_and_queue {
             .. Features::none()
         };
 
+        // If the physical device doesn't support the requested features, just return.
+        if !physical.supported_features().superset_of(&features) {
+            return;
+        }
+
         let (device, queues) = match Device::new(&physical, &features,
                                                  &extensions, None, [(queue, 0.5)].iter().cloned())
         {
