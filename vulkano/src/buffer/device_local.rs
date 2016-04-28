@@ -21,6 +21,8 @@ use std::sync::Mutex;
 use std::sync::Weak;
 use smallvec::SmallVec;
 
+use buffer::sys::BufferCreationError;
+use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::AccessRange;
@@ -110,7 +112,12 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeBuffer::new(device, size, &usage, sharing))
+            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+                Ok(b) => b,
+                Err(BufferCreationError::OomError(err)) => return Err(err),
+                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
+                                                // errors can't happen
+            }
         };
 
         let mem_ty = {
