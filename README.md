@@ -28,6 +28,9 @@ What does vulkano do?
 
 ## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.html)
 
+To get started you are encouraged to read the examples in `examples/src/bin`, starting with
+the `triangle` example.
+
 ## [Differences between Vulkan and vulkano](FEATURES.md)
 
 This repository contains four libraries:
