@@ -52,6 +52,7 @@ extern crate fnv;
 extern crate lazy_static;
 extern crate shared_library;
 extern crate smallvec;
+extern crate vk_sys as vk;
 
 #[macro_use]
 mod tests;
@@ -79,14 +80,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::MutexGuard;
-
-mod vk {
-    #![allow(dead_code)]
-    #![allow(non_upper_case_globals)]
-    #![allow(non_snake_case)]
-    #![allow(non_camel_case_types)]
-    include!(concat!(env!("OUT_DIR"), "/vk_bindings.rs"));
-}
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
