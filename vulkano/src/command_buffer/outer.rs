@@ -325,7 +325,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw<V, L, Pv, Pl, Rp, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
                               -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
+        where Pv: VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         // FIXME: check subpass
@@ -343,7 +343,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L, push_constants: &Pc) -> PrimaryCommandBufferBuilderInlineDraw
-        where Pv: 'static + VertexDefinition + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
+        where Pv: 'static + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
@@ -587,7 +587,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw<V, L, Pv, Pl, Rp, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
                               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: VertexDefinition + VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
+        where Pv: VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               R: RenderPassCompatible<Rp>, Pc: 'static + Clone + Send + Sync
     {
@@ -608,7 +608,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
                                               sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: 'static + VertexDefinition + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
+        where Pv: 'static + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
@@ -630,7 +630,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     pub fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
-        where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
+        where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Pc: 'static + Clone + Send + Sync,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>

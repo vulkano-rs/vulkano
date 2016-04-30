@@ -769,7 +769,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn draw<V, Pv, Pl, L, Rp, Pc>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
-        where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
+        where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Pc: 'static + Clone + Send + Sync
     {
@@ -812,7 +812,7 @@ impl InnerCommandBufferBuilder {
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
                                                           sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
         where L: DescriptorSetsCollection + Send + Sync,
-              Pv: 'static + VertexDefinition + VertexSource<V>,
+              Pv: 'static + VertexSource<V>,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
               Pc: 'static + Clone + Send + Sync
@@ -869,7 +869,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(mut self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
                              sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
-        where Pv: 'static + VertexDefinition + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
+        where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone + Send + Sync,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
     {
@@ -962,7 +962,7 @@ impl InnerCommandBufferBuilder {
 
     fn bind_gfx_pipeline_state<V, Pl, L, Rp, Pc>(&mut self, pipeline: &Arc<GraphicsPipeline<V, Pl, Rp>>,
                                                  dynamic: &DynamicState, sets: L, push_constants: &Pc)
-        where V: 'static + VertexDefinition + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
+        where V: 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
         unsafe {

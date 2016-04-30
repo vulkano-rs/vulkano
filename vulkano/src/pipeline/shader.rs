@@ -10,10 +10,13 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::ffi::CStr;
+use std::vec::IntoIter as VecIntoIter;
 
+use format::Format;
 use pipeline::input_assembly::PrimitiveTopology;
 
 use device::Device;
@@ -70,14 +73,14 @@ impl ShaderModule {
     }
 
     pub unsafe fn vertex_shader_entry_point<'a, S, V, L>(&'a self, name: &'a CStr, layout: L,
-                                                         attributes: Vec<(u32, Cow<'static, str>)>)
+                                                         vertex_input: V)
                                                          -> VertexShaderEntryPoint<'a, S, V, L>
     {
         VertexShaderEntryPoint {
             module: self,
             name: name,
+            vertex_input: vertex_input,
             layout: layout,
-            attributes: attributes,
             marker: PhantomData,
         }
     }
@@ -174,9 +177,9 @@ impl Drop for ShaderModule {
 pub struct VertexShaderEntryPoint<'a, S, V, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    attributes: Vec<(u32, Cow<'static, str>)>,
+    vertex_input: V,
     layout: L,
-    marker: PhantomData<(S, V)>,
+    marker: PhantomData<S>,
 }
 
 impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
@@ -195,10 +198,9 @@ impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
         &self.layout
     }
 
-    // TODO: change API
     #[inline]
-    pub fn attributes(&self) -> &[(u32, Cow<'static, str>)] {
-        &self.attributes
+    pub fn input_definition(&self) -> &V {
+        &self.vertex_input
     }
 }
 
@@ -363,11 +365,81 @@ impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
     }
 }
 
+/// Structs that contain the definition of an interface between two shader stages, or between
+/// the outside and a shader stage.
+///
+/// # Safety
+///
+/// - Must only provide one entry per location.
+/// - The format must not be larger than 128 bits.
+///
 pub unsafe trait ShaderInterfaceDef {
+    /// Iterator returned by `elements`.
+    type Iter: ExactSizeIterator<Item = ShaderInterfaceDefEntry>;
+
+    /// Iterates over the elements of the interface.
+    fn elements(&self) -> Self::Iter;
 }
 
-pub unsafe trait PossibleMatchShaderInterface<I>: ShaderInterfaceDef where I: ShaderInterfaceDef {
+// FIXME: temporary ; remove as it is unsafe
+unsafe impl ShaderInterfaceDef for Vec<ShaderInterfaceDefEntry> {
+    type Iter = VecIntoIter<ShaderInterfaceDefEntry>;
+
+    #[inline]
+    fn elements(&self) -> Self::Iter {
+        self.clone().into_iter()
+    }
+}
+
+/// Entry of a shader interface definition.
+#[derive(Debug, Clone)]
+pub struct ShaderInterfaceDefEntry {
+    /// Range of locations covered by the element.
+    pub location: Range<u32>,
+    /// Format of a each location of the element.
+    pub format: Format,
+    /// Name of the element, or `None` if the name is unknown.
+    pub name: Option<Cow<'static, str>>,
+}
+
+/// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
+/// compatible with another one.
+pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef where I: ShaderInterfaceDef {
+    /// Returns true if the two definitions match.
+    // TODO: return a descriptive error instead
     fn matches(&self, other: &I) -> bool;
+}
+
+// TODO: turn this into a default impl that can be specialized
+unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
+    where T: ShaderInterfaceDef, I: ShaderInterfaceDef
+{
+    fn matches(&self, other: &I) -> bool {
+        if self.elements().len() != other.elements().len() {
+            return false;
+        }
+
+        for a in self.elements() {
+            for loc in a.location.clone() {
+                let b = match other.elements().find(|e| loc >= e.location.start && loc < e.location.end) {
+                    None => return false,
+                    Some(b) => b,
+                };
+
+                if a.format != b.format {
+                    return false;
+                }
+
+                // TODO: enforce this?
+                /*match (a.name, b.name) {
+                    (Some(ref an), Some(ref bn)) => if an != bn { return false },
+                    _ => ()
+                };*/
+            }
+        }
+
+        true
+    }
 }
 
 /// Trait to describe structs that contain specialization data for shaders.
