@@ -72,9 +72,9 @@ impl ShaderModule {
         }))
     }
 
-    pub unsafe fn vertex_shader_entry_point<'a, S, V, L>(&'a self, name: &'a CStr, layout: L,
-                                                         vertex_input: V)
-                                                         -> VertexShaderEntryPoint<'a, S, V, L>
+    pub unsafe fn vertex_shader_entry_point<'a, S, V, L>
+        (&'a self, name: &'a CStr, layout: L,vertex_input: V)
+        -> VertexShaderEntryPoint<'a, S, V, L>
     {
         VertexShaderEntryPoint {
             module: self,
@@ -85,8 +85,8 @@ impl ShaderModule {
         }
     }
 
-    pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
-                                                              -> TessControlShaderEntryPoint<'a, S, I, O, L>
+    pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, layout: L) -> TessControlShaderEntryPoint<'a, S, I, O, L>
     {
         TessControlShaderEntryPoint {
             module: self,
@@ -96,8 +96,8 @@ impl ShaderModule {
         }
     }
 
-    pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, layout: L)
-                                                                     -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
+    pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, layout: L) -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
     {
         TessEvaluationShaderEntryPoint {
             module: self,
@@ -107,8 +107,9 @@ impl ShaderModule {
         }
     }
 
-    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, layout: L)
-                                                              -> GeometryShaderEntryPoint<'a, S, I, O, L>
+    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, layout: L)
+        -> GeometryShaderEntryPoint<'a, S, I, O, L>
     {
         GeometryShaderEntryPoint {
             module: self,
