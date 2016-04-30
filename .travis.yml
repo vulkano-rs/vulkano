@@ -32,6 +32,15 @@ after_success:
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo install ghp &&
+        export PATH=/home/travis/.cargo/bin:$PATH &&
         cargo doc --manifest-path vulkano/Cargo.toml &&
         cargo ghp vulkano/target/doc &&
         git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
