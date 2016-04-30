@@ -90,7 +90,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where Vdef: VertexDefinition, L: PipelineLayout, Rp: RenderPass + RenderPassDesc
+    where L: PipelineLayout, Rp: RenderPass + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
     #[inline]
@@ -99,7 +99,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, (), (), (), (), Fs, Fo, Fl,
                                               L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
-        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+        where Vdef: VertexDefinition<Vi>,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         GraphicsPipeline::new_inner::<_, _, _, (), (), (), (), _, _, _>(device, params)
@@ -111,7 +112,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               (device: &Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
-        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+        where Vdef: VertexDefinition<Vi>,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         GraphicsPipeline::new_inner(device, params)
@@ -121,7 +123,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 (device: &Arc<Device>,
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
-        where L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+        where Vdef: VertexDefinition<Vi>,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
     {
         let vk = device.pointers();
@@ -177,12 +180,14 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         };
 
         // Vertex bindings.
-        let binding_descriptions = {
+        let (binding_descriptions, attribute_descriptions) = {
+            let (buffers_iter, attribs_iter) = params.vertex_input.definition(params.vertex_shader.input_definition());
+
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
-            for (num, (stride, rate)) in params.vertex_input.buffers().enumerate() {
+            for (num, stride, rate) in buffers_iter {
                 if stride > device.physical_device().limits().max_vertex_input_binding_stride() as usize {
                     return Err(GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
-                        binding: num,
+                        binding: num as usize,
                         max: device.physical_device().limits().max_vertex_input_binding_stride() as usize,
                         obtained: stride,
                     });
@@ -195,7 +200,28 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 });
             }
 
-            binding_descriptions
+            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
+            for (loc, binding, info) in attribs_iter {
+                // TODO: check attribute format support
+
+                if info.offset > device.physical_device().limits().max_vertex_input_attribute_offset() as usize {
+                    return Err(GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                        max: device.physical_device().limits().max_vertex_input_attribute_offset() as usize,
+                        obtained: info.offset,
+                    });
+                }
+
+                debug_assert!(binding_descriptions.iter().find(|b| b.binding == binding).is_some());
+
+                attribute_descriptions.push(vk::VertexInputAttributeDescription {
+                    location: loc as u32,
+                    binding: binding as u32,
+                    format: info.format as u32,
+                    offset: info.offset as u32,
+                });
+            }
+
+            (binding_descriptions, attribute_descriptions)
         };
 
         if binding_descriptions.len() > device.physical_device().limits()
@@ -206,41 +232,6 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 obtained: binding_descriptions.len(),
             });
         }
-
-        // Vertex attributes.
-        // TODO: check vertex attribute formats somewhere (match and support)?
-        let attribute_descriptions = {
-            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
-
-            for &(loc, ref name) in params.vertex_shader.attributes().iter() {
-                let (binding, info) = match params.vertex_input.attrib(name) {
-                    Some(i) => i,
-                    None => return Err(GraphicsPipelineCreationError::MissingVertexAttribute {
-                        name: name.clone().into_owned()
-                    })
-                };
-
-                // TODO: check attribute format support
-
-                if info.offset > device.physical_device().limits().max_vertex_input_attribute_offset() as usize {
-                    return Err(GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
-                        max: device.physical_device().limits().max_vertex_input_attribute_offset() as usize,
-                        obtained: info.offset,
-                    });
-                }
-
-                debug_assert!(binding < params.vertex_input.buffers().len());
-
-                attribute_descriptions.push(vk::VertexInputAttributeDescription {
-                    location: loc as u32,
-                    binding: binding as u32,
-                    format: info.format as u32,
-                    offset: info.offset as u32,
-                });
-            }
-
-            attribute_descriptions
-        };
 
         if attribute_descriptions.len() > device.physical_device().limits()
                                                 .max_vertex_input_attributes() as usize
@@ -631,9 +622,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     }
 }
 
-impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition
-{
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     /// Returns the vertex definition used in the constructor.
     #[inline]
     pub fn vertex_definition(&self) -> &Mv {

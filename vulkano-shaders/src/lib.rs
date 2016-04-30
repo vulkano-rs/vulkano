@@ -188,10 +188,7 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
 
     let (ty, f_call) = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
-            let mut input_types = Vec::new();
             let mut attributes = Vec::new();
-
-            // TODO: sort types by location
 
             for interface in interface.iter() {
                 for i in doc.instructions.iter() {
@@ -204,30 +201,41 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                                 continue;
                             }
 
-                            input_types.push(type_from_id(doc, result_type_id));
                             let name = name_from_id(doc, result_id);
                             let loc = match location_decoration(doc, result_id) {
                                 Some(l) => l,
                                 None => panic!("vertex attribute `{}` is missing a location", name)
                             };
-                            attributes.push((loc, name));
+                            attributes.push((loc, name, format_from_id(doc, result_type_id)));
                         },
                         _ => ()
                     }
                 }
             }
 
-            let input = {
-                let input = input_types.join(", ");
-                if input.is_empty() { input } else { input + "," }
-            };
+            // Checking for overlapping attributes.
+            for (offset, &(loc, ref name, (_, loc_len))) in attributes.iter().enumerate() {
+                for &(loc2, ref name2, (_, loc_len2)) in attributes.iter().skip(offset + 1) {
+                    if loc == loc2 || (loc < loc2 && loc + loc_len as u32 > loc2) ||
+                       (loc2 < loc && loc2 + loc_len2 as u32 > loc)
+                    {
+                        panic!("The locations of vertex attributes `{}` and `{}` overlap",
+                               name, name2);
+                    }
+                }
+            }
 
-            let attributes = attributes.iter().map(|&(loc, ref name)| {
-                format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
+            let attributes = attributes.iter().map(|&(loc, ref name, (ref ty, num_locs))| {
+                assert!(num_locs >= 1);
+
+                format!("::vulkano::pipeline::shader::ShaderInterfaceDefEntry {{
+                    location: {} .. {},
+                    format: ::vulkano::format::Format::{},
+                    name: Some(::std::borrow::Cow::Borrowed(\"{}\"))
+                }}", loc, loc as usize + num_locs, ty, name)
             }).collect::<Vec<_>>().join(", ");
 
-            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<(), ({input}), Layout>",
-                            input = input);
+            let t = "::vulkano::pipeline::shader::VertexShaderEntryPoint<(), Vec<::vulkano::pipeline::shader::ShaderInterfaceDefEntry>, Layout>".to_owned();
             let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, vec![{}])", attributes);
             (t, f)
         },
@@ -295,6 +303,56 @@ fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> St
                 f_call = f_call)
 }
 
+/// Returns the vulkano `Format` and number of occupied locations from an id.
+fn format_from_id(doc: &parse::Spirv, searched: u32) -> (String, usize) {
+    for instruction in doc.instructions.iter() {
+        match instruction {
+            &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
+                return ("R32Sint".to_owned(), 1);
+            },
+            &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
+                return ("R32Sfloat".to_owned(), 1);
+            },
+            &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
+                let (format, sz) = format_from_id(doc, component_id);
+                assert!(format.starts_with("R32"));
+                assert_eq!(sz, 1);
+                let format = if count == 1 {
+                    format
+                } else if count == 2 {
+                    format!("R32G32{}", &format[3..])
+                } else if count == 3 {
+                    format!("R32G32B32{}", &format[3..])
+                } else if count == 4 {
+                    format!("R32G32B32A32{}", &format[3..])
+                } else {
+                    panic!("Found vector type with more than 4 elements")
+                };
+                return (format, sz);
+            },
+            &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
+                let (format, sz) = format_from_id(doc, column_type_id);
+                return (format, sz * column_count as usize);
+            },
+            &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
+                let (format, sz) = format_from_id(doc, type_id);
+                let len = doc.instructions.iter().filter_map(|e| {
+                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
+                }).next().expect("failed to find array length");
+                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
+                return (format, sz * len as usize);
+            },
+            &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
+                return format_from_id(doc, type_id);
+            },
+            _ => ()
+        }
+    }
+
+    panic!("Type #{} not found or invalid", searched)
+}
+
+// TODO: remove when no longer necessary
 // TODO: struct definitions don't use this function, so irrelevant elements should be removed
 fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
     for instruction in doc.instructions.iter() {
