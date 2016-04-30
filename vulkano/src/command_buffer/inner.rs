@@ -748,14 +748,15 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    pub unsafe fn dispatch<Pl, L>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                                  dimensions: [u32; 3]) -> InnerCommandBufferBuilder
+    pub unsafe fn dispatch<Pl, L, Pc>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
+                                  dimensions: [u32; 3], push_constants: &Pc) -> InnerCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync,
+              Pc: 'static + Clone + Send + Sync
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
-        self.bind_compute_pipeline_state(pipeline, sets);
+        self.bind_compute_pipeline_state(pipeline, sets, push_constants);
 
         self.staging_commands.push(Box::new(move |vk, cmd| {
             vk.CmdDispatch(cmd, dimensions[0], dimensions[1], dimensions[2]);
@@ -912,9 +913,11 @@ impl InnerCommandBufferBuilder {
         self
     }
 
-    fn bind_compute_pipeline_state<Pl, L>(&mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L)
+    fn bind_compute_pipeline_state<Pl, L, Pc>(&mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
+                                          push_constants: &Pc)
         where L: DescriptorSetsCollection,
-              Pl: 'static + PipelineLayout + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync,
+              Pc: 'static + Clone + Send + Sync
     {
         unsafe {
             //assert!(sets.is_compatible_with(pipeline.layout()));
@@ -955,6 +958,18 @@ impl InnerCommandBufferBuilder {
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
                                              pipeline, 0, descriptor_sets.len() as u32,
                                              descriptor_sets.as_ptr(), 0, ptr::null());   // FIXME: dynamic offsets
+                }));
+            }
+
+            if mem::size_of_val(push_constants) >= 1 {
+                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let size = mem::size_of_val(push_constants);
+                let push_constants = push_constants.clone();
+                assert!((size % 4) == 0);
+
+                self.staging_commands.push(Box::new(move |vk, cmd| {
+                    vk.CmdPushConstants(cmd, pipeline, 0x7fffffff, 0, size as u32,
+                                        &push_constants as *const Pc as *const _);
                 }));
             }
         }

@@ -214,14 +214,15 @@ impl PrimaryCommandBufferBuilder {
 
     /// Executes a compute pipeline.
     #[inline]
-    pub fn dispatch<Pl, L>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                           dimensions: [u32; 3]) -> PrimaryCommandBufferBuilder
+    pub fn dispatch<Pl, L, Pc>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
+                           dimensions: [u32; 3], push_constants: &Pc) -> PrimaryCommandBufferBuilder
         where L: 'static + DescriptorSetsCollection + Send + Sync,
-              Pl: 'static + PipelineLayout + Send + Sync
+              Pl: 'static + PipelineLayout + Send + Sync,
+              Pc: 'static + Clone + Send + Sync
     {
         unsafe {
             PrimaryCommandBufferBuilder {
-                inner: self.inner.dispatch(pipeline, sets, dimensions)
+                inner: self.inner.dispatch(pipeline, sets, dimensions, push_constants)
             }
         }
     }
