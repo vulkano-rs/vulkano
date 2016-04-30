@@ -31,7 +31,7 @@ What does vulkano do?
 To get started you are encouraged to read the examples in `examples/src/bin`, starting with
 the `triangle` example.
 
-## [Differences between Vulkan and vulkano](FEATURES.md)
+## Structure
 
 This repository contains four libraries:
 
