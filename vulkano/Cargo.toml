@@ -2,7 +2,6 @@
 name = "vulkano"
 version = "0.1.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
-build = "build.rs"
 description = "Safe wrapper for the Vulkan graphics API"
 
 [dependencies]
@@ -11,6 +10,4 @@ fnv = "1.0.2"
 shared_library = "0.1.4"
 smallvec = "0.1.7"
 lazy_static = "0.1.15"
-
-[build-dependencies]
 vk-sys = { path = "../vk-sys" }
