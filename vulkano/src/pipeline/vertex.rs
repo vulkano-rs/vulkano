@@ -117,8 +117,25 @@ pub enum VertexMemberTy {
 impl VertexMemberTy {
     /// Returns true if a combination of `(type, array_size)` matches a format.
     #[inline]
-    pub fn matches(&self, array_size: usize, format: Format) -> bool {
-        true        // FIXME:
+    pub fn matches(&self, array_size: usize, format: Format, num_locs: u32) -> bool {
+        // TODO: implement correctly
+        let my_size = match *self {
+            VertexMemberTy::I8 => 1,
+            VertexMemberTy::U8 => 1,
+            VertexMemberTy::I16 => 2,
+            VertexMemberTy::U16 => 2,
+            VertexMemberTy::I32 => 4,
+            VertexMemberTy::U32 => 4,
+            VertexMemberTy::F32 => 4,
+            VertexMemberTy::F64 => 8,
+        };
+
+        let format_size = match format.size() {
+            None => return false,
+            Some(s) => s,
+        };
+
+        array_size * my_size == format_size * num_locs as usize
     }
 }
 
@@ -174,7 +191,8 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
             let mut attribs = Vec::with_capacity(interface.elements().len());
             for e in interface.elements() {
                 let infos = <T as Vertex>::member(e.name.as_ref().unwrap()).expect("missing vertex attrib");
-                assert!(infos.ty.matches(infos.array_size, e.format));
+                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start),
+                        "Vertex attribute `{:?}` does not match expected format", e.name);
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
@@ -228,7 +246,7 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
                 } else {
                     panic!("missing vertex attrib")
                 };
-                assert!(infos.ty.matches(infos.array_size, e.format));
+                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start));
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
@@ -289,7 +307,7 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
                 } else {
                     panic!("missing vertex attrib")
                 };
-                assert!(infos.ty.matches(infos.array_size, e.format));
+                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start));
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
