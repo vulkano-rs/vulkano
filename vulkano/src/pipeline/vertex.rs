@@ -427,6 +427,45 @@ unsafe impl VertexMember for f64 {
     }
 }
 
+unsafe impl<T> VertexMember for (T,)
+    where T: VertexMember
+{
+    #[inline]
+    fn format() -> (VertexMemberTy, usize) {
+        <T as VertexMember>::format()
+    }
+}
+
+unsafe impl<T> VertexMember for (T, T)
+    where T: VertexMember
+{
+    #[inline]
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 2)
+    }
+}
+
+unsafe impl<T> VertexMember for (T, T, T)
+    where T: VertexMember
+{
+    #[inline]
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 3)
+    }
+}
+
+unsafe impl<T> VertexMember for (T, T, T, T)
+    where T: VertexMember
+{
+    #[inline]
+    fn format() -> (VertexMemberTy, usize) {
+        let (ty, sz) = <T as VertexMember>::format();
+        (ty, sz * 4)
+    }
+}
+
 macro_rules! impl_vm_array {
     ($sz:expr) => (
         unsafe impl<T> VertexMember for [T; $sz]

@@ -25,7 +25,7 @@ script:
     # chance to reach travis' memory limit
     - cargo test -j 1 --manifest-path vulkano-win/Cargo.toml
     - cargo test --no-run -j 1 -v --manifest-path vulkano/Cargo.toml
-    #- cargo build -j 1 --manifest-path examples/Cargo.toml
+    - cargo build -j 1 --manifest-path examples/Cargo.toml
 
 after_success: 
     - |
