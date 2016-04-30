@@ -33,5 +33,5 @@ after_success:
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo install ghp &&
         cargo doc --manifest-path vulkano/Cargo.toml &&
-        ghp target/doc &&
+        cargo ghp vulkano/target/doc &&
         git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
