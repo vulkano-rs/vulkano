@@ -468,13 +468,3 @@ pub struct SpecializationMapEntry {
     /// Size of the data in bytes.
     pub size: usize,
 }
-
-/// Trait to describe structs that contain push constants for shaders.
-///
-/// It is implemented on `()` for shaders that don't have any push constant.
-pub unsafe trait PushConstants {
-    // TODO: 
-}
-
-unsafe impl PushConstants for () {
-}
