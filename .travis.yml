@@ -39,8 +39,20 @@ after_success:
     - |
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml &&
-        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml &&
-        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml &&
-        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml &&
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --no-verify --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
