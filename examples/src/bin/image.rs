@@ -76,7 +76,7 @@ fn main() {
 
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
-                               ::array(&device, 4, &vulkano::buffer::Usage::all(),
+                               ::array(&device, 4, &vulkano::buffer::BufferUsage::all(),
                                        Some(queue.family())).expect("failed to create buffer");
 
     struct Vertex { position: [f32; 2] }
@@ -131,7 +131,7 @@ fn main() {
 
         // TODO: staging buffer instead
         let pixel_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-                                   ::array(&device, image_data.len(), &vulkano::buffer::Usage::all(),
+                                   ::array(&device, image_data.len(), &vulkano::buffer::BufferUsage::all(),
                                            Some(queue.family())).expect("failed to create buffer");
 
         {

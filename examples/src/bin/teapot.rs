@@ -81,7 +81,7 @@ fn main() {
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                ::array(&device, examples::VERTICES.len(),
-                                       &vulkano::buffer::Usage::all(), Some(queue.family()))
+                                       &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
                                        .expect("failed to create buffer");
 
     {
@@ -93,7 +93,7 @@ fn main() {
 
     let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                 ::array(&device, examples::NORMALS.len(),
-                                        &vulkano::buffer::Usage::all(), Some(queue.family()))
+                                        &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
                                         .expect("failed to create buffer");
 
     {
@@ -105,7 +105,7 @@ fn main() {
 
     let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                               ::array(&device, examples::INDICES.len(),
-                                      &vulkano::buffer::Usage::all(), Some(queue.family()))
+                                      &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
                                       .expect("failed to create buffer");
 
     {
@@ -122,7 +122,7 @@ fn main() {
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::new(&device, &vulkano::buffer::Usage::all(), Some(queue.family()))
+                               ::new(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
                                .expect("failed to create buffer");
     {
         let mut mapping = uniform_buffer.write(Duration::new(0, 0)).unwrap();
