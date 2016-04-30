@@ -123,6 +123,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor_set::DescriptorWrite;
             use $crate::descriptor::pipeline_layout::PipelineLayout;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::SampledImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
@@ -297,6 +298,23 @@ unsafe impl<'a, I> ValidParameter<CombinedImageSampler> for (&'a Arc<Sampler>, &
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::combined_image_sampler(binding, self.0, self.1)
+    }
+}
+
+pub struct SampledImage;
+unsafe impl DescriptorMarker for SampledImage {
+    #[inline]
+    fn descriptor_type() -> DescriptorType {
+        DescriptorType::SampledImage
+    }
+}
+
+unsafe impl<'a, I> ValidParameter<SampledImage> for &'a Arc<I>
+    where I: ImageView + 'static
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::sampled_image(binding, self)
     }
 }
 
