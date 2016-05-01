@@ -21,7 +21,7 @@
 // The `vulkano` crate is the main crate that you must use to use Vulkan.
 #[macro_use]
 extern crate vulkano;
-// However the Vulkan library doesn't provide any functionnality to create and handle windows, as
+// However the Vulkan library doesn't provide any functionality to create and handle windows, as
 // this would be out of scope. In order to open a window, we are going to use the `winit` crate.
 extern crate winit;
 // The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about
@@ -67,7 +67,7 @@ fn main() {
     let instance = {
         // When we create an instance, we have to pass a list of extensions that we want to enable.
         //
-        // All the window-drawing functionnalities are part of non-core extensions that we need
+        // All the window-drawing functionalities are part of non-core extensions that we need
         // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
         // required to draw to a window.
         let extensions = vulkano_win::required_extensions();
@@ -176,7 +176,7 @@ fn main() {
         let present = caps.present_modes[0];
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
-        // you can choose whether the window will be opaque or can be transparent.
+        // you can choose whether the window will be opaque or transparent.
         let alpha = caps.supported_composite_alpha[0];
 
         // Choosing the internal format that the images will have.
