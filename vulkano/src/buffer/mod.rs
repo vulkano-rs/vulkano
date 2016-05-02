@@ -232,6 +232,16 @@ impl<'a, T, B: 'a> From<BufferSlice<'a, T, B>> for BufferSlice<'a, [T], B>
     }
 }
 
+/// Takes a `BufferSlice` that points to a struct, and returns a `BufferSlice` that points to
+/// a specific field of that struct.
+#[macro_export]
+macro_rules! buffer_slice_field {
+    ($slice:expr, $field:ident) => (
+        // TODO: add #[allow(unsafe_code)] when that's allowed
+        unsafe { $slice.slice_custom(|s| &s.$field) }
+    )
+}
+
 #[cfg(test)]
 mod tests {
     // TODO: restore these tests
