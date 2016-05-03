@@ -177,7 +177,7 @@ fn main() {
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
-        let alpha = caps.supported_composite_alpha[0];
+        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         // Choosing the internal format that the images will have.
         let format = caps.supported_formats[0].0;

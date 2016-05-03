@@ -403,7 +403,7 @@ impl Surface {
                 max_image_array_layers: caps.maxImageArrayLayers,
                 supported_transforms: SurfaceTransform::from_bits(caps.supportedTransforms),
                 current_transform: SurfaceTransform::from_bits(caps.supportedTransforms).into_iter().next().unwrap(),        // TODO:
-                supported_composite_alpha: CompositeAlpha::from_bits(caps.supportedCompositeAlpha),
+                supported_composite_alpha: SupportedCompositeAlpha::from_bits(caps.supportedCompositeAlpha),
                 supported_usage_flags: {
                     let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
                     debug_assert!(usage.color_attachment);  // specs say that this must be true
@@ -509,7 +509,7 @@ pub struct Capabilities {
     pub max_image_array_layers: u32,
     pub supported_transforms: Vec<SurfaceTransform>,
     pub current_transform: SurfaceTransform,
-    pub supported_composite_alpha: Vec<CompositeAlpha>,
+    pub supported_composite_alpha: SupportedCompositeAlpha,
     pub supported_usage_flags: ImageUsage,
     pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
 
@@ -682,14 +682,69 @@ pub enum CompositeAlpha {
     Inherit = vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR,
 }
 
-impl CompositeAlpha {
-    fn from_bits(val: u32) -> Vec<CompositeAlpha> {
-        let mut result = Vec::with_capacity(4);
-        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.push(CompositeAlpha::Opaque); }
-        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PreMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PostMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.push(CompositeAlpha::Inherit); }
+/// List of supported composite alpha modes.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedCompositeAlpha {
+    pub opaque: bool,
+    pub pre_multiplied: bool,
+    pub post_multiplied: bool,
+    pub inherit: bool,
+}
+
+impl SupportedCompositeAlpha {
+    /// Builds a `SupportedCompositeAlpha` with all fields set to false.
+    #[inline]
+    pub fn none() -> SupportedCompositeAlpha {
+        SupportedCompositeAlpha {
+            opaque: false,
+            pre_multiplied: false,
+            post_multiplied: false,
+            inherit: false,
+        }
+    }
+
+    #[inline]
+    fn from_bits(val: u32) -> SupportedCompositeAlpha {
+        let mut result = SupportedCompositeAlpha::none();
+        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.opaque = true; }
+        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.pre_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.post_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.inherit = true; }
         result
+    }
+
+    /// Returns true if the given `CompositeAlpha` is in this list.
+    #[inline]
+    pub fn supports(&self, value: CompositeAlpha) -> bool {
+        match value {
+            CompositeAlpha::Opaque => self.opaque,
+            CompositeAlpha::PreMultiplied => self.pre_multiplied,
+            CompositeAlpha::PostMultiplied => self.post_multiplied,
+            CompositeAlpha::Inherit => self.inherit,
+        }
+    }
+
+    /// Returns an iterator to the list of supported composite alpha.
+    #[inline]
+    pub fn iter(&self) -> SupportedCompositeAlphaIter {
+        SupportedCompositeAlphaIter(self.clone())
+    }
+}
+
+/// Enumeration of the `CompositeAlpha` that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedCompositeAlphaIter(SupportedCompositeAlpha);
+
+impl Iterator for SupportedCompositeAlphaIter {
+    type Item = CompositeAlpha;
+
+    #[inline]
+    fn next(&mut self) -> Option<CompositeAlpha> {
+        if self.0.opaque { self.0.opaque = false; return Some(CompositeAlpha::Opaque); }
+        if self.0.pre_multiplied { self.0.pre_multiplied = false; return Some(CompositeAlpha::PreMultiplied); }
+        if self.0.post_multiplied { self.0.post_multiplied = false; return Some(CompositeAlpha::PostMultiplied); }
+        if self.0.inherit { self.0.inherit = false; return Some(CompositeAlpha::Inherit); }
+        None
     }
 }
 
