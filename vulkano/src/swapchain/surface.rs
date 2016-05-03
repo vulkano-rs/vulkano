@@ -509,14 +509,30 @@ pub struct Capabilities {
     /// depend on the dimensions of the swapchain that you are going to create.
     pub current_extent: Option<[u32; 2]>,
 
+    /// Minimum width and height of a swapchain that uses this surface.
     pub min_image_extent: [u32; 2],
+
+    /// Maximum width and height of a swapchain that uses this surface.
     pub max_image_extent: [u32; 2],
+
+    /// Maximum number of image layers if you create an image array. The minimum is 1.
     pub max_image_array_layers: u32,
+
+    /// List of transforms supported for the swapchain.
     pub supported_transforms: SupportedSurfaceTransforms,
+
+    /// Current transform used by the surface.
     pub current_transform: SurfaceTransform,
+
+    /// List of composite alpha modes supports for the swapchain.
     pub supported_composite_alpha: SupportedCompositeAlpha,
+
+    /// List of image usages that are supported for images of the swapchain. Only
+    /// the `color_attachment` usage is guaranteed to be supported.
     pub supported_usage_flags: ImageUsage,
-    pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
+
+    /// List of formats supported for the swapchain.
+    pub supported_formats: Vec<(Format, ColorSpace)>,       // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
 
     /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
     pub present_modes: SupportedPresentModes,

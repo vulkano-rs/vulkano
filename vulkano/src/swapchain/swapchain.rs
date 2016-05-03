@@ -118,7 +118,7 @@ impl Swapchain {
         assert!(dimensions[1] >= capabilities.min_image_extent[1]);
         assert!(dimensions[0] <= capabilities.max_image_extent[0]);
         assert!(dimensions[1] <= capabilities.max_image_extent[1]);
-        assert!(layers <= capabilities.max_image_array_layers);
+        assert!(layers >= 1 && layers <= capabilities.max_image_array_layers);
         assert!((usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) == usage.to_usage_bits());
         assert!(capabilities.supported_transforms.supports(transform));
         assert!(capabilities.supported_composite_alpha.supports(alpha));
