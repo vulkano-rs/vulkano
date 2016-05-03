@@ -627,6 +627,8 @@ pub enum SurfaceTransform {
     HorizontalMirrorRotate90 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
     HorizontalMirrorRotate180 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
     HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
 }
 
@@ -753,7 +755,7 @@ pub enum CompositeAlpha {
     /// alpha value by the compositor before being added to what is behind.
     PostMultiplied = vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
 
-    /// Platform-specific behavior.
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR,
 }
 
