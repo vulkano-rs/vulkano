@@ -101,7 +101,7 @@ fn main() {
     // This is done by creating a `WindowBuilder` from the `winit` crate, then calling the
     // `build_vk_surface` method provided by the `VkSurfaceBuild` trait from `vulkano_win`. If you
     // ever get an error about `build_vk_surface` being undefined in one of your projects, this
-    // probably means taht you forgot to import this trait.
+    // probably means that you forgot to import this trait.
     //
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
@@ -256,7 +256,7 @@ fn main() {
         // we use the appropriate macro.
         single_pass_renderpass!{
             attachments: {
-                // `color` is a custom name we give to the first and onle attachment.
+                // `color` is a custom name we give to the first and only attachment.
                 color: {
                     // `load: Clear` means that we ask the GPU to clear the content of this
                     // attachment at the start of the drawing.
@@ -426,7 +426,7 @@ fn main() {
         // finished executing the command buffer that draws the triangle.
         swapchain.present(&queue, image_num).unwrap();
 
-        // Note that in more complex programes it is likely that one of `acquire_next_image`,
+        // Note that in more complex programs it is likely that one of `acquire_next_image`,
         // `command_buffer::submit`, or `present` will block for some time. This happens when the
         // GPU's queue is full and the driver has to wait until the GPU finished some work.
         //
