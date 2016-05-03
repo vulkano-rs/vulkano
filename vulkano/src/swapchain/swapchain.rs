@@ -122,7 +122,7 @@ impl Swapchain {
         assert!((usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) == usage.to_usage_bits());
         assert!(capabilities.supported_transforms.iter().find(|&&t| t == transform).is_some());
         assert!(capabilities.supported_composite_alpha.iter().find(|&&a| a == alpha).is_some());
-        assert!(capabilities.present_modes.iter().find(|&&m| m == mode).is_some());
+        assert!(capabilities.present_modes.supports(mode));
 
         // FIXME: check that the device and the surface belong to the same instance
         let vk = device.pointers();

@@ -386,7 +386,7 @@ impl Surface {
                 ));
                 modes.set_len(num as usize);
                 debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
-                modes
+                SupportedPresentModes::from_list(modes.into_iter())
             };
 
             Ok(Capabilities {
@@ -412,7 +412,7 @@ impl Surface {
                 supported_formats: formats.into_iter().map(|f| {
                     (Format::from_num(f.format).unwrap(), ColorSpace::from_num(f.colorSpace))
                 }).collect(),
-                present_modes: modes.into_iter().map(|mode| PresentMode::from_num(mode)).collect(),
+                present_modes: modes,
             })
         }
     }
@@ -514,7 +514,7 @@ pub struct Capabilities {
     pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
 
     /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
-    pub present_modes: Vec<PresentMode>,
+    pub present_modes: SupportedPresentModes,
 }
 
 /// The way presenting a swapchain is accomplished.
@@ -544,17 +544,74 @@ pub enum PresentMode {
     Relaxed = vk::PRESENT_MODE_FIFO_RELAXED_KHR,
 }
 
-impl PresentMode {
-    /// Panicks if the mode is unrecognized.
+/// List of `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModes {
+    pub immediate: bool,
+    pub mailbox: bool,
+    pub fifo: bool,
+    pub relaxed: bool,
+}
+
+impl SupportedPresentModes {
+    /// Builds a `SupportedPresentModes` with all fields set to false.
     #[inline]
-    fn from_num(num: u32) -> PresentMode {
-        match num {
-            vk::PRESENT_MODE_IMMEDIATE_KHR => PresentMode::Immediate,
-            vk::PRESENT_MODE_MAILBOX_KHR => PresentMode::Mailbox,
-            vk::PRESENT_MODE_FIFO_KHR => PresentMode::Fifo,
-            vk::PRESENT_MODE_FIFO_RELAXED_KHR => PresentMode::Relaxed,
-            m => panic!("unrecognized present mode: {:?}", m)
+    pub fn none() -> SupportedPresentModes {
+        SupportedPresentModes {
+            immediate: false,
+            mailbox: false,
+            fifo: false,
+            relaxed: false,
         }
+    }
+
+    #[inline]
+    fn from_list<I>(elem: I) -> SupportedPresentModes where I: Iterator<Item = vk::PresentModeKHR> {
+        let mut result = SupportedPresentModes::none();
+        for e in elem {
+            match e {
+                vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
+                vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
+                vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
+                vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
+                _ => panic!("Wrong value for vk::PresentModeKHR")
+            }
+        }
+        result
+    }
+
+    /// Returns true if the given present mode is in this list of supported modes.
+    #[inline]
+    pub fn supports(&self, mode: PresentMode) -> bool {
+        match mode {
+            PresentMode::Immediate => self.immediate,
+            PresentMode::Mailbox => self.mailbox,
+            PresentMode::Fifo => self.fifo,
+            PresentMode::Relaxed => self.relaxed,
+        }
+    }
+
+    /// Returns an iterator to the list of supported present modes.
+    #[inline]
+    pub fn iter(&self) -> SupportedPresentModesIter {
+        SupportedPresentModesIter(self.clone())
+    }
+}
+
+/// Enumeration of the `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModesIter(SupportedPresentModes);
+
+impl Iterator for SupportedPresentModesIter {
+    type Item = PresentMode;
+
+    #[inline]
+    fn next(&mut self) -> Option<PresentMode> {
+        if self.0.immediate { self.0.immediate = false; return Some(PresentMode::Immediate); }
+        if self.0.mailbox { self.0.mailbox = false; return Some(PresentMode::Mailbox); }
+        if self.0.fifo { self.0.fifo = false; return Some(PresentMode::Fifo); }
+        if self.0.relaxed { self.0.relaxed = false; return Some(PresentMode::Relaxed); }
+        None
     }
 }
 

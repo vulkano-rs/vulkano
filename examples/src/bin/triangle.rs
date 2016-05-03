@@ -173,7 +173,7 @@ fn main() {
         // The present mode determines the way the images will be presented on the screen. This
         // includes things such as vsync and will affect the framerate of your application. We just
         // use the first supported value, but you probably want to leave that choice to the user.
-        let present = caps.present_modes[0];
+        let present = caps.present_modes.iter().next().unwrap();
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
