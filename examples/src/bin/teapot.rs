@@ -63,7 +63,7 @@ fn main() {
         let caps = window.surface().get_capabilities(&physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
-        let present = caps.present_modes[0];
+        let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 

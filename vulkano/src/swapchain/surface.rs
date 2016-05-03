@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -386,11 +385,13 @@ impl Surface {
                 ));
                 modes.set_len(num as usize);
                 debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
-                modes
+                SupportedPresentModes::from_list(modes.into_iter())
             };
 
             Ok(Capabilities {
-                image_count: caps.minImageCount .. caps.maxImageCount + 1,
+                min_image_count: caps.minImageCount,
+                max_image_count: if caps.maxImageCount == 0 { None }
+                                 else { Some(caps.maxImageCount) },
                 current_extent: if caps.currentExtent.width == 0xffffffff &&
                                    caps.currentExtent.height == 0xffffffff
                 {
@@ -401,9 +402,9 @@ impl Surface {
                 min_image_extent: [caps.minImageExtent.width, caps.minImageExtent.height],
                 max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
                 max_image_array_layers: caps.maxImageArrayLayers,
-                supported_transforms: SurfaceTransform::from_bits(caps.supportedTransforms),
-                current_transform: SurfaceTransform::from_bits(caps.supportedTransforms).into_iter().next().unwrap(),        // TODO:
-                supported_composite_alpha: CompositeAlpha::from_bits(caps.supportedCompositeAlpha),
+                supported_transforms: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms),
+                current_transform: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms).iter().next().unwrap(),        // TODO:
+                supported_composite_alpha: SupportedCompositeAlpha::from_bits(caps.supportedCompositeAlpha),
                 supported_usage_flags: {
                     let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
                     debug_assert!(usage.color_attachment);  // specs say that this must be true
@@ -412,7 +413,7 @@ impl Surface {
                 supported_formats: formats.into_iter().map(|f| {
                     (Format::from_num(f.format).unwrap(), ColorSpace::from_num(f.colorSpace))
                 }).collect(),
-                present_modes: modes.into_iter().map(|mode| PresentMode::from_num(mode)).collect(),
+                present_modes: modes,
             })
         }
     }
@@ -496,25 +497,45 @@ impl From<Error> for SurfaceCreationError {
 /// You have to match these capabilities when you create a swapchain.
 #[derive(Clone, Debug)]
 pub struct Capabilities {
-    /// Range of the number of images that can be created. Please remember that the end is out of
-    /// the range.
-    pub image_count: Range<u32>,
+    /// Minimum number of images that must be present in the swapchain.
+    pub min_image_count: u32,
+
+    /// Maximum number of images that must be present in the swapchain, or `None` if there is no
+    /// maximum value. Note that "no maximum" doesn't mean that you can set a very high value, as
+    /// you may still get out of memory errors.
+    pub max_image_count: Option<u32>,
 
     /// The current dimensions of the surface. `None` means that the surface's dimensions will
     /// depend on the dimensions of the swapchain that you are going to create.
     pub current_extent: Option<[u32; 2]>,
 
+    /// Minimum width and height of a swapchain that uses this surface.
     pub min_image_extent: [u32; 2],
+
+    /// Maximum width and height of a swapchain that uses this surface.
     pub max_image_extent: [u32; 2],
+
+    /// Maximum number of image layers if you create an image array. The minimum is 1.
     pub max_image_array_layers: u32,
-    pub supported_transforms: Vec<SurfaceTransform>,
+
+    /// List of transforms supported for the swapchain.
+    pub supported_transforms: SupportedSurfaceTransforms,
+
+    /// Current transform used by the surface.
     pub current_transform: SurfaceTransform,
-    pub supported_composite_alpha: Vec<CompositeAlpha>,
+
+    /// List of composite alpha modes supports for the swapchain.
+    pub supported_composite_alpha: SupportedCompositeAlpha,
+
+    /// List of image usages that are supported for images of the swapchain. Only
+    /// the `color_attachment` usage is guaranteed to be supported.
     pub supported_usage_flags: ImageUsage,
-    pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
+
+    /// List of formats supported for the swapchain.
+    pub supported_formats: Vec<(Format, ColorSpace)>,       // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
 
     /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
-    pub present_modes: Vec<PresentMode>,
+    pub present_modes: SupportedPresentModes,
 }
 
 /// The way presenting a swapchain is accomplished.
@@ -544,17 +565,74 @@ pub enum PresentMode {
     Relaxed = vk::PRESENT_MODE_FIFO_RELAXED_KHR,
 }
 
-impl PresentMode {
-    /// Panicks if the mode is unrecognized.
+/// List of `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModes {
+    pub immediate: bool,
+    pub mailbox: bool,
+    pub fifo: bool,
+    pub relaxed: bool,
+}
+
+impl SupportedPresentModes {
+    /// Builds a `SupportedPresentModes` with all fields set to false.
     #[inline]
-    fn from_num(num: u32) -> PresentMode {
-        match num {
-            vk::PRESENT_MODE_IMMEDIATE_KHR => PresentMode::Immediate,
-            vk::PRESENT_MODE_MAILBOX_KHR => PresentMode::Mailbox,
-            vk::PRESENT_MODE_FIFO_KHR => PresentMode::Fifo,
-            vk::PRESENT_MODE_FIFO_RELAXED_KHR => PresentMode::Relaxed,
-            m => panic!("unrecognized present mode: {:?}", m)
+    pub fn none() -> SupportedPresentModes {
+        SupportedPresentModes {
+            immediate: false,
+            mailbox: false,
+            fifo: false,
+            relaxed: false,
         }
+    }
+
+    #[inline]
+    fn from_list<I>(elem: I) -> SupportedPresentModes where I: Iterator<Item = vk::PresentModeKHR> {
+        let mut result = SupportedPresentModes::none();
+        for e in elem {
+            match e {
+                vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
+                vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
+                vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
+                vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
+                _ => panic!("Wrong value for vk::PresentModeKHR")
+            }
+        }
+        result
+    }
+
+    /// Returns true if the given present mode is in this list of supported modes.
+    #[inline]
+    pub fn supports(&self, mode: PresentMode) -> bool {
+        match mode {
+            PresentMode::Immediate => self.immediate,
+            PresentMode::Mailbox => self.mailbox,
+            PresentMode::Fifo => self.fifo,
+            PresentMode::Relaxed => self.relaxed,
+        }
+    }
+
+    /// Returns an iterator to the list of supported present modes.
+    #[inline]
+    pub fn iter(&self) -> SupportedPresentModesIter {
+        SupportedPresentModesIter(self.clone())
+    }
+}
+
+/// Enumeration of the `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModesIter(SupportedPresentModes);
+
+impl Iterator for SupportedPresentModesIter {
+    type Item = PresentMode;
+
+    #[inline]
+    fn next(&mut self) -> Option<PresentMode> {
+        if self.0.immediate { self.0.immediate = false; return Some(PresentMode::Immediate); }
+        if self.0.mailbox { self.0.mailbox = false; return Some(PresentMode::Mailbox); }
+        if self.0.fifo { self.0.fifo = false; return Some(PresentMode::Fifo); }
+        if self.0.relaxed { self.0.relaxed = false; return Some(PresentMode::Relaxed); }
+        None
     }
 }
 
@@ -570,31 +648,108 @@ pub enum SurfaceTransform {
     HorizontalMirrorRotate90 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
     HorizontalMirrorRotate180 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
     HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
 }
 
-impl SurfaceTransform {
-    fn from_bits(val: u32) -> Vec<SurfaceTransform> {
+/// List of supported composite alpha modes.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedSurfaceTransforms {
+    pub identity: bool,
+    pub rotate90: bool,
+    pub rotate180: bool,
+    pub rotate270: bool,
+    pub horizontal_mirror: bool,
+    pub horizontal_mirror_rotate90: bool,
+    pub horizontal_mirror_rotate180: bool,
+    pub horizontal_mirror_rotate270: bool,
+    pub inherit: bool,
+}
+
+impl SupportedSurfaceTransforms {
+    /// Builds a `SupportedSurfaceTransforms` with all fields set to false.
+    #[inline]
+    pub fn none() -> SupportedSurfaceTransforms {
+        SupportedSurfaceTransforms {
+            identity: false,
+            rotate90: false,
+            rotate180: false,
+            rotate270: false,
+            horizontal_mirror: false,
+            horizontal_mirror_rotate90: false,
+            horizontal_mirror_rotate180: false,
+            horizontal_mirror_rotate270: false,
+            inherit: false,
+        }
+    }
+
+    #[inline]
+    fn from_bits(val: u32) -> SupportedSurfaceTransforms {
         macro_rules! v {
-            ($val:expr, $out:ident, $e:expr, $o:ident) => (
-                if ($val & $e) != 0 { $out.push(SurfaceTransform::$o); }
+            ($val:expr, $out:ident, $e:expr, $f:ident) => (
+                if ($val & $e) != 0 { $out.$f = true; }
             );
         }
 
-        let mut result = Vec::with_capacity(9);
-        v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, Identity);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, Rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, Rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, Rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, HorizontalMirror);
+        let mut result = SupportedSurfaceTransforms::none();
+        v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, identity);
+        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, rotate90);
+        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, rotate180);
+        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, rotate270);
+        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, horizontal_mirror);
         v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-                        HorizontalMirrorRotate90);
+                        horizontal_mirror_rotate90);
         v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-                        HorizontalMirrorRotate180);
+                        horizontal_mirror_rotate180);
         v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-                        HorizontalMirrorRotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, Inherit);
+                        horizontal_mirror_rotate270);
+        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
         result
+    }
+
+    /// Returns true if the given `SurfaceTransform` is in this list.
+    #[inline]
+    pub fn supports(&self, value: SurfaceTransform) -> bool {
+        match value {
+            SurfaceTransform::Identity => self.identity,
+            SurfaceTransform::Rotate90 => self.rotate90,
+            SurfaceTransform::Rotate180 => self.rotate180,
+            SurfaceTransform::Rotate270 => self.rotate270,
+            SurfaceTransform::HorizontalMirror => self.horizontal_mirror,
+            SurfaceTransform::HorizontalMirrorRotate90 => self.horizontal_mirror_rotate90,
+            SurfaceTransform::HorizontalMirrorRotate180 => self.horizontal_mirror_rotate180,
+            SurfaceTransform::HorizontalMirrorRotate270 => self.horizontal_mirror_rotate270,
+            SurfaceTransform::Inherit => self.inherit,
+        }
+    }
+
+    /// Returns an iterator to the list of supported composite alpha.
+    #[inline]
+    pub fn iter(&self) -> SupportedSurfaceTransformsIter {
+        SupportedSurfaceTransformsIter(self.clone())
+    }
+}
+
+/// Enumeration of the `SurfaceTransform` that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedSurfaceTransformsIter(SupportedSurfaceTransforms);
+
+impl Iterator for SupportedSurfaceTransformsIter {
+    type Item = SurfaceTransform;
+
+    #[inline]
+    fn next(&mut self) -> Option<SurfaceTransform> {
+        if self.0.identity { self.0.identity = false; return Some(SurfaceTransform::Identity); }
+        if self.0.rotate90 { self.0.rotate90 = false; return Some(SurfaceTransform::Rotate90); }
+        if self.0.rotate180 { self.0.rotate180 = false; return Some(SurfaceTransform::Rotate180); }
+        if self.0.rotate270 { self.0.rotate270 = false; return Some(SurfaceTransform::Rotate270); }
+        if self.0.horizontal_mirror { self.0.horizontal_mirror = false; return Some(SurfaceTransform::HorizontalMirror); }
+        if self.0.horizontal_mirror_rotate90 { self.0.horizontal_mirror_rotate90 = false; return Some(SurfaceTransform::HorizontalMirrorRotate90); }
+        if self.0.horizontal_mirror_rotate180 { self.0.horizontal_mirror_rotate180 = false; return Some(SurfaceTransform::HorizontalMirrorRotate180); }
+        if self.0.horizontal_mirror_rotate270 { self.0.horizontal_mirror_rotate270 = false; return Some(SurfaceTransform::HorizontalMirrorRotate270); }
+        if self.0.inherit { self.0.inherit = false; return Some(SurfaceTransform::Inherit); }
+        None
     }
 }
 
@@ -621,18 +776,73 @@ pub enum CompositeAlpha {
     /// alpha value by the compositor before being added to what is behind.
     PostMultiplied = vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
 
-    /// Platform-specific behavior.
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR,
 }
 
-impl CompositeAlpha {
-    fn from_bits(val: u32) -> Vec<CompositeAlpha> {
-        let mut result = Vec::with_capacity(4);
-        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.push(CompositeAlpha::Opaque); }
-        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PreMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PostMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.push(CompositeAlpha::Inherit); }
+/// List of supported composite alpha modes.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedCompositeAlpha {
+    pub opaque: bool,
+    pub pre_multiplied: bool,
+    pub post_multiplied: bool,
+    pub inherit: bool,
+}
+
+impl SupportedCompositeAlpha {
+    /// Builds a `SupportedCompositeAlpha` with all fields set to false.
+    #[inline]
+    pub fn none() -> SupportedCompositeAlpha {
+        SupportedCompositeAlpha {
+            opaque: false,
+            pre_multiplied: false,
+            post_multiplied: false,
+            inherit: false,
+        }
+    }
+
+    #[inline]
+    fn from_bits(val: u32) -> SupportedCompositeAlpha {
+        let mut result = SupportedCompositeAlpha::none();
+        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.opaque = true; }
+        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.pre_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.post_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.inherit = true; }
         result
+    }
+
+    /// Returns true if the given `CompositeAlpha` is in this list.
+    #[inline]
+    pub fn supports(&self, value: CompositeAlpha) -> bool {
+        match value {
+            CompositeAlpha::Opaque => self.opaque,
+            CompositeAlpha::PreMultiplied => self.pre_multiplied,
+            CompositeAlpha::PostMultiplied => self.post_multiplied,
+            CompositeAlpha::Inherit => self.inherit,
+        }
+    }
+
+    /// Returns an iterator to the list of supported composite alpha.
+    #[inline]
+    pub fn iter(&self) -> SupportedCompositeAlphaIter {
+        SupportedCompositeAlphaIter(self.clone())
+    }
+}
+
+/// Enumeration of the `CompositeAlpha` that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedCompositeAlphaIter(SupportedCompositeAlpha);
+
+impl Iterator for SupportedCompositeAlphaIter {
+    type Item = CompositeAlpha;
+
+    #[inline]
+    fn next(&mut self) -> Option<CompositeAlpha> {
+        if self.0.opaque { self.0.opaque = false; return Some(CompositeAlpha::Opaque); }
+        if self.0.pre_multiplied { self.0.pre_multiplied = false; return Some(CompositeAlpha::PreMultiplied); }
+        if self.0.post_multiplied { self.0.post_multiplied = false; return Some(CompositeAlpha::PostMultiplied); }
+        if self.0.inherit { self.0.inherit = false; return Some(CompositeAlpha::Inherit); }
+        None
     }
 }
 
