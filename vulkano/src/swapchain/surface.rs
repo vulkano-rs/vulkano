@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -390,7 +389,9 @@ impl Surface {
             };
 
             Ok(Capabilities {
-                image_count: caps.minImageCount .. caps.maxImageCount + 1,
+                min_image_count: caps.minImageCount,
+                max_image_count: if caps.maxImageCount == 0 { None }
+                                 else { Some(caps.maxImageCount) },
                 current_extent: if caps.currentExtent.width == 0xffffffff &&
                                    caps.currentExtent.height == 0xffffffff
                 {
@@ -496,9 +497,13 @@ impl From<Error> for SurfaceCreationError {
 /// You have to match these capabilities when you create a swapchain.
 #[derive(Clone, Debug)]
 pub struct Capabilities {
-    /// Range of the number of images that can be created. Please remember that the end is out of
-    /// the range.
-    pub image_count: Range<u32>,
+    /// Minimum number of images that must be present in the swapchain.
+    pub min_image_count: u32,
+
+    /// Maximum number of images that must be present in the swapchain, or `None` if there is no
+    /// maximum value. Note that "no maximum" doesn't mean that you can set a very high value, as
+    /// you may still get out of memory errors.
+    pub max_image_count: Option<u32>,
 
     /// The current dimensions of the surface. `None` means that the surface's dimensions will
     /// depend on the dimensions of the swapchain that you are going to create.

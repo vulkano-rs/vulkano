@@ -111,8 +111,8 @@ impl Swapchain {
         // Checking that the requested parameters match the capabilities.
         let capabilities = try!(surface.get_capabilities(&device.physical_device()));
         // TODO: return errors instead
-        assert!(num_images >= capabilities.image_count.start);
-        assert!(num_images < capabilities.image_count.end);
+        assert!(num_images >= capabilities.min_image_count);
+        if let Some(c) = capabilities.max_image_count { assert!(num_images <= c) };
         assert!(capabilities.supported_formats.iter().find(|&&(f, _)| f == format).is_some());
         assert!(dimensions[0] >= capabilities.min_image_extent[0]);
         assert!(dimensions[1] >= capabilities.min_image_extent[1]);
