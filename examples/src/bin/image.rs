@@ -28,11 +28,7 @@ fn main() {
 
     // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
     let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
-    let extensions = vulkano::instance::InstanceExtensions {
-        khr_surface: true,
-        khr_win32_surface: true,
-        .. vulkano::instance::InstanceExtensions::none()
-    };
+    let extensions = vulkano_win::required_extensions();
     let instance = vulkano::instance::Instance::new(Some(&app), &extensions, &[]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
@@ -202,7 +198,7 @@ fn main() {
             color: &image,
         };
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (1244, 699, 1), attachments).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, (images[0].dimensions()[0], images[0].dimensions()[1], 1), attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
