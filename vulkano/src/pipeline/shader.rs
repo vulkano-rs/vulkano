@@ -7,6 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Stage of a graphics pipeline.
+//! 
+//! In Vulkan, shaders are grouped in *shader modules*. Each shader module is built from SPIR-V
+//! code and can contain one or more entry points. Note that for the moment the official
+//! GLSL-to-SPIR-V compiler does not support multiple entry points.
+//! 
+//! The vulkano library does not provide any functionnality that checks and introspects the SPIR-V
+//! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
+//! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
+
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::mem;
@@ -14,7 +24,6 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::ffi::CStr;
-use std::vec::IntoIter as VecIntoIter;
 
 use format::Format;
 use pipeline::input_assembly::PrimitiveTopology;
@@ -30,6 +39,7 @@ use vk;
 ///
 /// Note that it is advised to wrap around a `ShaderModule` with a struct that is different for
 /// each shader.
+#[derive(Debug)]
 pub struct ShaderModule {
     device: Arc<Device>,
     module: vk::ShaderModule,
@@ -49,7 +59,7 @@ impl ShaderModule {
     {
         let vk = device.pointers();
 
-        assert!((spirv.len() % 4) == 0);
+        debug_assert!((spirv.len() % 4) == 0);
 
         let module = {
             let infos = vk::ShaderModuleCreateInfo {
@@ -72,6 +82,18 @@ impl ShaderModule {
         }))
     }
 
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The input, output and layout must correctly describe the input, output and layout used
+    ///   by this stage.
+    ///
     pub unsafe fn vertex_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, input: I, output: O, layout: L)
         -> VertexShaderEntryPoint<'a, S, I, O, L>
@@ -86,8 +108,21 @@ impl ShaderModule {
         }
     }
 
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The input, output and layout must correctly describe the input, output and layout used
+    ///   by this stage.
+    ///
     pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessControlShaderEntryPoint<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
+        -> TessControlShaderEntryPoint<'a, S, I, O, L>
     {
         TessControlShaderEntryPoint {
             module: self,
@@ -99,8 +134,21 @@ impl ShaderModule {
         }
     }
 
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The input, output and layout must correctly describe the input, output and layout used
+    ///   by this stage.
+    ///
     pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
+        -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
     {
         TessEvaluationShaderEntryPoint {
             module: self,
@@ -112,9 +160,21 @@ impl ShaderModule {
         }
     }
 
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The input, output and layout must correctly describe the input, output and layout used
+    ///   by this stage.
+    ///
     pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I, output: O, layout: L)
-        -> GeometryShaderEntryPoint<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I,
+         output: O, layout: L) -> GeometryShaderEntryPoint<'a, S, I, O, L>
     {
         GeometryShaderEntryPoint {
             module: self,
@@ -136,11 +196,12 @@ impl ShaderModule {
     ///
     /// - The user must check that the entry point exists in the module, as this is not checked
     ///   by Vulkan.
-    /// - Calling this function also determines the template parameters associated to the
-    ///   `EntryPoint` struct. Therefore care must be taken that the values there are correct.
+    /// - The input, output and layout must correctly describe the input, output and layout used
+    ///   by this stage.
     ///
-    pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L)
-                                                              -> FragmentShaderEntryPoint<'a, S, I, O, L>
+    pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
+        -> FragmentShaderEntryPoint<'a, S, I, O, L>
     {
         FragmentShaderEntryPoint {
             module: self,
@@ -152,6 +213,17 @@ impl ShaderModule {
         }
     }
 
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The layout must correctly describe the layout used by this stage.
+    ///
     #[inline]
     pub unsafe fn compute_shader_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L)
                                                        -> ComputeShaderEntryPoint<'a, S, L>
@@ -184,6 +256,10 @@ impl Drop for ShaderModule {
     }
 }
 
+/// Represents the entry point of a vertex shader in a shader module.
+///
+/// Can be obtained by calling `vertex_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct VertexShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -194,33 +270,42 @@ pub struct VertexShaderEntryPoint<'a, S, I, O, L> {
 }
 
 impl<'a, S, I, O, L> VertexShaderEntryPoint<'a, S, I, O, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 
+    /// Returns the input attributes used by the shader stage.
     // TODO: rename "input" for consistency
     #[inline]
     pub fn input_definition(&self) -> &I {
         &self.input
     }
 
+    /// Returns the output attributes used by the shader stage.
     #[inline]
     pub fn output(&self) -> &O {
         &self.output
     }
 }
 
+/// Represents the entry point of a tessellation control shader in a shader module.
+///
+/// Can be obtained by calling `tess_control_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -231,32 +316,41 @@ pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
 }
 
 impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 
+    /// Returns the input attributes used by the shader stage.
     #[inline]
     pub fn input(&self) -> &I {
         &self.input
     }
 
+    /// Returns the output attributes used by the shader stage.
     #[inline]
     pub fn output(&self) -> &O {
         &self.output
     }
 }
 
+/// Represents the entry point of a tessellation evaluation shader in a shader module.
+///
+/// Can be obtained by calling `tess_evaluation_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -267,32 +361,41 @@ pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
 }
 
 impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 
+    /// Returns the input attributes used by the shader stage.
     #[inline]
     pub fn input(&self) -> &I {
         &self.input
     }
 
+    /// Returns the output attributes used by the shader stage.
     #[inline]
     pub fn output(&self) -> &O {
         &self.output
     }
 }
 
+/// Represents the entry point of a geometry shader in a shader module.
+///
+/// Can be obtained by calling `geometry_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -304,11 +407,13 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
 }
 
 impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
@@ -320,16 +425,19 @@ impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
         self.primitives
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 
+    /// Returns the input attributes used by the shader stage.
     #[inline]
     pub fn input(&self) -> &I {
         &self.input
     }
 
+    /// Returns the output attributes used by the shader stage.
     #[inline]
     pub fn output(&self) -> &O {
         &self.output
@@ -370,6 +478,10 @@ impl GeometryShaderExecutionMode {
     }
 }
 
+/// Represents the entry point of a fragment shader in a shader module.
+///
+/// Can be obtained by calling `fragment_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct FragmentShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -380,32 +492,41 @@ pub struct FragmentShaderEntryPoint<'a, S, I, O, L> {
 }
 
 impl<'a, S, I, O, L> FragmentShaderEntryPoint<'a, S, I, O, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 
+    /// Returns the input attributes used by the shader stage.
     #[inline]
     pub fn input(&self) -> &I {
         &self.input
     }
 
+    /// Returns the output attributes used by the shader stage.
     #[inline]
     pub fn output(&self) -> &O {
         &self.output
     }
 }
 
+/// Represents the entry point of a compute shader in a shader module.
+///
+/// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
 pub struct ComputeShaderEntryPoint<'a, S, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -414,29 +535,32 @@ pub struct ComputeShaderEntryPoint<'a, S, L> {
 }
 
 impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
+    /// Returns the module this entry point comes from.
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
     pub fn name(&self) -> &'a CStr {
         self.name
     }
 
+    /// Returns the pipeline layout used by the shader stage.
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
     }
 }
 
-/// Structs that contain the definition of an interface between two shader stages, or between
+/// Types that contain the definition of an interface between two shader stages, or between
 /// the outside and a shader stage.
 ///
 /// # Safety
 ///
 /// - Must only provide one entry per location.
-/// - The format must not be larger than 128 bits.
+/// - The format of each element must not be larger than 128 bits.
 ///
 pub unsafe trait ShaderInterfaceDef {
     /// Iterator returned by `elements`.
@@ -497,9 +621,14 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
     }
 }
 
-/// Trait to describe structs that contain specialization data for shaders.
+/// Trait for types that contain specialization data for shaders.
 ///
 /// It is implemented on `()` for shaders that don't have any specialization constant.
+///
+/// # Safety
+///
+/// - The `SpecializationMapEntry` returned must contain valid offsets and sizes.
+///
 pub unsafe trait SpecializationConstants {
     /// Returns descriptors of the struct's layout.
     fn descriptors() -> &'static [SpecializationMapEntry];
