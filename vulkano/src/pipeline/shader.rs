@@ -446,16 +446,6 @@ pub unsafe trait ShaderInterfaceDef {
     fn elements(&self) -> Self::Iter;
 }
 
-// FIXME: temporary ; remove as it is unsafe
-unsafe impl ShaderInterfaceDef for Vec<ShaderInterfaceDefEntry> {
-    type Iter = VecIntoIter<ShaderInterfaceDefEntry>;
-
-    #[inline]
-    fn elements(&self) -> Self::Iter {
-        self.clone().into_iter()
-    }
-}
-
 /// Entry of a shader interface definition.
 #[derive(Debug, Clone)]
 pub struct ShaderInterfaceDefEntry {
