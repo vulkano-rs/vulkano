@@ -72,43 +72,48 @@ impl ShaderModule {
         }))
     }
 
-    pub unsafe fn vertex_shader_entry_point<'a, S, V, L>
-        (&'a self, name: &'a CStr, layout: L,vertex_input: V)
-        -> VertexShaderEntryPoint<'a, S, V, L>
+    pub unsafe fn vertex_shader_entry_point<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
+        -> VertexShaderEntryPoint<'a, S, I, O, L>
     {
         VertexShaderEntryPoint {
             module: self,
             name: name,
-            vertex_input: vertex_input,
+            input: input,
+            output: output,
             layout: layout,
             marker: PhantomData,
         }
     }
 
     pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, layout: L) -> TessControlShaderEntryPoint<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessControlShaderEntryPoint<'a, S, I, O, L>
     {
         TessControlShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
+            input: input,
+            output: output,
             marker: PhantomData,
         }
     }
 
     pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, layout: L) -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
+        (&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
     {
         TessEvaluationShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
+            input: input,
+            output: output,
             marker: PhantomData,
         }
     }
 
     pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, layout: L)
+        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I, output: O, layout: L)
         -> GeometryShaderEntryPoint<'a, S, I, O, L>
     {
         GeometryShaderEntryPoint {
@@ -116,6 +121,8 @@ impl ShaderModule {
             name: name,
             layout: layout,
             primitives: primitives,
+            input: input,
+            output: output,
             marker: PhantomData,
         }
     }
@@ -132,13 +139,15 @@ impl ShaderModule {
     /// - Calling this function also determines the template parameters associated to the
     ///   `EntryPoint` struct. Therefore care must be taken that the values there are correct.
     ///
-    pub unsafe fn fragment_shader_entry_point<'a, S, F, L>(&'a self, name: &'a CStr, layout: L)
-                                                           -> FragmentShaderEntryPoint<'a, S, F, L>
+    pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L)
+                                                              -> FragmentShaderEntryPoint<'a, S, I, O, L>
     {
         FragmentShaderEntryPoint {
             module: self,
             name: name,
             layout: layout,
+            input: input,
+            output: output,
             marker: PhantomData,
         }
     }
@@ -175,15 +184,16 @@ impl Drop for ShaderModule {
     }
 }
 
-pub struct VertexShaderEntryPoint<'a, S, V, L> {
+pub struct VertexShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    vertex_input: V,
+    input: I,
     layout: L,
+    output: O,
     marker: PhantomData<S>,
 }
 
-impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
+impl<'a, S, I, O, L> VertexShaderEntryPoint<'a, S, I, O, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
@@ -199,9 +209,15 @@ impl<'a, S, V, L> VertexShaderEntryPoint<'a, S, V, L> {
         &self.layout
     }
 
+    // TODO: rename "input" for consistency
     #[inline]
-    pub fn input_definition(&self) -> &V {
-        &self.vertex_input
+    pub fn input_definition(&self) -> &I {
+        &self.input
+    }
+
+    #[inline]
+    pub fn output(&self) -> &O {
+        &self.output
     }
 }
 
@@ -209,7 +225,9 @@ pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
-    marker: PhantomData<(S, I, O)>,
+    input: I,
+    output: O,
+    marker: PhantomData<S>,
 }
 
 impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
@@ -227,13 +245,25 @@ impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
     pub fn layout(&self) -> &L {
         &self.layout
     }
+
+    #[inline]
+    pub fn input(&self) -> &I {
+        &self.input
+    }
+
+    #[inline]
+    pub fn output(&self) -> &O {
+        &self.output
+    }
 }
 
 pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
-    marker: PhantomData<(S, I, O)>,
+    input: I,
+    output: O,
+    marker: PhantomData<S>,
 }
 
 impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
@@ -251,6 +281,16 @@ impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
     pub fn layout(&self) -> &L {
         &self.layout
     }
+
+    #[inline]
+    pub fn input(&self) -> &I {
+        &self.input
+    }
+
+    #[inline]
+    pub fn output(&self) -> &O {
+        &self.output
+    }
 }
 
 pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
@@ -258,7 +298,9 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
     name: &'a CStr,
     layout: L,
     primitives: GeometryShaderExecutionMode,
-    marker: PhantomData<(S, I, O)>,
+    input: I,
+    output: O,
+    marker: PhantomData<S>,
 }
 
 impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
@@ -281,6 +323,16 @@ impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
+    }
+
+    #[inline]
+    pub fn input(&self) -> &I {
+        &self.input
+    }
+
+    #[inline]
+    pub fn output(&self) -> &O {
+        &self.output
     }
 }
 
@@ -318,14 +370,16 @@ impl GeometryShaderExecutionMode {
     }
 }
 
-pub struct FragmentShaderEntryPoint<'a, S, F, L> {
+pub struct FragmentShaderEntryPoint<'a, S, I, O, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout: L,
-    marker: PhantomData<(S, F)>,
+    input: I,
+    output: O,
+    marker: PhantomData<S>,
 }
 
-impl<'a, S, F, L> FragmentShaderEntryPoint<'a, S, F, L> {
+impl<'a, S, I, O, L> FragmentShaderEntryPoint<'a, S, I, O, L> {
     #[inline]
     pub fn module(&self) -> &'a ShaderModule {
         self.module
@@ -339,6 +393,16 @@ impl<'a, S, F, L> FragmentShaderEntryPoint<'a, S, F, L> {
     #[inline]
     pub fn layout(&self) -> &L {
         &self.layout
+    }
+
+    #[inline]
+    pub fn input(&self) -> &I {
+        &self.input
+    }
+
+    #[inline]
+    pub fn output(&self) -> &O {
+        &self.output
     }
 }
 
@@ -380,16 +444,6 @@ pub unsafe trait ShaderInterfaceDef {
 
     /// Iterates over the elements of the interface.
     fn elements(&self) -> Self::Iter;
-}
-
-// FIXME: temporary ; remove as it is unsafe
-unsafe impl ShaderInterfaceDef for Vec<ShaderInterfaceDefEntry> {
-    type Iter = VecIntoIter<ShaderInterfaceDefEntry>;
-
-    #[inline]
-    fn elements(&self) -> Self::Iter {
-        self.clone().into_iter()
-    }
 }
 
 /// Entry of a shader interface definition.

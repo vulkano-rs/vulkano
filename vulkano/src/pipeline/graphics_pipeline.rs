@@ -40,6 +40,8 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
+use pipeline::shader::ShaderInterfaceDef;
+use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
@@ -47,15 +49,15 @@ use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
 
-pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gs, Gi, Go, Gl, Fs, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
+pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
     pub vertex_input: Vdef,
-    pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vl>,
+    pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>,
     pub input_assembly: InputAssembly,
     pub geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
     pub viewport: ViewportsState,
     pub raster: Rasterization,
     pub multisample: Multisample,
-    pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fo, Fl>,
+    pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fi, Fo, Fl>,
     pub depth_stencil: DepthStencil,
     pub blend: Blend,
     pub layout: &'a Arc<L>,
@@ -94,34 +96,50 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 {
     /// Builds a new graphics pipeline object.
     #[inline]
-    pub fn new<'a, Vsp, Vi, Vl, Fs, Fo, Fl>
+    pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, (), (), (), (), Fs, Fo, Fl,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), (), Fs, Fi, Fo, Fl,
                                               L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Fi: ShaderInterfaceDefMatch<Vo>,
+              Vo: ShaderInterfaceDef
     {
-        GraphicsPipeline::new_inner::<_, _, _, (), (), (), (), _, _, _>(device, params)
+        // TODO: return proper errors
+        assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), (), _, _, _, _>(device, params)
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
     #[inline]
-    pub fn with_geometry_shader<'a, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl>
+    pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Gi: ShaderInterfaceDefMatch<Vo>,
+              Vo: ShaderInterfaceDef,
+              Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
+              Go: ShaderInterfaceDef
     {
+        // TODO: return proper errors
+        if let Some(ref geometry_shader) = params.geometry_shader {
+            assert!(geometry_shader.input().matches(params.vertex_shader.output()));
+            assert!(params.fragment_shader.input().matches(geometry_shader.output()));
+        } else {
+            assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+        }
+
         GraphicsPipeline::new_inner(device, params)
     }
 
-    fn new_inner<'a, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl>
+    fn new_inner<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
                 (device: &Arc<Device>,
-                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vl, Gsp, Gi, Go, Gl, Fs, Fo, Fl, L, Rp>)
+                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
