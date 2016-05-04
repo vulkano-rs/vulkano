@@ -31,47 +31,33 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
 
     let (ty, f_call) = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
-            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<(), {}Input, Layout>", capitalized_ep_name);
-            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, {}Input)", capitalized_ep_name);
+            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<(), {0}Input, {0}Output, Layout>", capitalized_ep_name);
+            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), {0}Input, {0}Output, Layout)", capitalized_ep_name);
             (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelTessellationControl => {
-            (format!("::vulkano::pipeline::shader::TessControlShaderEntryPoint"), String::new())
+            let t = format!("::vulkano::pipeline::shader::TessControlShaderEntryPoint<(), {0}Input, {0}Output, Layout>", capitalized_ep_name);
+            let f = format!("tess_control_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), {0}Input, {0}Output, Layout)", capitalized_ep_name);
+            (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            (format!("::vulkano::pipeline::shader::TessEvaluationShaderEntryPoint"), String::new())
+            let t = format!("::vulkano::pipeline::shader::TessEvaluationShaderEntryPoint<(), {0}Input, {0}Output, Layout>", capitalized_ep_name);
+            let f = format!("tess_evaluation_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), {0}Input, {0}Output, Layout)", capitalized_ep_name);
+            (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
-            (format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint"), String::new())
+            let t = format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint<(), {0}Input, {0}Output, Layout>", capitalized_ep_name);
+            let f = format!("geometry_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), {0}Input, {0}Output, Layout)", capitalized_ep_name);
+            (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelFragment => {
-            let mut output_types = Vec::new();
-
-            for interface in interface.iter() {
-                for i in doc.instructions.iter() {
-                    match i {
-                        &parse::Instruction::Variable { result_type_id, result_id, ref storage_class,
-                                                        .. } if &result_id == interface =>
-                        {
-                            output_types.push(type_from_id(doc, result_type_id));
-                        },
-                        _ => ()
-                    }
-                }
-            }
-
-            let output = {
-                let output = output_types.join(", ");
-                if output.is_empty() { output } else { output + "," }
-            };
-
-            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<(), ({output}), Layout>",
-                            output = output);
-            (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
+            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<(), {0}Input, {0}Output, Layout>", capitalized_ep_name);
+            let f = format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), {0}Input, {0}Output, Layout)", capitalized_ep_name);
+            (t, f)
         },
 
         enums::ExecutionModel::ExecutionModelGLCompute => {
