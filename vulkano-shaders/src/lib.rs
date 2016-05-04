@@ -136,9 +136,12 @@ impl {name} {{
         "#, name = name, spirv_data = spirv_data));
 
         // writing one method for each entry point of this module
+        let mut outside_impl = String::new();
         for instruction in doc.instructions.iter() {
             if let &parse::Instruction::EntryPoint { .. } = instruction {
-                output.push_str(&entry_point::write_entry_point(&doc, instruction));
+                let (outside, entry_point) = entry_point::write_entry_point(&doc, instruction);
+                output.push_str(&entry_point);
+                outside_impl.push_str(&outside);
             }
         }
 
@@ -146,6 +149,8 @@ impl {name} {{
         output.push_str(&format!(r#"
 }}
         "#));
+
+        output.push_str(&outside_impl);
 
         // struct definitions
         output.push_str("pub mod ty {");
