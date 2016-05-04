@@ -40,6 +40,8 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
+use pipeline::shader::ShaderInterfaceDef;
+use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
@@ -101,8 +103,12 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Fi: ShaderInterfaceDefMatch<Vo>,
+              Vo: ShaderInterfaceDef
     {
+        // TODO: return proper errors
+        assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
         GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), (), _, _, _, _>(device, params)
     }
 
@@ -114,8 +120,20 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Gi: ShaderInterfaceDefMatch<Vo>,
+              Vo: ShaderInterfaceDef,
+              Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
+              Go: ShaderInterfaceDef
     {
+        // TODO: return proper errors
+        if let Some(ref geometry_shader) = params.geometry_shader {
+            assert!(geometry_shader.input().matches(params.vertex_shader.output()));
+            assert!(params.fragment_shader.input().matches(geometry_shader.output()));
+        } else {
+            assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+        }
+
         GraphicsPipeline::new_inner(device, params)
     }
 
