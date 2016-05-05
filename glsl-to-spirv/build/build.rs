@@ -16,8 +16,9 @@ fn main() {
         Path::new("build/glslangValidator.exe").to_owned()
 
     } else {
-        let status = Command::new("git").arg("submodule").arg("update").arg("--init").status().unwrap();
-        if !status.success() { panic!("error while executing `git submodule init`") }
+        // Try to initialize submodules. Don't care if it fails, since this code also runs for
+        // the crates.io package.
+        let _ = Command::new("git").arg("submodule").arg("update").arg("--init").status();
         cmake::build("glslang");
         Path::new(&env::var("OUT_DIR").unwrap()).join("bin").join("glslangValidator")
     };
