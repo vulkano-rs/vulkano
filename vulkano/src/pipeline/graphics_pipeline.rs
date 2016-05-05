@@ -21,6 +21,7 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
 use Error;
 use OomError;
@@ -105,7 +106,9 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
               Fi: ShaderInterfaceDefMatch<Vo>,
-              Vo: ShaderInterfaceDef
+              Fo: ShaderInterfaceDef,
+              Vo: ShaderInterfaceDef,
+              Rp: RenderPassSubpassInterface<Fo>,
     {
         // TODO: return proper errors
         assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
@@ -124,7 +127,9 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gi: ShaderInterfaceDefMatch<Vo>,
               Vo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
-              Go: ShaderInterfaceDef
+              Fo: ShaderInterfaceDef,
+              Go: ShaderInterfaceDef,
+              Rp: RenderPassSubpassInterface<Fo>,
     {
         // TODO: return proper errors
         if let Some(ref geometry_shader) = params.geometry_shader {
@@ -142,14 +147,23 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
+              Fo: ShaderInterfaceDef,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc
+              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Rp: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
         // FIXME: check
         //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.vertex_shader.layout()));
         //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.fragment_shader.layout()));
+
+        // Check that the subpass can accept the output of the fragment shader.
+        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
+                                                                params.fragment_shader.output())
+        {
+            return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
+        }
 
         // Will contain the list of dynamic states. Filled throughout this function.
         let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
@@ -752,6 +766,10 @@ pub enum GraphicsPipelineCreationError {
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout,
 
+    /// The output of the fragment shader is not compatible with what the render pass subpass
+    /// expects.
+    FragmentShaderRenderPassIncompatible,
+
     /// One of the vertex attributes requested by the vertex shader is missing from the vertex
     /// input.
     MissingVertexAttribute {
@@ -872,6 +890,10 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
             GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
                 "the pipeline layout is not compatible with what the shaders expect"
+            },
+            GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
+                "the output of the fragment shader is not compatible with what the render pass \
+                 subpass expects"
             },
             GraphicsPipelineCreationError::MissingVertexAttribute { .. } => {
                 "one of the vertex attributes requested by the vertex shader is missing from the \
