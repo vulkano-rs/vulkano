@@ -18,6 +18,7 @@ use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
+use pipeline::shader::ShaderInterfaceDef;
 
 use vk;
 
@@ -222,6 +223,49 @@ pub unsafe trait RenderPassClearValues<C>: RenderPass {
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
 }
 
+/// Extension trait for `RenderPass` that checks whether a subpass of this render pass accepts
+/// the output of a fragment shader.
+///
+/// The trait is automatically implemented for all type that implement `RenderPass` and
+/// `RenderPassDesc`.
+// TODO: once specialization lands, this trait can be specialized for pairs that are known to
+//       always be compatible
+pub unsafe trait RenderPassSubpassInterface<Other>: RenderPass where Other: ShaderInterfaceDef {
+    /// Returns `true` if this subpass is compatible with the fragment output definition.
+    /// Also returns `false` if the subpass is out of range.
+    // TODO: return proper error
+    fn is_compatible_with(&self, subpass: u32, other: &Other) -> bool;
+}
+
+unsafe impl<A, B> RenderPassSubpassInterface<B> for A
+    where A: RenderPass + RenderPassDesc, B: ShaderInterfaceDef
+{
+    fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
+        let pass_descr = match self.passes().skip(subpass as usize).next() {
+            Some(s) => s,
+            None => return false,
+        };
+
+        for element in other.elements() {
+            for location in element.location.clone() {
+                let attachment_id = match pass_descr.color_attachments.get(location as usize) {
+                    Some(a) => a.0,
+                    None => return false,
+                };
+
+                let attachment_desc = self.attachments().skip(attachment_id).next().unwrap();
+
+                // FIXME: compare formats depending on the number of components and data type
+                /*if attachment_desc.format != element.format {
+                    return false;
+                }*/
+            }
+        }
+
+        true
+    }
+}
+
 /// Trait implemented on render pass objects to check whether they are compatible
 /// with another render pass.
 ///
@@ -232,6 +276,7 @@ pub unsafe trait RenderPassClearValues<C>: RenderPass {
 pub unsafe trait RenderPassCompatible<Other>: RenderPass where Other: RenderPass {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
+    // TODO: return proper error
     fn is_compatible_with(&self, other: &Arc<Other>) -> bool;
 }
 

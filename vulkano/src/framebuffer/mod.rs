@@ -76,6 +76,7 @@ pub use self::traits::RenderPassDesc;
 pub use self::traits::RenderPassAttachmentsList;
 pub use self::traits::RenderPassClearValues;
 pub use self::traits::RenderPassCompatible;
+pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::LayoutAttachmentDescription;
 pub use self::traits::LayoutPassDescription;
 pub use self::traits::LayoutPassDependencyDescription;
