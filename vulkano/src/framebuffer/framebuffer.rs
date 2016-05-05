@@ -40,7 +40,7 @@ pub struct Framebuffer<L> {
     device: Arc<Device>,
     render_pass: Arc<L>,
     framebuffer: vk::Framebuffer,
-    dimensions: (u32, u32, u32),
+    dimensions: [u32; 3],
     resources: SmallVec<[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout); 8]>,
 }
 
@@ -56,7 +56,7 @@ impl<L> Framebuffer<L> {
     /// - Additionally, some methods in the `RenderPassAttachmentsList` implementation may panic
     ///   if you pass invalid attachments.      // TODO: should be error instead
     ///
-    pub fn new<'a, A>(render_pass: &Arc<L>, dimensions: (u32, u32, u32),        // TODO: what about [u32; 3] instead?
+    pub fn new<'a, A>(render_pass: &Arc<L>, dimensions: [u32; 3],
                       attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: RenderPass + RenderPassAttachmentsList<A>
     {
@@ -71,7 +71,7 @@ impl<L> Framebuffer<L> {
             let limits = render_pass.render_pass().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
-            if dimensions.0 > limits[0] || dimensions.1 > limits[1] || dimensions.2 > limits[2] {
+            if dimensions[0] > limits[0] || dimensions[1] > limits[1] || dimensions[2] > limits[2] {
                 return Err(FramebufferCreationError::DimensionsTooLarge);
             }
         }
@@ -84,8 +84,8 @@ impl<L> Framebuffer<L> {
                 // TODO: add more checks with debug_assert!
 
                 let atch_dims = a.parent().dimensions();
-                if atch_dims.width() < dimensions.0 || atch_dims.height() < dimensions.1 ||
-                   atch_dims.array_layers() < dimensions.2      // TODO: wrong, since it must be the array layers of the view and not of the image
+                if atch_dims.width() < dimensions[0] || atch_dims.height() < dimensions[1] ||
+                   atch_dims.array_layers() < dimensions[2]      // TODO: wrong, since it must be the array layers of the view and not of the image
                 {
                     return Err(FramebufferCreationError::AttachmentTooSmall);
                 }
@@ -104,9 +104,9 @@ impl<L> Framebuffer<L> {
                 renderPass: render_pass.render_pass().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
-                width: dimensions.0,
-                height: dimensions.1,
-                layers: dimensions.2,
+                width: dimensions[0],
+                height: dimensions[1],
+                layers: dimensions[2],
             };
 
             let mut output = mem::uninitialized();
@@ -139,25 +139,25 @@ impl<L> Framebuffer<L> {
     /// Returns the width, height and layers of this framebuffer.
     #[inline]
     pub fn dimensions(&self) -> [u32; 3] {
-        [self.dimensions.0, self.dimensions.1, self.dimensions.2]
+        self.dimensions
     }
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
     pub fn width(&self) -> u32 {
-        self.dimensions.0
+        self.dimensions[0]
     }
 
     /// Returns the height of the framebuffer in pixels.
     #[inline]
     pub fn height(&self) -> u32 {
-        self.dimensions.1
+        self.dimensions[1]
     }
 
     /// Returns the number of layers (or depth) of the framebuffer.
     #[inline]
     pub fn layers(&self) -> u32 {
-        self.dimensions.2
+        self.dimensions[2]
     }
 
     /// Returns the device that was used to create this framebuffer.
@@ -294,7 +294,7 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let _ = Framebuffer::new(&render_pass, (1024, 768, 1), example::AList {
+        let _ = Framebuffer::new(&render_pass, [1024, 768, 1], example::AList {
             color: &image
         }).unwrap();
     }
@@ -310,7 +310,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: &image };
-        match Framebuffer::new(&render_pass, (0xffffffff, 0xffffffff, 0xffffffff), alist) {
+        match Framebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }
@@ -327,7 +327,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: &image };
-        match Framebuffer::new(&render_pass, (600, 600, 1), alist) {
+        match Framebuffer::new(&render_pass, [600, 600, 1], alist) {
             Err(FramebufferCreationError::AttachmentTooSmall) => (),
             _ => panic!()
         }
