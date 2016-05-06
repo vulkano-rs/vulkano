@@ -34,7 +34,7 @@ after_success:
         cargo install ghp &&
         export PATH=/home/travis/.cargo/bin:$PATH &&
         cargo doc --manifest-path vulkano/Cargo.toml &&
-        cargo ghp vulkano/target/doc &&
+        ghp vulkano/target/doc &&
         git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
     - |
         [ $TRAVIS_BRANCH = master ] &&
