@@ -200,7 +200,7 @@ fn main() {
             depth: &depth_buffer,
         };
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (image.dimensions()[0], image.dimensions()[1], 1), attachments).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, [image.dimensions()[0], image.dimensions()[1], 1], attachments).unwrap()
     }).collect::<Vec<_>>();
 
 

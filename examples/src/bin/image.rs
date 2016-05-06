@@ -198,7 +198,7 @@ fn main() {
             color: &image,
         };
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, (images[0].dimensions()[0], images[0].dimensions()[1], 1), attachments).unwrap()
+        vulkano::framebuffer::Framebuffer::new(&renderpass, [images[0].dimensions()[0], images[0].dimensions()[1], 1], attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
