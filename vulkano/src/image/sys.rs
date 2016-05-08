@@ -76,6 +76,7 @@ impl UnsafeImage {
     /// - Panicks if the number of mipmaps is 0.
     /// - Panicks if the number of samples is 0.
     ///
+    #[inline]
     pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &Usage, format: Format,
                                  dimensions: Dimensions, num_samples: u32, mipmaps: Mi,
                                  sharing: Sharing<I>, linear_tiling: bool,
@@ -83,13 +84,26 @@ impl UnsafeImage {
                                  -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
         where Mi: Into<MipmapsCount>, I: Iterator<Item = u32>
     {
+        let sharing = match sharing {
+            Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
+            Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
+        };
+
+        UnsafeImage::new_impl(device, usage, format, dimensions, num_samples, mipmaps.into(),
+                              sharing, linear_tiling, preinitialized_layout)
+    }
+
+    // Non-templated version to avoid inlining and improve compile times.
+    unsafe fn new_impl(device: &Arc<Device>, usage: &Usage, format: Format,
+                       dimensions: Dimensions, num_samples: u32, mipmaps: MipmapsCount,
+                       (sh_mode, sh_indices): (vk::SharingMode, SmallVec<[u32; 8]>),
+                       linear_tiling: bool, preinitialized_layout: bool)
+                       -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
+    {
         // TODO: doesn't check that the proper features are enabled
 
         let vk = device.pointers();
         let vk_i = device.instance().pointers();
-
-        // Preprocessing parameters.
-        let sharing = sharing.into();
 
         // Checking if image usage conforms to what is supported.
         let format_features = {
@@ -371,11 +385,6 @@ impl UnsafeImage {
 
         // Everything now ok. Creating the image.
         let image = {
-            let (sh_mode, sh_indices) = match sharing {
-                Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
-                Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
-            };
-
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
