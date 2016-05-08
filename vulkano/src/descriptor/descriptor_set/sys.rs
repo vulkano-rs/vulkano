@@ -297,9 +297,11 @@ impl Drop for UnsafeDescriptorSet {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.pool.device().pointers();
-            vk.FreeDescriptorSets(self.pool.device().internal_object(),
-                                  *self.pool.internal_object_guard(), 1, &self.set);
+            if self.pool.free_individual_sets() {
+                let vk = self.pool.device().pointers();
+                vk.FreeDescriptorSets(self.pool.device().internal_object(),
+                                      *self.pool.internal_object_guard(), 1, &self.set);
+            }
         }
     }
 }
