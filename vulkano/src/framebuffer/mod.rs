@@ -13,13 +13,13 @@
 //!
 //! There are two concepts in Vulkan:
 //! 
-//! - A `RenderPass` is a collection of rendering passes called subpasses. Each subpass contains
-//!   the format and dimensions of the attachments that are part of the subpass. The render
-//!   pass only defines the layout of the rendering process.
+//! - A `RenderPass` is a collection of one or multiples passes called subpasses. Each subpass
+//!   contains the format and dimensions of the attachments that are part of the subpass. The
+//!   render pass only defines the layout of the rendering process.
 //! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
 //!   render pass and has to match its characteristics.
 //!
-//! This split means that you can create graphics pipelines from a render pass object alone.
+//! You can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` is only needed when you add draw commands to a command buffer.
 //!
 //! # Render passes

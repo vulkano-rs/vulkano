@@ -17,24 +17,34 @@
 //! provides high-level wrappers around that type that are specialized depending on the way you
 //! are going to use it:
 //!
-//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be written by
-//!   your application.
+//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be directly
+//!   written by your application.
+//! - `DeviceLocalBuffer` designates a buffer located in video memory and whose content can't be
+//!   written by your application. Accessing this buffer from the GPU is usually faster than the
+//!   `CpuAccessBuffer`.
 //! - `ImmutableBuffer` designates a buffer in video memory and whose content can only be
-//!   written once.
-//! 
-//! If are a beginner, you are strongly encouraged to use one of these wrappers.
+//!   written once. Compared to `DeviceLocalBuffer`, this buffer requires less processing on the
+//!   CPU because we don't need to keep track of the reads and writes.
+//!
+//! If you have data that is modified at every single frame, you are encouraged to use a
+//! `CpuAccessibleBuffer`. If you have data that is very rarely modified, you are encouraged to
+//! use an `ImmutableBuffer` or a `DeviceLocalBuffer` instead.
+//!
+//! If you just want to get started, you can use the `CpuAccessibleBuffer` everywhere, as it is
+//! the most flexible type of buffer.
 //!
 //! # Buffers usage
 //!
-//! Buffers have the following usages:
+//! When you create a buffer object, you have to specify its *usage*. In other words, you have to
+//! specify the way it is going to be used. Trying to use a buffer in a way that wasn't specified
+//! when you created it will result in an error.
 //!
-//! - Can contain arbitrary data that can be copied from/to other buffers and images.
+//! You can use buffers for the following purposes:
+//!
+//! - Can contain arbitrary data that can be transferred from/to other buffers and images.
 //! - Can be read and modified from a shader.
 //! - Can be used as a source of vertices and indices.
 //! - Can be used as a source of list of models for draw indirect commands.
-//!
-//! The correct `Usage` flags have to be passed when you create a buffer. Trying to use a buffer
-//! in a way that wasn't specified when you created it will result in an error.
 //!
 //! Accessing a buffer from a shader can be done in the following ways:
 //!
@@ -47,15 +57,6 @@
 //!
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
 //! for how to create a buffer view.
-//!
-//! # Data uploads
-//!
-//! One of the major usages of buffers is to upload data to other buffers and to images. When you
-//! create a buffer or an image in non-host-visible memory, one of the only way to upload data to
-//! it is write the data in a temporary buffer and ask the device to copy from the temporary buffer
-//! to the real buffer.
-//!
-//! TODO: add example of this
 //!
 use std::marker::PhantomData;
 use std::mem;
