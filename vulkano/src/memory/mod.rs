@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! GPU-visible memory allocation.
+//! Memory allocation and memory pools.
 
 use std::mem;
 use std::os::raw::c_void;
