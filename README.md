@@ -12,7 +12,7 @@ should always conform to valid API usage.
 What does vulkano do?
 
 - Provides a low-levelish API around Vulkan. It doesn't hide what it does, but provides some
-  confort types.
+  comfort types.
 - Plans to prevents all invalid API usages, even the most obscure ones. The purpose of vulkano
   is not to draw a teapot, but to cover all possible usages of Vulkan and detect all the
   possible problems. Invalid API usage is prevented thanks to both compile-time checks and
