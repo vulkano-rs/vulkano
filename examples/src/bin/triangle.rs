@@ -294,6 +294,8 @@ fn main() {
     // program, but much more specific.
     let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         // We need to indicate the layout of the vertices.
+        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
+        // to the type of each vertex. But in this code it is automatically inferred.
         vertex_input: SingleBufferDefinition::new(),
 
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
@@ -366,7 +368,7 @@ fn main() {
 
     // Initialization is finally finished!
 
-    // In the loop above we are going to submit commands to the GPU. Submitting a command produces
+    // In the loop below we are going to submit commands to the GPU. Submitting a command produces
     // a `Submission` object which holds the resources for as long as they are in use by the GPU.
     //
     // Destroying a `Submission` blocks until the GPU is finished executing it. In order to avoid
@@ -377,14 +379,16 @@ fn main() {
         // Clearing the old submissions by keeping alive only the ones whose destructor would block.
         submissions.retain(|s| s.destroying_would_block());
 
-        // Before we can draw on the output, we have to *acquire* an image from the swapchain.
+        // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
+        // no image is available (which happens if you submit draw commands too quickly), then the
+        // function will block.
         // This operation returns the index of the image that we are allowed to draw upon.
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
         let image_num = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
 
-        // Before we can draw, we have to build a *command buffer*. The command buffer object holds
+        // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
         //
         // Building a command buffer is an expensive operation (usually a few hundred
@@ -415,15 +419,15 @@ fn main() {
             // Finish building the command buffer by calling `build`.
             .build();
 
-        // In order to draw, all we need to do is submit the command buffer to the queue.
+        // Now all we need to do is submit the command buffer to the queue.
         submissions.push(command_buffer::submit(&command_buffer, &queue).unwrap());
 
         // The color output is now expected to contain our triangle. But in order to show it on
         // the screen, we have to *present* the image by calling `present`.
         //
-        // This function does not actually present the image. Instead it submits a present command
-        // at the end of the queue. This means that it will only be presented once the GPU has
-        // finished executing the command buffer that draws the triangle.
+        // This function does not actually present the image immediately. Instead it submits a
+        // present command at the end of the queue. This means that it will only be presented once
+        // the GPU has finished executing the command buffer that draws the triangle.
         swapchain.present(&queue, image_num).unwrap();
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
