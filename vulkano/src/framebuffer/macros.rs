@@ -72,6 +72,8 @@ macro_rules! ordered_passes_renderpass {
         use $crate::image::Layout;
         use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
+        use $crate::sync::AccessFlagBits;
+        use $crate::sync::PipelineStages;
 
         #[derive(Debug, Clone)]
         pub struct Formats {
@@ -274,7 +276,11 @@ macro_rules! ordered_passes_renderpass {
                 Some(LayoutPassDependencyDescription {
                     source_subpass: self.0,
                     destination_subpass: self.1,
-                    by_region: false,
+                    src_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                    dst_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                    src_access: AccessFlagBits::all(),         // TODO: correct values
+                    dst_access: AccessFlagBits::all(),         // TODO: correct values
+                    by_region: true,            // TODO: correct values
                 })
             }
 

@@ -98,6 +98,16 @@ macro_rules! pipeline_stages {
             )+
         }
 
+        impl PipelineStages {
+            pub fn none() -> PipelineStages {
+                PipelineStages {
+                    $(
+                        $elem: false,
+                    )+
+                }
+            }
+        }
+
         #[doc(hidden)]
         impl Into<vk::PipelineStageFlagBits> for PipelineStages {
             #[inline]
@@ -139,6 +149,24 @@ macro_rules! access_flags {
             $(
                 pub $elem: bool,
             )+
+        }
+
+        impl AccessFlagBits {
+            pub fn all() -> AccessFlagBits {
+                AccessFlagBits {
+                    $(
+                        $elem: true,
+                    )+
+                }
+            }
+
+            pub fn none() -> AccessFlagBits {
+                AccessFlagBits {
+                    $(
+                        $elem: false,
+                    )+
+                }
+            }
         }
 
         #[doc(hidden)]
