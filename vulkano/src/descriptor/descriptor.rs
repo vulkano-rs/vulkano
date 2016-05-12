@@ -85,7 +85,54 @@ impl DescriptorDescTy {
     /// Checks whether we are a superset of another descriptor type.
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDescTy) -> bool {
-        true    // FIXME:
+        match (*self, *other) {
+            (DescriptorDescTy::Sampler, DescriptorDescTy::Sampler) => true,
+
+            (DescriptorDescTy::CombinedImageSampler(ref me),
+             DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
+
+            (DescriptorDescTy::Image(ref me),
+             DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
+
+            (DescriptorDescTy::InputAttachment { multisampled: me_multisampled,
+                                                 array_layers: me_array_layers },
+             DescriptorDescTy::InputAttachment { multisampled: other_multisampled,
+                                                 array_layers: other_array_layers }) =>
+            {
+                me_multisampled == other_multisampled && me_array_layers == other_array_layers
+            },
+
+            (DescriptorDescTy::Buffer(ref me), DescriptorDescTy::Buffer(ref other)) => {
+                if me.storage != other.storage {
+                    return false;
+                }
+
+                match (me.dynamic, other.dynamic) {
+                    (Some(_), None) => true,
+                    (Some(m), Some(o)) => m == o,
+                    (None, None) => true,
+                    (None, Some(_)) => false,
+                }
+            },
+
+            (DescriptorDescTy::TexelBuffer { sampled: me_sampled, format: me_format },
+             DescriptorDescTy::TexelBuffer { sampled: other_sampled, format: other_format }) =>
+            {
+                if me_sampled != other_sampled {
+                    return false;
+                }
+
+                match (me_format, other_format) {
+                    (Some(_), None) => true,
+                    (Some(m), Some(o)) => m == o,
+                    (None, None) => true,
+                    (None, Some(_)) => false,
+                }
+            },
+
+            // Any other combination is invalid.
+            _ => false
+        }
     }
 }
 
