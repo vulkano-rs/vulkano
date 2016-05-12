@@ -234,10 +234,10 @@ impl UnsafeRenderPass {
             vk::SubpassDependency {
                 srcSubpass: dependency.source_subpass as u32,
                 dstSubpass: dependency.destination_subpass as u32,
-                srcStageMask: vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,      // FIXME:
-                dstStageMask: vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,      // FIXME:
-                srcAccessMask: 0x0001FFFF,       // FIXME:
-                dstAccessMask: 0x0001FFFF,       // FIXME:
+                srcStageMask: dependency.src_stages.into(),
+                dstStageMask: dependency.dst_stages.into(),
+                srcAccessMask: dependency.src_access.into(),
+                dstAccessMask: dependency.dst_access.into(),
                 dependencyFlags: if dependency.by_region { vk::DEPENDENCY_BY_REGION_BIT } else { 0 },
             }
         }).collect::<SmallVec<[_; 16]>>();

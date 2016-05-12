@@ -19,6 +19,8 @@ use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
 use pipeline::shader::ShaderInterfaceDef;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 use vk;
 
@@ -387,10 +389,13 @@ pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that reads the data that `source_subpass` wrote.
     pub destination_subpass: usize,
 
-    /*VkPipelineStageFlags    srcStageMask;
-    VkPipelineStageFlags    dstStageMask;
-    VkAccessFlags           srcAccessMask;
-    VkAccessFlags           dstAccessMask;*/
+    pub src_stages: PipelineStages,
+
+    pub dst_stages: PipelineStages,
+
+    pub src_access: AccessFlagBits,
+
+    pub dst_access: AccessFlagBits,
 
     pub by_region: bool,
 }
