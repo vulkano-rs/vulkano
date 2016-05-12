@@ -69,28 +69,46 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                     // Determine whether there's a NonWritable decoration.
                     let non_writable = false;       // TODO: tricky because the decoration is on struct members
 
-                    Some(if !is_ssbo {
-                        ("DescriptorType::UniformBuffer", true)
-                    } else {
-                        ("DescriptorType::StorageBuffer", non_writable)
-                    })
+                    Some((format!("DescriptorDescTy::Buffer(DescriptorBufferDesc {{
+                         dynamic: Some(false),
+                         storage: {}
+                     }})", if is_ssbo { "true" } else { "false "}), true))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(true) =>
                 {
-                    Some(("DescriptorType::SampledImage", true))
+                    // FIXME: wrong
+                    let desc = format!("DescriptorDescTy::Image(DescriptorImageDesc {{
+                        sampled: true,
+                        dimensions: DescriptorImageDescDimensions::TwoDimensional,
+                        format: None,
+                        multisampled: false,
+                        array_layers: DescriptorImageDescArray::NonArrayed,
+                    }})");
+
+                    Some((desc, true))
                 },
                 &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
                                                  sampled, ref format, ref access, .. }
                                         if result_id == pointed_ty && sampled == Some(false) =>
                 {
-                    Some(("DescriptorType::InputAttachment", true))       // FIXME: can be `StorageImage`
+                    // FIXME: everything wrong here
+                    Some(("DescriptorDescTy::InputAttachment { multisampled: false, array_layers: DescriptorImageDescArray::NonArrayed }".to_owned(), true))
                 },
                 &parse::Instruction::TypeSampledImage { result_id, image_type_id }
                                                                     if result_id == pointed_ty =>
                 {
-                    Some(("DescriptorType::CombinedImageSampler", true))
+                    // FIXME: wrong
+                    let desc = format!("DescriptorDescTy::CombinedImageSampler(DescriptorImageDesc {{
+                        sampled: true,
+                        dimensions: DescriptorImageDescDimensions::TwoDimensional,
+                        format: None,
+                        multisampled: false,
+                        array_layers: DescriptorImageDescArray::NonArrayed,
+                    }})");
+    
+                    Some((desc, true))
                 },
                 _ => None,      // TODO: other types
             }
@@ -98,7 +116,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
 
         descriptors.push(Descriptor {
             name: name,
-            desc_ty: desc_ty.to_owned(),
+            desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
             readonly: readonly,

@@ -72,7 +72,11 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
 
         use vulkano::device::Device;
         use vulkano::descriptor::descriptor::DescriptorDesc;
-        use vulkano::descriptor::descriptor::DescriptorType;
+        use vulkano::descriptor::descriptor::DescriptorDescTy;
+        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
         use vulkano::descriptor::descriptor::ShaderStages;
         use vulkano::descriptor::descriptor_set::DescriptorSet;
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;

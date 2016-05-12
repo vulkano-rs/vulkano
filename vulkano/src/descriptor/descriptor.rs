@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use format::Format;
 use vk;
 
 /// Describes a single descriptor.
@@ -15,8 +16,8 @@ pub struct DescriptorDesc {
     /// Offset of the binding within the descriptor.
     pub binding: u32,
 
-    /// What kind of resource can later be bound to this descriptor.
-    pub ty: DescriptorType,
+    /// Describes the content and layout of each array element of a descriptor.
+    pub ty: DescriptorDescTy,
 
     /// How many array elements this descriptor is made of.
     pub array_count: u32,
@@ -35,14 +36,129 @@ impl DescriptorDesc {
     /// array elements count, or it is the same with more shader stages.
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
-        self.binding == other.binding && self.ty == other.ty &&
+        self.binding == other.binding && self.ty.is_superset_of(&other.ty) &&
         self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) &&
         (!self.readonly || other.readonly)
     }
 }
 
+/// Describes the content and layout of each array element of a descriptor.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DescriptorDescTy {
+    Sampler,                // TODO: the sampler has some restrictions as well
+    CombinedImageSampler(DescriptorImageDesc),               // TODO: the sampler has some restrictions as well
+    Image(DescriptorImageDesc),
+    TexelBuffer { sampled: bool, format: Option<Format> },
+    InputAttachment { multisampled: bool, array_layers: DescriptorImageDescArray },
+    Buffer(DescriptorBufferDesc),
+}
+
+impl DescriptorDescTy {
+    /// Returns the type of descriptor.
+    ///
+    /// Returns `None` if there's not enough info to determine the type.
+    pub fn ty(&self) -> Option<DescriptorType> {
+        Some(match *self {
+            DescriptorDescTy::Sampler => DescriptorType::Sampler,
+            DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
+            DescriptorDescTy::Image(desc) => {
+                if desc.sampled { DescriptorType::SampledImage }
+                else { DescriptorType::StorageImage }
+            },
+            DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
+            DescriptorDescTy::Buffer(desc) => {
+                let dynamic = match desc.dynamic { Some(d) => d, None => return None };
+                match (desc.storage, dynamic) {
+                    (false, false) => DescriptorType::UniformBuffer,
+                    (true, false) => DescriptorType::StorageBuffer,
+                    (false, true) => DescriptorType::UniformBufferDynamic,
+                    (true, true) => DescriptorType::StorageBufferDynamic,
+                }
+            },
+            DescriptorDescTy::TexelBuffer { sampled, .. } => {
+                if sampled { DescriptorType::UniformTexelBuffer }
+                else { DescriptorType::StorageTexelBuffer }
+            },
+        })
+    }
+
+    /// Checks whether we are a superset of another descriptor type.
+    #[inline]
+    pub fn is_superset_of(&self, other: &DescriptorDescTy) -> bool {
+        true    // FIXME:
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DescriptorImageDesc {
+    pub sampled: bool,
+    pub dimensions: DescriptorImageDescDimensions,
+    /// The format of the image, or `None` if the format is unknown.
+    pub format: Option<Format>,
+    /// True if the image is multisampled.
+    pub multisampled: bool,
+    pub array_layers: DescriptorImageDescArray,
+}
+
+impl DescriptorImageDesc {
+    /// Checks whether we are a superset of another image.
+    #[inline]
+    pub fn is_superset_of(&self, other: &DescriptorImageDesc) -> bool {
+        if self.dimensions != other.dimensions {
+            return false;
+        }
+
+        if self.multisampled != other.multisampled {
+            return false;
+        }
+
+        match (self.format, other.format) {
+            (Some(a), Some(b)) => if a != b { return false; },
+            (Some(_), None) => (),
+            (None, None) => (),
+            (None, Some(_)) => return false,
+        };
+
+        match (self.array_layers, other.array_layers) {
+            (DescriptorImageDescArray::NonArrayed, DescriptorImageDescArray::NonArrayed) => (),
+            (DescriptorImageDescArray::Arrayed { max_layers: my_max },
+             DescriptorImageDescArray::Arrayed { max_layers: other_max }) =>
+            {
+                match (my_max, other_max) {
+                    (Some(m), Some(o)) => if m < o { return false; },
+                    (Some(_), None) => (),
+                    (None, _) => return false,
+                };
+            },
+            _ => return false
+        };
+
+        true
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DescriptorImageDescArray {
+    NonArrayed,
+    Arrayed { max_layers: Option<u32> }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DescriptorImageDescDimensions {
+    OneDimensional,
+    TwoDimensional,
+    ThreeDimensional,
+    Cube,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DescriptorBufferDesc {
+    pub dynamic: Option<bool>,
+    pub storage: bool,
+    // FIXME: store content
+}
+
 /// Describes what kind of resource may later be bound to a descriptor.
-// FIXME: add immutable sampler when relevant
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DescriptorType {
@@ -57,17 +173,6 @@ pub enum DescriptorType {
     UniformBufferDynamic = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
     StorageBufferDynamic = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
     InputAttachment = vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
-}
-
-impl DescriptorType {
-    /// Turns the `DescriptorType` into the corresponding Vulkan constant.
-    // this function exists because when immutable samplers are added, it will no longer be possible to do `as u32`
-    // TODO: hacky
-    #[inline]
-    #[doc(hidden)]
-    pub fn vk_enum(&self) -> u32 {
-        *self as u32
-    }
 }
 
 /// Describes which shader stages have access to a descriptor.
