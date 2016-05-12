@@ -60,13 +60,13 @@ macro_rules! gfx_dev_and_queue {
             return;
         }
 
-        let (device, queues) = match Device::new(&physical, &features,
-                                                 &extensions, None, [(queue, 0.5)].iter().cloned())
+        let (device, mut queues) = match Device::new(&physical, &features,
+                                                     &extensions, None, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,
             Err(_) => return
         };
 
-        (device, queues.into_iter().next().unwrap())
+        (device, queues.next().unwrap())
     });
 }

@@ -141,7 +141,7 @@ fn main() {
     //   much it should prioritize queues between one another.
     //
     // The list of created queues is returned by the function alongside with the device.
-    let (device, queues) = {
+    let (device, mut queues) = {
         let device_ext = vulkano::device::DeviceExtensions {
             khr_swapchain: true,
             .. vulkano::device::DeviceExtensions::none()
@@ -151,10 +151,10 @@ fn main() {
                     [(queue, 0.5)].iter().cloned()).expect("failed to create device")
     };
 
-    // Since we can request multiple queues, the `queues` variable is in fact a `Vec`. In this
-    // example we use only one queue, so we just retreive the first and only element of the `Vec`
-    // and throw away the `Vec` itself.
-    let queue = queues.into_iter().next().unwrap();
+    // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
+    // example we use only one queue, so we just retreive the first and only element of the
+    // iterator and throw it away.
+    let queue = queues.next().unwrap();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately

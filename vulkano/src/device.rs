@@ -75,7 +75,7 @@ impl Device {
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features,
                          extensions: &DeviceExtensions, layers: L, queue_families: I)
-                         -> Result<(Arc<Device>, Vec<Arc<Queue>>), DeviceCreationError>
+                         -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               L: IntoIterator<Item = &'a &'a str>
     {
@@ -86,7 +86,7 @@ impl Device {
         let vk_i = phys.instance().pointers();
 
         // this variable will contain the queue family ID and queue ID of each requested queue
-        let mut output_queues: Vec<(u32, u32)> = Vec::with_capacity(queue_families.size_hint().0);
+        let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
 
         let layers = layers.into_iter().map(|&layer| {
             // FIXME: check whether each layer is supported
@@ -195,20 +195,12 @@ impl Device {
             *pool_dest = Some(StdMemoryPool::new(&device));
         }
 
-        // querying the queues
-        let output_queues = output_queues.into_iter().map(|(family, id)| {
-            unsafe {
-                let mut output = mem::uninitialized();
-                device.vk.GetDeviceQueue(device.device, family, id, &mut output);
-                Arc::new(Queue {
-                    queue: Mutex::new(output),
-                    device: device.clone(),
-                    family: family,
-                    id: id,
-                    dedicated_semaphore: Mutex::new(None),
-                })
-            }
-        }).collect();
+        // Iterator for the produced queues.
+        let output_queues = QueuesIter {
+            next_queue: 0,
+            device: device.clone(),
+            families_and_ids: output_queues,
+        };
 
         Ok((device, output_queues))
     }
@@ -305,6 +297,47 @@ impl Drop for Device {
         }
     }
 }
+
+/// Iterator that returns the queues produced when creating a device.
+pub struct QueuesIter {
+    next_queue: usize,
+    device: Arc<Device>,
+    families_and_ids: SmallVec<[(u32, u32); 8]>,
+}
+
+impl Iterator for QueuesIter {
+    type Item = Arc<Queue>;
+
+    fn next(&mut self) -> Option<Arc<Queue>> {
+        unsafe {
+            let &(family, id) = match self.families_and_ids.get(self.next_queue) {
+                Some(a) => a,
+                None => return None
+            };
+
+            self.next_queue += 1;
+
+            let mut output = mem::uninitialized();
+            self.device.vk.GetDeviceQueue(self.device.device, family, id, &mut output);
+
+            Some(Arc::new(Queue {
+                queue: Mutex::new(output),
+                device: self.device.clone(),
+                family: family,
+                id: id,
+                dedicated_semaphore: Mutex::new(None),
+            }))
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.families_and_ids.len().saturating_sub(self.next_queue);
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for QueuesIter {}
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
