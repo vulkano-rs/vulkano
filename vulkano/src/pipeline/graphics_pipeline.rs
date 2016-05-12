@@ -19,6 +19,7 @@ use device::Device;
 use descriptor::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::EmptyPipeline;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSubpassInterface;
@@ -99,8 +100,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     #[inline]
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), (), Fs, Fi, Fo, Fl,
-                                              L, Rp>)
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipeline,
+                                              Fs, Fi, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
@@ -112,7 +113,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     {
         // TODO: return proper errors
         assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
-        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), (), _, _, _, _>(device, params)
+        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipeline, _, _, _, _>(device, params)
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
@@ -122,8 +123,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+                 PipelineLayoutSuperset<Gl>,
+              Vl: PipelineLayoutDesc,
+              Fl: PipelineLayoutDesc,
+              Gl: PipelineLayoutDesc,
               Gi: ShaderInterfaceDefMatch<Vo>,
               Vo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
@@ -148,15 +152,34 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+                 PipelineLayoutSuperset<Gl>,
+              Vl: PipelineLayoutDesc,
+              Fl: PipelineLayoutDesc,
+              Gl: PipelineLayoutDesc,
               Rp: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
-        // FIXME: check
-        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.vertex_shader.layout()));
-        //assert!(PipelineLayoutSuperset::is_superset_of(layout.layout(), params.fragment_shader.layout()));
+        // Checking that the pipeline layout matches the shader stages.
+        // TODO: more details in the errors
+        if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
+                                                   params.vertex_shader.layout())
+        {
+            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
+        }
+        if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
+                                                   params.fragment_shader.layout())
+        {
+            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
+        }
+        if let Some(ref geometry_shader) = params.geometry_shader {
+            if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
+                                                       geometry_shader.layout())
+            {
+                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
+            }
+        }
 
         // Check that the subpass can accept the output of the fragment shader.
         if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
