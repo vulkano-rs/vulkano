@@ -17,6 +17,8 @@ use smallvec::SmallVec;
 use device::Device;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAttachmentsList;
+use framebuffer::RenderPassCompatible;
+use framebuffer::UnsafeRenderPass;
 use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
@@ -48,16 +50,8 @@ impl<L> Framebuffer<L> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPass` implementation is used.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if one of the attachments has a different sample count than what the render pass
-    ///   describes.
-    /// - Additionally, some methods in the `RenderPassAttachmentsList` implementation may panic
-    ///   if you pass invalid attachments.      // TODO: should be error instead
-    ///
-    pub fn new<'a, A>(render_pass: &Arc<L>, dimensions: [u32; 3],
-                      attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
+    pub fn new<A>(render_pass: &Arc<L>, dimensions: [u32; 3],
+                  attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: RenderPass + RenderPassAttachmentsList<A>
     {
         let vk = render_pass.render_pass().device().pointers();
@@ -71,7 +65,9 @@ impl<L> Framebuffer<L> {
             let limits = render_pass.render_pass().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
-            if dimensions[0] > limits[0] || dimensions[1] > limits[1] || dimensions[2] > limits[2] {
+            if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
+               dimensions[2] > limits[2]
+            {
                 return Err(FramebufferCreationError::DimensionsTooLarge);
             }
         }
@@ -127,13 +123,12 @@ impl<L> Framebuffer<L> {
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
     pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
-        where R: RenderPass, L: RenderPass
+        where R: RenderPass,
+              L: RenderPass + RenderPassCompatible<R>
     {
-        // FIXME: 
-        true
-        /*(&*self.renderpass as *const UnsafeRenderPass<L> as usize ==
-         &**renderpass as *const UnsafeRenderPass<R> as usize) ||
-            self.renderpass.is_compatible_with(renderpass)*/
+        (&*self.render_pass.render_pass() as *const UnsafeRenderPass as usize ==
+         &*render_pass.render_pass() as *const UnsafeRenderPass as usize) ||
+            self.render_pass.is_compatible_with(render_pass)
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -173,6 +168,7 @@ impl<L> Framebuffer<L> {
     }
 
     /// Returns all the resources attached to that framebuffer.
+    // TODO: crappy API
     #[inline]
     pub fn attachments(&self) -> &[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)] {
         &self.resources
