@@ -77,7 +77,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                                 binding: {binding},
                                                 ty: {desc_ty},
                                                 array_count: 1,
-                                                stages: ShaderStages::all(),        // TODO:
+                                                stages: stages.clone(),
                                                 readonly: {readonly},
                                             }}", binding = d.binding, desc_ty = d.desc_ty,
                                                  readonly = if d.readonly { "true" } else { "false" })
@@ -85,7 +85,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                                .collect::<Vec<_>>();
 
         output.push_str(&format!(r#"
-            fn set{set}_layout() -> VecIntoIter<DescriptorDesc> {{
+            fn set{set}_layout(stages: ShaderStages) -> VecIntoIter<DescriptorDesc> {{
                 vec![
                     {descr}
                 ].into_iter()
@@ -96,8 +96,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);
 
     output.push_str(&format!(r#"
-        #[derive(Default)]
-        pub struct Layout;
+        pub struct Layout(ShaderStages);
 
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
@@ -111,7 +110,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             }}
         }}
 
-        "#, layouts = (0 .. max_set).map(|n| format!("set{}_layout()", n)).collect::<Vec<_>>().join(",")));
+        "#, layouts = (0 .. max_set).map(|n| format!("set{}_layout(self.0)", n)).collect::<Vec<_>>().join(",")));
 
     output
 }
