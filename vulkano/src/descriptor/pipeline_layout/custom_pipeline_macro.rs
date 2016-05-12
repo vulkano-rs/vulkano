@@ -11,7 +11,11 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use buffer::TypedBuffer;
-use descriptor::descriptor::DescriptorType;
+use descriptor::descriptor::DescriptorDescTy;
+use descriptor::descriptor::DescriptorBufferDesc;
+use descriptor::descriptor::DescriptorImageDesc;
+use descriptor::descriptor::DescriptorImageDescDimensions;
+use descriptor::descriptor::DescriptorImageDescArray;
 use descriptor::descriptor_set::DescriptorWrite;
 use image::ImageView;
 use sampler::Sampler;
@@ -247,14 +251,17 @@ pub unsafe trait ValidParameter<Target> {
 }
 
 pub unsafe trait DescriptorMarker {
-    fn descriptor_type() -> DescriptorType;
+    fn descriptor_type() -> DescriptorDescTy;
 }
 
 pub struct UniformBuffer<T: ?Sized>(PhantomData<T>);
 unsafe impl<T: ?Sized> DescriptorMarker for UniformBuffer<T> {
     #[inline]
-    fn descriptor_type() -> DescriptorType {
-        DescriptorType::UniformBuffer
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::Buffer(DescriptorBufferDesc {
+            dynamic: Some(false),
+            storage: false,
+        })
     }
 }
 
@@ -270,8 +277,11 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a
 pub struct StorageBuffer<T: ?Sized>(PhantomData<T>);
 unsafe impl<T: ?Sized> DescriptorMarker for StorageBuffer<T> {
     #[inline]
-    fn descriptor_type() -> DescriptorType {
-        DescriptorType::StorageBuffer
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::Buffer(DescriptorBufferDesc {
+            dynamic: Some(false),
+            storage: true,
+        })
     }
 }
 
@@ -287,8 +297,15 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for &'a
 pub struct CombinedImageSampler;
 unsafe impl DescriptorMarker for CombinedImageSampler {
     #[inline]
-    fn descriptor_type() -> DescriptorType {
-        DescriptorType::CombinedImageSampler
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::CombinedImageSampler(DescriptorImageDesc {
+            sampled: true,
+            // FIXME: correct values
+            dimensions: DescriptorImageDescDimensions::TwoDimensional,
+            multisampled: false,
+            array_layers: DescriptorImageDescArray::NonArrayed,
+            format: None,
+        })
     }
 }
 
@@ -304,8 +321,15 @@ unsafe impl<'a, I> ValidParameter<CombinedImageSampler> for (&'a Arc<Sampler>, &
 pub struct SampledImage;
 unsafe impl DescriptorMarker for SampledImage {
     #[inline]
-    fn descriptor_type() -> DescriptorType {
-        DescriptorType::SampledImage
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::Image(DescriptorImageDesc {
+            sampled: true,
+            // FIXME: correct values
+            dimensions: DescriptorImageDescDimensions::TwoDimensional,
+            multisampled: false,
+            array_layers: DescriptorImageDescArray::NonArrayed,
+            format: None,
+        })
     }
 }
 
@@ -321,8 +345,9 @@ unsafe impl<'a, I> ValidParameter<SampledImage> for &'a Arc<I>
 pub struct InputAttachment;
 unsafe impl DescriptorMarker for InputAttachment {
     #[inline]
-    fn descriptor_type() -> DescriptorType {
-        DescriptorType::InputAttachment
+    fn descriptor_type() -> DescriptorDescTy {
+        // FIXME: correct values
+        DescriptorDescTy::InputAttachment { multisampled: false, array_layers: DescriptorImageDescArray::NonArrayed }
     }
 }
 

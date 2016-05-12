@@ -41,7 +41,7 @@ impl UnsafeDescriptorSetLayout {
         let bindings = descriptors.into_iter().map(|desc| {
             vk::DescriptorSetLayoutBinding {
                 binding: desc.binding,
-                descriptorType: desc.ty.vk_enum(),
+                descriptorType: desc.ty.ty().unwrap() /* TODO: shouldn't panic */ as u32,
                 descriptorCount: desc.array_count,
                 stageFlags: desc.stages.into(),
                 pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented

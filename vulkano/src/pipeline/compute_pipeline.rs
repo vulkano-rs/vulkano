@@ -47,6 +47,7 @@ impl<Pl> ComputePipeline<Pl> {
     {
         let vk = device.pointers();
 
+        // TODO: more details in the error
         if !PipelineLayoutSuperset::is_superset_of(&**pipeline_layout, shader.layout()) {
             return Err(ComputePipelineCreationError::IncompatiblePipelineLayout);
         }
