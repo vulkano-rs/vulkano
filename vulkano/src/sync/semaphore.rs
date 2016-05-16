@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use device::Device;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -23,15 +24,17 @@ use vk;
 /// It is similar to a fence, except that it is purely on the GPU side. The CPU can't query a
 /// semaphore's status or wait for it to be signaled.
 #[derive(Debug)]
-pub struct Semaphore {
-    device: Arc<Device>,
+pub struct Semaphore<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     semaphore: vk::Semaphore,
+    device: D,
 }
 
-impl Semaphore {
+impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     /// See the docs of new().
     #[inline]
-    pub fn raw(device: &Arc<Device>) -> Result<Semaphore, OomError> {
+    pub fn raw(device: &D) -> Result<Semaphore<D>, OomError>
+        where D: Clone
+    {
         let vk = device.pointers();
 
         let semaphore = unsafe {
@@ -53,7 +56,7 @@ impl Semaphore {
             semaphore: semaphore,
         })
     }
-    
+
     /// Builds a new semaphore.
     ///
     /// # Panic
@@ -61,12 +64,14 @@ impl Semaphore {
     /// - Panicks if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<Semaphore> {
+    pub fn new(device: &D) -> Arc<Semaphore<D>>
+        where D: Clone
+    {
         Arc::new(Semaphore::raw(device).unwrap())
     }
 }
 
-unsafe impl VulkanObject for Semaphore {
+unsafe impl<D> VulkanObject for Semaphore<D> where D: SafeDeref<Target = Device> {
     type Object = vk::Semaphore;
 
     #[inline]
@@ -75,7 +80,7 @@ unsafe impl VulkanObject for Semaphore {
     }
 }
 
-impl Drop for Semaphore {
+impl<D> Drop for Semaphore<D> where D: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
