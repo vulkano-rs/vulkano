@@ -11,4 +11,4 @@ them.
 
 ## Creating a window
 
-
+Creating a window is out of the scope of Vulkan.

@@ -5,9 +5,23 @@ title: "Tutorial 2: the first operation"
 
 # The first operation
 
+Now that we have chosen a physical device, it is time to ask it to do something.
+
+But before we start, a few things need to be explained. Just like it is possible to use multiple
+threads in your program running on the CPU, it is also possible to run multiple operations in
+parallel on the physical device. The Vulkan equivalent of a CPU core is a *queue*.
+
+When we ask the device to perform an operation, we have to submit the command to a specific queue.
+Some queues support only graphical operations, some others support only compute operations, and
+some others support both.
+
+The reason why this is important is that at initialization we need to tell the device which queues
+we are going to use.
+
 ## Creating a device
 
-Now that we have chosen a physical device, we can create a `Device` object.
+A `Device` object is an open channel of communication with a physical device. It is probably the
+most important object of the Vulkan API.
 
 {% highlight rust %}
 let (device, mut queues) = {
@@ -41,8 +55,25 @@ let destination = CpuAccessibleBuffer::new(&device, 3, &BufferUsage::all(), Some
 
 ## Copying
 
-Now that we 
+In Vulkan you can't just submit a command to a queue. Instead you must create a *command buffer*
+which contains one or more commands, and submit the command buffer.
 
 {% highlight rust %}
 let cb_pool = CommandPool::new(&device);
 {% endhighlight %}
+
+{% highlight rust %}
+let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
+{% endhighlight %}
+
+We now have our command buffer! The last thing we need to do is submit it to a
+queue for execution.
+
+{% highlight rust %}
+
+{% endhighlight %}
+
+Note: there are several things that we can do in a more optimal way.
+
+This code asks the GPU to execute the command buffer that contains our copy command and waits for
+it to be finished.
