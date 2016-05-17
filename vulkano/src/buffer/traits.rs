@@ -13,48 +13,31 @@ use std::sync::Arc;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::Submission;
 use memory::Content;
+use sync::PipelineBarrier;
 use sync::Semaphore;
 
+/// Trait for buffer objects that can be used for GPU commands.
 pub unsafe trait Buffer: 'static + Send + Sync {
+    /// State of the buffer during the construction of a command buffer.
+    type CbConstructionState;
+    /// State of the buffer in a command buffer.
+    type SyncState;
+
     /// Returns the inner buffer.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
+    ///
+    /// Two different implementations of the `Buffer` trait must never return the same unsafe
+    /// buffer. TODO: too restrictive
     fn inner_buffer(&self) -> &UnsafeBuffer;
 
-    /// Returns whether accessing a range of this buffer should signal a fence.
-    fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
+    /// Called when the user finishes building a command buffer that uses this buffer.
+    ///
+    /// This allows the buffer to add a pipeline barrier at the end of the command buffer if needed.
+    fn command_buffer_finish(&self, prev_barrier: &mut PipelineBarrier,
+                             state: &mut (CbConstructionState, SyncState))
+                             -> Option<PipelineBarrier>;
 
-    /// Called when a command buffer that uses this buffer is being built.
-    ///
-    /// Must return true if the command buffer should include a pipeline barrier at the start,
-    /// to read from what the host wrote, and a pipeline barrier at the end, to flush caches and
-    /// allows the host to read the data.
-    fn host_accesses(&self, block: usize) -> bool;
-
-    /// Given a range, returns the list of blocks which each range is contained in.
-    ///
-    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
-    /// block.
-    /// Calling this function multiple times with the same parameter must always return the same
-    /// value.
-    /// The return value must not be empty.
-    fn blocks(&self, range: Range<usize>) -> Vec<usize>;
-
-    /// Returns the range of bytes of the memory used by a block.
-    ///
-    /// **Important**: This is not the range in the buffer, but the range in the memory that is
-    ///                backing the buffer.
-    fn block_memory_range(&self, block: usize) -> Range<usize>;
-
-    ///
-    ///
-    /// If the host is still accessing the buffer, this function implementation should block
-    /// until it is no longer the case.
-    ///
-    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
-    ///                should store the `Submission` in the form of a `Weak<Submission>` and not
-    ///                of an `Arc<Submission>` to avoid cyclic references.
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult;
+    fn command_buffer_submission(&self, state: &SyncState, submission: &Arc<Submission>);
 
     #[inline]
     fn size(&self) -> usize {
@@ -71,14 +54,27 @@ pub unsafe trait TypedBuffer: Buffer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccessRange {
-    pub block: usize,
-    pub write: bool,
+pub unsafe trait TransferSourceBuffer: Buffer {
+    fn command_buffer_transfer_source(&self, range: Range<usize>,
+                                      prev_barrier: &mut PipelineBarrier,
+                                      state: &mut Option<(CbConstructionState, SyncState)>)
+                                      -> Option<PipelineBarrier>;
 }
 
-pub struct GpuAccessResult {
-    pub dependencies: Vec<Arc<Submission>>,
-    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
-    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
+/// Extension trait for buffers that can be used as a destination for transfer operations.
+///
+/// This includes filling the buffer, updating the buffer, and copying to the buffer.
+pub unsafe trait TransferDestinationBuffer: Buffer {
+    /// Called when the user wants to use this buffer for the destination of a transfer operation.
+    fn command_buffer_transfer_destination(&self, range: Range<usize>,
+                                           prev_barrier: &mut PipelineBarrier,
+                                           state: &mut Option<(CbConstructionState, SyncState)>)
+                                           -> Option<PipelineBarrier>;
+}
+
+pub unsafe trait VertexBuffer: Buffer {
+    fn command_buffer_vertex_buffer(&self, range: Range<usize>,
+                                    prev_barrier: &mut PipelineBarrier,
+                                    state: &mut Option<(CbConstructionState, SyncState)>)
+                                    -> Option<PipelineBarrier>;
 }

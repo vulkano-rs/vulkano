@@ -71,6 +71,7 @@ use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
 use buffer::TypedBuffer;
+use buffer::VertexBuffer;
 use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
 use vk;
@@ -164,12 +165,17 @@ pub unsafe trait Definition<I>: 'static + Send + Sync {
 /// Extension trait of `Definition`. The `L` parameter is an acceptable vertex source for this
 /// vertex definition.
 pub unsafe trait Source<L>: 'static + Send + Sync {
-    /// Iterator used by `decode`.
-    type Iter: ExactSizeIterator<Item = Arc<Buffer>>;
+    /// Returns the maximum number of vertices contained in this source.
+    fn num_vertices(&self, source: L) -> usize;
 
-    /// Checks and returns the list of buffers, number of vertices and number of instances.
-    // TODO: return error if problem
-    fn decode(&self, L) -> (Self::Iter, usize, usize);
+    /// Returns the maximum number of instances contained in this source.
+    fn num_instances(&self, source: L) -> usize;
+
+    /// Called when this vertex source is going to be binded to a command buffer for the purpose
+    /// of being rendered.
+    fn command_buffer_vertex_buffer<F>(&self, source: L, prev_barrier: Option<&mut PipelineBarrier>,
+                                       state_access: F) -> Option<PipelineBarrier>
+        where F: FnMut(&UnsafeBuffer) -> &mut Any;
 }
 
 /// Implementation of `Definition` for a single vertex buffer.
@@ -209,14 +215,25 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
 }
 
 unsafe impl<'a, B, V> Source<&'a Arc<B>> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = [V]> + 'static, V: Vertex + 'static
+    where B: VertexBuffer
 {
-    type Iter = OptionIntoIter<Arc<Buffer>>;
+    #[inline]
+    fn num_vertices(&self, source: &'a Arc<B>) -> usize {
+        source.len()
+    }
 
     #[inline]
-    fn decode(&self, source: &'a Arc<B>) -> (OptionIntoIter<Arc<Buffer>>, usize, usize) {
-        let iter = Some(source.clone() as Arc<_>).into_iter();
-        (iter, source.len(), 1)
+    fn num_instances(&self, _: &'a Arc<B>) -> usize {
+        1
+    }
+
+    #[inline]
+    fn command_buffer_vertex_buffer<F>(&self, source: L, prev_barrier: Option<&mut PipelineBarrier>,
+                                       state_access: F) -> Option<PipelineBarrier>
+        where F: FnMut(&UnsafeBuffer) -> &mut Any
+    {
+        source.command_buffer_vertex_buffer(0 .. source.len(), prev_barrier,
+                                            state_access(source.inner_buffer()))
     }
 }
 
