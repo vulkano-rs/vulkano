@@ -12,6 +12,8 @@ In order to fully optimize and parallelize commands execution, we can't just add
 to draw a shape whenever we want. Instead we first have to enter "rendering mode" by entering
 a *render pass*, then draw, and then leave the render pass.
 
+This will serve as a foundation for the next tutorial, which is about drawing a triangle.
+
 ## What is a render pass?
 
 A render pass describes how .
