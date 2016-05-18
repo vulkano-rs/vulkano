@@ -30,9 +30,9 @@ these for the moment.
 
 Like many other functions in vulkano, creating an instance returns a `Result`. If Vulkan is not
 installed on the system, this result will contain an error. For the sake of this example we call
-`expect` on the `Result`, which prints a message to stderr and terminates the application. In a
-real game or application you should handle that situation in a nicer way, for example by opening
-a dialog box with an explanation.
+`expect` on the `Result`, which prints a message to stderr and terminates the application if it
+contains an error. In a real game or application you should handle that situation in a nicer way,
+for example by opening a dialog box with an explanation.
 
 You can now try your code by running:
 
