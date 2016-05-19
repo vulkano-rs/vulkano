@@ -24,6 +24,7 @@
 pub use self::compute_pipeline::ComputePipeline;
 pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineParams;
+pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 
 mod compute_pipeline;
 mod graphics_pipeline;
