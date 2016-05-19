@@ -18,6 +18,8 @@
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
 use std::borrow::Cow;
+use std::iter;
+use std::iter::Empty as EmptyIter;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
@@ -579,6 +581,19 @@ pub struct ShaderInterfaceDefEntry {
     pub format: Format,
     /// Name of the element, or `None` if the name is unknown.
     pub name: Option<Cow<'static, str>>,
+}
+
+/// Description of an empty shader interface.
+#[derive(Debug, Copy, Clone)]
+pub struct EmptyShaderInterfaceDef;
+
+unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
+    type Iter = EmptyIter<ShaderInterfaceDefEntry>;
+
+    #[inline]
+    fn elements(&self) -> Self::Iter {
+        iter::empty()
+    }
 }
 
 /// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially

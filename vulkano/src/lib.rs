@@ -67,6 +67,7 @@ pub mod command_buffer;
 pub mod descriptor;
 pub mod device;
 pub mod format;
+#[macro_use]
 pub mod framebuffer;
 pub mod image;
 pub mod instance;

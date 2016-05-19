@@ -92,6 +92,13 @@ pub unsafe trait Vertex: 'static + Send + Sync {
     fn member(name: &str) -> Option<VertexMemberInfo>;
 }
 
+unsafe impl Vertex for () {
+    #[inline]
+    fn member(_: &str) -> Option<VertexMemberInfo> {
+        None
+    }
+}
+
 /// Information about a member of a vertex struct.
 pub struct VertexMemberInfo {
     /// Offset of the member in bytes from the start of the struct.

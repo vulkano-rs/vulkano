@@ -52,6 +52,20 @@ unsafe impl PipelineLayoutDesc for EmptyPipeline {
     }
 }
 
+/// Description of an empty pipeline layout.
+#[derive(Debug, Copy, Clone)]
+pub struct EmptyPipelineDesc;
+
+unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
+    type SetsIter = Empty<Self::DescIter>;
+    type DescIter = Empty<DescriptorDesc>;
+
+    fn descriptors_desc(&self) -> Self::SetsIter {
+        iter::empty()
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use descriptor::pipeline_layout::empty::EmptyPipeline;
