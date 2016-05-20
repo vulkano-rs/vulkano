@@ -1039,11 +1039,25 @@ impl From<Error> for GraphicsPipelineCreationError {
 
 #[cfg(test)]
 mod tests {
-    use framebuffer::EmptySinglePassRenderPass;
+    use std::ffi::CString;
+    use format::Format;
     use framebuffer::Subpass;
+    use descriptor::pipeline_layout::EmptyPipeline;
+    use descriptor::pipeline_layout::EmptyPipelineDesc;
     use pipeline::GraphicsPipeline;
     use pipeline::GraphicsPipelineParams;
+    use pipeline::GraphicsPipelineCreationError;
+    use pipeline::blend::Blend;
+    use pipeline::depth_stencil::DepthStencil;
+    use pipeline::input_assembly::InputAssembly;
+    use pipeline::input_assembly::PrimitiveTopology;
+    use pipeline::multisample::Multisample;
     use pipeline::shader::ShaderModule;
+    use pipeline::shader::EmptyShaderInterfaceDef;
+    use pipeline::vertex::SingleBufferDefinition;
+    use pipeline::viewport::ViewportsState;
+    use pipeline::viewport::Viewport;
+    use pipeline::viewport::Scissor;
 
     #[test]
     fn create() {
@@ -1051,25 +1065,216 @@ mod tests {
 
         let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
         let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
-        //let rp = EmptySinglePassRenderPass::new(&device).unwrap();
 
-        // TODO:
-
-        /*let _ = GraphicsPipeline::new(&device, GraphicsPipelineParams {
-            vertex: Vdef,
-            vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vl>,
-            input_assembly: InputAssembly,
-            viewport: ViewportsState,
-            raster: Rasterization,
-            multisample: Multisample,
-            fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fo, Fl>,
-            depth_stencil: DepthStencil,
-            blend: Blend,
-            layout: &'a Arc<L>,
-            render_pass: Subpass::from(EmptySinglePassRenderPass::new(&device).unwrap(), 0).unwrap(),
-        }).unwrap();*/
+        let _ = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+            vertex_input: SingleBufferDefinition::<()>::new(),
+            vertex_shader: unsafe {
+                vs.vertex_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyPipelineDesc)
+            },
+            input_assembly: InputAssembly::triangle_list(),
+            geometry_shader: None,
+            viewport: ViewportsState::Dynamic { num: 1 },
+            raster: Default::default(),
+            multisample: Multisample::disabled(),
+            fragment_shader: unsafe {
+                fs.fragment_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyPipelineDesc)
+            },
+            depth_stencil: DepthStencil::disabled(),
+            blend: Blend::pass_through(),
+            layout: &EmptyPipeline::new(&device).unwrap(),
+            render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+                simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
+            }).unwrap(), 0).unwrap(),
+        }).unwrap();
     }
 
+    #[test]
+    fn bad_primitive_restart() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
+        let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+
+        let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+            vertex_input: SingleBufferDefinition::<()>::new(),
+            vertex_shader: unsafe {
+                vs.vertex_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyPipelineDesc)
+            },
+            input_assembly: InputAssembly {
+                topology: PrimitiveTopology::TriangleList,
+                primitive_restart_enable: true,
+            },
+            geometry_shader: None,
+            viewport: ViewportsState::Dynamic { num: 1 },
+            raster: Default::default(),
+            multisample: Multisample::disabled(),
+            fragment_shader: unsafe {
+                fs.fragment_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyPipelineDesc)
+            },
+            depth_stencil: DepthStencil::disabled(),
+            blend: Blend::pass_through(),
+            layout: &EmptyPipeline::new(&device).unwrap(),
+            render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+                simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
+            }).unwrap(), 0).unwrap(),
+        });
+
+        match result {
+            Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn multi_viewport_feature() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
+        let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+
+        let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+            vertex_input: SingleBufferDefinition::<()>::new(),
+            vertex_shader: unsafe {
+                vs.vertex_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyPipelineDesc)
+            },
+            input_assembly: InputAssembly::triangle_list(),
+            geometry_shader: None,
+            viewport: ViewportsState::Dynamic { num: 2 },
+            raster: Default::default(),
+            multisample: Multisample::disabled(),
+            fragment_shader: unsafe {
+                fs.fragment_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyPipelineDesc)
+            },
+            depth_stencil: DepthStencil::disabled(),
+            blend: Blend::pass_through(),
+            layout: &EmptyPipeline::new(&device).unwrap(),
+            render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+                simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
+            }).unwrap(), 0).unwrap(),
+        });
+
+        match result {
+            Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn max_viewports() {
+        let (device, _) = gfx_dev_and_queue!(multi_viewport);
+
+        let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
+        let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+
+        let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+            vertex_input: SingleBufferDefinition::<()>::new(),
+            vertex_shader: unsafe {
+                vs.vertex_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyPipelineDesc)
+            },
+            input_assembly: InputAssembly::triangle_list(),
+            geometry_shader: None,
+            viewport: ViewportsState::Dynamic { num: !0 },
+            raster: Default::default(),
+            multisample: Multisample::disabled(),
+            fragment_shader: unsafe {
+                fs.fragment_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyPipelineDesc)
+            },
+            depth_stencil: DepthStencil::disabled(),
+            blend: Blend::pass_through(),
+            layout: &EmptyPipeline::new(&device).unwrap(),
+            render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+                simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
+            }).unwrap(), 0).unwrap(),
+        });
+
+        match result {
+            Err(GraphicsPipelineCreationError::MaxViewportsExceeded { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn no_depth_attachment() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
+        let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+
+        let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+            vertex_input: SingleBufferDefinition::<()>::new(),
+            vertex_shader: unsafe {
+                vs.vertex_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyShaderInterfaceDef,
+                                                            EmptyPipelineDesc)
+            },
+            input_assembly: InputAssembly::triangle_list(),
+            geometry_shader: None,
+            viewport: ViewportsState::Dynamic { num: 1 },
+            raster: Default::default(),
+            multisample: Multisample::disabled(),
+            fragment_shader: unsafe {
+                fs.fragment_shader_entry_point::<(), _, _, _>(&CString::new("main").unwrap(),
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyShaderInterfaceDef,
+                                                              EmptyPipelineDesc)
+            },
+            depth_stencil: DepthStencil::simple_depth_test(),
+            blend: Blend::pass_through(),
+            layout: &EmptyPipeline::new(&device).unwrap(),
+            render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+                simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
+            }).unwrap(), 0).unwrap(),
+        });
+
+        match result {
+            Err(GraphicsPipelineCreationError::NoDepthAttachment) => (),
+            _ => panic!()
+        }
+    }
+
+
+    mod simple_rp {
+        use format::Format;
+
+        single_pass_renderpass!{
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: Format,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        }
+    }
 
     /*
         #version 450
