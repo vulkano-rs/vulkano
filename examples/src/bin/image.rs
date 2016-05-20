@@ -173,6 +173,7 @@ fn main() {
             topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleStrip,
             primitive_restart_enable: false,
         },
+        tessellation: None,
         geometry_shader: None,
         viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
             data: vec![(

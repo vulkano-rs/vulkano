@@ -45,16 +45,22 @@ use pipeline::raster::Rasterization;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::VertexShaderEntryPoint;
+use pipeline::shader::TessControlShaderEntryPoint;
+use pipeline::shader::TessEvaluationShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Vertex;
 use pipeline::viewport::ViewportsState;
 
-pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp> where L: 'a, Rp: 'a {
+pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
+                                  Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>
+    where L: 'a, Rp: 'a
+{
     pub vertex_input: Vdef,
     pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>,
     pub input_assembly: InputAssembly,
+    pub tessellation: Option<GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel>>,
     pub geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
     pub viewport: ViewportsState,
     pub raster: Rasterization,
@@ -64,6 +70,11 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gs, Gi, Go, Gl, Fs,
     pub blend: Blend,
     pub layout: &'a Arc<L>,
     pub render_pass: Subpass<'a, Rp>,
+}
+
+pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel> {
+    pub tessellation_control_shader: TessControlShaderEntryPoint<'a, Tcs, Tci, Tco, Tcl>,
+    pub tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, Tes, Tei, Teo, Tel>,
 }
 
 ///
@@ -101,6 +112,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipeline,
+                                              (), (), (), EmptyPipeline, (), (), (), EmptyPipeline,
                                               Fs, Fi, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
@@ -113,14 +125,18 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     {
         // TODO: return proper errors
         assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
-        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipeline, _, _, _, _>(device, params)
+        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipeline, (), (), (),
+                                      EmptyPipeline, (), (), (), EmptyPipeline, _, _, _, _>
+                                      (device, params)
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
     #[inline]
     pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipeline,
+                                              (), (), (), EmptyPipeline, Gsp, Gi, Go, Gl, Fs, Fi,
+                                              Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
@@ -146,17 +162,60 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         GraphicsPipeline::new_inner(device, params)
     }
 
-    fn new_inner<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
+    /// Builds a new graphics pipeline object with tessellation shaders.
+    #[inline]
+    pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
+                            Fo, Fl>
+              (device: &Arc<Device>,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
+                                              Tei, Teo, Tel, (), (), (), EmptyPipeline, Fs, Fi,
+                                              Fo, Fl, L, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vi>,
+              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+                 PipelineLayoutSuperset<Tcl> + PipelineLayoutSuperset<Tel>,
+              Vl: PipelineLayoutDesc,
+              Fl: PipelineLayoutDesc,
+              Tcl: PipelineLayoutDesc,
+              Tel: PipelineLayoutDesc,
+              Tci: ShaderInterfaceDefMatch<Vo>,
+              Tei: ShaderInterfaceDefMatch<Tco>,
+              Vo: ShaderInterfaceDef,
+              Tco: ShaderInterfaceDef,
+              Teo: ShaderInterfaceDef,
+              Fi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
+              Fo: ShaderInterfaceDef,
+              Rp: RenderPassSubpassInterface<Fo>,
+    {
+        // TODO: return proper errors
+        if let Some(ref tess) = params.tessellation {
+            assert!(tess.tessellation_control_shader.input().matches(params.vertex_shader.output()));
+            assert!(tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()));
+            assert!(params.fragment_shader.input().matches(tess.tessellation_evaluation_shader.output()));
+        } else {
+            assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+        }
+
+        GraphicsPipeline::new_inner(device, params)
+    }
+
+    fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
+                 Fi, Fo, Fl>
                 (device: &Arc<Device>,
-                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>)
+                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
+                                                Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L,
+                                                Rp>)
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
               L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+                 PipelineLayoutSuperset<Tcl> + PipelineLayoutSuperset<Tel> +
                  PipelineLayoutSuperset<Gl>,
               Vl: PipelineLayoutDesc,
               Fl: PipelineLayoutDesc,
               Gl: PipelineLayoutDesc,
+              Tcl: PipelineLayoutDesc,
+              Tel: PipelineLayoutDesc,
               Rp: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
@@ -176,6 +235,18 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         if let Some(ref geometry_shader) = params.geometry_shader {
             if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
                                                        geometry_shader.layout())
+            {
+                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
+            }
+        }
+        if let Some(ref tess) = params.tessellation {
+            if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
+                                                       tess.tessellation_control_shader.layout())
+            {
+                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
+            }
+            if !PipelineLayoutSuperset::is_superset_of(&**params.layout,
+                                                       tess.tessellation_evaluation_shader.layout())
             {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
@@ -227,6 +298,34 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     stage: vk::SHADER_STAGE_GEOMETRY_BIT,
                     module: gs.module().internal_object(),
                     pName: gs.name().as_ptr(),
+                    pSpecializationInfo: ptr::null(),       // TODO:
+                });
+            }
+
+            if let Some(ref tess) = params.tessellation {
+                // FIXME: must check that the control shader and evaluation shader are compatible
+
+                if !device.enabled_features().tessellation_shader {
+                    return Err(GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled);
+                }
+
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0,   // reserved
+                    stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                    module: tess.tessellation_control_shader.module().internal_object(),
+                    pName: tess.tessellation_control_shader.name().as_ptr(),
+                    pSpecializationInfo: ptr::null(),       // TODO:
+                });
+
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0,   // reserved
+                    stage: vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                    module: tess.tessellation_evaluation_shader.module().internal_object(),
+                    pName: tess.tessellation_evaluation_shader.name().as_ptr(),
                     pSpecializationInfo: ptr::null(),       // TODO:
                 });
             }
@@ -326,12 +425,39 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
             pNext: ptr::null(),
             flags: 0,   // reserved
-            topology: params.input_assembly.topology as u32,
+            topology: params.input_assembly.topology.into(),
             primitiveRestartEnable: if params.input_assembly.primitive_restart_enable {
                 vk::TRUE
             } else {
                 vk::FALSE
             },
+        };
+
+        let tessellation = match params.input_assembly.topology {
+            PrimitiveTopology::PatchList { vertices_per_patch } => {
+                if params.tessellation.is_none() {
+                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
+                }
+                if vertices_per_patch > device.physical_device().limits()
+                                              .max_tessellation_patch_size()
+                {
+                    return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
+                }
+
+                Some(vk::PipelineTessellationStateCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0,   // reserved,
+                    patchControlPoints: vertices_per_patch,
+                })
+            },
+            _ => {
+                if params.tessellation.is_some() {
+                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
+                }
+
+                None
+            }
         };
 
         let (vp_vp, vp_sc, vp_num) = match params.viewport {
@@ -632,7 +758,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pStages: stages.as_ptr(),
                 pVertexInputState: &vertex_input_state,
                 pInputAssemblyState: &input_assembly,
-                pTessellationState: ptr::null(),        // FIXME:
+                pTessellationState: tessellation.as_ref().map(|t| t as *const _)
+                                                .unwrap_or(ptr::null()),
                 pViewportState: &viewport_info,
                 pRasterizationState: &rasterization,
                 pMultisampleState: &multisample,
@@ -885,6 +1012,9 @@ pub enum GraphicsPipelineCreationError {
     /// The `geometry_shader` feature must be enabled in order to use geometry shaders.
     GeometryShaderFeatureNotEnabled,
 
+    /// The `tessellation_shader` feature must be enabled in order to use tessellation shaders.
+    TessellationShaderFeatureNotEnabled,
+
     /// The number of attachments specified in the blending does not match the number of
     /// attachments in the subpass.
     MismatchBlendingAttachmentsCount,
@@ -903,6 +1033,13 @@ pub enum GraphicsPipelineCreationError {
     /// The stencil test requires a stencil attachment but render pass has no stencil attachment, or
     /// stencil writing is enabled and the stencil attachment is read-only.
     NoStencilAttachment,
+
+    /// Tried to use a patch list without a tessellation shader, or a non-patch-list with a
+    /// tessellation shader.
+    InvalidPrimitiveTopology,
+
+    /// The `maxTessellationPatchSize` limit was exceeded.
+    MaxTessellationPatchSizeExceeded,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -979,6 +1116,10 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => {
                 "the `geometry_shader` feature must be enabled in order to use geometry shaders"
             },
+            GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled => {
+                "the `tessellation_shader` feature must be enabled in order to use tessellation \
+                 shaders"
+            },
             GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => {
                 "the number of attachments specified in the blending does not match the number of \
                  attachments in the subpass"
@@ -995,6 +1136,13 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::NoStencilAttachment => {
                 "the stencil attachment of the render pass does not match the stencil test"
+            },
+            GraphicsPipelineCreationError::InvalidPrimitiveTopology => {
+                "trying to use a patch list without a tessellation shader, or a non-patch-list \
+                 with a tessellation shader"
+            },
+            GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded => {
+                "the maximum tessellation patch size was exceeded"
             },
         }
     }
@@ -1075,6 +1223,7 @@ mod tests {
                                                             EmptyPipelineDesc)
             },
             input_assembly: InputAssembly::triangle_list(),
+            tessellation: None,
             geometry_shader: None,
             viewport: ViewportsState::Dynamic { num: 1 },
             raster: Default::default(),
@@ -1113,6 +1262,7 @@ mod tests {
                 topology: PrimitiveTopology::TriangleList,
                 primitive_restart_enable: true,
             },
+            tessellation: None,
             geometry_shader: None,
             viewport: ViewportsState::Dynamic { num: 1 },
             raster: Default::default(),
@@ -1153,6 +1303,7 @@ mod tests {
                                                             EmptyPipelineDesc)
             },
             input_assembly: InputAssembly::triangle_list(),
+            tessellation: None,
             geometry_shader: None,
             viewport: ViewportsState::Dynamic { num: 2 },
             raster: Default::default(),
@@ -1193,6 +1344,7 @@ mod tests {
                                                             EmptyPipelineDesc)
             },
             input_assembly: InputAssembly::triangle_list(),
+            tessellation: None,
             geometry_shader: None,
             viewport: ViewportsState::Dynamic { num: !0 },
             raster: Default::default(),
@@ -1233,6 +1385,7 @@ mod tests {
                                                             EmptyPipelineDesc)
             },
             input_assembly: InputAssembly::triangle_list(),
+            tessellation: None,
             geometry_shader: None,
             viewport: ViewportsState::Dynamic { num: 1 },
             raster: Default::default(),
