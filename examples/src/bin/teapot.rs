@@ -174,6 +174,7 @@ fn main() {
         vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
+        tessellation: None,
         geometry_shader: None,
         viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
             data: vec![(

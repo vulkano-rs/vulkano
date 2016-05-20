@@ -307,6 +307,9 @@ fn main() {
         // describes a list of triangles.
         input_assembly: InputAssembly::triangle_list(),
 
+        // No tessellation shader.
+        tessellation: None,
+
         // No geometry shader.
         geometry_shader: None,
 
