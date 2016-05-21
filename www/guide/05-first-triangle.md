@@ -177,6 +177,7 @@ let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
     vertex_input: SingleBufferDefinition::new(),
     vertex_shader: vs.main_entry_point(),
     input_assembly: InputAssembly::triangle_list(),
+    tessellation: None,
     geometry_shader: None,
 
     viewport: ViewportsState::Fixed {
