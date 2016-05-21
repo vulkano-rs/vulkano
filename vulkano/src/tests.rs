@@ -14,12 +14,7 @@ macro_rules! instance {
     () => ({
         use instance;
 
-        let app = instance::ApplicationInfo {
-            application_name: "vulkano tests", application_version: 1,
-            engine_name: "vulkano tests", engine_version: 1
-        };
-
-        match instance::Instance::new(Some(&app), &instance::InstanceExtensions::none(), None) {
+        match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
             Ok(i) => i,
             Err(_) => return
         }
