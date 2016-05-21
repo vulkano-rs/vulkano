@@ -12,7 +12,6 @@
 //! The `Device` is one of the most important objects of Vulkan. Creating a `Device` is required
 //! before you can create buffers, textures, shaders, etc.
 //!
-use std::ffi::CString;
 use std::fmt;
 use std::error;
 use std::mem;
@@ -73,11 +72,10 @@ impl Device {
     /// - Panicks if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
-    pub fn new<'a, I, L>(phys: &'a PhysicalDevice, requested_features: &Features,
-                         extensions: &DeviceExtensions, layers: L, queue_families: I)
-                         -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
-        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
-              L: IntoIterator<Item = &'a &'a str>
+    pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features,
+                      extensions: &DeviceExtensions, queue_families: I)
+                      -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
+        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>
     {
         let queue_families = queue_families.into_iter();
 
@@ -88,13 +86,18 @@ impl Device {
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
 
-        let layers = layers.into_iter().map(|&layer| {
-            // FIXME: check whether each layer is supported
-            CString::new(layer).unwrap()
-        }).collect::<SmallVec<[_; 8]>>();
-        let layers = layers.iter().map(|layer| {
+        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
+        // ignored by the driver. For backwards compatibility, the spec recommends passing the
+        // exact instance layers to the device as well. There's no need to support separate
+        // requests at device creation time for legacy drivers: the spec claims that "[at] the
+        // time of deprecation there were no known device-only layers."
+        //
+        // Because there's no way to query the list of layers enabled for an instance, we need
+        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
+        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
+        let layers_ptr = phys.instance().loaded_layers().map(|layer| {
             layer.as_ptr()
-        }).collect::<SmallVec<[_; 8]>>();
+        }).collect::<SmallVec<[_; 16]>>();
 
         let extensions_list = extensions.build_extensions_list();
         let extensions_list = extensions_list.iter().map(|extension| {
@@ -161,8 +164,8 @@ impl Device {
                 flags: 0,   // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
-                enabledLayerCount: layers.len() as u32,
-                ppEnabledLayerNames: layers.as_ptr(),
+                enabledLayerCount: layers_ptr.len() as u32,
+                ppEnabledLayerNames: layers_ptr.as_ptr(),
                 enabledExtensionCount: extensions_list.len() as u32,
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
                 pEnabledFeatures: &features,
