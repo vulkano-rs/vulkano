@@ -26,10 +26,8 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    // TODO: for the moment the AMD driver crashes if you don't pass an ApplicationInfo, but in theory it's optional
-    let app = vulkano::instance::ApplicationInfo { application_name: "test", application_version: 1, engine_name: "test", engine_version: 1 };
     let extensions = vulkano_win::required_extensions();
-    let instance = vulkano::instance::Instance::new(Some(&app), &extensions, &[]).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(None, &extensions, &[]).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");

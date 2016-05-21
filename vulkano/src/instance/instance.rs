@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::borrow::Cow;
+use std::env;
 use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -41,6 +43,13 @@ pub struct Instance {
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the version numbers passed in `ApplicationInfo` are too large can't be
+    ///   converted into a Vulkan version number.
+    /// - Panicks if the application name or engine name contain a null character.
+    // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
     pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
@@ -51,8 +60,8 @@ impl Instance {
         // They need to be created ahead of time, since we pass pointers to them.
         let app_infos_strings = if let Some(app_infos) = app_infos {
             Some((
-                CString::new(app_infos.application_name).unwrap(),
-                CString::new(app_infos.engine_name).unwrap()
+                app_infos.application_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
+                app_infos.engine_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap())
             ))
         } else {
             None
@@ -63,11 +72,11 @@ impl Instance {
             Some(vk::ApplicationInfo {
                 sType: vk::STRUCTURE_TYPE_APPLICATION_INFO,
                 pNext: ptr::null(),
-                pApplicationName: app_infos_strings.as_ref().unwrap().0.as_ptr(),
-                applicationVersion: app_infos.application_version,
-                pEngineName: app_infos_strings.as_ref().unwrap().1.as_ptr(),
-                engineVersion: app_infos.engine_version,
-                apiVersion: Version { major: 1, minor: 0, patch: 0 }.into_vulkan_version(), // TODO: 
+                pApplicationName: app_infos_strings.as_ref().unwrap().0.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+                applicationVersion: app_infos.application_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
+                pEngineName: app_infos_strings.as_ref().unwrap().1.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+                engineVersion: app_infos.engine_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
+                apiVersion: 0,      // TODO:
             })
 
         } else {
@@ -235,15 +244,48 @@ impl Drop for Instance {
 }
 
 /// Information that can be given to the Vulkan driver so that it can identify your application.
+#[derive(Debug, Clone)]
 pub struct ApplicationInfo<'a> {
     /// Name of the application.
-    pub application_name: &'a str,
+    pub application_name: Option<Cow<'a, str>>,
     /// An opaque number that contains the version number of the application.
-    pub application_version: u32,
+    pub application_version: Option<Version>,
     /// Name of the engine used to power the application.
-    pub engine_name: &'a str,
+    pub engine_name: Option<Cow<'a, str>>,
     /// An opaque number that contains the version number of the engine.
-    pub engine_version: u32,
+    pub engine_version: Option<Version>,
+}
+
+impl<'a> ApplicationInfo<'a> {
+    /// Builds an `ApplicationInfo` from the information gathered by Cargo.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the required environment variables are missing, which happens if the project
+    ///   wasn't built by Cargo.
+    ///
+    pub fn from_cargo_toml() -> ApplicationInfo<'a> {
+        let version = Version {
+            major: env::var("CARGO_PKG_VERSION_MAJOR").unwrap().parse().unwrap(),
+            minor: env::var("CARGO_PKG_VERSION_MINOR").unwrap().parse().unwrap(),
+            patch: env::var("CARGO_PKG_VERSION_PATCH").unwrap().parse().unwrap(),
+        };
+
+        let name = env::var("CARGO_PKG_NAME").unwrap();
+
+        ApplicationInfo {
+            application_name: Some(name.into()),
+            application_version: Some(version),
+            engine_name: None,
+            engine_version: None,
+        }
+    }
+}
+
+impl<'a> Default for ApplicationInfo<'a> {
+    fn default() -> ApplicationInfo<'a> {
+        ApplicationInfo::from_cargo_toml()
+    }
 }
 
 /// Error that can happen when creating an instance.
