@@ -1960,14 +1960,18 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
         unsafe {
             let mut infos = SmallVec::<[_; 3]>::new();
 
-            if !before_command_buffers.is_empty() {
-                // TODO: Use try!()? - Mixthos
+            let signal_semaphore = if !before_command_buffers.is_empty() {
                 let semaphore = Semaphore::new(queue.device());
                 let semaphore_id = semaphore.internal_object();
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
                 pre_semaphores_ids.push(semaphore.internal_object());
                 keep_alive_semaphores.push(semaphore);
+                Some(semaphore_id)
+            } else {
+                None
+            };
 
+            if !before_command_buffers.is_empty() {
                 infos.push(vk::SubmitInfo {
                     sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
                     pNext: ptr::null(),
@@ -1977,7 +1981,7 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
                     commandBufferCount: before_command_buffers.len() as u32,
                     pCommandBuffers: before_command_buffers.as_ptr(),
                     signalSemaphoreCount: 1,
-                    pSignalSemaphores: &semaphore_id,
+                    pSignalSemaphores: signal_semaphore.as_ref().map(|s| s as *const _).unwrap(),
                 });
             }
 
