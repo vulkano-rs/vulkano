@@ -218,16 +218,6 @@ unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
-        self
-    }
-
-    #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
-    }
-
-    #[inline]
     fn blocks(&self) -> Vec<(u32, u32)> {
         vec![(0, 0)]
     }

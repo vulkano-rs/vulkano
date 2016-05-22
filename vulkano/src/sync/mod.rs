@@ -25,10 +25,12 @@ use vk;
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
+pub use self::pipeline_barrier::PipelineBarrier;
 pub use self::semaphore::Semaphore;
 
 mod event;
 mod fence;
+mod pipeline_barrier;
 mod semaphore;
 
 /// Base trait for objects that can be used as resources and must be synchronized.

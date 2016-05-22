@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
@@ -25,6 +26,7 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
+use buffer::TransferSourceBuffer;
 use buffer::traits::AccessRange as BufferAccessRange;
 use command_buffer::CommandBufferPool;
 use command_buffer::DrawIndirectCommand;
@@ -53,6 +55,7 @@ use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use sync::Fence;
 use sync::FenceWaitError;
+use sync::PipelineBarrier;
 use sync::Semaphore;
 
 use device::Device;
@@ -98,27 +101,23 @@ pub struct InnerCommandBufferBuilder {
     // buffer yet and is still in its default state.
     //
     // This list is only updated by the `flush()` function.
-    buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
-    images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
+    buffers_state: HashMap<vk::Buffer, Box<Any>, BuildHasherDefault<FnvHasher>>,
+    images_state: HashMap<vk::Image, Box<Any>, BuildHasherDefault<FnvHasher>>,
+
+    // Current staging pipeline barrier.
+    staging_pipeline_barrier: PipelineBarrier,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer. Doesn't
     // include commands that were submitted within a render pass.
     staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer) + Send + Sync>>,
 
-    // List of resources accesses made by the comands in `staging_commands`. Doesn't include
-    // commands added to the current render pass.
-    staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
-    staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
+    // Current staging pipeline barrier.
+    render_pass_staging_pipeline_barrier: PipelineBarrier,
 
     // List of commands that are waiting to be submitted to the Vulkan command buffer when we're
     // inside a render pass. Flushed when `end_renderpass` is called.
-    render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer) + Send + Sync>>,
-
-    // List of resources accesses made by the current render pass. Merged with
-    // `staging_required_buffer_accesses` and `staging_required_image_accesses` when
-    // `end_renderpass` is called.
-    render_pass_staging_required_buffer_accesses: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
-    render_pass_staging_required_image_accesses: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
+    render_pass_staging_commands: Vec<Box<FnMut(&vk::DevicePointers, vk::CommandBuffer) +
+                                          Send + Sync>>,
 
     // List of resources that must be kept alive because they are used by this command buffer.
     keep_alive: Vec<Arc<KeepAlive>>,
@@ -216,12 +215,10 @@ impl InnerCommandBufferBuilder {
             is_secondary_graphics: secondary_cont.is_some(),
             buffers_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
             images_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+            staging_pipeline_barrier: PipelineBarrier::new(),
             staging_commands: Vec::new(),
-            staging_required_buffer_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
-            staging_required_image_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
+            render_pass_staging_pipeline_barrier: PipelineBarrier::new(),
             render_pass_staging_commands: Vec::new(),
-            render_pass_staging_required_buffer_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
-            render_pass_staging_required_image_accesses: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
             keep_alive: keep_alive,
             current_graphics_pipeline: None,
             current_compute_pipeline: None,
@@ -356,7 +353,8 @@ impl InnerCommandBufferBuilder {
     ///
     pub unsafe fn update_buffer<'a, B, T, Bt>(mut self, buffer: B, data: &T)
                                               -> InnerCommandBufferBuilder
-        where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + Send + Sync + 'static
+        where B: Into<BufferSlice<'a, T, Bt>>, Bt: TransferDestinationBuffer + 'static,
+              T: Clone + Send + Sync + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
@@ -368,12 +366,20 @@ impl InnerCommandBufferBuilder {
         assert!(buffer.size() % 4 == 0);
         assert!(buffer.buffer().inner_buffer().usage_transfer_dest());
 
-        // FIXME: check queue family of the buffer
+        let state = self.buffers_state.entry(buffer.buffer().inner_buffer().internal_object())
+                                      .or_insert_with(|| Box::new(None) as Box<Any>)
+                                      .downcast_mut().unwrap();
 
-        self.add_buffer_resource_outside(buffer.buffer().clone() as Arc<_>, true,
-                                         buffer.offset() .. buffer.offset() + buffer.size(),
-                                         vk::PIPELINE_STAGE_TRANSFER_BIT,
-                                         vk::ACCESS_TRANSFER_WRITE_BIT);
+        let new_barrier = buffer.buffer().command_buffer_transfer_destination(buffer.offset() ..
+                                                            buffer.offset() + buffer.size(),
+                                                            &mut self.staging_pipeline_barrier,
+                                                            state);
+
+        if let Some(new_barrier) = new_barrier {
+            self.flush(new_barrier);
+        }
+
+        // FIXME: check queue family of the buffer
 
         {
             let buffer_offset = buffer.offset() as vk::DeviceSize;
@@ -2139,40 +2145,6 @@ impl Drop for Submission {
 
 pub trait KeepAlive: 'static + Send + Sync {}
 impl<T> KeepAlive for T where T: 'static + Send + Sync {}
-
-#[derive(Clone)]
-struct BufferKey(Arc<Buffer>);
-
-impl PartialEq for BufferKey {
-    #[inline]
-    fn eq(&self, other: &BufferKey) -> bool {
-        &*self.0 as *const Buffer == &*other.0 as *const Buffer
-    }
-}
-
-impl Eq for BufferKey {}
-
-impl hash::Hash for BufferKey {
-    #[inline]
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
-        let ptr = &*self.0 as *const Buffer as *const () as usize;
-        hash::Hash::hash(&ptr, state)
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-struct InternalBufferBlockAccess {
-    // Stages in which the resource is used.
-    // Note that this field can have different semantics depending on where this struct is used.
-    // For example it can be the stages since the latest barrier instead of just the stages.
-    stages: vk::PipelineStageFlagBits,
-
-    // The way this resource is accessed.
-    // Just like `stages`, this has different semantics depending on the usage of this struct.
-    accesses: vk::AccessFlagBits,
-
-    write: bool,
-}
 
 #[derive(Clone)]
 struct ImageKey(Arc<Image>);

@@ -171,16 +171,6 @@ unsafe impl<P> ImageContent<P> for SwapchainImage {
 
 unsafe impl ImageView for SwapchainImage {
     #[inline]
-    fn parent(&self) -> &Image {
-        self
-    }
-
-    #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
-    }
-
-    #[inline]
     fn blocks(&self) -> Vec<(u32, u32)> {
         vec![(0, 0)]
     }
