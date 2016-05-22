@@ -15,6 +15,7 @@ use std::ffi::CString;
 use std::fmt;
 use std::mem;
 use std::ptr;
+use std::slice;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -39,6 +40,7 @@ pub struct Instance {
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
     extensions: InstanceExtensions,
+    layers: SmallVec<[CString; 16]>,
 }
 
 impl Instance {
@@ -87,7 +89,7 @@ impl Instance {
             // FIXME: check whether each layer is supported
             CString::new(layer).unwrap()
         }).collect::<SmallVec<[_; 16]>>();
-        let layers = layers.iter().map(|layer| {
+        let layers_ptr = layers.iter().map(|layer| {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -110,8 +112,8 @@ impl Instance {
                 } else {
                     ptr::null()
                 },
-                enabledLayerCount: layers.len() as u32,
-                ppEnabledLayerNames: layers.as_ptr(),
+                enabledLayerCount: layers_ptr.len() as u32,
+                ppEnabledLayerNames: layers_ptr.as_ptr(),
                 enabledExtensionCount: extensions_list.len() as u32,
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
@@ -191,6 +193,7 @@ impl Instance {
             physical_devices: physical_devices,
             vk: vk,
             extensions: extensions.clone(),
+            layers: layers,
         }))
     }
 
@@ -206,6 +209,13 @@ impl Instance {
     #[inline]
     pub fn loaded_extensions(&self) -> &InstanceExtensions {
         &self.extensions
+    }
+
+    /// Returns the list of layers requested when creating this instance.
+    #[doc(hidden)]
+    #[inline]
+    pub fn loaded_layers(&self) -> slice::Iter<CString> {
+        self.layers.iter()
     }
 }
 
