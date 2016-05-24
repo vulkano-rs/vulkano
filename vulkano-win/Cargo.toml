@@ -8,4 +8,4 @@ license = "MIT/Apache-2.0"
 
 [dependencies]
 vulkano = { version = "0.1.0", path = "../vulkano" }
-winit = "0.5.0"
+winit = "0.5.1"
