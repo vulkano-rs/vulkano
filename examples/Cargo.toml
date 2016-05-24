@@ -9,7 +9,7 @@ vulkano = { path = "../vulkano" }
 vulkano-win = { path = "../vulkano-win" }
 cgmath = "0.7.0"
 image = "0.6.1"
-winit = { git = "https://github.com/tomaka/winit"  }
+winit = "0.5.1"
 
 [build-dependencies]
 vk-sys = { path = "../vk-sys" }
