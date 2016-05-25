@@ -14,7 +14,6 @@ use std::ptr;
 use std::sync::Arc;
 
 use format::Format;
-use format::FormatDesc;
 use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
