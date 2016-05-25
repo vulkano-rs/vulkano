@@ -36,7 +36,6 @@ use image::traits::ImageContent;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
-use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::vertex::Source as VertexSource;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;

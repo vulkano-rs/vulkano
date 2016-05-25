@@ -15,14 +15,11 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
-use format::FormatDesc;
 use framebuffer::RenderPass;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LoadOp;
-use image::traits::Image;
-use image::traits::ImageView;
 
 use Error;
 use OomError;

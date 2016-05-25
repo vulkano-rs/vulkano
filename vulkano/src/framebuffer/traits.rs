@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use format::ClearValue;
 use format::Format;
-use format::FormatDesc;
 use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::FramebufferCreationError;
