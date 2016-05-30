@@ -45,7 +45,7 @@ pub struct Device {
     physical_device: usize,
     device: vk::Device,
     vk: vk::DevicePointers,
-    standard_pool: Mutex<Weak<StdMemoryPool>>,
+    standard_pool: Mutex<Option<Weak<StdMemoryPool>>>,      // TODO: use Weak::new() instead
     features: Features,
     extensions: DeviceExtensions,
 }
@@ -188,7 +188,7 @@ impl Device {
             physical_device: phys.index(),
             device: device,
             vk: vk,
-            standard_pool: Mutex::new(Weak::new()),
+            standard_pool: Mutex::new(None),
             features: requested_features.clone(),
             extensions: extensions.clone(),
         });
@@ -256,13 +256,13 @@ impl Device {
     pub fn standard_pool(me: &Arc<Self>) -> Arc<StdMemoryPool> {
         let mut pool = me.standard_pool.lock().unwrap();
 
-        if let Some(p) = pool.upgrade() {
+        if let Some(p) = pool.as_ref().and_then(|w| w.upgrade()) {
             return p;
         }
 
         // The weak pointer is empty, so we create the pool.
         let new_pool = StdMemoryPool::new(me);
-        *pool = Arc::downgrade(&new_pool);
+        *pool = Some(Arc::downgrade(&new_pool));
         new_pool
     }
 }
