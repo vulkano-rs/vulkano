@@ -63,12 +63,12 @@ unsafe impl MemoryPool for StdMemoryPool {
                     &Pool::HostVisible(ref pool) => {
                         let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner })
+                        Ok(StdMemoryPoolAlloc { inner: inner, pool: me.clone() })
                     },
                     &Pool::NonHostVisible(ref pool) => {
                         let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner })
+                        Ok(StdMemoryPoolAlloc { inner: inner, pool: me.clone() })
                     },
                 }
             },
@@ -80,14 +80,14 @@ unsafe impl MemoryPool for StdMemoryPool {
                         entry.insert(Pool::HostVisible(pool.clone()));
                         let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner })
+                        Ok(StdMemoryPoolAlloc { inner: inner, pool: me.clone() })
                     },
                     false => {
                         let pool = StdNonHostVisibleMemoryTypePool::new(&me.device, memory_type);
                         entry.insert(Pool::NonHostVisible(pool.clone()));
                         let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner })
+                        Ok(StdMemoryPoolAlloc { inner: inner, pool: me.clone() })
                     },
                 }
             },
@@ -103,7 +103,8 @@ enum Pool {
 
 #[derive(Debug)]
 pub struct StdMemoryPoolAlloc {
-    inner: StdMemoryPoolAllocInner
+    inner: StdMemoryPoolAllocInner,
+    pool: Arc<StdMemoryPool>,
 }
 
 impl StdMemoryPoolAlloc {

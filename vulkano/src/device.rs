@@ -19,6 +19,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::Weak;
 use smallvec::SmallVec;
 
 use instance::Features;
@@ -44,7 +45,7 @@ pub struct Device {
     physical_device: usize,
     device: vk::Device,
     vk: vk::DevicePointers,
-    standard_pool: Mutex<Option<Arc<StdMemoryPool>>>,
+    standard_pool: Mutex<Weak<StdMemoryPool>>,
     features: Features,
     extensions: DeviceExtensions,
 }
@@ -187,16 +188,10 @@ impl Device {
             physical_device: phys.index(),
             device: device,
             vk: vk,
-            standard_pool: Mutex::new(None),
+            standard_pool: Mutex::new(Weak::new()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
         });
-
-        // Creating the memory pool.
-        {
-            let mut pool_dest = device.standard_pool.lock().unwrap();
-            *pool_dest = Some(StdMemoryPool::new(&device));
-        }
 
         // Iterator for the produced queues.
         let output_queues = QueuesIter {
@@ -258,9 +253,17 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    #[inline]
-    pub fn standard_pool(&self) -> Arc<StdMemoryPool> {
-        self.standard_pool.lock().unwrap().clone().unwrap()
+    pub fn standard_pool(me: &Arc<Self>) -> Arc<StdMemoryPool> {
+        let mut pool = me.standard_pool.lock().unwrap();
+
+        if let Some(p) = pool.upgrade() {
+            return p;
+        }
+
+        // The weak pointer is empty, so we create the pool.
+        let new_pool = StdMemoryPool::new(me);
+        *pool = Arc::downgrade(&new_pool);
+        new_pool
     }
 }
 
@@ -292,8 +295,6 @@ impl VulkanPointers for Device {
 impl Drop for Device {
     #[inline]
     fn drop(&mut self) {
-        let _ = self.standard_pool.lock().unwrap().take();
-
         unsafe {
             self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());
