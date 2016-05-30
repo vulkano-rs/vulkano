@@ -138,7 +138,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                            .filter(|t| t.is_host_visible())
                            .next().unwrap();    // Vk specs guarantee that this can't fail
 
-        let mem = try!(MemoryPool::alloc(&device.standard_pool(), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());

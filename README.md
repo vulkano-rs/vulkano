@@ -1,6 +1,6 @@
 # Vulkano
 
-**Note: requires Rust 1.8**. This library would highly benefit from multiple upcoming features in
+**Note: requires Rust 1.9**. This library would highly benefit from multiple upcoming features in
 Rust. Therefore it is likely that in the future you will need to update your version of Rust to
 continue using vulkano.
 
