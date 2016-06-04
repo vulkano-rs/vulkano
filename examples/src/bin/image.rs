@@ -63,10 +63,6 @@ fn main() {
     };
 
 
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family());
-
-
-
 
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
@@ -202,7 +198,7 @@ fn main() {
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool)
+        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&device, queue.family())
             .copy_buffer_to_color_image(&pixel_buffer, &texture, 0, 0 .. 1, [0, 0, 0],
                                         [texture.dimensions().width(), texture.dimensions().height(), 1])
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])

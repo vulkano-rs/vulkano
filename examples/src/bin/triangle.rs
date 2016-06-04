@@ -34,7 +34,6 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer;
-use vulkano::command_buffer::CommandBufferPool;
 use vulkano::command_buffer::DynamicState;
 use vulkano::command_buffer::PrimaryCommandBufferBuilder;
 use vulkano::command_buffer::Submission;
@@ -235,10 +234,6 @@ fn main() {
     // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
-    // We are going to create a command buffer below. Command buffers need to be allocated
-    // from a *command buffer pool*, so we create the pool.
-    let cb_pool = CommandBufferPool::new(&device, &queue.family());
-
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
@@ -397,7 +392,10 @@ fn main() {
         // Building a command buffer is an expensive operation (usually a few hundred
         // microseconds), but it is known to be a hot path in the driver and is expected to be
         // optimized.
-        let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
+        //
+        // Note that we have to pass a queue family when we create the command buffer. The command
+        // buffer will only be executable on that given queue family.
+        let command_buffer = PrimaryCommandBufferBuilder::new(&device, queue.family())
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
