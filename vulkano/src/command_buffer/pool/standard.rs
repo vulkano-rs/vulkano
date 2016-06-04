@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::cmp;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::iter::Chain;
 use std::marker::PhantomData;
@@ -34,11 +35,16 @@ fn curr_thread_id() -> usize { THREAD_ID.with(|data| &**data as *const u8 as usi
 
 /// Standard implementation of a command pool.
 ///
-/// Will use one pool per thread in order to avoid locking. Will try to reuse command buffers.
-/// Locking is required only when allocating/freeing command buffers.
+/// Will use one Vulkan pool per thread in order to avoid locking. Will try to reuse command
+/// buffers. Locking is required only when allocating/freeing command buffers.
 pub struct StandardCommandPool {
+    // The device.
     device: Arc<Device>,
+
+    // Identifier of the queue family.
     queue_family: u32,
+
+    // For each "thread id" (see `THREAD_ID` above), we store thread-specific info.
     per_thread: Mutex<HashMap<usize, StandardCommandPoolPerThread>>,
 
     // Dummy marker in order to not implement `Send` and `Sync`.
@@ -73,8 +79,11 @@ impl StandardCommandPool {
 }
 
 struct StandardCommandPoolPerThread {
+    // The Vulkan pool of this thread.
     pool: UnsafeCommandPool,
+    // List of existing primary command buffers that are available for reuse.
     available_primary_command_buffers: Vec<AllocatedCommandBuffer>,
+    // List of existing secondary command buffers that are available for reuse.
     available_secondary_command_buffers: Vec<AllocatedCommandBuffer>,
 }
 
@@ -84,32 +93,45 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     type Finished = StandardCommandPoolFinished;
 
     fn alloc(&self, secondary: bool, count: u32) -> Result<Self::Iter, OomError> {
+        // Find the correct `StandardCommandPoolPerThread` structure.
         let mut per_thread = self.per_thread.lock().unwrap();
-        let mut per_thread = per_thread.entry(curr_thread_id())
-                                     .or_insert_with(|| {
-                                         StandardCommandPoolPerThread {
-                                             pool: UnsafeCommandPool::new(&self.device, self.queue_family(), false, true).unwrap(),     // FIXME: return error instead
-                                             available_primary_command_buffers: Vec::new(),
-                                             available_secondary_command_buffers: Vec::new(),
-                                         }
-                                      });
+        let mut per_thread = match per_thread.entry(curr_thread_id()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let new_pool = try!(UnsafeCommandPool::new(&self.device, self.queue_family(),
+                                                           false, true));
 
+                entry.insert(StandardCommandPoolPerThread {
+                    pool: new_pool,
+                    available_primary_command_buffers: Vec::new(),
+                    available_secondary_command_buffers: Vec::new(),
+                })
+            },
+        };
+
+        // Which list of already-existing command buffers we are going to pick CBs from.
         let mut existing = if secondary { &mut per_thread.available_secondary_command_buffers }
                            else { &mut per_thread.available_primary_command_buffers };
 
+        // Build an iterator to pick from already-existing command buffers.
         let num_from_existing = cmp::min(count as usize, existing.len());
         let from_existing = existing.drain(0 .. num_from_existing).collect::<Vec<_>>().into_iter();
 
+        // Build an iterator to construct the missing command buffers from the Vulkan pool.
         let num_new = count as usize - num_from_existing;
         debug_assert!(num_new <= count as usize);        // Check overflows.
         let newly_allocated = try!(per_thread.pool.alloc_command_buffers(secondary, num_new));
 
+        // Returning them as a chain.
         Ok(from_existing.chain(newly_allocated))
     }
 
     unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
         where I: Iterator<Item = AllocatedCommandBuffer>
     {
+        // Do not actually free the command buffers. Instead adding them to the list of command
+        // buffers available for reuse.
+
         let mut per_thread = self.per_thread.lock().unwrap();
         let mut per_thread = per_thread.get_mut(&curr_thread_id()).unwrap();
 
