@@ -68,8 +68,6 @@ fn main() {
     };
 
 
-    let cb_pool = vulkano::command_buffer::CommandBufferPool::new(&device, &queue.family());
-
 
     let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
@@ -204,7 +202,7 @@ fn main() {
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&cb_pool)
+        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&device, queue.family())
             .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
                  color: [0.0, 0.0, 1.0, 1.0],
                  depth: 1.0,

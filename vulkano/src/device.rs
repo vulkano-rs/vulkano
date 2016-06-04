@@ -12,6 +12,8 @@
 //! The `Device` is one of the most important objects of Vulkan. Creating a `Device` is required
 //! before you can create buffers, textures, shaders, etc.
 //!
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::error;
 use std::mem;
@@ -22,6 +24,7 @@ use std::sync::MutexGuard;
 use std::sync::Weak;
 use smallvec::SmallVec;
 
+use command_buffer::pool::StandardCommandPool;
 use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
@@ -46,9 +49,15 @@ pub struct Device {
     device: vk::Device,
     vk: vk::DevicePointers,
     standard_pool: Mutex<Option<Weak<StdMemoryPool>>>,      // TODO: use Weak::new() instead
+    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>>>,     // TODO: use a better hasher
     features: Features,
     extensions: DeviceExtensions,
 }
+
+// The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
+// them for the device itself.
+unsafe impl Send for Device {}
+unsafe impl Sync for Device {}
 
 impl Device {
     /// Builds a new Vulkan device for the given physical device.
@@ -189,6 +198,7 @@ impl Device {
             device: device,
             vk: vk,
             standard_pool: Mutex::new(None),
+            standard_command_pools: Mutex::new(HashMap::new()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
         });
@@ -264,6 +274,34 @@ impl Device {
         let new_pool = StdMemoryPool::new(me);
         *pool = Some(Arc::downgrade(&new_pool));
         new_pool
+    }
+
+    /// Returns the standard command buffer pool used by default if you don't provide any other
+    /// pool.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device and the queue family don't belong to the same physical device.
+    ///
+    pub fn standard_command_pool(me: &Arc<Self>, queue: QueueFamily) -> Arc<StandardCommandPool> {
+        let mut standard_command_pools = me.standard_command_pools.lock().unwrap();
+
+        match standard_command_pools.entry(queue.id()) {
+            Entry::Occupied(mut entry) => {
+                if let Some(pool) = entry.get().upgrade() {
+                    return pool;
+                }
+
+                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                *entry.get_mut() = Arc::downgrade(&new_pool);
+                new_pool
+            },
+            Entry::Vacant(entry) => {
+                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                entry.insert(Arc::downgrade(&new_pool));
+                new_pool
+            }
+        }
     }
 }
 

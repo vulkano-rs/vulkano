@@ -26,9 +26,11 @@ use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
 use buffer::traits::AccessRange as BufferAccessRange;
-use command_buffer::CommandBufferPool;
 use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
+use command_buffer::pool::CommandPool;
+use command_buffer::pool::CommandPoolFinished;
+use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayout;
 use device::Queue;
@@ -76,9 +78,9 @@ lazy_static! {
 // for this design is that we want to minimize the number of pipeline barriers. In order to know
 // what must be in a pipeline barrier, we have to be ahead of the actual commands.
 //
-pub struct InnerCommandBufferBuilder {
+pub struct InnerCommandBufferBuilder<P> where P: CommandPool {
     device: Arc<Device>,
-    pool: Arc<CommandBufferPool>,
+    pool: Option<P>,
     cmd: Option<vk::CommandBuffer>,
 
     // If true, we're inside a secondary command buffer (compute or graphics).
@@ -129,38 +131,17 @@ pub struct InnerCommandBufferBuilder {
     current_dynamic_state: DynamicState,
 }
 
-impl InnerCommandBufferBuilder {
+impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     /// Creates a new builder.
-    pub fn new<R>(pool: &Arc<CommandBufferPool>, secondary: bool, secondary_cont: Option<Subpass<R>>,
+    pub fn new<R>(pool: P, secondary: bool, secondary_cont: Option<Subpass<R>>,
                   secondary_cont_fb: Option<&Arc<Framebuffer<R>>>)
-                  -> Result<InnerCommandBufferBuilder, OomError>
+                  -> Result<InnerCommandBufferBuilder<P>, OomError>
         where R: RenderPass + 'static + Send + Sync
     {
-        let device = pool.device();
+        let device = pool.device().clone();
         let vk = device.pointers();
 
-        let pool_obj = pool.internal_object_guard();
-
-        let cmd = unsafe {
-            let infos = vk::CommandBufferAllocateInfo {
-                sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                pNext: ptr::null(),
-                commandPool: *pool_obj,
-                level: if secondary {
-                    assert!(secondary_cont.is_some());
-                    vk::COMMAND_BUFFER_LEVEL_SECONDARY
-                } else {
-                    vk::COMMAND_BUFFER_LEVEL_PRIMARY
-                },
-                // vulkan can allocate multiple command buffers at once, hence the 1
-                commandBufferCount: 1,
-            };
-
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.AllocateCommandBuffers(device.internal_object(), &infos,
-                                                        &mut output)));
-            output
-        };
+        let cmd = try!(pool.alloc(secondary, 1)).next().unwrap().internal_object();
 
         let mut keep_alive = Vec::new();
 
@@ -206,7 +187,7 @@ impl InnerCommandBufferBuilder {
 
         Ok(InnerCommandBufferBuilder {
             device: device.clone(),
-            pool: pool.clone(),
+            pool: Some(pool),
             cmd: Some(cmd),
             is_secondary: secondary,
             is_secondary_graphics: secondary_cont.is_some(),
@@ -230,9 +211,12 @@ impl InnerCommandBufferBuilder {
     /// # Safety
     ///
     /// Care must be taken to respect the rules about secondary command buffers.
-    pub unsafe fn execute_commands<'a>(mut self, cb_arc: Arc<KeepAlive>,
-                                       cb: &InnerCommandBuffer) -> InnerCommandBufferBuilder
+    pub unsafe fn execute_commands<'a, S>(mut self, cb_arc: Arc<KeepAlive>,
+                                          cb: &InnerCommandBuffer<S>)
+                                          -> InnerCommandBufferBuilder<P>
+        where S: CommandPool
     {
+        debug_assert!(cb.is_secondary);
         debug_assert!(!self.is_secondary);
         debug_assert!(!self.is_secondary_graphics);
 
@@ -351,7 +335,7 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     pub unsafe fn update_buffer<'a, B, T, Bt>(mut self, buffer: B, data: &T)
-                                              -> InnerCommandBufferBuilder
+                                              -> InnerCommandBufferBuilder<P>
         where B: Into<BufferSlice<'a, T, Bt>>, Bt: Buffer + 'static, T: Clone + Send + Sync + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
@@ -402,12 +386,12 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     pub unsafe fn fill_buffer<B>(mut self, buffer: &Arc<B>, offset: usize,
-                                 size: usize, data: u32) -> InnerCommandBufferBuilder
+                                 size: usize, data: u32) -> InnerCommandBufferBuilder<P>
         where B: Buffer + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
-        assert!(self.pool.queue_family().supports_transfers());
+        assert!(self.pool.as_ref().unwrap().queue_family().supports_transfers());
         assert!(offset + size <= buffer.size());
         assert!(offset % 4 == 0);
         assert!(size % 4 == 0);
@@ -448,7 +432,7 @@ impl InnerCommandBufferBuilder {
     // TODO: doesn't support slices
     pub unsafe fn copy_buffer<T: ?Sized + 'static, Bs, Bd>(mut self, source: &Arc<Bs>,
                                                            destination: &Arc<Bd>)
-                                                           -> InnerCommandBufferBuilder
+                                                           -> InnerCommandBufferBuilder<P>
         where Bs: TypedBuffer<Content = T> + 'static, Bd: TypedBuffer<Content = T> + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
@@ -492,7 +476,7 @@ impl InnerCommandBufferBuilder {
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
     pub unsafe fn clear_color_image<'a, I, V>(mut self, image: &Arc<I>, color: V)
-                                              -> InnerCommandBufferBuilder
+                                              -> InnerCommandBufferBuilder<P>
         where I: ImageClearValue<V> + 'static   // FIXME: should accept uint and int images too
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
@@ -536,11 +520,11 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_buffer_to_color_image<'a, P, S, Sb, Img>(mut self, source: S, image: &Arc<Img>,
+    pub unsafe fn copy_buffer_to_color_image<'a, Pi, S, Sb, Img>(mut self, source: S, image: &Arc<Img>,
                                                                 mip_level: u32, array_layers_range: Range<u32>,
                                                                 offset: [u32; 3], extent: [u32; 3])
-                                                             -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
+                                                             -> InnerCommandBufferBuilder<P>
+        where S: Into<BufferSlice<'a, [Pi], Sb>>, Img: ImageContent<Pi> + Image + 'static,
               Sb: Buffer + 'static
     {
         // FIXME: check the parameters
@@ -605,11 +589,11 @@ impl InnerCommandBufferBuilder {
     ///
     /// - Care must be taken to respect the rules about secondary command buffers.
     ///
-    pub unsafe fn copy_color_image_to_buffer<'a, P, S, Sb, Img>(mut self, dest: S, image: &Arc<Img>,
+    pub unsafe fn copy_color_image_to_buffer<'a, Pi, S, Sb, Img>(mut self, dest: S, image: &Arc<Img>,
                                                                 mip_level: u32, array_layers_range: Range<u32>,
                                                                 offset: [u32; 3], extent: [u32; 3])
-                                                             -> InnerCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [P], Sb>>, Img: ImageContent<P> + Image + 'static,
+                                                             -> InnerCommandBufferBuilder<P>
+        where S: Into<BufferSlice<'a, [Pi], Sb>>, Img: ImageContent<Pi> + Image + 'static,
               Sb: Buffer + 'static
     {
         // FIXME: check the parameters
@@ -670,7 +654,7 @@ impl InnerCommandBufferBuilder {
                                source_array_layers: Range<u32>, src_coords: [Range<i32>; 3],
                                destination: &Arc<Di>, dest_mip_level: u32,
                                dest_array_layers: Range<u32>, dest_coords: [Range<i32>; 3])
-                               -> InnerCommandBufferBuilder
+                               -> InnerCommandBufferBuilder<P>
         where Si: Image + 'static, Di: Image + 'static
     {
         // FIXME: check the parameters
@@ -745,7 +729,7 @@ impl InnerCommandBufferBuilder {
     }
 
     pub unsafe fn dispatch<Pl, L, Pc>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                                  dimensions: [u32; 3], push_constants: &Pc) -> InnerCommandBufferBuilder
+                                  dimensions: [u32; 3], push_constants: &Pc) -> InnerCommandBufferBuilder<P>
         where L: 'static + DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync,
               Pc: 'static + Clone + Send + Sync
@@ -765,7 +749,7 @@ impl InnerCommandBufferBuilder {
     // FIXME: push constants
     pub unsafe fn draw<V, Pv, Pl, L, Rp, Pc>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
-                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
+                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder<P>
         where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Pc: 'static + Clone + Send + Sync
@@ -807,7 +791,7 @@ impl InnerCommandBufferBuilder {
     // FIXME: push constants
     pub unsafe fn draw_indexed<'a, V, Pv, Pl, Rp, L, I, Ib, Ibb, Pc>(mut self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                                           vertices: V, indices: Ib, dynamic: &DynamicState,
-                                                          sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
+                                                          sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder<P>
         where L: DescriptorSetsCollection + Send + Sync,
               Pv: 'static + VertexSource<V>,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
@@ -865,7 +849,7 @@ impl InnerCommandBufferBuilder {
     // FIXME: push constants
     pub unsafe fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(mut self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
-                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder
+                             sets: L, push_constants: &Pc) -> InnerCommandBufferBuilder<P>
         where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync, Pc: 'static + Clone + Send + Sync,
               I: 'static + TypedBuffer<Content = [DrawIndirectCommand]>
@@ -1088,7 +1072,7 @@ impl InnerCommandBufferBuilder {
     pub unsafe fn begin_renderpass<R, F>(mut self, render_pass: &Arc<R>,
                                          framebuffer: &Arc<Framebuffer<F>>,
                                          secondary_cmd_buffers: bool,
-                                         clear_values: &[ClearValue]) -> InnerCommandBufferBuilder
+                                         clear_values: &[ClearValue]) -> InnerCommandBufferBuilder<P>
         where R: RenderPass + 'static, F: RenderPass + 'static
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
@@ -1178,7 +1162,7 @@ impl InnerCommandBufferBuilder {
     }
 
     #[inline]
-    pub unsafe fn next_subpass(mut self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder {
+    pub unsafe fn next_subpass(mut self, secondary_cmd_buffers: bool) -> InnerCommandBufferBuilder<P> {
         debug_assert!(!self.render_pass_staging_commands.is_empty());
 
         let content = if secondary_cmd_buffers {
@@ -1201,7 +1185,7 @@ impl InnerCommandBufferBuilder {
     /// Assumes that you're inside a render pass and that all subpasses have been processed.
     ///
     #[inline]
-    pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder {
+    pub unsafe fn end_renderpass(mut self) -> InnerCommandBufferBuilder<P> {
         debug_assert!(!self.render_pass_staging_commands.is_empty());
         self.flush_render_pass();
         self.staging_commands.push(Box::new(move |vk, cmd| {
@@ -1624,7 +1608,7 @@ impl InnerCommandBufferBuilder {
     }
 
     /// Finishes building the command buffer.
-    pub fn build(mut self) -> Result<InnerCommandBuffer, OomError> {
+    pub fn build(mut self) -> Result<InnerCommandBuffer<P>, OomError> {
         unsafe {
             self.flush_render_pass();
             self.flush(true);
@@ -1673,7 +1657,7 @@ impl InnerCommandBufferBuilder {
             debug_assert!(self.staging_required_image_accesses.is_empty());
 
             let vk = self.device.pointers();
-            let _ = self.pool.internal_object_guard();      // the pool needs to be synchronized
+            let _pool_lock = self.pool.as_ref().unwrap().lock();      // the pool needs to be synchronized
             let cmd = self.cmd.take().unwrap();
 
             // Ending the commands recording.
@@ -1681,8 +1665,9 @@ impl InnerCommandBufferBuilder {
 
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
-                pool: self.pool.clone(),
+                pool: self.pool.take().unwrap().finish(),
                 cmd: cmd,
+                is_secondary: self.is_secondary,
                 buffers_state: self.buffers_state.clone(),      // TODO: meh
                 images_state: self.images_state.clone(),        // TODO: meh
                 extern_buffers_sync: {
@@ -1737,7 +1722,7 @@ impl InnerCommandBufferBuilder {
     }
 }
 
-impl Drop for InnerCommandBufferBuilder {
+impl<P> Drop for InnerCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     fn drop(&mut self) {
         if let Some(cmd) = self.cmd {
@@ -1745,18 +1730,18 @@ impl Drop for InnerCommandBufferBuilder {
                 let vk = self.device.pointers();
                 vk.EndCommandBuffer(cmd);       // TODO: really needed?
 
-                let pool = self.pool.internal_object_guard();
-                vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &cmd);
+                self.pool.as_ref().unwrap().free(self.is_secondary, Some(cmd.into()).into_iter());
             }
         }
     }
 }
 
 /// Actual implementation of all command buffers.
-pub struct InnerCommandBuffer {
+pub struct InnerCommandBuffer<P = Arc<StandardCommandPool>> where P: CommandPool {
     device: Arc<Device>,
-    pool: Arc<CommandBufferPool>,
+    pool: P::Finished,
     cmd: vk::CommandBuffer,
+    is_secondary: bool,
     buffers_state: HashMap<(BufferKey, usize), InternalBufferBlockAccess, BuildHasherDefault<FnvHasher>>,
     images_state: HashMap<(ImageKey, (u32, u32)), InternalImageBlockAccess, BuildHasherDefault<FnvHasher>>,
     extern_buffers_sync: SmallVec<[(Arc<Buffer>, SmallVec<[BufferAccessRange; 4]>); 32]>,
@@ -1773,9 +1758,12 @@ pub struct InnerCommandBuffer {
 /// - Panicks if the queue doesn't belong to the device this command buffer was created with.
 /// - Panicks if the queue doesn't belong to the family the pool was created with.
 ///
-pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
-              queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type
+pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
+                 queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type
+    where P: CommandPool
 {
+    debug_assert!(!me.is_secondary);
+
     // TODO: see comment of GLOBAL_MUTEX
     let _global_lock = GLOBAL_MUTEX.lock().unwrap();
 
@@ -1891,13 +1879,13 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
             }
 
             for transition in result.before_transitions {
-                let cb = transition_cb(&me.pool, resource.clone(), transition.block, transition.from, transition.to).unwrap();
+                let cb = transition_cb(Device::standard_command_pool(&me.device, me.pool.queue_family()), resource.clone(), transition.block, transition.from, transition.to).unwrap();
                 before_command_buffers.push(cb.cmd);
                 submission.keep_alive_cb.lock().unwrap().push(Arc::new(cb));
             }
 
             for transition in result.after_transitions {
-                let cb = transition_cb(&me.pool, resource.clone(), transition.block, transition.from, transition.to).unwrap();
+                let cb = transition_cb(Device::standard_command_pool(&me.device, me.pool.queue_family()), resource.clone(), transition.block, transition.from, transition.to).unwrap();
                 after_command_buffers.push(cb.cmd);
                 submission.keep_alive_cb.lock().unwrap().push(Arc::new(cb));
             }
@@ -2036,13 +2024,11 @@ pub fn submit(me: &InnerCommandBuffer, me_arc: Arc<KeepAlive>,
     Ok(submission)
 }
 
-impl Drop for InnerCommandBuffer {
+impl<P> Drop for InnerCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            let pool = self.pool.internal_object_guard();
-            vk.FreeCommandBuffers(self.device.internal_object(), *pool, 1, &self.cmd);
+            self.pool.free(self.is_secondary, Some(self.cmd.into()).into_iter());
         }
     }
 }
@@ -2213,28 +2199,15 @@ struct InternalImageBlockAccess {
 
 /// Builds an `InnerCommandBuffer` whose only purpose is to transition an image between two
 /// layouts.
-fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, u32),
-                 old_layout: ImageLayout, new_layout: ImageLayout)
-                 -> Result<InnerCommandBuffer, OomError>
+fn transition_cb<P>(pool: P, image: Arc<Image>, block: (u32, u32),
+                    old_layout: ImageLayout, new_layout: ImageLayout)
+                    -> Result<InnerCommandBuffer<P>, OomError>
+    where P: CommandPool
 {
-    let device = pool.device();
+    let device = pool.device().clone();
     let vk = device.pointers();
-    let pool_obj = pool.internal_object_guard();
 
-    let cmd = unsafe {
-        let infos = vk::CommandBufferAllocateInfo {
-            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            pNext: ptr::null(),
-            commandPool: *pool_obj,
-            level: vk::COMMAND_BUFFER_LEVEL_PRIMARY,
-            commandBufferCount: 1,
-        };
-
-        let mut output = mem::uninitialized();
-        try!(check_errors(vk.AllocateCommandBuffers(device.internal_object(), &infos,
-                                                    &mut output)));
-        output
-    };
+    let cmd = try!(pool.alloc(false, 1)).next().unwrap().internal_object();
 
     unsafe {
         let infos = vk::CommandBufferBeginInfo {
@@ -2287,8 +2260,9 @@ fn transition_cb(pool: &Arc<CommandBufferPool>, image: Arc<Image>, block: (u32, 
 
     Ok(InnerCommandBuffer {
         device: device.clone(),
-        pool: pool.clone(),
+        pool: pool.finish(),
         cmd: cmd,
+        is_secondary: false,
         buffers_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
         images_state: HashMap::with_hasher(BuildHasherDefault::<FnvHasher>::default()),
         extern_buffers_sync: SmallVec::new(),

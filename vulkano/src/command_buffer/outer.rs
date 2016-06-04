@@ -14,14 +14,16 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
-use command_buffer::CommandBufferPool;
 use command_buffer::DrawIndirectCommand;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
 use command_buffer::inner::Submission;
 use command_buffer::inner::submit as inner_submit;
+use command_buffer::pool::CommandPool;
+use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayout;
+use device::Device;
 use device::Queue;
 use framebuffer::Framebuffer;
 use framebuffer::UnsafeRenderPass;
@@ -33,6 +35,7 @@ use framebuffer::Subpass;
 use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
+use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
@@ -55,31 +58,32 @@ use OomError;
 /// 
 /// ```
 ///
-pub struct PrimaryCommandBufferBuilder {
-    inner: InnerCommandBufferBuilder,
+pub struct PrimaryCommandBufferBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
+    inner: InnerCommandBufferBuilder<P>,
 }
 
-impl PrimaryCommandBufferBuilder {
-    /// See the docs of new().
-    #[inline]
-    pub fn raw(pool: &Arc<CommandBufferPool>)
-               -> Result<PrimaryCommandBufferBuilder, OomError>
-    {
-        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None));
-        Ok(PrimaryCommandBufferBuilder { inner: inner })
-    }
-    
+impl PrimaryCommandBufferBuilder<Arc<StandardCommandPool>> {
     /// Builds a new primary command buffer and start recording commands in it.
     ///
     /// # Panic
     ///
     /// - Panicks if the device or host ran out of memory.
+    /// - Panicks if the device and queue family do not belong to the same physical device.
     ///
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>)
-               -> PrimaryCommandBufferBuilder
+    pub fn new(device: &Arc<Device>, queue_family: QueueFamily)
+               -> PrimaryCommandBufferBuilder<Arc<StandardCommandPool>>
     {
-        PrimaryCommandBufferBuilder::raw(pool).unwrap()
+        PrimaryCommandBufferBuilder::raw(Device::standard_command_pool(device, queue_family)).unwrap()
+    }
+}
+
+impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
+    /// See the docs of new().
+    #[inline]
+    pub fn raw(pool: P) -> Result<PrimaryCommandBufferBuilder<P>, OomError> {
+        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None));
+        Ok(PrimaryCommandBufferBuilder { inner: inner })
     }
 
     /// Writes data to a buffer.
@@ -97,7 +101,7 @@ impl PrimaryCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder
+    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder<P>
         where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static + Send + Sync
     {
         unsafe {
@@ -124,7 +128,7 @@ impl PrimaryCommandBufferBuilder {
     /// - Type safety is not enforced by the API.
     ///
     pub unsafe fn fill_buffer<B>(self, buffer: &Arc<B>, offset: usize,
-                                 size: usize, data: u32) -> PrimaryCommandBufferBuilder
+                                 size: usize, data: u32) -> PrimaryCommandBufferBuilder<P>
         where B: Buffer + 'static
     {
         PrimaryCommandBufferBuilder {
@@ -133,7 +137,7 @@ impl PrimaryCommandBufferBuilder {
     }
 
     pub fn copy_buffer<T: ?Sized + 'static, Bs, Bd>(self, source: &Arc<Bs>, destination: &Arc<Bd>)
-                                                    -> PrimaryCommandBufferBuilder
+                                                    -> PrimaryCommandBufferBuilder<P>
         where Bs: TypedBuffer<Content = T> + 'static, Bd: TypedBuffer<Content = T> + 'static
     {
         unsafe {
@@ -143,11 +147,11 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_buffer_to_color_image<'a, P, S, Img, Sb>(self, source: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
+    pub fn copy_buffer_to_color_image<'a, Pi, S, Img, Sb>(self, source: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
                                                          offset: [u32; 3], extent: [u32; 3])
-                                                    -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
-              Img: ImageContent<P> + 'static
+                                                    -> PrimaryCommandBufferBuilder<P>
+        where S: Into<BufferSlice<'a, [Pi], Sb>>, Sb: Buffer + 'static,
+              Img: ImageContent<Pi> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -157,11 +161,11 @@ impl PrimaryCommandBufferBuilder {
         }
     }
 
-    pub fn copy_color_image_to_buffer<'a, P, S, Img, Sb>(self, dest: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
+    pub fn copy_color_image_to_buffer<'a, Pi, S, Img, Sb>(self, dest: S, destination: &Arc<Img>, mip_level: u32, array_layers_range: Range<u32>,
                                                          offset: [u32; 3], extent: [u32; 3])
-                                                    -> PrimaryCommandBufferBuilder
-        where S: Into<BufferSlice<'a, [P], Sb>>, Sb: Buffer + 'static,
-              Img: ImageContent<P> + 'static
+                                                    -> PrimaryCommandBufferBuilder<P>
+        where S: Into<BufferSlice<'a, [Pi], Sb>>, Sb: Buffer + 'static,
+              Img: ImageContent<Pi> + 'static
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -175,7 +179,7 @@ impl PrimaryCommandBufferBuilder {
                         source_array_layers: Range<u32>, src_coords: [Range<i32>; 3],
                         destination: &Arc<Di>, dest_mip_level: u32,
                         dest_array_layers: Range<u32>, dest_coords: [Range<i32>; 3])
-                        -> PrimaryCommandBufferBuilder
+                        -> PrimaryCommandBufferBuilder<P>
         where Si: Image + 'static, Di: Image + 'static
     {
         unsafe {
@@ -189,7 +193,7 @@ impl PrimaryCommandBufferBuilder {
     ///
     /// Note that compressed formats are not supported.
     pub fn clear_color_image<'a, I, V>(self, image: &Arc<I>, color: V)
-                                       -> PrimaryCommandBufferBuilder
+                                       -> PrimaryCommandBufferBuilder<P>
         where I: ImageClearValue<V> + 'static
     {
         unsafe {
@@ -201,8 +205,10 @@ impl PrimaryCommandBufferBuilder {
 
     /// Executes secondary compute command buffers within this primary command buffer.
     #[inline]
-    pub fn execute_commands(self, cb: &Arc<SecondaryComputeCommandBuffer>)
-                            -> PrimaryCommandBufferBuilder
+    pub fn execute_commands<S>(self, cb: &Arc<SecondaryComputeCommandBuffer<S>>)
+                               -> PrimaryCommandBufferBuilder<P>
+        where S: CommandPool + 'static,
+              S::Finished: Send + Sync + 'static,
     {
         unsafe {
             PrimaryCommandBufferBuilder {
@@ -214,7 +220,7 @@ impl PrimaryCommandBufferBuilder {
     /// Executes a compute pipeline.
     #[inline]
     pub fn dispatch<Pl, L, Pc>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
-                           dimensions: [u32; 3], push_constants: &Pc) -> PrimaryCommandBufferBuilder
+                           dimensions: [u32; 3], push_constants: &Pc) -> PrimaryCommandBufferBuilder<P>
         where L: 'static + DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync,
               Pc: 'static + Clone + Send + Sync
@@ -239,7 +245,7 @@ impl PrimaryCommandBufferBuilder {
     #[inline]
     pub fn draw_inline<R, F, C>(self, renderpass: &Arc<R>,
                                 framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
-                                -> PrimaryCommandBufferBuilderInlineDraw
+                                -> PrimaryCommandBufferBuilderInlineDraw<P>
         where F: RenderPass + RenderPassDesc + RenderPassClearValues<C> + 'static,
               R: RenderPass + RenderPassDesc + 'static
     {
@@ -273,7 +279,7 @@ impl PrimaryCommandBufferBuilder {
     #[inline]
     pub fn draw_secondary<R, F, C>(self, renderpass: &Arc<R>,
                                    framebuffer: &Arc<Framebuffer<F>>, clear_values: C)
-                                   -> PrimaryCommandBufferBuilderSecondaryDraw
+                                   -> PrimaryCommandBufferBuilderSecondaryDraw<P>
         where F: RenderPass + RenderPassDesc + RenderPassClearValues<C> + 'static,
               R: RenderPass + RenderPassDesc + 'static
     {
@@ -295,7 +301,7 @@ impl PrimaryCommandBufferBuilder {
 
     /// See the docs of build().
     #[inline]
-    pub fn build_raw(self) -> Result<PrimaryCommandBuffer, OomError> {
+    pub fn build_raw(self) -> Result<PrimaryCommandBuffer<P>, OomError> {
         let inner = try!(self.inner.build());
         Ok(PrimaryCommandBuffer { inner: inner })
     }
@@ -307,24 +313,26 @@ impl PrimaryCommandBufferBuilder {
     /// - Panicks if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn build(self) -> Arc<PrimaryCommandBuffer> {
+    pub fn build(self) -> Arc<PrimaryCommandBuffer<P>> {
         Arc::new(self.build_raw().unwrap())
     }
 }
 
 /// Object that you obtain when calling `draw_inline` or `next_subpass_inline`.
-pub struct PrimaryCommandBufferBuilderInlineDraw {
-    inner: InnerCommandBufferBuilder,
+pub struct PrimaryCommandBufferBuilderInlineDraw<P = Arc<StandardCommandPool>>
+    where P: CommandPool
+{
+    inner: InnerCommandBufferBuilder<P>,
     current_subpass: u32,
     num_subpasses: u32,
 }
 
-impl PrimaryCommandBufferBuilderInlineDraw {
+impl<P> PrimaryCommandBufferBuilderInlineDraw<P> where P: CommandPool {
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
     pub fn draw<V, L, Pv, Pl, Rp, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
-                              -> PrimaryCommandBufferBuilderInlineDraw
+                              -> PrimaryCommandBufferBuilderInlineDraw<P>
         where Pv: VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync, Rp: 'static + Send + Sync,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
     {
@@ -342,7 +350,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// Calls `vkCmdDrawIndexed`.
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
-                                              sets: L, push_constants: &Pc) -> PrimaryCommandBufferBuilderInlineDraw
+                                              sets: L, push_constants: &Pc) -> PrimaryCommandBufferBuilderInlineDraw<P>
         where Pv: 'static + VertexSource<V> + Send + Sync, Pl: 'static + PipelineLayout + Send + Sync, Rp: 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static + Send + Sync,
               L: DescriptorSetsCollection + Send + Sync, Pc: 'static + Clone + Send + Sync
@@ -367,7 +375,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// - Panicks if no more subpasses remain.
     ///
     #[inline]
-    pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw {
+    pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw<P> {
         assert!(self.current_subpass + 1 < self.num_subpasses);
 
         unsafe {
@@ -390,7 +398,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// - Panicks if no more subpasses remain.
     ///
     #[inline]
-    pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw {
+    pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw<P> {
         assert!(self.current_subpass + 1 < self.num_subpasses);
 
         unsafe {
@@ -411,7 +419,7 @@ impl PrimaryCommandBufferBuilderInlineDraw {
     /// - Panicks if not at the last subpass.
     ///
     #[inline]
-    pub fn draw_end(self) -> PrimaryCommandBufferBuilder {
+    pub fn draw_end(self) -> PrimaryCommandBufferBuilder<P> {
         assert!(self.current_subpass + 1 == self.num_subpasses);
 
         unsafe {
@@ -424,13 +432,15 @@ impl PrimaryCommandBufferBuilderInlineDraw {
 }
 
 /// Object that you obtain when calling `draw_secondary` or `next_subpass_secondary`.
-pub struct PrimaryCommandBufferBuilderSecondaryDraw {
-    inner: InnerCommandBufferBuilder,
+pub struct PrimaryCommandBufferBuilderSecondaryDraw<P = Arc<StandardCommandPool>>
+    where P: CommandPool
+{
+    inner: InnerCommandBufferBuilder<P>,
     current_subpass: u32,
     num_subpasses: u32,
 }
 
-impl PrimaryCommandBufferBuilderSecondaryDraw {
+impl<P> PrimaryCommandBufferBuilderSecondaryDraw<P> where P: CommandPool {
     /// Switches to the next subpass of the current renderpass.
     ///
     /// This function is similar to `draw_inline` on the builder.
@@ -440,7 +450,7 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if no more subpasses remain.
     ///
     #[inline]
-    pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw {
+    pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw<P> {
         assert!(self.current_subpass + 1 < self.num_subpasses);
 
         unsafe {
@@ -463,7 +473,7 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if no more subpasses remain.
     ///
     #[inline]
-    pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw {
+    pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw<P> {
         assert!(self.current_subpass + 1 < self.num_subpasses);
 
         unsafe {
@@ -484,9 +494,11 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if the secondary command buffers wasn't created with a compatible
     ///   renderpass or is using the wrong subpass.
     #[inline]
-    pub fn execute_commands<R>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R>>)
-                               -> PrimaryCommandBufferBuilderSecondaryDraw
-        where R: 'static + Send + Sync
+    pub fn execute_commands<R, Ps>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R, Ps>>)
+                                   -> PrimaryCommandBufferBuilderSecondaryDraw<P>
+        where R: 'static + Send + Sync,
+              Ps: CommandPool + 'static,
+              Ps::Finished: Send + Sync + 'static,
     {
         // FIXME: check renderpass, subpass and framebuffer
 
@@ -503,7 +515,7 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
     /// - Panicks if not at the last subpass.
     ///
     #[inline]
-    pub fn draw_end(self) -> PrimaryCommandBufferBuilder {
+    pub fn draw_end(self) -> PrimaryCommandBufferBuilder<P> {
         assert!(self.current_subpass + 1 == self.num_subpasses);
 
         unsafe {
@@ -518,8 +530,8 @@ impl PrimaryCommandBufferBuilderSecondaryDraw {
 /// Represents a collection of commands to be executed by the GPU.
 ///
 /// A primary command buffer can contain any command.
-pub struct PrimaryCommandBuffer {
-    inner: InnerCommandBuffer,
+pub struct PrimaryCommandBuffer<P = Arc<StandardCommandPool>> where P: CommandPool {
+    inner: InnerCommandBuffer<P>,
 }
 
 /// Submits the command buffer to a queue so that it is executed.
@@ -532,28 +544,55 @@ pub struct PrimaryCommandBuffer {
 /// - Panicks if the queue doesn't belong to the family the pool was created with.
 ///
 #[inline]
-pub fn submit(cmd: &Arc<PrimaryCommandBuffer>, queue: &Arc<Queue>)
-              -> Result<Arc<Submission>, OomError>
+pub fn submit<P>(cmd: &Arc<PrimaryCommandBuffer<P>>, queue: &Arc<Queue>)
+                 -> Result<Arc<Submission>, OomError>
+    where P: CommandPool + 'static,
+          P::Finished: Send + Sync + 'static
 {       // TODO: wrong error type
     inner_submit(&cmd.inner, cmd.clone() as Arc<_>, queue)
 }
 
 /// A prototype of a secondary compute command buffer.
-pub struct SecondaryGraphicsCommandBufferBuilder<R> {
-    inner: InnerCommandBufferBuilder,
+pub struct SecondaryGraphicsCommandBufferBuilder<R, P = Arc<StandardCommandPool>>
+    where P: CommandPool
+{
+    inner: InnerCommandBufferBuilder<P>,
     render_pass: Arc<R>,
     render_pass_subpass: u32,
     framebuffer: Option<Arc<Framebuffer<R>>>,
 }
 
-impl<R> SecondaryGraphicsCommandBufferBuilder<R>
+impl<R> SecondaryGraphicsCommandBufferBuilder<R, Arc<StandardCommandPool>>
     where R: RenderPass + RenderPassDesc + 'static
+{
+    /// Builds a new secondary command buffer and start recording commands in it.
+    ///
+    /// The `framebuffer` parameter is optional and can be used as an optimisation.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if the device or host ran out of memory.
+    /// - Panicks if the device and queue family do not belong to the same physical device.
+    ///
+    #[inline]
+    pub fn new(device: &Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>,
+               framebuffer: Option<&Arc<Framebuffer<R>>>)
+               -> SecondaryGraphicsCommandBufferBuilder<R, Arc<StandardCommandPool>>
+        where R: 'static + Send + Sync
+    {
+        SecondaryGraphicsCommandBufferBuilder::raw(Device::standard_command_pool(device,
+                                                   queue_family), subpass, framebuffer).unwrap()
+    }
+}
+
+impl<R, P> SecondaryGraphicsCommandBufferBuilder<R, P>
+    where R: RenderPass + RenderPassDesc + 'static,
+          P: CommandPool
 {
     /// See the docs of new().
     #[inline]
-    pub fn raw(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
-               framebuffer: Option<&Arc<Framebuffer<R>>>)
-               -> Result<SecondaryGraphicsCommandBufferBuilder<R>, OomError>
+    pub fn raw(pool: P, subpass: Subpass<R>, framebuffer: Option<&Arc<Framebuffer<R>>>)
+               -> Result<SecondaryGraphicsCommandBufferBuilder<R, P>, OomError>
         where R: 'static + Send + Sync
     {
         let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone()));
@@ -565,28 +604,11 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
         })
     }
 
-    /// Builds a new secondary command buffer and start recording commands in it.
-    ///
-    /// The `framebuffer` parameter is optional and can be used as an optimisation.
-    ///
-    /// # Panic
-    ///
-    /// - Panicks if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>, subpass: Subpass<R>,
-               framebuffer: Option<&Arc<Framebuffer<R>>>)
-               -> SecondaryGraphicsCommandBufferBuilder<R>
-        where R: 'static + Send + Sync
-    {
-        SecondaryGraphicsCommandBufferBuilder::raw(pool, subpass, framebuffer).unwrap()
-    }
-
     /// Calls `vkCmdDraw`.
     // FIXME: push constants
     pub fn draw<V, L, Pv, Pl, Rp, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                               vertices: V, dynamic: &DynamicState, sets: L, push_constants: &Pc)
-                              -> SecondaryGraphicsCommandBufferBuilder<R>
+                              -> SecondaryGraphicsCommandBufferBuilder<R, P>
         where Pv: VertexSource<V> + 'static, Pl: PipelineLayout + 'static + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync, L: DescriptorSetsCollection + Send + Sync,
               R: RenderPassCompatible<Rp>, Pc: 'static + Clone + Send + Sync
@@ -607,7 +629,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     /// Calls `vkCmdDrawIndexed`.
     pub fn draw_indexed<'a, V, L, Pv, Pl, Rp, I, Ib, Ibb, Pc>(self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                                               vertices: V, indices: Ib, dynamic: &DynamicState,
-                                              sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
+                                              sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R, P>
         where Pv: 'static + VertexSource<V>, Pl: 'static + PipelineLayout + Send + Sync,
               Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Ib: Into<BufferSlice<'a, [I], Ibb>>, I: 'static + Index, Ibb: Buffer + 'static,
@@ -629,7 +651,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     /// Calls `vkCmdDrawIndirect`.
     pub fn draw_indirect<I, V, Pv, Pl, L, Rp, Pc>(self, buffer: &Arc<I>, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Rp>>,
                              vertices: V, dynamic: &DynamicState,
-                             sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R>
+                             sets: L, push_constants: &Pc) -> SecondaryGraphicsCommandBufferBuilder<R, P>
         where Pv: 'static + VertexSource<V>, L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync, Rp: RenderPass + RenderPassDesc + 'static + Send + Sync,
               Pc: 'static + Clone + Send + Sync,
@@ -650,7 +672,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 
     /// See the docs of build().
     #[inline]
-    pub fn build_raw(self) -> Result<SecondaryGraphicsCommandBuffer<R>, OomError> {
+    pub fn build_raw(self) -> Result<SecondaryGraphicsCommandBuffer<R, P>, OomError> {
         let inner = try!(self.inner.build());
 
         Ok(SecondaryGraphicsCommandBuffer {
@@ -667,7 +689,7 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
     /// - Panicks if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn build(self) -> Arc<SecondaryGraphicsCommandBuffer<R>> {
+    pub fn build(self) -> Arc<SecondaryGraphicsCommandBuffer<R, P>> {
         Arc::new(self.build_raw().unwrap())
     }
 }
@@ -679,38 +701,40 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R>
 /// a primary command buffer, specify a framebuffer, and then call the secondary command buffer.
 ///
 /// A secondary graphics command buffer can't be called outside of a renderpass.
-pub struct SecondaryGraphicsCommandBuffer<R> {
-    inner: InnerCommandBuffer,
+pub struct SecondaryGraphicsCommandBuffer<R, P = Arc<StandardCommandPool>> where P: CommandPool {
+    inner: InnerCommandBuffer<P>,
     render_pass: Arc<R>,
     render_pass_subpass: u32,
 }
 
 /// A prototype of a secondary compute command buffer.
-pub struct SecondaryComputeCommandBufferBuilder {
-    inner: InnerCommandBufferBuilder,
+pub struct SecondaryComputeCommandBufferBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
+    inner: InnerCommandBufferBuilder<P>,
 }
 
-impl SecondaryComputeCommandBufferBuilder {
-    /// See the docs of new().
-    #[inline]
-    pub fn raw(pool: &Arc<CommandBufferPool>)
-               -> Result<SecondaryComputeCommandBufferBuilder, OomError>
-    {
-        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None));
-        Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
-    }
-
+impl SecondaryComputeCommandBufferBuilder<Arc<StandardCommandPool>> {
     /// Builds a new secondary command buffer and start recording commands in it.
     ///
     /// # Panic
     ///
     /// - Panicks if the device or host ran out of memory.
+    /// - Panicks if the device and queue family do not belong to the same physical device.
     ///
     #[inline]
-    pub fn new(pool: &Arc<CommandBufferPool>)
-               -> SecondaryComputeCommandBufferBuilder
+    pub fn new(device: &Arc<Device>, queue_family: QueueFamily)
+               -> SecondaryComputeCommandBufferBuilder<Arc<StandardCommandPool>>
     {
-        SecondaryComputeCommandBufferBuilder::raw(pool).unwrap()
+        SecondaryComputeCommandBufferBuilder::raw(Device::standard_command_pool(device,
+                                                  queue_family)).unwrap()
+    }
+}
+
+impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
+    /// See the docs of new().
+    #[inline]
+    pub fn raw(pool: P) -> Result<SecondaryComputeCommandBufferBuilder<P>, OomError> {
+        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None));
+        Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
     }
 
     /// Writes data to a buffer.
@@ -728,7 +752,7 @@ impl SecondaryComputeCommandBufferBuilder {
     /// - Panicks if the queue family doesn't support transfer operations.
     ///
     #[inline]
-    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder
+    pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder<P>
         where B: Into<BufferSlice<'a, T, Bb>>, Bb: Buffer + 'static, T: Clone + 'static + Send + Sync
     {
         unsafe {
@@ -754,7 +778,7 @@ impl SecondaryComputeCommandBufferBuilder {
     ///
     /// - Type safety is not enforced by the API.
     pub unsafe fn fill_buffer<B>(self, buffer: &Arc<B>, offset: usize, size: usize, data: u32)
-                                 -> SecondaryComputeCommandBufferBuilder
+                                 -> SecondaryComputeCommandBufferBuilder<P>
         where B: Buffer + 'static
     {
         SecondaryComputeCommandBufferBuilder {
@@ -764,7 +788,7 @@ impl SecondaryComputeCommandBufferBuilder {
 
     /// See the docs of build().
     #[inline]
-    pub fn build_raw(self) -> Result<SecondaryComputeCommandBuffer, OomError> {
+    pub fn build_raw(self) -> Result<SecondaryComputeCommandBuffer<P>, OomError> {
         let inner = try!(self.inner.build());
         Ok(SecondaryComputeCommandBuffer { inner: inner })
     }
@@ -776,7 +800,7 @@ impl SecondaryComputeCommandBufferBuilder {
     /// - Panicks if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn build(self) -> Arc<SecondaryComputeCommandBuffer> {
+    pub fn build(self) -> Arc<SecondaryComputeCommandBuffer<P>> {
         Arc::new(self.build_raw().unwrap())
     }
 }
@@ -785,8 +809,10 @@ impl SecondaryComputeCommandBufferBuilder {
 ///
 /// A secondary compute command buffer contains non-draw commands (like copy commands, compute
 /// shader execution, etc.). It can only be called outside of a renderpass.
-pub struct SecondaryComputeCommandBuffer {
-    inner: InnerCommandBuffer,
+pub struct SecondaryComputeCommandBuffer<P = Arc<StandardCommandPool>>
+    where P: CommandPool
+{
+    inner: InnerCommandBuffer<P>,
 }
 
 /// The dynamic state to use for a draw command.
