@@ -12,6 +12,7 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
@@ -30,8 +31,14 @@ use vk;
 
 /// Defines the layout of multiple subpasses.
 pub struct UnsafeRenderPass {
+    // The internal Vulkan object.
     renderpass: vk::RenderPass,
+
+    // Device this render pass was created from.
     device: Arc<Device>,
+
+    // Cache of the granularity of the render pass.
+    granularity: Mutex<Option<[u32; 2]>>,
 }
 
 impl UnsafeRenderPass {
@@ -263,7 +270,32 @@ impl UnsafeRenderPass {
         Ok(UnsafeRenderPass {
             device: device.clone(),
             renderpass: renderpass,
+            granularity: Mutex::new(None),
         })
+    }
+
+    /// Returns the granularity of this render pass.
+    ///
+    /// If the render area of a render pass in a command buffer is a multiple of this granularity,
+    /// then the performances will be optimal. Performances are always optimal for render areas
+    /// that cover the whole framebuffer.
+    pub fn granularity(&self) -> [u32; 2] {
+        let mut granularity = self.granularity.lock().unwrap();
+
+        if let Some(&granularity) = granularity.as_ref() {
+            return granularity;
+        }
+
+        unsafe {
+            let vk = self.device.pointers();
+            let mut out = mem::uninitialized();
+            vk.GetRenderAreaGranularity(self.device.internal_object(),
+                                        self.renderpass, &mut out);
+
+            let gran = [out.width, out.height];
+            *granularity = Some(gran);
+            gran
+        }
     }
 
     /// Returns the device that was used to create this render pass.
