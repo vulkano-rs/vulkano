@@ -27,7 +27,17 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
     let capitalized_ep_name: String = ep_name.chars().take(1).flat_map(|c| c.to_uppercase())
                                              .chain(ep_name.chars().skip(1)).collect();
 
-    let interface_structs = write_interface_structs(doc, &capitalized_ep_name, interface);
+    let interface_structs = write_interface_structs(doc, &capitalized_ep_name, interface,
+                                                    match *execution {
+                                                        enums::ExecutionModel::ExecutionModelTessellationControl => true,
+                                                        enums::ExecutionModel::ExecutionModelTessellationEvaluation => true,
+                                                        enums::ExecutionModel::ExecutionModelGeometry => true,
+                                                        _ => false
+                                                    },
+                                                    match *execution {
+                                                        enums::ExecutionModel::ExecutionModelTessellationControl => true,
+                                                        _ => false,
+                                                    });
 
     let (ty, f_call) = match *execution {
         enums::ExecutionModel::ExecutionModelVertex => {
@@ -86,7 +96,8 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
     (interface_structs, entry_point)
 }
 
-fn write_interface_structs(doc: &parse::Spirv, capitalized_ep_name: &str, interface: &[u32])
+fn write_interface_structs(doc: &parse::Spirv, capitalized_ep_name: &str, interface: &[u32],
+                           ignore_first_array_in: bool, ignore_first_array_out: bool)
                            -> String
 {
     let mut input_elements = Vec::new();
@@ -107,9 +118,9 @@ fn write_interface_structs(doc: &parse::Spirv, capitalized_ep_name: &str, interf
                         continue;
                     }
 
-                    let to_write = match storage_class {
-                        &enums::StorageClass::StorageClassInput => &mut input_elements,
-                        &enums::StorageClass::StorageClassOutput => &mut output_elements,
+                    let (to_write, ignore_first_array) = match storage_class {
+                        &enums::StorageClass::StorageClassInput => (&mut input_elements, ignore_first_array_in),
+                        &enums::StorageClass::StorageClassOutput => (&mut output_elements, ignore_first_array_out),
                         _ => continue
                     };
 
@@ -121,7 +132,7 @@ fn write_interface_structs(doc: &parse::Spirv, capitalized_ep_name: &str, interf
                         None => panic!("Attribute `{}` (id {}) is missing a location", name, result_id)
                     };
 
-                    to_write.push((loc, name, format_from_id(doc, result_type_id)));
+                    to_write.push((loc, name, format_from_id(doc, result_type_id, ignore_first_array)));
                 },
                 _ => ()
             }
