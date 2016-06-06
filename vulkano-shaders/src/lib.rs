@@ -369,6 +369,37 @@ fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
             {
                 return true;
             },
+            parse::Instruction::MemberDecorate { target_id,
+                                                 decoration: enums::Decoration::DecorationBuiltIn,
+                                                 .. } if target_id == id =>
+            {
+                return true;
+            },
+            _ => ()
+        }
+    }
+
+    for instruction in &doc.instructions {
+        match *instruction {
+            parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. }
+                                         if result_id == id =>
+            {
+                return is_builtin(doc, result_type_id);
+            },
+            parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == id => {
+                for &mem in member_types {
+                    if is_builtin(doc, mem) { return true; }
+                }
+            },
+            parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
             _ => ()
         }
     }

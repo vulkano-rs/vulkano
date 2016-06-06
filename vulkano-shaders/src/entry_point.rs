@@ -114,10 +114,6 @@ fn write_interface_structs(doc: &parse::Spirv, capitalized_ep_name: &str, interf
                         continue;
                     }
 
-                    if is_builtin(doc, result_type_id) {
-                        continue;
-                    }
-
                     let (to_write, ignore_first_array) = match storage_class {
                         &enums::StorageClass::StorageClassInput => (&mut input_elements, ignore_first_array_in),
                         &enums::StorageClass::StorageClassOutput => (&mut output_elements, ignore_first_array_out),
