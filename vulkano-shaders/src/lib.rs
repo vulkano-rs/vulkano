@@ -189,17 +189,24 @@ impl From<ParseError> for Error {
 }
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
-fn format_from_id(doc: &parse::Spirv, searched: u32) -> (String, usize) {
+///
+/// If `ignore_first_array` is true, the function expects the outermost instruction to be
+/// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
+/// panic.
+fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -> (String, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
+                assert!(!ignore_first_array);
                 return ("R32Sint".to_owned(), 1);
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
+                assert!(!ignore_first_array);
                 return ("R32Sfloat".to_owned(), 1);
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
-                let (format, sz) = format_from_id(doc, component_id);
+                assert!(!ignore_first_array);
+                let (format, sz) = format_from_id(doc, component_id, false);
                 assert!(format.starts_with("R32"));
                 assert_eq!(sz, 1);
                 let format = if count == 1 {
@@ -216,11 +223,16 @@ fn format_from_id(doc: &parse::Spirv, searched: u32) -> (String, usize) {
                 return (format, sz);
             },
             &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
-                let (format, sz) = format_from_id(doc, column_type_id);
+                assert!(!ignore_first_array);
+                let (format, sz) = format_from_id(doc, column_type_id, false);
                 return (format, sz * column_count as usize);
             },
             &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
-                let (format, sz) = format_from_id(doc, type_id);
+                if ignore_first_array {
+                    return format_from_id(doc, type_id, false);
+                }
+
+                let (format, sz) = format_from_id(doc, type_id, false);
                 let len = doc.instructions.iter().filter_map(|e| {
                     match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
                 }).next().expect("failed to find array length");
@@ -228,7 +240,7 @@ fn format_from_id(doc: &parse::Spirv, searched: u32) -> (String, usize) {
                 return (format, sz * len as usize);
             },
             &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
-                return format_from_id(doc, type_id);
+                return format_from_id(doc, type_id, ignore_first_array);
             },
             _ => ()
         }
@@ -356,6 +368,37 @@ fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
                                            .. } if target_id == id =>
             {
                 return true;
+            },
+            parse::Instruction::MemberDecorate { target_id,
+                                                 decoration: enums::Decoration::DecorationBuiltIn,
+                                                 .. } if target_id == id =>
+            {
+                return true;
+            },
+            _ => ()
+        }
+    }
+
+    for instruction in &doc.instructions {
+        match *instruction {
+            parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. }
+                                         if result_id == id =>
+            {
+                return is_builtin(doc, result_type_id);
+            },
+            parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == id => {
+                for &mem in member_types {
+                    if is_builtin(doc, mem) { return true; }
+                }
+            },
+            parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
             },
             _ => ()
         }
