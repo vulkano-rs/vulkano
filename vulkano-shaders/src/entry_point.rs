@@ -139,8 +139,9 @@ fn write_interface_struct(struct_name: &str, attributes: &[(u32, String, (String
             if loc == loc2 || (loc < loc2 && loc + loc_len as u32 > loc2) ||
                (loc2 < loc && loc2 + loc_len2 as u32 > loc)
             {
-                panic!("The locations of attributes `{}` and `{}` overlap",
-                       name, name2);
+                panic!("The locations of attributes `{}` (start={}, size={}) \
+                        and `{}` (start={}, size={}) overlap",
+                        name, loc, loc_len, name2, loc2, loc_len2);
             }
         }
     }
