@@ -35,7 +35,56 @@ pub struct Sampler {
 // TODO: what's the story with VK_KHR_mirror_clamp_to_edge? Is it an extension or is it core?
 
 impl Sampler {
+    /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
+    /// mode for borders.
+    ///
+    /// Useful for prototyping, but can also be used in real projects.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if out of memory or the maximum number of samplers has exceeded.
+    ///
+    #[inline]
+    pub fn simple_repeat_linear(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(device, Filter::Linear, Filter::Linear, MipmapMode::Linear,
+                     SamplerAddressMode::Repeat, SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat, 0.0, 1.0, 0.0, 1_000.0).unwrap()
+    }
+
+    /// Shortcut for creating a sampler with linear sampling, that only uses the main level of
+    /// images, and with the repeat mode for borders.
+    ///
+    /// Useful for prototyping, but can also be used in real projects.
+    ///
+    /// # Panic
+    ///
+    /// - Panicks if out of memory or the maximum number of samplers has exceeded.
+    ///
+    #[inline]
+    pub fn simple_repeat_linear_no_mipmap(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(device, Filter::Linear, Filter::Linear, MipmapMode::Nearest,
+                     SamplerAddressMode::Repeat, SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat, 0.0, 1.0, 0.0, 1.0).unwrap()
+    }
+
     /// Creates a new `Sampler` with the given behavior.
+    ///
+    /// `mag_filter` and `min_filter` define how the implementation should sample from the image
+    /// when it is respectively larger and smaller than the original.
+    ///
+    /// `mipmap_mode` defines how the implementation should choose which mipmap to use.
+    ///
+    /// `address_u`, `address_v` and `address_w` define how the implementation should behave when
+    /// sampling outside of the texture coordinates range `[0.0, 1.0]`.
+    ///
+    /// `mip_lod_bias` is a value to add to .
+    ///
+    /// `max_anisotropy` must be superior or equal to 1.0. If superior to 1.0, the implementation
+    /// will use anistropic filtering. Using a value superior to 1.0 requires the
+    /// `sampler_anisotropy` feature to be enabled when creating the device.
+    ///
+    /// `min_lod` and `max_lod` are respectively the minimum and maximum mipmap level to use.
+    /// `max_lod` must always be superior or equal to `min_lod`.
     ///
     /// # Panic
     ///
@@ -316,6 +365,18 @@ mod tests {
                                                sampler::UnnormalizedSamplerAddressMode::ClampToEdge,
                                                sampler::UnnormalizedSamplerAddressMode::ClampToEdge)
                                                .unwrap();
+    }
+
+    #[test]
+    fn simple_repeat_linear() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let _ = sampler::Sampler::simple_repeat_linear(&device);
+    }
+
+    #[test]
+    fn simple_repeat_linear_no_mipmap() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let _ = sampler::Sampler::simple_repeat_linear_no_mipmap(&device);
     }
 
     #[test]
