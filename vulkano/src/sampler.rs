@@ -8,10 +8,25 @@
 // according to those terms.
 
 //! How to retreive data from an image within a shader.
-//! 
-//! This module contains a struct named `Sampler` which describes how to get pixel data from
-//! a texture.
 //!
+//! Sampling is a very complex topic but that hasn't changed much since the beginnings of 3D
+//! rendering. Documentation here is missing, but any tutorial about OpenGL or DirectX can teach
+//! you how it works.
+//!
+//! # About border colors
+//!
+//! One of the possible values of `SamplerAddressMode` and `UnnormalizedSamplerAddressMode` is
+//! `ClampToBorder`. This value indicates that accessing an image outside of its range must return
+//! the specified color.
+//!
+//! However this comes with restrictions. When using a floating-point border color, the sampler can
+//! only be used with floating-point or depth image views. When using an integer border color, the
+//! sampler can only be used with integer or stencil image views. In addition to this, you can't
+//! use a black border color with an image view that uses components swizzling.
+//!
+//! Samplers that don't use `ClampToBorder` are not concerned by these restrictions.
+//!
+// FIXME: restrictions aren't checked yet
 use std::error;
 use std::fmt;
 use std::mem;
@@ -30,6 +45,9 @@ use vk;
 pub struct Sampler {
     sampler: vk::Sampler,
     device: Arc<Device>,
+    usable_with_float_formats: bool,
+    usable_with_int_formats: bool,
+    usable_with_swizzling: bool,
 }
 
 // TODO: what's the story with VK_KHR_mirror_clamp_to_edge? Is it an extension or is it core?
@@ -88,6 +106,7 @@ impl Sampler {
     ///
     /// # Panic
     ///
+    /// - Panicks if multiple `ClampToBorder` values are passed and the border color is different.
     /// - Panicks if `max_anisotropy < 1.0`.
     /// - Panicks if `min_lod > max_lod`.
     ///
@@ -100,6 +119,7 @@ impl Sampler {
         assert!(max_anisotropy >= 1.0);
         assert!(min_lod <= max_lod);
 
+        // Check max anisotropy.
         if max_anisotropy > 1.0 {
             if !device.enabled_features().sampler_anisotropy {
                 return Err(SamplerCreationError::SamplerAnisotropyFeatureNotEnabled);
@@ -114,6 +134,7 @@ impl Sampler {
             }
         }
 
+        // Check mip_lod_bias value.
         {
             let limit = device.physical_device().limits().max_sampler_lod_bias();
             if mip_lod_bias > limit {
@@ -124,8 +145,20 @@ impl Sampler {
             }
         }
 
-        let vk = device.pointers();
+        // Handling border color.
+        let border_color = address_u.border_color();
+        let border_color = match (border_color, address_v.border_color()) {
+            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (None, b) => b,
+            (b, None) => b,
+        };
+        let border_color = match (border_color, address_w.border_color()) {
+            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (None, b) => b,
+            (b, None) => b,
+        };
 
+        let vk = device.pointers();
         let sampler = unsafe {
             let infos = vk::SamplerCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -134,9 +167,9 @@ impl Sampler {
                 magFilter: mag_filter as u32,
                 minFilter: min_filter as u32,
                 mipmapMode: mipmap_mode as u32,
-                addressModeU: address_u as u32,
-                addressModeV: address_v as u32,
-                addressModeW: address_w as u32,
+                addressModeU: address_u.to_vk(),
+                addressModeV: address_v.to_vk(),
+                addressModeW: address_w.to_vk(),
                 mipLodBias: mip_lod_bias,
                 anisotropyEnable: if max_anisotropy > 1.0 { vk::TRUE } else { vk::FALSE },
                 maxAnisotropy: max_anisotropy,
@@ -144,7 +177,7 @@ impl Sampler {
                 compareOp: 0,       // FIXME: 
                 minLod: min_lod,
                 maxLod: max_lod,
-                borderColor: 0,     // FIXME: 
+                borderColor: border_color.map(|b| b as u32).unwrap_or(0),
                 unnormalizedCoordinates: vk::FALSE,
             };
 
@@ -157,6 +190,25 @@ impl Sampler {
         Ok(Arc::new(Sampler {
             sampler: sampler,
             device: device.clone(),
+            usable_with_float_formats: match border_color {
+                Some(BorderColor::FloatTransparentBlack) => true,
+                Some(BorderColor::FloatOpaqueBlack) => true,
+                Some(BorderColor::FloatOpaqueWhite) => true,
+                Some(_) => false,
+                None => true,
+            },
+            usable_with_int_formats: match border_color {
+                Some(BorderColor::IntTransparentBlack) => true,
+                Some(BorderColor::IntOpaqueBlack) => true,
+                Some(BorderColor::IntOpaqueWhite) => true,
+                Some(_) => false,
+                None => true,
+            },
+            usable_with_swizzling: match border_color {
+                Some(BorderColor::FloatOpaqueBlack) => false,
+                Some(BorderColor::IntOpaqueBlack) => false,
+                _ => true,
+            },
         }))
     }
 
@@ -169,12 +221,23 @@ impl Sampler {
     /// - It can only be used with images with a single mipmap.
     /// - Projection and offsets can't be used by shaders. Only the first mipmap can be accessed.
     ///
+    /// # Panic
+    ///
+    /// - Panicks if multiple `ClampToBorder` values are passed and the border color is different.
+    ///
     pub fn unnormalized(device: &Arc<Device>, filter: Filter,
                         address_u: UnnormalizedSamplerAddressMode,
                         address_v: UnnormalizedSamplerAddressMode)
                         -> Result<Arc<Sampler>, SamplerCreationError>
     {
         let vk = device.pointers();
+
+        let border_color = address_u.border_color();
+        let border_color = match (border_color, address_v.border_color()) {
+            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (None, b) => b,
+            (b, None) => b,
+        };
 
         let sampler = unsafe {
             let infos = vk::SamplerCreateInfo {
@@ -184,8 +247,8 @@ impl Sampler {
                 magFilter: filter as u32,
                 minFilter: filter as u32,
                 mipmapMode: vk::SAMPLER_MIPMAP_MODE_NEAREST,
-                addressModeU: address_u as u32,
-                addressModeV: address_v as u32,
+                addressModeU: address_u.to_vk(),
+                addressModeV: address_v.to_vk(),
                 addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,       // unused by the impl
                 mipLodBias: 0.0,
                 anisotropyEnable: vk::FALSE,
@@ -194,7 +257,7 @@ impl Sampler {
                 compareOp: vk::COMPARE_OP_NEVER,
                 minLod: 0.0,
                 maxLod: 0.0,
-                borderColor: 0,     // FIXME: 
+                borderColor: border_color.map(|b| b as u32).unwrap_or(0),
                 unnormalizedCoordinates: vk::TRUE,
             };
 
@@ -207,7 +270,47 @@ impl Sampler {
         Ok(Arc::new(Sampler {
             sampler: sampler,
             device: device.clone(),
+            usable_with_float_formats: match border_color {
+                Some(BorderColor::FloatTransparentBlack) => true,
+                Some(BorderColor::FloatOpaqueBlack) => true,
+                Some(BorderColor::FloatOpaqueWhite) => true,
+                Some(_) => false,
+                None => true,
+            },
+            usable_with_int_formats: match border_color {
+                Some(BorderColor::IntTransparentBlack) => true,
+                Some(BorderColor::IntOpaqueBlack) => true,
+                Some(BorderColor::IntOpaqueWhite) => true,
+                Some(_) => false,
+                None => true,
+            },
+            usable_with_swizzling: match border_color {
+                Some(BorderColor::FloatOpaqueBlack) => false,
+                Some(BorderColor::IntOpaqueBlack) => false,
+                _ => true,
+            },
         }))
+    }
+
+    /// Returns true if the sampler can be used with floating-point image views. See the
+    /// documentation of the `sampler` module for more info.
+    #[inline]
+    pub fn usable_with_float_formats(&self) -> bool {
+        self.usable_with_float_formats
+    }
+
+    /// Returns true if the sampler can be used with integer image views. See the documentation of
+    /// the `sampler` module for more info.
+    #[inline]
+    pub fn usable_with_int_formats(&self) -> bool {
+        self.usable_with_int_formats
+    }
+
+    /// Returns true if the sampler can be used with image views that have non-identity swizzling.
+    /// See the documentation of the `sampler` module for more info.
+    #[inline]
+    pub fn usable_with_swizzling(&self) -> bool {
+        self.usable_with_swizzling
     }
 }
 
@@ -256,20 +359,71 @@ pub enum MipmapMode {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
 pub enum SamplerAddressMode {
-    Repeat = vk::SAMPLER_ADDRESS_MODE_REPEAT,
-    MirroredRepeat = vk::SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
-    ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-    ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-    MirrorClampToEdge = vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
+    Repeat,
+    MirroredRepeat,
+    ClampToEdge,
+    ClampToBorder(BorderColor),
+    MirrorClampToEdge,
+}
+
+impl SamplerAddressMode {
+    #[inline]
+    fn to_vk(self) -> vk::SamplerAddressMode {
+        match self {
+            SamplerAddressMode::Repeat => vk::SAMPLER_ADDRESS_MODE_REPEAT,
+            SamplerAddressMode::MirroredRepeat => vk::SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
+            SamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            SamplerAddressMode::ClampToBorder(_) => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            SamplerAddressMode::MirrorClampToEdge => vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
+        }
+    }
+
+    #[inline]
+    fn border_color(self) -> Option<BorderColor> {
+        match self {
+            SamplerAddressMode::ClampToBorder(c) => Some(c),
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum UnnormalizedSamplerAddressMode {
-    ClampToEdge = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-    ClampToBorder = vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+    ClampToEdge,
+    ClampToBorder(BorderColor),
+}
+
+impl UnnormalizedSamplerAddressMode {
+    #[inline]
+    fn to_vk(self) -> vk::SamplerAddressMode {
+        match self {
+            UnnormalizedSamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            UnnormalizedSamplerAddressMode::ClampToBorder(_) => {
+                vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+            },
+        }
+    }
+
+    #[inline]
+    fn border_color(self) -> Option<BorderColor> {
+        match self {
+            UnnormalizedSamplerAddressMode::ClampToEdge => None,
+            UnnormalizedSamplerAddressMode::ClampToBorder(c) => Some(c),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum BorderColor {
+    FloatTransparentBlack = vk::BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+    IntTransparentBlack = vk::BORDER_COLOR_INT_TRANSPARENT_BLACK,
+    FloatOpaqueBlack = vk::BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+    IntOpaqueBlack = vk::BORDER_COLOR_INT_OPAQUE_BLACK,
+    FloatOpaqueWhite = vk::BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+    IntOpaqueWhite = vk::BORDER_COLOR_INT_OPAQUE_WHITE,
 }
 
 /// Error that can happen when creating an instance.
@@ -401,6 +555,21 @@ mod tests {
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat, 1.0, 0.5, 0.0, 2.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn different_borders() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let b1 = sampler::BorderColor::IntTransparentBlack;
+        let b2 = sampler::BorderColor::FloatOpaqueWhite;
+
+        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::ClampToBorder(b1),
+                                      sampler::SamplerAddressMode::ClampToBorder(b2),
+                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0, 5.0, 2.0);
     }
 
     #[test]
