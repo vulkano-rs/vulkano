@@ -130,6 +130,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::SampledImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageBuffer;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::InputAttachment;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::ValidParameter;
@@ -339,6 +340,30 @@ unsafe impl<'a, I> ValidParameter<SampledImage> for &'a Arc<I>
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::sampled_image(binding, self)
+    }
+}
+
+pub struct StorageImage;
+unsafe impl DescriptorMarker for StorageImage {
+    #[inline]
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::Image(DescriptorImageDesc {
+            sampled: false,
+            // FIXME: correct values
+            dimensions: DescriptorImageDescDimensions::TwoDimensional,
+            multisampled: false,
+            array_layers: DescriptorImageDescArray::NonArrayed,
+            format: None,
+        })
+    }
+}
+
+unsafe impl<'a, I> ValidParameter<StorageImage> for &'a Arc<I>
+    where I: ImageView + 'static
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::storage_image(binding, self)
     }
 }
 
