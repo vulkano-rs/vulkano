@@ -38,6 +38,8 @@
 //! - `VK_KHR_win32_surface`
 //!
 
+use std::sync::atomic::AtomicBool;
+
 pub use self::surface::Capabilities;
 pub use self::surface::Surface;
 pub use self::surface::PresentMode;
@@ -52,3 +54,9 @@ pub use self::swapchain::PresentError;
 pub mod display;
 mod surface;
 mod swapchain;
+
+/// Internal trait so that creating/destroying a swapchain can access the surface's "has_swapchain"
+/// flag.
+unsafe trait SurfaceSwapchainLock {
+    fn flag(&self) -> &AtomicBool;
+}

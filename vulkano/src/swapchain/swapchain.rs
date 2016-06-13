@@ -13,6 +13,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use crossbeam::sync::MsQueue;
 
@@ -28,6 +29,7 @@ use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
+use swapchain::SurfaceSwapchainLock;
 use sync::Semaphore;
 use sync::SharingMode;
 
@@ -123,6 +125,19 @@ impl Swapchain {
         assert!(capabilities.supported_transforms.supports(transform));
         assert!(capabilities.supported_composite_alpha.supports(alpha));
         assert!(capabilities.present_modes.supports(mode));
+
+        // If we recreate a swapchain, make sure that the surface is the same.
+        if let Some(sc) = old_swapchain {
+            // TODO: return proper error instead of panicking?
+            assert_eq!(surface.internal_object(), sc.surface.internal_object());
+        }
+
+        // Checking that the surface doesn't already have a swapchain.
+        if old_swapchain.is_none() {
+            // TODO: return proper error instead of panicking?
+            let has_already = surface.flag().swap(true, Ordering::AcqRel);
+            if has_already { panic!("The surface already has a swapchain alive"); }
+        }
 
         // FIXME: check that the device and the surface belong to the same instance
         let vk = device.pointers();
@@ -331,6 +346,7 @@ impl Drop for Swapchain {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroySwapchainKHR(self.device.internal_object(), self.swapchain, ptr::null());
+            self.surface.flag().store(false, Ordering::Release);
         }
     }
 }
