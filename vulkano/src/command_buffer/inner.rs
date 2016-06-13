@@ -730,7 +730,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
     pub unsafe fn dispatch<Pl, L, Pc>(mut self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                                   dimensions: [u32; 3], push_constants: &Pc) -> InnerCommandBufferBuilder<P>
-        where L: 'static + DescriptorSetsCollection + Send + Sync,
+        where L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync,
               Pc: 'static + Clone + Send + Sync
     {
