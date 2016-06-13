@@ -20,6 +20,7 @@ use image::sys::UnsafeImageView;
 use sampler::Sampler;
 use sync::Semaphore;
 
+/// Trait for types that represent images.
 pub unsafe trait Image: 'static + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
@@ -33,6 +34,7 @@ pub unsafe trait Image: 'static + Send + Sync {
         self.inner_image().format()
     }
 
+    /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
         self.inner_image().samples()
@@ -114,6 +116,9 @@ pub unsafe trait Image: 'static + Send + Sync {
     }
 }
 
+/// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
+/// given image.
+// TODO: isn't that for image views instead?
 pub unsafe trait ImageClearValue<T>: Image {
     fn decode(&self, T) -> Option<ClearValue>;
 }
@@ -123,6 +128,7 @@ pub unsafe trait ImageContent<P>: Image {
     fn matches_format(&self) -> bool;
 }
 
+/// Trait for types that represent image views.
 pub unsafe trait ImageView: 'static + Send + Sync {
     fn parent(&self) -> &Image;
 
