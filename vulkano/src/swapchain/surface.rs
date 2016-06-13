@@ -12,12 +12,14 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use format::Format;
 use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
+use swapchain::SurfaceSwapchainLock;
 use swapchain::display::DisplayMode;
 use swapchain::display::DisplayPlane;
 
@@ -35,6 +37,10 @@ use vk;
 pub struct Surface {
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
+
+    // If true, a swapchain has been associated to this surface, and that any new swapchain
+    // creation should be forbidden.
+    has_swapchain: AtomicBool,
 }
 
 impl Surface {
@@ -124,6 +130,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -162,6 +169,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -200,6 +208,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -238,6 +247,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -277,6 +287,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -312,6 +323,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -415,6 +427,13 @@ impl Surface {
                 present_modes: modes,
             })
         }
+    }
+}
+
+unsafe impl SurfaceSwapchainLock for Surface {
+    #[inline]
+    fn flag(&self) -> &AtomicBool {
+        &self.has_swapchain
     }
 }
 
