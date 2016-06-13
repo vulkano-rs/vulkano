@@ -57,6 +57,7 @@ struct PerLayer {
 }
 
 impl<F> ImmutableImage<F> {
+    /// Builds a new immutable image.
     pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
@@ -121,6 +122,7 @@ impl<F> ImmutableImage<F> {
 }
 
 impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
+    /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
         self.image.dimensions()

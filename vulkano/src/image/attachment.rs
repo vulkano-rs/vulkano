@@ -7,33 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Image whose purpose is to be used as a framebuffer attachment.
-//! 
-//! This module declares the `AttachmentImage` type. It is a safe wrapper around `UnsafeImage`
-//! and implements all the relevant image traits.
-//! 
-//! The image is always two-dimensional and has only one mipmap, but it can have any kind of
-//! format. Trying to use a format that the backend doesn't support for rendering will result in
-//! an error being returned when creating the image. Once you have an `AttachmentImage`, you are
-//! guaranteed that you will be able to draw on it.
-//! 
-//! The template parameter of `AttachmentImage` is a type that describes the format of the image.
-//! 
-//! # Regular vs transient
-//! 
-//! Calling `AttachmentImage::new` will create a regular image, while calling
-//! `AttachmentImage::transient` will create a *transient* image.
-//! 
-//! A transient image is a special kind of image whose content is undefined outside of render
-//! passes. Once you finish drawing, you can't read from it anymore.
-//! 
-//! This gives a hint to the Vulkan implementation that it is possible for the image's content to
-//! live exclusively in some cache memory, and that no real memory has to be allocated for it.
-//! 
-//! In other words, if you are going to read from the image after drawing to it, use a regular
-//! image. If you don't need to read from it (for example if it's some kind of intermediary color,
-//! or a depth buffer that is only used once) then use a transient image.
-//!
 use std::mem;
 use std::iter::Empty;
 use std::ops::Range;
@@ -66,6 +39,34 @@ use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 /// Image whose purpose is to be used as a framebuffer attachment.
+///
+/// The image is always two-dimensional and has only one mipmap, but it can have any kind of
+/// format. Trying to use a format that the backend doesn't support for rendering will result in
+/// an error being returned when creating the image. Once you have an `AttachmentImage`, you are
+/// guaranteed that you will be able to draw on it.
+///
+/// The template parameter of `AttachmentImage` is a type that describes the format of the image.
+///
+/// # Regular vs transient
+///
+/// Calling `AttachmentImage::new` will create a regular image, while calling
+/// `AttachmentImage::transient` will create a *transient* image. Transient image are only
+/// relevant for images that serve as attachments, so `AttachmentImage` is the only type of
+/// image in vulkano that provides a shortcut for this.
+///
+/// A transient image is a special kind of image whose content is undefined outside of render
+/// passes. Once you finish drawing, reading from it will returned undefined data (which can be
+/// either valid or garbage, depending on the implementation).
+///
+/// This gives a hint to the Vulkan implementation that it is possible for the image's content to
+/// live exclusively in some cache memory, and that no real memory has to be allocated for it.
+///
+/// In other words, if you are going to read from the image after drawing to it, use a regular
+/// image. If you don't need to read from it (for example if it's some kind of intermediary color,
+/// or a depth buffer that is only used once) then use a transient image as it may improve
+/// performances.
+///
+// TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
 pub struct AttachmentImage<F, A = StdMemoryPool> where A: MemoryPool {
     // Inner implementation.
@@ -81,7 +82,7 @@ pub struct AttachmentImage<F, A = StdMemoryPool> where A: MemoryPool {
     format: F,
 
     // Layout to use when the image is used as a framebuffer attachment.
-    // Should be either "depth-stencil optimal" or "color optimal".
+    // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
 
     // Additional info behind a mutex.
@@ -106,14 +107,14 @@ impl<F> AttachmentImage<F> {
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        let usage = Usage {
+        let base_usage = Usage {
             transfer_source: true,
             transfer_dest: true,
             sampled: true,
             .. Usage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, usage)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage)
     }
 
     /// Same as `new`, except that the image will be transient.
@@ -124,15 +125,15 @@ impl<F> AttachmentImage<F> {
                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        let usage = Usage {
+        let base_usage = Usage {
             transient_attachment: true,
             .. Usage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, usage)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage)
     }
 
-    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: Usage)
+    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: Usage)
                 -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -147,7 +148,7 @@ impl<F> AttachmentImage<F> {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            .. usage
+            .. base_usage
         };
 
         let (image, mem_reqs) = unsafe {
@@ -238,7 +239,8 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
     {
         let mut guarded = self.guarded.lock().unwrap();
 
-        let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
+        let dependency = mem::replace(&mut guarded.latest_submission,
+                                      Some(Arc::downgrade(submission)));
         let dependency = dependency.and_then(|d| d.upgrade());
 
         let transition = if !guarded.correct_layout {

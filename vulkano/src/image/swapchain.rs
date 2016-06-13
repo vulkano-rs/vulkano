@@ -29,6 +29,19 @@ use sync::Semaphore;
 
 use OomError;
 
+/// An image that is part of a swapchain.
+///
+/// Creating a `SwapchainImage` is automatically done when creating a swapchain.
+///
+/// A swapchain image is special in the sense that it can only be used after being acquired by
+/// calling the `acquire` method on the swapchain. You have no way to know in advance which
+/// swapchain image is going to be acquired, so you should keep all of them alive.
+///
+/// After a swapchain image has been acquired, you are free to perform all the usual operations
+/// on it. When you are done you can then *present* the image (by calling the corresponding
+/// method on the swapchain), which will have the effect of showing the content of the image to
+/// the screen. Once an image has been presented, it can no longer be used unless it is acquired
+/// again.
 // TODO: #[derive(Debug)] (needs https://github.com/aturon/crossbeam/issues/62)
 pub struct SwapchainImage {
     image: UnsafeImage,
@@ -46,6 +59,9 @@ struct Guarded {
 }
 
 impl SwapchainImage {
+    /// Builds a `SwapchainImage` from raw components.
+    ///
+    /// This is an internal method that you shouldn't call.
     pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
@@ -78,6 +94,12 @@ impl SwapchainImage {
     #[inline]
     pub fn format(&self) -> Format {
         self.format
+    }
+
+    /// Returns the swapchain this image belongs to.
+    #[inline]
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
+        &self.swapchain
     }
 }
 
