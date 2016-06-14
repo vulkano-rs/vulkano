@@ -221,7 +221,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub fn dispatch<Pl, L, Pc>(self, pipeline: &Arc<ComputePipeline<Pl>>, sets: L,
                            dimensions: [u32; 3], push_constants: &Pc) -> PrimaryCommandBufferBuilder<P>
-        where L: 'static + DescriptorSetsCollection + Send + Sync,
+        where L: DescriptorSetsCollection + Send + Sync,
               Pl: 'static + PipelineLayout + Send + Sync,
               Pc: 'static + Clone + Send + Sync
     {
