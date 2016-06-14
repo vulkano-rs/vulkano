@@ -8,13 +8,15 @@
 // according to those terms.
 
 //! Defines how the color output of the fragment shader is written to the attachment.
-//! 
+//!
+//! # Blending in details
+//!
 //! There are three kinds of color attachments for the purpose of blending:
-//! 
+//!
 //! - Attachments with a floating-point, fixed point format.
 //! - Attachments with a (non-normalized) integer format.
 //! - Attachments with a normalized integer format.
-//! 
+//!
 //! For floating-point and fixed-point formats, the blending operation is applied. For integer
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
 //! will take precedence if it is activated, otherwise the blending operation is applied.
@@ -22,6 +24,8 @@
 
 use vk;
 
+/// Describes how the color output of the fragment shader is written to the attachment. See the
+/// documentation of the `blend` module for more info.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Blend {
     pub logic_op: Option<LogicOp>,
@@ -41,19 +45,7 @@ impl Blend {
     pub fn pass_through() -> Blend {
         Blend {
             logic_op: None,
-            attachments: AttachmentsBlend::Collective(AttachmentBlend {
-                enabled: false,
-                color_op: BlendOp::Add,
-                color_src: BlendFactor::Zero,
-                color_dst: BlendFactor::One,
-                alpha_op: BlendOp::Add,
-                alpha_src: BlendFactor::Zero,
-                alpha_dst: BlendFactor::One,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            }),
+            attachments: AttachmentsBlend::Collective(AttachmentBlend::pass_through()),
             blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
         }
     }
@@ -63,33 +55,28 @@ impl Blend {
     pub fn alpha_blending() -> Blend {
         Blend {
             logic_op: None,
-            attachments: AttachmentsBlend::Collective(AttachmentBlend {
-                enabled: true,
-                color_op: BlendOp::Add,
-                color_src: BlendFactor::SrcAlpha,
-                color_dst: BlendFactor::OneMinusSrcAlpha,
-                alpha_op: BlendOp::Add,
-                alpha_src: BlendFactor::SrcAlpha,
-                alpha_dst: BlendFactor::OneMinusSrcAlpha,
-                mask_red: true,
-                mask_green: true,
-                mask_blue: true,
-                mask_alpha: true,
-            }),
+            attachments: AttachmentsBlend::Collective(AttachmentBlend::alpha_blending()),
             blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
         }
     }
 }
 
+/// Describes how the blending system should behave.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttachmentsBlend {
+    /// All the framebuffer attachments will use the same blending.
     Collective(AttachmentBlend),
+
+    /// Each attachment will behave differently. Note that this requires enabling the
+    /// `independent_blend` feature.
     Individual(Vec<AttachmentBlend>),
 }
 
+/// Describes how the blending system should behave for an individual attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachmentBlend {
     // TODO: could be automatically determined from the other params
+    /// If false, blending is ignored and the output is directly written to the attachment.
     pub enabled: bool,
 
     pub color_op: BlendOp,
@@ -104,6 +91,64 @@ pub struct AttachmentBlend {
     pub mask_green: bool,
     pub mask_blue: bool,
     pub mask_alpha: bool,
+}
+
+impl AttachmentBlend {
+    /// Builds an `AttachmentBlend` where blending is disabled.
+    #[inline]
+    pub fn pass_through() -> AttachmentBlend {
+        AttachmentBlend {
+            enabled: false,
+            color_op: BlendOp::Add,
+            color_src: BlendFactor::Zero,
+            color_dst: BlendFactor::One,
+            alpha_op: BlendOp::Add,
+            alpha_src: BlendFactor::Zero,
+            alpha_dst: BlendFactor::One,
+            mask_red: true,
+            mask_green: true,
+            mask_blue: true,
+            mask_alpha: true,
+        }
+    }
+
+    /// Builds an `AttachmentBlend` where the output of the fragment shader is ignored and the
+    /// destination is untouched.
+    #[inline]
+    pub fn ignore_source() -> AttachmentBlend {
+        AttachmentBlend {
+            enabled: true,
+            color_op: BlendOp::Add,
+            color_src: BlendFactor::Zero,
+            color_dst: BlendFactor::DstColor,
+            alpha_op: BlendOp::Add,
+            alpha_src: BlendFactor::Zero,
+            alpha_dst: BlendFactor::DstColor,
+            mask_red: true,
+            mask_green: true,
+            mask_blue: true,
+            mask_alpha: true,
+        }
+    }
+
+    /// Builds an `AttachmentBlend` where the output will be merged with the existing value
+    /// based on the alpha of the source.
+    #[inline]
+    pub fn alpha_blending() -> AttachmentBlend {
+        AttachmentBlend {
+            enabled: true,
+            color_op: BlendOp::Add,
+            color_src: BlendFactor::SrcAlpha,
+            color_dst: BlendFactor::OneMinusSrcAlpha,
+            alpha_op: BlendOp::Add,
+            alpha_src: BlendFactor::SrcAlpha,
+            alpha_dst: BlendFactor::OneMinusSrcAlpha,
+            mask_red: true,
+            mask_green: true,
+            mask_blue: true,
+            mask_alpha: true,
+        }
+    }
 }
 
 #[doc(hidden)]
