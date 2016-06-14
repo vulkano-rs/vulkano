@@ -52,37 +52,79 @@ use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
 use pipeline::viewport::ViewportsState;
 
+/// Description of a `GraphicsPipeline`.
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>
     where L: 'a, Rp: 'a
 {
+    /// Describes the layout of the vertex input.
+    ///
+    /// For example if you want to pass a vertex buffer and an instance buffer, this parameter
+    /// should describe it as well as the offsets and data type of various vertex attributes.
+    ///
+    /// Must implement the `VertexDefinition` trait.
     pub vertex_input: Vdef,
+
+    /// The entry point of the vertex shader that will be run on the vertex input.
     pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>,
+
+    /// Describes how vertices should be assembled into primitives. Essentially contains the type
+    /// of primitives.
     pub input_assembly: InputAssembly,
+
+    /// Parameters of the tessellation stage. `None` if you don't want to use tessellation.
+    /// If you use tessellation, you must enable the `tessellation_shader` feature on the device.
     pub tessellation: Option<GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel>>,
+
+    /// The entry point of the geometry shader. `None` if you don't want a geometry shader.
+    /// If you use a geometry shader, you must enable the `geometry_shader` feature on the device.
     pub geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
+
+    /// Describes the subsection of the framebuffer attachments where the scene will be drawn.
+    /// You can use one or multiple viewports, but using multiple viewports is only relevant with
+    /// a geometry shader.
     pub viewport: ViewportsState,
+
+    /// Describes how the implementation determines which pixels are covered by the shape.
     pub raster: Rasterization,
+
+    // TODO: document
     pub multisample: Multisample,
+
+    /// The entry point of the fragment shader that will be run on the pixels.
     pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fi, Fo, Fl>,
+
+    /// Describes how the implementation should perform the depth and stencil tests.
     pub depth_stencil: DepthStencil,
+
+    /// Describes how the implementation should merge the color output of the fragment shader with
+    /// the existing value in the attachments.
     pub blend: Blend,
+
+    /// Describes the list of descriptors and push constants that the various shaders are going to
+    /// use.
     pub layout: &'a Arc<L>,
+
+    /// Which subpass of which render pass this pipeline will run on. It is an error to run a
+    /// graphics pipeline on a different subpass.
     pub render_pass: Subpass<'a, Rp>,
 }
 
+/// Additional parameters if you use tessellation.
 pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel> {
+    /// The entry point of the tessellation control shader.
     pub tessellation_control_shader: TessControlShaderEntryPoint<'a, Tcs, Tci, Tco, Tcl>,
+    /// The entry point of the tessellation evaluation shader.
     pub tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, Tes, Tei, Teo, Tel>,
 }
 
+/// Defines how the implementation should perform a draw operation.
 ///
-///
-/// The template parameter contains the descriptor set to use with this pipeline, and the
-/// renderpass layout.
+/// This object contains the shaders and the various fixed states that describe how the
+/// implementation should perform the various operations needed by a draw command.
 pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
-    device: Arc<Device>,
     pipeline: vk::Pipeline,
+    device: Arc<Device>,
     layout: Arc<Layout>,
 
     render_pass: Arc<RenderP>,
@@ -107,6 +149,12 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     where L: PipelineLayout, Rp: RenderPass + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
+    ///
+    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
+    ///
+    /// In order to avoid compiler errors caused by not being able to infer template parameters,
+    /// this function assumes that you will only use a vertex shader and a fragment shader. See
+    /// the other constructors for other possibilities.
     #[inline]
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
@@ -130,6 +178,12 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
+    ///
+    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
+    ///
+    /// In order to avoid compiler errors caused by not being able to infer template parameters,
+    /// this function assumes that you will use a vertex shader, a geometry shader and a fragment
+    /// shader. See the other constructors for other possibilities.
     #[inline]
     pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
               (device: &Arc<Device>,
@@ -162,6 +216,13 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     }
 
     /// Builds a new graphics pipeline object with tessellation shaders.
+    ///
+    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
+    ///
+    /// In order to avoid compiler errors caused by not being able to infer template parameters,
+    /// this function assumes that you will use a vertex shader, a tessellation control shader, a
+    /// tessellation evaluation shader and a fragment shader. See the other constructors for other
+    /// possibilities.
     #[inline]
     pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
                             Fo, Fl>
