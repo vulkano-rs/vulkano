@@ -147,7 +147,7 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
 
     #[inline]
     fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+        block.1 .. (block.1 + 1)
     }
 
     #[inline]
