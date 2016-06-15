@@ -25,6 +25,7 @@ use smallvec::SmallVec;
 
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
+use command_buffer::pool::CommandPoolFinished;
 use command_buffer::CommandBuffer;
 use command_buffer::DynamicState;
 use device::Device;
@@ -57,15 +58,6 @@ pub use self::render_pass::BeginRenderPassCommand;
 pub use self::render_pass::NextSubpassCommand;
 pub use self::render_pass::EndRenderPassCommand;
 pub use self::update_buffer::BufferUpdateCommand;
-
-pub unsafe trait CommandPrototype {
-    ///
-    ///
-    /// We use `&mut self` instead of `self`, otherwise Rust doesn't like `Box<CommandPrototype>`.
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool;
-}
 
 macro_rules! error_ty {
     ($err_name:ident => $doc:expr, $($member:ident => $desc:expr,)*) => {
@@ -272,7 +264,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             Ok(UnsafeCommandBuffer {
                 cmd: cmd,
                 device: self.device.clone(),
-                pool: self.pool.take().unwrap(),
+                pool: self.pool.take().unwrap().finish(),
                 flags: self.flags,
                 already_submitted: AtomicBool::new(false),
                 keep_alive: mem::replace(&mut self.keep_alive, Vec::new()),
@@ -291,6 +283,12 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    /// Returns true if this is a secondary command buffer.
+    #[inline]
+    pub fn is_secondary(&self) -> bool {
+        self.secondary_cb
     }
 }
 
@@ -325,7 +323,7 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
     device: Arc<Device>,
 
     // Pool that owns the command buffer.
-    pool: P,
+    pool: P::Finished,
 
     // Flags that were used at creation.
     flags: Flags,
@@ -349,7 +347,7 @@ unsafe impl<P> Sync for UnsafeCommandBuffer<P> where P: CommandPool {}
 impl<P> UnsafeCommandBuffer<P> where P: CommandPool {
     /// Returns the pool used to create this command buffer.
     #[inline]
-    pub fn pool(&self) -> &P {
+    pub fn pool(&self) -> &P::Finished {
         &self.pool
     }
 
@@ -524,6 +522,18 @@ impl UnsafeSubmission {
             keep_alive: keep_alive,
         })
     }
+
+    /// Returns the fence that is signalled when this submission is finished.
+    #[inline]
+    pub fn fence(&self) -> Option<&Arc<Fence>> {
+        self.fence.as_ref()
+    }
+
+    /// Returns the `queue` the command buffers were submitted to.
+    #[inline]
+    pub fn queue(&self) -> &Arc<Queue> {
+        &self.queue
+    }
 }
 
 /// Describes an individual batch that can be submitted to a queue.
@@ -532,8 +542,10 @@ pub struct SubmissionDesc<C, W, S> {
     /// as if the command buffers were fused together in the order that is given. This means that
     /// pipeline barriers must take that into account.
     pub command_buffers: C,
+
     /// List of semaphores and stages to wait upon before this batch can start.
     pub wait_semaphores: W,
+
     /// List of semaphores to signal after this batch has finished.
     pub signal_semaphores: S,
 }

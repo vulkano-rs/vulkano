@@ -17,7 +17,6 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::KeepAlive;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 
@@ -127,15 +126,6 @@ impl BufferUpdateCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for BufferUpdateCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }
 

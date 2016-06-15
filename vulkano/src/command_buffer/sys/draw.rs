@@ -15,7 +15,6 @@ use buffer::Buffer;
 use buffer::BufferSlice;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::bind_pipeline::GraphicsPipelineBindCommand;
 use command_buffer::sys::bind_pipeline::GfxPipelineBindError;
@@ -177,15 +176,6 @@ impl DrawCommand {
         }
 
         cb
-    }
-}
-
-unsafe impl CommandPrototype for DrawCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }
 

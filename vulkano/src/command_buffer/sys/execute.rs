@@ -13,7 +13,6 @@ use smallvec::SmallVec;
 
 use command_buffer::CommandBuffer;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::KeepAlive;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 
@@ -75,14 +74,5 @@ impl ExecuteCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for ExecuteCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }

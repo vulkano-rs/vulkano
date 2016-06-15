@@ -15,7 +15,6 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::KeepAlive;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use image::Image;
@@ -59,6 +58,12 @@ impl PipelineBarrierCommand {
             requires_geometry_shader_feature: false,
             requires_tessellation_shader_feature: false,
         }
+    }
+
+    /// Returns true if no barrier or execution dependency has been added yet.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.src_stage_mask == 0 || self.dst_stage_mask == 0
     }
 
     /// Adds an execution dependency. This means that all the stages in `source` of the previous
@@ -166,6 +171,8 @@ impl PipelineBarrierCommand {
     {
         // FIXME: document panics or replace with errors
 
+        // FIXME: check access flags compatibility? (Table 6.2. Supported access flags)
+
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         assert!(mipmaps.start < mipmaps.end);
@@ -258,14 +265,5 @@ impl PipelineBarrierCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for PipelineBarrierCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }

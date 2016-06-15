@@ -112,7 +112,20 @@ pub struct BufferSlice<'a, T: ?Sized, B: 'a> {
 }
 
 impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
+    #[inline]
+    pub unsafe fn unchecked(buffer: &'a Arc<B>, range: Range<usize>) -> BufferSlice<'a, T, B> {
+        debug_assert!(range.end >= range.start);
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: buffer,
+            offset: range.start,
+            size: range.end - range.start,
+        }
+    }
+
     /// Returns the buffer that this slice belongs to.
+    #[inline]
     pub fn buffer(&self) -> &'a Arc<B> {
         &self.resource
     }

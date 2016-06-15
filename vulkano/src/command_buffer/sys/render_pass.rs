@@ -15,7 +15,6 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::KeepAlive;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use format::ClearValue;
@@ -150,15 +149,6 @@ impl BeginRenderPassCommand {
     }
 }
 
-unsafe impl CommandPrototype for BeginRenderPassCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
-    }
-}
-
 error_ty!{BeginRenderPassError => "Error that can happen when beginning a render pass.",
     IncompatibleRenderPass => "the framebuffer is not compatible with the render pass",
 }
@@ -208,15 +198,6 @@ impl NextSubpassCommand {
     }
 }
 
-unsafe impl CommandPrototype for NextSubpassCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
-    }
-}
-
 /// Prototype for a command that ends the render pass.
 pub struct EndRenderPassCommand;
 
@@ -252,14 +233,5 @@ impl EndRenderPassCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for EndRenderPassCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }

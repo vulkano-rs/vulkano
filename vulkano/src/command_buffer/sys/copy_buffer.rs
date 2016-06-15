@@ -14,7 +14,6 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::KeepAlive;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 
@@ -152,15 +151,6 @@ impl BufferCopyCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for BufferCopyCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }
 

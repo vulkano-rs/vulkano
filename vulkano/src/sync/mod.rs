@@ -18,6 +18,7 @@
 //! But don't worry ; this is automatically enforced by this library (as long as you don't use
 //! any unsafe function). See the `memory` module for more info.
 //!
+use std::ops::BitOrAssign;
 use std::sync::Arc;
 use device::Queue;
 use vk;
@@ -99,12 +100,30 @@ macro_rules! pipeline_stages {
         }
 
         impl PipelineStages {
+            #[inline]
             pub fn none() -> PipelineStages {
                 PipelineStages {
                     $(
                         $elem: false,
                     )+
                 }
+            }
+
+            #[inline]
+            pub fn transfer() -> PipelineStages {
+                PipelineStages {
+                    transfer: true,
+                    .. PipelineStages::none()
+                }
+            }
+        }
+
+        impl BitOrAssign for PipelineStages {
+            #[inline]
+            fn bitor_assign(&mut self, other: PipelineStages) {
+                $(
+                    if other.$elem { self.$elem = true; }
+                )+
             }
         }
 
@@ -166,6 +185,15 @@ macro_rules! access_flags {
                         $elem: false,
                     )+
                 }
+            }
+        }
+
+        impl BitOrAssign for AccessFlagBits {
+            #[inline]
+            fn bitor_assign(&mut self, other: AccessFlagBits) {
+                $(
+                    if other.$elem { self.$elem = true; }
+                )+
             }
         }
 

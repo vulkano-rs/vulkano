@@ -12,7 +12,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::CommandPrototype;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::bind_pipeline::ComputePipelineBindCommand;
 use command_buffer::sys::bind_sets::DescriptorSetsBindCommand;
@@ -98,15 +97,6 @@ impl DispatchCommand {
 
             cb
         }
-    }
-}
-
-unsafe impl CommandPrototype for DispatchCommand {
-    unsafe fn submit<P>(&mut self, cb: UnsafeCommandBufferBuilder<P>)
-                        -> UnsafeCommandBufferBuilder<P>
-        where P: CommandPool
-    {
-        self.submit(cb)
     }
 }
 
