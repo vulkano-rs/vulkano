@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
+use smallvec::SmallVec;
 
 use command_buffer::Submission;
 use device::Device;
@@ -32,47 +33,21 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::Transition;
+use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
-/// Image whose purpose is to be used as a framebuffer attachment.
-///
-/// The image is always two-dimensional and has only one mipmap, but it can have any kind of
-/// format. Trying to use a format that the backend doesn't support for rendering will result in
-/// an error being returned when creating the image. Once you have an `AttachmentImage`, you are
-/// guaranteed that you will be able to draw on it.
-///
-/// The template parameter of `AttachmentImage` is a type that describes the format of the image.
-///
-/// # Regular vs transient
-///
-/// Calling `AttachmentImage::new` will create a regular image, while calling
-/// `AttachmentImage::transient` will create a *transient* image. Transient image are only
-/// relevant for images that serve as attachments, so `AttachmentImage` is the only type of
-/// image in vulkano that provides a shortcut for this.
-///
-/// A transient image is a special kind of image whose content is undefined outside of render
-/// passes. Once you finish drawing, reading from it will returned undefined data (which can be
-/// either valid or garbage, depending on the implementation).
-///
-/// This gives a hint to the Vulkan implementation that it is possible for the image's content to
-/// live exclusively in some cache memory, and that no real memory has to be allocated for it.
-///
-/// In other words, if you are going to read from the image after drawing to it, use a regular
-/// image. If you don't need to read from it (for example if it's some kind of intermediary color,
-/// or a depth buffer that is only used once) then use a transient image as it may improve
-/// performances.
-///
-// TODO: forbid reading transient images outside render passes?
+/// General-purpose image in device memory. Can be used for any usage, but will be slower than a
+/// specialized image.
 #[derive(Debug)]
-pub struct AttachmentImage<F, A = StdMemoryPool> where A: MemoryPool {
+pub struct StorageImage<F, A = StdMemoryPool> where A: MemoryPool {
     // Inner implementation.
     image: UnsafeImage,
 
-    // We maintain a view of the whole image since we will need it when rendering.
+    // We maintain a view of the whole image.
     view: UnsafeImageView,
 
     // Memory used to back the image.
@@ -81,9 +56,8 @@ pub struct AttachmentImage<F, A = StdMemoryPool> where A: MemoryPool {
     // Format.
     format: F,
 
-    // Layout to use when the image is used as a framebuffer attachment.
-    // Must be either "depth-stencil optimal" or "color optimal".
-    attachment_layout: Layout,
+    // Queue families allowed to access this image.
+    queue_families: SmallVec<[u32; 4]>,
 
     // Additional info behind a mutex.
     guarded: Mutex<Guarded>,
@@ -94,48 +68,19 @@ struct Guarded {
     // If false, the image is still in the undefined layout.
     correct_layout: bool,
 
-    // The latest submission that used the image. Used for synchronization purposes.
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
+    // The latest submissions that read from this image.
+    read_submissions: SmallVec<[Weak<Submission>; 4]>,
+
+    // The latest submission that writes to this image.
+    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
 }
 
-impl<F> AttachmentImage<F> {
+impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
-    ///
-    /// Returns an error if the dimensions are too large or if the backend doesn't support this
-    /// format as a framebuffer attachment.
-    pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
-               -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
-    {
-        let base_usage = Usage {
-            transfer_source: true,
-            transfer_dest: true,
-            sampled: true,
-            .. Usage::none()
-        };
-
-        AttachmentImage::new_impl(device, dimensions, format, base_usage)
-    }
-
-    /// Same as `new`, except that the image will be transient.
-    ///
-    /// A transient image is special because its content is undefined outside of a render pass.
-    /// This means that the implementation has the possibility to not allocate any memory for it.
-    pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
-    {
-        let base_usage = Usage {
-            transient_attachment: true,
-            .. Usage::none()
-        };
-
-        AttachmentImage::new_impl(device, dimensions, format, base_usage)
-    }
-
-    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: Usage)
-                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+                      -> Result<Arc<StorageImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+                 I: IntoIterator<Item = QueueFamily<'a>>
     {
         let is_depth = match format.format().ty() {
             FormatTy::Depth => true,
@@ -146,15 +91,27 @@ impl<F> AttachmentImage<F> {
         };
 
         let usage = Usage {
+            transfer_source: true,
+            transfer_dest: true,
+            sampled: true,
+            storage: true,
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            .. base_usage
+            transient_attachment: false,
         };
 
+        let queue_families = queue_families.into_iter().map(|f| f.id())
+                                           .collect::<SmallVec<[u32; 4]>>();
+
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device, &usage, format.format(),
-                                  Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] },
+            let sharing = if queue_families.len() >= 2 {
+                Sharing::Concurrent(queue_families.iter().cloned())
+            } else {
+                Sharing::Exclusive
+            };
+
+            try!(UnsafeImage::new(device, &usage, format.format(), dimensions,
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -173,34 +130,34 @@ impl<F> AttachmentImage<F> {
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, 0 .. 1, 0 .. 1))
+            try!(UnsafeImageView::raw(&image, 0 .. image.mipmap_levels(),
+                                      0 .. image.dimensions().array_layers()))
         };
 
-        Ok(Arc::new(AttachmentImage {
+        Ok(Arc::new(StorageImage {
             image: image,
             view: view,
             memory: mem,
             format: format,
-            attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
-                               else { Layout::ColorAttachmentOptimal },
+            queue_families: queue_families,
             guarded: Mutex::new(Guarded {
                 correct_layout: false,
-                latest_submission: None,
+                read_submissions: SmallVec::new(),
+                write_submission: None,
             }),
         }))
     }
 }
 
-impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
+impl<F, A> StorageImage<F, A> where A: MemoryPool {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> [u32; 2] {
-        let dims = self.image.dimensions();
-        [dims.width(), dims.height()]
+    pub fn dimensions(&self) -> Dimensions {
+        self.image.dimensions()
     }
 }
 
-unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner_image(&self) -> &UnsafeImage {
         &self.image
@@ -223,32 +180,59 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
 
     #[inline]
     fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (self.attachment_layout, false, false)
+        (Layout::General, false, false)
     }
 
     #[inline]
     fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (self.attachment_layout, false, false)
+        (Layout::General, false, false)
     }
 
     fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
         Some(false)
     }
 
-    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
+    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult
     {
+        let queue_id = submission.queue().family().id();
+        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
+            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
+                   queue_id, self.queue_families);
+        }
+
         let mut guarded = self.guarded.lock().unwrap();
 
-        let dependency = mem::replace(&mut guarded.latest_submission,
-                                      Some(Arc::downgrade(submission)));
-        let dependency = dependency.and_then(|d| d.upgrade());
+        let is_written = {
+            let mut written = false;
+            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
+            written
+        };
+
+        let dependencies = if is_written {
+            let write_dep = mem::replace(&mut guarded.write_submission,
+                                         Some(Arc::downgrade(submission)));
+
+            let mut read_submissions = mem::replace(&mut guarded.read_submissions,
+                                                    SmallVec::new());
+
+            // We use a temporary variable to bypass a lifetime error in rustc.
+            let list = read_submissions.into_iter()
+                                       .chain(write_dep.into_iter())
+                                       .filter_map(|s| s.upgrade())
+                                       .collect::<Vec<_>>();
+            list
+
+        } else {
+            guarded.read_submissions.push(Arc::downgrade(submission));
+            guarded.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
+        };
 
         let transition = if !guarded.correct_layout {
             vec![Transition {
                 block: (0, 0),
                 from: Layout::Undefined,
-                to: self.attachment_layout,
+                to: Layout::General,
             }]
         } else {
             vec![]
@@ -257,11 +241,7 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
         guarded.correct_layout = true;
 
         GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
+            dependencies: dependencies,
             additional_wait_semaphore: None,
             additional_signal_semaphore: None,
             before_transitions: transition,
@@ -270,7 +250,7 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
     }
 }
 
-unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
+unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>
     where F: FormatDesc + 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
@@ -279,7 +259,7 @@ unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
+unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
@@ -288,7 +268,7 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
     }
 }
 
-unsafe impl<F, A> ImageView for AttachmentImage<F, A>
+unsafe impl<F, A> ImageView for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
@@ -313,22 +293,22 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
 
     #[inline]
     fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+        Layout::General
     }
 
     #[inline]
     fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+        Layout::General
     }
 
     #[inline]
     fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+        Layout::General
     }
 
     #[inline]
     fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+        Layout::General
     }
 
     #[inline]
@@ -339,18 +319,14 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
 
 #[cfg(test)]
 mod tests {
-    use super::AttachmentImage;
+    use super::StorageImage;
     use format::Format;
+    use image::sys::Dimensions;
 
     #[test]
-    fn create_regular() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
-    }
-
-    #[test]
-    fn create_transient() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::transient(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+    fn create() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let _img = StorageImage::new(&device, Dimensions::Dim2d { width: 32, height: 32 },
+                                     Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
     }
 }

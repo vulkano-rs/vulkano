@@ -48,6 +48,7 @@
 
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
+pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
 pub use self::sys::Layout;
@@ -57,6 +58,7 @@ pub use self::traits::ImageView;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private
+mod storage;
 pub mod swapchain;      // TODO: make private
 pub mod sys;
 pub mod traits;
