@@ -17,9 +17,6 @@ extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 
-use std::ffi::OsStr;
-use std::mem;
-use std::ptr;
 use std::time::Duration;
 
 fn main() {

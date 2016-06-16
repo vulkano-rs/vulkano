@@ -279,86 +279,6 @@ fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -
     panic!("Type #{} not found or invalid", searched)
 }
 
-// TODO: remove when no longer necessary
-// TODO: struct definitions don't use this function, so irrelevant elements should be removed
-fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
-    for instruction in doc.instructions.iter() {
-        match instruction {
-            &parse::Instruction::TypeVoid { result_id } if result_id == searched => {
-                return "()".to_owned()
-            },
-            &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                return "bool".to_owned()
-            },
-            &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
-                return match (width, signedness) {
-                    (8, true) => "i8",
-                    (8, false) => "u8",
-                    (16, true) => "i16",
-                    (16, false) => "u16",
-                    (32, true) => "i32",
-                    (32, false) => "u32",
-                    (64, true) => "i64",
-                    (64, false) => "u64",
-                    _ => panic!()
-                }.to_owned();
-            },
-            &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                return match width {
-                    32 => "f32",
-                    64 => "f64",
-                    _ => panic!()
-                }.to_owned();
-            },
-            &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
-                let t = type_from_id(doc, component_id);
-                return format!("[{}; {}]", t, count);
-            },
-            &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
-                // FIXME: row-major or column-major
-                let t = type_from_id(doc, column_type_id);
-                return format!("[{}; {}]", t, column_count);
-            },
-            &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, depth, arrayed, ms, sampled, ref format, ref access } if result_id == searched => {
-                return format!("{}{}Texture{:?}{}{:?}",
-                    if ms { "Multisample" } else { "" },
-                    if depth == Some(true) { "Depth" } else { "" },
-                    dim,
-                    if arrayed { "Array" } else { "" },
-                    format);
-            },
-            &parse::Instruction::TypeSampledImage { result_id, image_type_id } if result_id == searched => {
-                return type_from_id(doc, image_type_id);
-            },
-            &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
-                let t = type_from_id(doc, type_id);
-                let len = doc.instructions.iter().filter_map(|e| {
-                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
-                }).next().expect("failed to find array length");
-                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                return format!("[{}; {}]", t, len);       // FIXME:
-            },
-            &parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
-                let t = type_from_id(doc, type_id);
-                return format!("[{}]", t);
-            },
-            &parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == searched => {
-                let name = name_from_id(doc, result_id);
-                return name;
-            },
-            &parse::Instruction::TypeOpaque { result_id, ref name } if result_id == searched => {
-                return "<opaque>".to_owned();
-            },
-            &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
-                return type_from_id(doc, type_id);
-            },
-            _ => ()
-        }
-    }
-
-    panic!("Type #{} not found", searched)
-}
-
 fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
     doc.instructions.iter().filter_map(|i| {
         if let &parse::Instruction::Name { target_id, ref name } = i {
@@ -425,9 +345,7 @@ fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
 
     for instruction in &doc.instructions {
         match *instruction {
-            parse::Instruction::Variable { result_type_id, result_id, ref storage_class, .. }
-                                         if result_id == id =>
-            {
+            parse::Instruction::Variable { result_type_id, result_id, .. } if result_id == id => {
                 return is_builtin(doc, result_type_id);
             },
             parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {

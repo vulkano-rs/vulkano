@@ -212,6 +212,7 @@ macro_rules! pipeline_layout {
             }
 
             #[allow(unused_assignments)]
+            #[allow(dead_code)]
             pub fn build_set_layout_raw(device: &Arc<Device>)
                                         -> Result<UnsafeDescriptorSetLayout, OomError>
             {
@@ -234,6 +235,7 @@ macro_rules! pipeline_layout {
             }
 
             #[inline]
+            #[allow(dead_code)]
             pub fn build_set_layout(device: &Arc<Device>)
                                     -> Arc<UnsafeDescriptorSetLayout>
             {

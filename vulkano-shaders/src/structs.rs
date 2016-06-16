@@ -139,8 +139,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
         let diff = req_size.checked_sub(cur_size as u32).unwrap();
         if diff >= 1 {
-            let padding_num = next_padding_num; next_padding_num += 1;
-            members_defs.push(format!("pub _dummy{}: [u8; {}]", padding_num, diff));
+            members_defs.push(format!("pub _dummy{}: [u8; {}]", next_padding_num, diff));
         }
     }
 
