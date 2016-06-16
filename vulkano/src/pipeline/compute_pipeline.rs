@@ -62,7 +62,7 @@ impl<Pl> ComputePipeline<Pl> {
             };
 
             let stage = vk::PipelineShaderStageCreateInfo {
-                sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,
                 stage: vk::SHADER_STAGE_COMPUTE_BIT,
