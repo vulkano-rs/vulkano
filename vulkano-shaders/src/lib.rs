@@ -67,22 +67,38 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
 
     let mut output = String::new();
     output.push_str(r#"
+        #[allow(unused_imports)]
         use std::sync::Arc;
+        #[allow(unused_imports)]
         use std::vec::IntoIter as VecIntoIter;
 
+        #[allow(unused_imports)]
         use vulkano::device::Device;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorDescTy;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDescArray;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::ShaderStages;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::DescriptorSet;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
+        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+        #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayout;
+        #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::UnsafePipelineLayout;
     "#);
 
