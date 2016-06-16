@@ -51,7 +51,7 @@ use OomError;
 ///
 /// ```ignore   // TODO: change that
 /// let commands_buffer =
-///     PrimaryCommandBufferBuilder::new(&device)
+///     PrimaryCommandBufferBuilder::new(&device, queue.family())
 ///         .copy_memory(..., ...)
 ///         .draw(...)
 ///         .build();
