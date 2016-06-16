@@ -214,11 +214,25 @@ fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -
         match instruction {
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
                 assert!(!ignore_first_array);
-                return ("R32Sint".to_owned(), 1);
+                return (match (width, signedness) {
+                    (8, true) => "R8Sint",
+                    (8, false) => "R8Uint",
+                    (16, true) => "R16Sint",
+                    (16, false) => "R16Uint",
+                    (32, true) => "R32Sint",
+                    (32, false) => "R32Uint",
+                    (64, true) => "R64Sint",
+                    (64, false) => "R64Uint",
+                    _ => panic!()
+                }.to_owned(), 1);
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
                 assert!(!ignore_first_array);
-                return ("R32Sfloat".to_owned(), 1);
+                return (match width {
+                    32 => "R32Sfloat",
+                    64 => "R64Sfloat",
+                    _ => panic!()
+                }.to_owned(), 1);
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 assert!(!ignore_first_array);
@@ -277,10 +291,24 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
                 return "bool".to_owned()
             },
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
-                return "i32".to_owned()
+                return match (width, signedness) {
+                    (8, true) => "i8",
+                    (8, false) => "u8",
+                    (16, true) => "i16",
+                    (16, false) => "u16",
+                    (32, true) => "i32",
+                    (32, false) => "u32",
+                    (64, true) => "i64",
+                    (64, false) => "u64",
+                    _ => panic!()
+                }.to_owned();
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                return "f32".to_owned()
+                return match width {
+                    32 => "f32",
+                    64 => "f64",
+                    _ => panic!()
+                }.to_owned();
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 let t = type_from_id(doc, component_id);
