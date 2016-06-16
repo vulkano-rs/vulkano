@@ -1449,8 +1449,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             buffer: (buffer.0).0.inner_buffer().internal_object(),
-                            offset: range.start as u64,
-                            size: (range.end - range.start) as u64,
+                            offset: 0,
+                            size: vk::WHOLE_SIZE,
                         });
                     }
 
@@ -1475,8 +1475,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             buffer: (buffer.0).0.inner_buffer().internal_object(),
-                            offset: range.start as u64,
-                            size: (range.end - range.start) as u64,
+                            offset: 0,
+                            size: vk::WHOLE_SIZE,
                         });
 
                         entry.stages = access.stages;
