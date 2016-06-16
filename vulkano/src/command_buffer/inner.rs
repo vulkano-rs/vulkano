@@ -89,7 +89,7 @@ pub struct InnerCommandBufferBuilder<P> where P: CommandPool {
     // If true, we're inside a secondary graphics command buffer.
     is_secondary_graphics: bool,
 
-    // List of accesses made by this command buffer to buffers and images, exclusing the staging
+    // List of accesses made by this command buffer to buffers and images, excluding the staging
     // commands and the staging render pass.
     //
     // If a buffer/image is missing in this list, that means it hasn't been used by this command
@@ -1370,7 +1370,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             self.flush(false);
         }
 
-        // Now merging the render pass accesses with the outter accesses.
+        // Now merging the render pass accesses with the outer accesses.
         // Conflicts shouldn't happen since we checked above, but they are partly checked again
         // with `debug_assert`s.
         for ((buffer, block), access) in self.render_pass_staging_required_buffer_accesses.drain() {
