@@ -185,16 +185,64 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, us
                 return ("bool".to_owned(), Some(size), mem::align_of::<Foo>())
             },
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
-                // FIXME: width
-                #[repr(C)] struct Foo { data: i32, after: u8 }
-                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                return ("i32".to_owned(), Some(size), mem::align_of::<Foo>())
+                match (width, signedness) {
+                    (8, true) => {
+                        #[repr(C)] struct Foo { data: i8, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i8".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (8, false) => {
+                        #[repr(C)] struct Foo { data: u8, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u8".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (16, true) => {
+                        #[repr(C)] struct Foo { data: i16, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i16".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (16, false) => {
+                        #[repr(C)] struct Foo { data: u16, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u16".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (32, true) => {
+                        #[repr(C)] struct Foo { data: i32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (32, false) => {
+                        #[repr(C)] struct Foo { data: u32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (64, true) => {
+                        #[repr(C)] struct Foo { data: i64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (64, false) => {
+                        #[repr(C)] struct Foo { data: u64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    _ => panic!("No Rust equivalent for an integer of width {}", width)
+                }
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                // FIXME: width
-                #[repr(C)] struct Foo { data: f32, after: u8 }
-                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                return ("f32".to_owned(), Some(size), mem::align_of::<Foo>())
+                match width {
+                    32 => {
+                        #[repr(C)] struct Foo { data: f32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("f32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    64 => {
+                        #[repr(C)] struct Foo { data: f64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("f64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    _ => panic!("No Rust equivalent for a floating-point of width {}", width)
+                }
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
