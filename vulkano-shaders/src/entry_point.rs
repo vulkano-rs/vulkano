@@ -13,12 +13,11 @@ use parse;
 use is_builtin;
 use name_from_id;
 use location_decoration;
-use type_from_id;
 use format_from_id;
 
 pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> (String, String) {
     let (execution, ep_name, interface) = match instruction {
-        &parse::Instruction::EntryPoint { ref execution, id, ref name, ref interface } => {
+        &parse::Instruction::EntryPoint { ref execution, ref name, ref interface, .. } => {
             (execution, name, interface)
         },
         _ => unreachable!()

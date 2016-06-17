@@ -179,6 +179,7 @@ macro_rules! ordered_passes_renderpass {
             fn size_hint(&self) -> (usize, Option<usize>) {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
+                #![allow(unused_variables)]
                 let mut num = 0;
                 $(let $atch_name = num; num += 1;)*
                 num -= self.1;
@@ -196,6 +197,7 @@ macro_rules! ordered_passes_renderpass {
             fn next(&mut self) -> Option<LayoutPassDescription> {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
+                #![allow(unused_variables)]
 
                 let mut attachment_num = 0;
                 $(
@@ -246,6 +248,7 @@ macro_rules! ordered_passes_renderpass {
             fn size_hint(&self) -> (usize, Option<usize>) {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
+                #![allow(unused_variables)]
                 let mut num = 0;
                 $($(let $color_atch = num;)* num += 1;)*
                 num -= self.0;
@@ -301,6 +304,7 @@ macro_rules! ordered_passes_renderpass {
         fn attachment_layouts(num: usize) -> (Layout, Layout) {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
+            #![allow(unused_variables)]
 
             let mut attachment_num = 0;
             $(

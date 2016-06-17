@@ -357,6 +357,7 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
             fn member(name: &str) -> Option<$crate::pipeline::vertex::VertexMemberInfo> {
+                #[allow(unused_imports)]
                 use $crate::format::Format;
                 use $crate::pipeline::vertex::VertexMemberInfo;
                 use $crate::pipeline::vertex::VertexMemberTy;

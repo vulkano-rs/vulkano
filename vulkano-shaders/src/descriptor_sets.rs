@@ -18,7 +18,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
-        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
@@ -53,7 +52,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         let (desc_ty, readonly) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
-            name: name,
             desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
@@ -72,7 +70,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Iterate once per set.
     for &set in sets_list.iter() {
         let descr = descriptors.iter().enumerate().filter(|&(_, d)| d.set == set)
-                               .map(|(entry, d)| {
+                               .map(|(_, d)| {
                                    format!("DescriptorDesc {{
                                                 binding: {binding},
                                                 ty: {desc_ty},
@@ -168,7 +166,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                                   decorations");
 
                 // Determine whether there's a NonWritable decoration.
-                let non_writable = false;       // TODO: tricky because the decoration is on struct members
+                //let non_writable = false;       // TODO: tricky because the decoration is on struct members
 
                 let desc = format!("DescriptorDescTy::Buffer(DescriptorBufferDesc {{
                     dynamic: Some(false),
@@ -178,9 +176,8 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                 Some((desc, true))
             },
 
-            &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, arrayed, ms,
-                                             sampled, ref format, ref access, .. }
-                                            if result_id == pointed_ty =>
+            &parse::Instruction::TypeImage { result_id, ref dim, arrayed, ms, sampled,
+                                             ref format, .. } if result_id == pointed_ty =>
             {
                 let sampled = sampled.expect("Vulkan requires that variables of type OpTypeImage \
                                               have a Sampled operand of 1 or 2");

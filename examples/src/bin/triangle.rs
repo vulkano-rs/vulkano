@@ -56,9 +56,6 @@ use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 
 use std::sync::Arc;
-use std::ffi::OsStr;
-use std::mem;
-use std::ptr;
 use std::time::Duration;
 
 fn main() {
