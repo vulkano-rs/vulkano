@@ -379,7 +379,6 @@ pub struct LayoutPassDescription {
 /// The implementation is allowed to change the order of the passes within a render pass, unless
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
-// FIXME: finish
 #[derive(Debug, Clone)]
 pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
@@ -388,14 +387,30 @@ pub struct LayoutPassDependencyDescription {
     /// Index of the subpass that reads the data that `source_subpass` wrote.
     pub destination_subpass: usize,
 
+    /// The pipeline stages that must be finished on the previous subpass before the destination
+    /// subpass can start.
     pub src_stages: PipelineStages,
 
+    /// The pipeline stages of the destination subpass that must wait for the source to be finished.
+    /// Stages that are earlier of the stages specified here can start before the source is
+    /// finished.
     pub dst_stages: PipelineStages,
 
+    /// The way the source subpass accesses the attachments on which we depend.
     pub src_access: AccessFlagBits,
 
+    /// The way the destination subpass accesses the attachments on which we depend.
     pub dst_access: AccessFlagBits,
 
+    /// If false, then the whole subpass must be finished for the next one to start. If true, then
+    /// the implementation can start the new subpass for some given pixels as long as the previous
+    /// subpass is finished for these given pixels.
+    ///
+    /// In other words, if the previous subpass has some side effects on other parts of an
+    /// attachment, then you sould set it to false.
+    ///
+    /// Passing `false` is always safer than passing `true`, but in practice you rarely need to
+    /// pass `false`.
     pub by_region: bool,
 }
 
