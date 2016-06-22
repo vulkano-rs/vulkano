@@ -92,6 +92,7 @@ pub enum Sharing<I> where I: Iterator<Item = u32> {
 macro_rules! pipeline_stages {
     ($($elem:ident => $val:expr,)+) => (
         #[derive(Debug, Copy, Clone)]
+        #[allow(missing_docs)]
         pub struct PipelineStages {
             $(
                 pub $elem: bool,
@@ -99,6 +100,7 @@ macro_rules! pipeline_stages {
         }
 
         impl PipelineStages {
+            /// Builds an `PipelineStages` struct with none of the stages set.
             pub fn none() -> PipelineStages {
                 PipelineStages {
                     $(
@@ -145,6 +147,7 @@ pipeline_stages!{
 macro_rules! access_flags {
     ($($elem:ident => $val:expr,)+) => (
         #[derive(Debug, Copy, Clone)]
+        #[allow(missing_docs)]
         pub struct AccessFlagBits {
             $(
                 pub $elem: bool,
@@ -152,6 +155,7 @@ macro_rules! access_flags {
         }
 
         impl AccessFlagBits {
+            /// Builds an `AccessFlagBits` struct with all bits set.
             pub fn all() -> AccessFlagBits {
                 AccessFlagBits {
                     $(
@@ -160,6 +164,7 @@ macro_rules! access_flags {
                 }
             }
 
+            /// Builds an `AccessFlagBits` struct with none of the bits set.
             pub fn none() -> AccessFlagBits {
                 AccessFlagBits {
                     $(

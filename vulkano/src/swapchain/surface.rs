@@ -463,7 +463,10 @@ pub enum SurfaceCreationError {
     OomError(OomError),
 
     /// The extension required for this function was not enabled.
-    MissingExtension { name: &'static str },
+    MissingExtension {
+        /// Name of the missing extension.
+        name: &'static str
+    },
 }
 
 impl error::Error for SurfaceCreationError {
@@ -658,15 +661,22 @@ impl Iterator for SupportedPresentModesIter {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum SurfaceTransform {
+    /// Don't transform the image.
     Identity = vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    /// Rotate 90 degrees.
     Rotate90 = vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+    /// Rotate 180 degrees.
     Rotate180 = vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
+    /// Rotate 270 degrees.
     Rotate270 = vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
+    /// Mirror the image horizontally.
     HorizontalMirror = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
+    /// Mirror the image horizontally and rotate 90 degrees.
     HorizontalMirrorRotate90 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
+    /// Mirror the image horizontally and rotate 180 degrees.
     HorizontalMirrorRotate180 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
+    /// Mirror the image horizontally and rotate 270 degrees.
     HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-
     /// Let the operating system or driver implementation choose.
     Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
 }
@@ -778,7 +788,7 @@ impl Default for SurfaceTransform {
     }
 }
 
-// How the alpha values of the pixels of the window are treated.
+/// How the alpha values of the pixels of the window are treated.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum CompositeAlpha {
@@ -799,7 +809,10 @@ pub enum CompositeAlpha {
 }
 
 /// List of supported composite alpha modes.
+///
+/// See the docs of `CompositeAlpha`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub struct SupportedCompositeAlpha {
     pub opaque: bool,
     pub pre_multiplied: bool,
@@ -864,8 +877,10 @@ impl Iterator for SupportedCompositeAlphaIter {
     }
 }
 
+/// How the presentation engine should interpret the data.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ColorSpace {
+    /// Interpret it as sRGB.
     SrgbNonLinear,
 }
 
