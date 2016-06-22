@@ -54,7 +54,7 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 

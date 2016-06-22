@@ -43,7 +43,7 @@ use sync::Sharing;
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
 #[derive(Debug)]
-pub struct StorageImage<F, A = StdMemoryPool> where A: MemoryPool {
+pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Inner implementation.
     image: UnsafeImage,
 
