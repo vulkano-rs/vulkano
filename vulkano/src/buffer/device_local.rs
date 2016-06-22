@@ -42,7 +42,7 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool {
+pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 

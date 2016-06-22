@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
 use instance::MemoryType;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
@@ -38,7 +36,7 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
     /// - Panicks if `size` is 0.
     /// - Panicks if `alignment` is 0.
     ///
-    fn alloc(&Arc<Self>, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
+    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
              -> Result<Self::Alloc, OomError>;
 }
 

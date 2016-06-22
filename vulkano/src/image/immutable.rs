@@ -42,7 +42,7 @@ use sync::Sharing;
 /// but then you must only ever read from it. TODO: clarify because of blit operations
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = StdMemoryPool> where A: MemoryPool {
+pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     image: UnsafeImage,
     view: UnsafeImageView,
     memory: A::Alloc,

@@ -48,7 +48,7 @@ use sync::Sharing;
 use OomError;
 
 /// Buffer that is written once then read for as long as it is alive.
-pub struct ImmutableBuffer<T: ?Sized, A = StdMemoryPool> where A: MemoryPool {
+pub struct ImmutableBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 
