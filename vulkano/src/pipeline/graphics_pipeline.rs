@@ -899,6 +899,12 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
+    /// Returns the device this pipeline was created with.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
     /// Returns true if the line width used by this pipeline is dynamic.
     #[inline]
     pub fn has_dynamic_line_width(&self) -> bool {

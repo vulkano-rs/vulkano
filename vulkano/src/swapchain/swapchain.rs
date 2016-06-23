@@ -152,6 +152,11 @@ impl Swapchain {
             *old_swapchain.stale.lock().unwrap() = false;
         }
 
+        let exclusive_sharing_mode = match sharing {
+            SharingMode::Exclusive(_) => true,
+            SharingMode::Concurrent(_) => false,
+        };
+
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
                 SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
@@ -215,7 +220,9 @@ impl Swapchain {
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
             let unsafe_image = UnsafeImage::from_raw(device, image, usage, format,
-                                                     Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1);
+                                                     Dimensions::Dim2d { width: dimensions[0],
+                                                     height: dimensions[1] }, 1, 1,
+                                                     exclusive_sharing_mode);
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 

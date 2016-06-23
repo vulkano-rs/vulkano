@@ -56,6 +56,13 @@ pub unsafe trait Buffer: 'static + Send + Sync {
     unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
                          submission: &Arc<Submission>) -> GpuAccessResult;
 
+    /// If true, this buffer was created with the exclusive sharing mode. If false, it was created
+    /// with the concurrent sharing mode.
+    #[inline]
+    fn exclusive_sharing_mode(&self) -> bool {
+        self.inner_buffer().exclusive_sharing_mode()
+    }
+
     #[inline]
     fn size(&self) -> usize {
         self.inner_buffer().size()

@@ -549,7 +549,7 @@ pub fn submit<P>(cmd: &Arc<PrimaryCommandBuffer<P>>, queue: &Arc<Queue>)
     where P: CommandPool + 'static,
           P::Finished: Send + Sync + 'static
 {       // TODO: wrong error type
-    inner_submit(&cmd.inner, cmd.clone() as Arc<_>, queue)
+    inner_submit(&cmd.inner, queue)
 }
 
 /// A prototype of a secondary compute command buffer.

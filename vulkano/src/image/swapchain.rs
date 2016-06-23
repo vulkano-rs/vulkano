@@ -125,6 +125,11 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        1
+    }
+
+    #[inline]
     fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
         (Layout::PresentSrc, false, true)
     }

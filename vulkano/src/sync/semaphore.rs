@@ -69,6 +69,12 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     {
         Arc::new(Semaphore::raw(device).unwrap())
     }
+
+    /// Returns the device that was used to build this semaphore.
+    #[inline]
+    pub fn device(&self) -> &D {
+        &self.device
+    }
 }
 
 unsafe impl<D> VulkanObject for Semaphore<D> where D: SafeDeref<Target = Device> {

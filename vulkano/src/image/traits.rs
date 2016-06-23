@@ -46,6 +46,19 @@ pub unsafe trait Image: 'static + Send + Sync {
         self.inner_image().dimensions()
     }
 
+    /// Returns the number of mipmaps of the image.
+    #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        self.inner_image().mipmap_levels()
+    }
+
+    /// If true, this image was created with the exclusive sharing mode. If false, it was created
+    /// with the concurrent sharing mode.
+    #[inline]
+    fn exclusive_sharing_mode(&self) -> bool {
+        self.inner_image().exclusive_sharing_mode()
+    }
+
     /// Given a range, returns the list of blocks which each range is contained in.
     ///
     /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
@@ -123,6 +136,7 @@ pub unsafe trait ImageClearValue<T>: Image {
     fn decode(&self, T) -> Option<ClearValue>;
 }
 
+// TODO: rename to `ImageBufferTransfer`
 pub unsafe trait ImageContent<P>: Image {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;

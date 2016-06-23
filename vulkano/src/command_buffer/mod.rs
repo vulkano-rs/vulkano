@@ -53,6 +53,17 @@ pub use self::outer::SecondaryGraphicsCommandBuffer;
 pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
 
+use std::sync::Arc;
+
+use device::Device;
+use self::pool::CommandPool;
+use self::sys::UnsafeCommandBuffer;
+
+mod inner;
+mod outer;
+pub mod pool;
+pub mod sys;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
@@ -72,6 +83,38 @@ pub struct DrawIndexedIndirectCommand {
     pub first_instance: u32,
 }
 
-mod inner;
-mod outer;
-pub mod pool;
+/// Trait for types that contain a list of commands executable by a queue.
+pub unsafe trait CommandBuffer {
+    /// The pool that was used to create this command buffer.
+    type Pool: CommandPool;
+
+    /// Returns the inner command buffer.
+    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
+    fn inner_cb(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+
+    /// Returns the pool used to create this command buffer.
+    #[inline]
+    fn pool(&self) -> &Self::Pool {
+        self.inner_cb().pool()
+    }
+
+    /// Returns the device this command buffer belongs to.
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner_cb().device()
+    }
+
+    /// Returns true if the command buffer was created with the `SimultaneousUse` flag.
+    ///
+    /// If false, then the command buffer must be properly synchronized.
+    #[inline]
+    fn simultaneous_use(&self) -> bool {
+        self.inner_cb().simultaneous_use()
+    }
+
+    /// Returns true if this is a secondary command buffer.
+    #[inline]
+    fn is_secondary(&self) -> bool {
+        self.inner_cb().is_secondary()
+    }
+}
