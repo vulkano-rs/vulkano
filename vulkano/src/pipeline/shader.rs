@@ -448,6 +448,7 @@ impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
 
 /// Declares which type of primitives are expected by the geometry shader.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[doc(hidden)]
 pub enum GeometryShaderExecutionMode {
     Points,
     Lines,

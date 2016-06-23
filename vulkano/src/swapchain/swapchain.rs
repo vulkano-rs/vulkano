@@ -154,7 +154,7 @@ impl Swapchain {
 
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
-                SharingMode::Exclusive(id) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Exclusive(_) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
                 SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT, ids.len() as u32,
                                                      ids.as_ptr()),
             };
@@ -334,6 +334,7 @@ impl Swapchain {
     }*/
     // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
     #[inline]
+    #[doc(hidden)]
     pub fn image_semaphore(&self, id: u32, semaphore: Arc<Semaphore>) -> Option<Arc<Semaphore>> {
         let mut semaphores = self.images_semaphores.lock().unwrap();
         mem::replace(&mut semaphores[id as usize], Some(semaphore))

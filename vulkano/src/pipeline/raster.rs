@@ -93,9 +93,13 @@ pub struct DepthBias {
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum CullMode {
+    /// No culling.
     None = vk::CULL_MODE_NONE,
+    /// The faces facing the front of the screen (ie. facing the user) will be removed.
     Front = vk::CULL_MODE_FRONT_BIT,
+    /// The faces facing the back of the screen will be removed.
     Back = vk::CULL_MODE_BACK_BIT,
+    /// All faces will be removed.
     FrontAndBack = vk::CULL_MODE_FRONT_AND_BACK,
 }
 

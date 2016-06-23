@@ -12,6 +12,9 @@
 //! As far as the author knows, no existing device supports these features. Therefore the code here
 //! is mostly a draft and needs rework in both the API and the implementation.
 
+#![allow(dead_code)]        // TODO: this module isn't finished
+#![allow(unused_variables)]        // TODO: this module isn't finished
+
 use std::ffi::CStr;
 use std::ptr;
 use std::sync::Arc;

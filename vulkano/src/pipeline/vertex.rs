@@ -75,10 +75,13 @@ use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
 use vk;
 
+/// How the vertex source should be unrolled.
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum InputRate {
+    /// Each element of the source corresponds to a vertex.
     Vertex = vk::VERTEX_INPUT_RATE_VERTEX,
+    /// Each element of the source corresponds to an instance.
     Instance = vk::VERTEX_INPUT_RATE_INSTANCE,
 }
 
@@ -110,6 +113,7 @@ pub struct VertexMemberInfo {
 }
 
 /// Type of a member of a vertex struct.
+#[allow(missing_docs)]
 pub enum VertexMemberTy {
     I8,
     U8,
