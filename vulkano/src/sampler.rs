@@ -41,10 +41,13 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
+pub use pipeline::depth_stencil::Compare;
+
 /// Describes how to retreive data from an image within a shader.
 pub struct Sampler {
     sampler: vk::Sampler,
     device: Arc<Device>,
+    compare_mode: bool,
     usable_with_float_formats: bool,
     usable_with_int_formats: bool,
     usable_with_swizzling: bool,
@@ -110,11 +113,49 @@ impl Sampler {
     /// - Panicks if `max_anisotropy < 1.0`.
     /// - Panicks if `min_lod > max_lod`.
     ///
+    #[inline(always)]
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
                max_anisotropy: f32, min_lod: f32, max_lod: f32)
                -> Result<Arc<Sampler>, SamplerCreationError>
+    {
+        Sampler::new_impl(device, mag_filter, min_filter, mipmap_mode, address_u, address_v,
+                          address_w, mip_lod_bias, max_anisotropy, min_lod, max_lod, None)
+    }
+
+    /// Creates a new `Sampler` with the given behavior.
+    ///
+    /// Contrary to `new`, this creates a sampler that is used to compare depth values.
+    ///
+    /// A sampler like this can only operate on depth or depth-stencil textures. Instead of
+    /// returning the value of the texture, this sampler will return a value between 0.0 and 1.0
+    /// indicating how much the reference value (passed by the shader) compares to the value in the
+    /// texture.
+    ///
+    /// Note that it doesn't make sense to create a compare-mode sampler with an integer border
+    /// color, as such a sampler would be unusable.
+    ///
+    /// # Panic
+    ///
+    /// Same panic reasons as `new`.
+    ///
+    #[inline(always)]
+    pub fn compare(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
+                   mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
+                   address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
+                   max_anisotropy: f32, min_lod: f32, max_lod: f32, compare: Compare)
+                   -> Result<Arc<Sampler>, SamplerCreationError>
+    {
+        Sampler::new_impl(device, mag_filter, min_filter, mipmap_mode, address_u, address_v,
+                          address_w, mip_lod_bias, max_anisotropy, min_lod, max_lod, Some(compare))
+    }
+
+    fn new_impl(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
+                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
+                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
+                max_anisotropy: f32, min_lod: f32, max_lod: f32, compare: Option<Compare>)
+                -> Result<Arc<Sampler>, SamplerCreationError>
     {
         assert!(max_anisotropy >= 1.0);
         assert!(min_lod <= max_lod);
@@ -173,8 +214,8 @@ impl Sampler {
                 mipLodBias: mip_lod_bias,
                 anisotropyEnable: if max_anisotropy > 1.0 { vk::TRUE } else { vk::FALSE },
                 maxAnisotropy: max_anisotropy,
-                compareEnable: 0,       // FIXME: 
-                compareOp: 0,       // FIXME: 
+                compareEnable: if compare.is_some() { vk::TRUE } else { vk:: FALSE },
+                compareOp: compare.map(|c| c as u32).unwrap_or(0),
                 minLod: min_lod,
                 maxLod: max_lod,
                 borderColor: border_color.map(|b| b as u32).unwrap_or(0),
@@ -190,6 +231,7 @@ impl Sampler {
         Ok(Arc::new(Sampler {
             sampler: sampler,
             device: device.clone(),
+            compare_mode: compare.is_some(),
             usable_with_float_formats: match border_color {
                 Some(BorderColor::FloatTransparentBlack) => true,
                 Some(BorderColor::FloatOpaqueBlack) => true,
@@ -197,7 +239,7 @@ impl Sampler {
                 Some(_) => false,
                 None => true,
             },
-            usable_with_int_formats: match border_color {
+            usable_with_int_formats: compare.is_none() && match border_color {
                 Some(BorderColor::IntTransparentBlack) => true,
                 Some(BorderColor::IntOpaqueBlack) => true,
                 Some(BorderColor::IntOpaqueWhite) => true,
@@ -270,6 +312,7 @@ impl Sampler {
         Ok(Arc::new(Sampler {
             sampler: sampler,
             device: device.clone(),
+            compare_mode: false,
             usable_with_float_formats: match border_color {
                 Some(BorderColor::FloatTransparentBlack) => true,
                 Some(BorderColor::FloatOpaqueBlack) => true,
@@ -290,6 +333,12 @@ impl Sampler {
                 _ => true,
             },
         }))
+    }
+
+    /// Returns true if the sampler is a compare-mode sampler.
+    #[inline]
+    pub fn compare_mode(&self) -> bool {
+        self.compare_mode
     }
 
     /// Returns true if the sampler can be used with floating-point image views. See the
@@ -509,6 +558,20 @@ mod tests {
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
                                       0.0, 2.0).unwrap();
+    }
+
+    #[test]
+    fn create_compare() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let s = sampler::Sampler::compare(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                          sampler::MipmapMode::Nearest,
+                                          sampler::SamplerAddressMode::Repeat,
+                                          sampler::SamplerAddressMode::Repeat,
+                                          sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
+                                          0.0, 2.0, sampler::Compare::Less).unwrap();
+
+        assert!(s.compare_mode());
     }
 
     #[test]
