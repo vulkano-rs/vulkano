@@ -17,7 +17,7 @@
 //! Creating a surface can be done with only an `Instance` object. However creating a swapchain
 //! requires a `Device` object.
 //!
-//! Once you have a swapchain, you can retreive `Image` objects from it and draw to them. However
+//! Once you have a swapchain, you can retrieve `Image` objects from it and draw to them. However
 //! due to double-buffering or other caching mechanism, the rendering will not automatically be
 //! shown on screen. In order to show the output on screen, you have to *present* the swapchain
 //! by using the method with the same name.

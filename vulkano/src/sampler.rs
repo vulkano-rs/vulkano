@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! How to retreive data from an image within a shader.
+//! How to retrieve data from an image within a shader.
 //!
-//! When you retreive data from an image, you have to pass the coordinates of the pixel you want
-//! to retreive. The implementation then performs various calculations, and these operations are
+//! When you retrieve data from an image, you have to pass the coordinates of the pixel you want
+//! to retrieve. The implementation then performs various calculations, and these operations are
 //! what the `Sampler` struct describes.
 //!
 //! Sampling is a very complex topic but that hasn't changed much since the beginnings of 3D
@@ -72,7 +72,7 @@ use vk;
 
 pub use pipeline::depth_stencil::Compare;
 
-/// Describes how to retreive data from an image within a shader.
+/// Describes how to retrieve data from an image within a shader.
 pub struct Sampler {
     sampler: vk::Sampler,
     device: Arc<Device>,

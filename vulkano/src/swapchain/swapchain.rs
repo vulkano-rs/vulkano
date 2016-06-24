@@ -49,7 +49,7 @@ pub struct Swapchain {
     surface: Arc<Surface>,
     swapchain: vk::SwapchainKHR,
 
-    /// Pool of semaphores from which a semaphore is retreived when acquiring an image.
+    /// Pool of semaphores from which a semaphore is retrieved when acquiring an image.
     ///
     /// We need to use a queue so that we don't use the same semaphore twice in a row. The length
     /// of the queue is strictly superior to the number of images, in case the driver lets us
