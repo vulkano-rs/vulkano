@@ -7,11 +7,40 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! How to retreive data from an image within a shader.
+//! How to retrieve data from an image within a shader.
+//!
+//! When you retrieve data from an image, you have to pass the coordinates of the pixel you want
+//! to retrieve. The implementation then performs various calculations, and these operations are
+//! what the `Sampler` struct describes.
 //!
 //! Sampling is a very complex topic but that hasn't changed much since the beginnings of 3D
 //! rendering. Documentation here is missing, but any tutorial about OpenGL or DirectX can teach
 //! you how it works.
+//!
+//! # Examples
+//!
+//! A simple sampler for most usages:
+//!
+//! ```no_run
+//! use vulkano::sampler::Sampler;
+//! 
+//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! let _sampler = Sampler::simple_repeat_linear_no_mipmap(&device);
+//! ```
+//!
+//! More detailed sampler creation:
+//!
+//! ```no_run
+//! use vulkano::sampler;
+//! 
+//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! let _sampler = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+//!                                      sampler::MipmapMode::Nearest,
+//!                                      sampler::SamplerAddressMode::Repeat,
+//!                                      sampler::SamplerAddressMode::Repeat,
+//!                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
+//!                                      0.0, 100.0).unwrap();;
+//! ```
 //!
 //! # About border colors
 //!
@@ -43,7 +72,7 @@ use vk;
 
 pub use pipeline::depth_stencil::Compare;
 
-/// Describes how to retreive data from an image within a shader.
+/// Describes how to retrieve data from an image within a shader.
 pub struct Sampler {
     sampler: vk::Sampler,
     device: Arc<Device>,
@@ -416,12 +445,31 @@ pub enum MipmapMode {
     Linear = vk::SAMPLER_MIPMAP_MODE_LINEAR,
 }
 
+/// How the sampler should behave when it needs to access a pixel that is out of range of the
+/// texture.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum SamplerAddressMode {
+    /// Repeat the texture. In other words, the pixel at coordinate `x + 1.0` is the same as the
+    /// one at coordinate `x`.
     Repeat,
+
+    /// Repeat the texture but mirror it at every repetition. In other words, the pixel at
+    /// coordinate `x + 1.0` is the same as the one at coordinate `1.0 - x`.
     MirroredRepeat,
+
+    /// The coordinates are clamped to the valid range. Coordinates below 0.0 have the same value
+    /// as coordinate 0.0. Coordinates over 1.0 have the same value as coordinate 1.0.
     ClampToEdge,
+
+    /// Any pixel out of range is considered to be part of the "border" of the image, which has a
+    /// specific color of your choice.
+    ///
+    /// Note that if you use `ClampToBorder` multiple times, they must all have the same border
+    /// color.
     ClampToBorder(BorderColor),
+
+    /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
+    /// `[-1.0, 1.0]`.
     MirrorClampToEdge,
 }
 
@@ -446,10 +494,21 @@ impl SamplerAddressMode {
     }
 }
 
+/// How the sampler should behave when it needs to access a pixel that is out of range of the
+/// texture.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum UnnormalizedSamplerAddressMode {
+    /// The coordinates are clamped to the valid range. Coordinates below 0 have the same value
+    /// as coordinate 0. Coordinates over *size of texture* have the same value as coordinate
+    /// *size of texture*.
     ClampToEdge,
+
+    /// Any pixel out of range is considered to be part of the "border" of the image, which has a
+    /// specific color of your choice.
+    ///
+    /// Note that if you use `ClampToBorder` multiple times, they must all have the same border
+    /// color.
     ClampToBorder(BorderColor),
 }
 
@@ -473,14 +532,32 @@ impl UnnormalizedSamplerAddressMode {
     }
 }
 
+/// The color to use for the border of an image.
+///
+/// Only relevant if you use `ClampToBorder`.
+///
+/// Using a border color restricts the sampler to either floating-point images or integer images.
+/// See the documentation of the `sampler` module for more info.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum BorderColor {
+    /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
     FloatTransparentBlack = vk::BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+
+    /// The value `(0, 0, 0, 0)`. Can only be used with integer images.
     IntTransparentBlack = vk::BORDER_COLOR_INT_TRANSPARENT_BLACK,
+
+    /// The value `(0.0, 0.0, 0.0, 1.0)`. Can only be used with floating-point identity-swizzled
+    /// images.
     FloatOpaqueBlack = vk::BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+
+    /// The value `(0, 0, 0, 1)`. Can only be used with integer identity-swizzled images.
     IntOpaqueBlack = vk::BORDER_COLOR_INT_OPAQUE_BLACK,
+
+    /// The value `(1.0, 1.0, 1.0, 1.0)`. Can only be used with floating-point images.
     FloatOpaqueWhite = vk::BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+
+    /// The value `(1, 1, 1, 1)`. Can only be used with integer images.
     IntOpaqueWhite = vk::BORDER_COLOR_INT_OPAQUE_WHITE,
 }
 
@@ -499,10 +576,20 @@ pub enum SamplerCreationError {
     SamplerAnisotropyFeatureNotEnabled,
 
     /// The requested anisotropy level exceeds the device's limits.
-    AnisotropyLimitExceeded { requested: f32, maximum: f32 },
+    AnisotropyLimitExceeded {
+        /// The value that was requested.
+        requested: f32,
+        /// The maximum supported value.
+        maximum: f32
+    },
 
     /// The requested mip lod bias exceeds the device's limits.
-    MipLodBiasLimitExceeded { requested: f32, maximum: f32 },
+    MipLodBiasLimitExceeded {
+        /// The value that was requested.
+        requested: f32,
+        /// The maximum supported value.
+        maximum: f32
+    },
 }
 
 impl error::Error for SamplerCreationError {

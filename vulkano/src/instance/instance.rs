@@ -409,7 +409,7 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the index of the physical device in the physical devices list.
     ///
-    /// This index never changes and can be used later to retreive a `PhysicalDevice` from an
+    /// This index never changes and can be used later to retrieve a `PhysicalDevice` from an
     /// instance and an index.
     #[inline]
     pub fn index(&self) -> usize {
