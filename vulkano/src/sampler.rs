@@ -48,6 +48,7 @@ pub struct Sampler {
     sampler: vk::Sampler,
     device: Arc<Device>,
     compare_mode: bool,
+    unnormalized: bool,
     usable_with_float_formats: bool,
     usable_with_int_formats: bool,
     usable_with_swizzling: bool,
@@ -232,6 +233,7 @@ impl Sampler {
             sampler: sampler,
             device: device.clone(),
             compare_mode: compare.is_some(),
+            unnormalized: false,
             usable_with_float_formats: match border_color {
                 Some(BorderColor::FloatTransparentBlack) => true,
                 Some(BorderColor::FloatOpaqueBlack) => true,
@@ -313,6 +315,7 @@ impl Sampler {
             sampler: sampler,
             device: device.clone(),
             compare_mode: false,
+            unnormalized: true,
             usable_with_float_formats: match border_color {
                 Some(BorderColor::FloatTransparentBlack) => true,
                 Some(BorderColor::FloatOpaqueBlack) => true,
@@ -339,6 +342,12 @@ impl Sampler {
     #[inline]
     pub fn compare_mode(&self) -> bool {
         self.compare_mode
+    }
+
+    /// Returns true if the sampler is unnormalized.
+    #[inline]
+    pub fn is_unnormalized(&self) -> bool {
+        self.unnormalized
     }
 
     /// Returns true if the sampler can be used with floating-point image views. See the
@@ -552,12 +561,14 @@ mod tests {
     fn create_regular() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let s = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
                                       sampler::MipmapMode::Nearest,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
                                       0.0, 2.0).unwrap();
+        assert!(!s.compare_mode());
+        assert!(!s.is_unnormalized());
     }
 
     #[test]
@@ -572,16 +583,20 @@ mod tests {
                                           0.0, 2.0, sampler::Compare::Less).unwrap();
 
         assert!(s.compare_mode());
+        assert!(!s.is_unnormalized());
     }
 
     #[test]
     fn create_unnormalized() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::unnormalized(&device, sampler::Filter::Linear,
+        let s = sampler::Sampler::unnormalized(&device, sampler::Filter::Linear,
                                                sampler::UnnormalizedSamplerAddressMode::ClampToEdge,
                                                sampler::UnnormalizedSamplerAddressMode::ClampToEdge)
                                                .unwrap();
+
+        assert!(!s.compare_mode());
+        assert!(s.is_unnormalized());
     }
 
     #[test]
