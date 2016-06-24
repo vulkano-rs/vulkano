@@ -30,9 +30,16 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
 
     /// Allocates memory from the pool.
     ///
+    /// # Safety
+    ///
+    /// - The returned object must match the requirements.
+    /// - When a linear object is allocated next to an optimal object, it is mandatory that
+    ///   the boundary is aligned to the value of the `buffer_image_granularity` limit.
+    ///
     /// # Panic
     ///
-    /// - Panicks if `device` and `memory_type` don't belong to the same physical device.
+    /// - Panicks if `memory_type` doesn't belong to the same physical device as the device which
+    ///   was used to create this pool.
     /// - Panicks if `size` is 0.
     /// - Panicks if `alignment` is 0.
     ///
@@ -55,11 +62,10 @@ pub unsafe trait MemoryPoolAlloc: 'static + Send + Sync {
 }
 
 /// Layout of the object being allocated.
-///
-/// When a linear object is allocated next to an optimal object, they have to be aligned to
-/// the value of the `bufferImageGranularity` limit.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AllocLayout {
+    /// The object has a linear layout.
     Linear,
+    /// The object has an optimal layout.
     Optimal,
 }
