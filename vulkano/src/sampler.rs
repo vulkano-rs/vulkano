@@ -9,9 +9,38 @@
 
 //! How to retreive data from an image within a shader.
 //!
+//! When you retreive data from an image, you have to pass the coordinates of the pixel you want
+//! to retreive. The implementation then performs various calculations, and these operations are
+//! what the `Sampler` struct describes.
+//!
 //! Sampling is a very complex topic but that hasn't changed much since the beginnings of 3D
 //! rendering. Documentation here is missing, but any tutorial about OpenGL or DirectX can teach
 //! you how it works.
+//!
+//! # Examples
+//!
+//! A simple sampler for most usages:
+//!
+//! ```no_run
+//! use vulkano::sampler::Sampler;
+//! 
+//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! let _sampler = Sampler::simple_repeat_linear_no_mipmap(&device);
+//! ```
+//!
+//! More detailed sampler creation:
+//!
+//! ```no_run
+//! use vulkano::sampler;
+//! 
+//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! let _sampler = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+//!                                      sampler::MipmapMode::Nearest,
+//!                                      sampler::SamplerAddressMode::Repeat,
+//!                                      sampler::SamplerAddressMode::Repeat,
+//!                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
+//!                                      0.0, 100.0).unwrap();;
+//! ```
 //!
 //! # About border colors
 //!
