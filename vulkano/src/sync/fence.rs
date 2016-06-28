@@ -322,7 +322,6 @@ mod tests {
     use sync::Fence;
 
     #[test]
-    #[ignore]       // TODO: fails on AMD + Windows
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
@@ -347,7 +346,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]       // TODO: fails on AMD + Windows
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
