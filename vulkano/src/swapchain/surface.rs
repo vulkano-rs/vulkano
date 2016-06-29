@@ -887,7 +887,7 @@ pub enum ColorSpace {
 impl ColorSpace {
     #[inline]
     fn from_num(val: u32) -> ColorSpace {
-        assert_eq!(val, vk::COLORSPACE_SRGB_NONLINEAR_KHR);
+        assert_eq!(val, vk::COLOR_SPACE_SRGB_NONLINEAR_KHR);
         ColorSpace::SrgbNonLinear
     }
 }

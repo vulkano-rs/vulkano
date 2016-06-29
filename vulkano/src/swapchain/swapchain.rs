@@ -166,7 +166,7 @@ impl Swapchain {
                 surface: surface.internal_object(),
                 minImageCount: num_images,
                 imageFormat: format as u32,
-                imageColorSpace: vk::COLORSPACE_SRGB_NONLINEAR_KHR,     // only available value
+                imageColorSpace: vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,     // only available value
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
                 imageUsage: usage,
