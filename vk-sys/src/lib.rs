@@ -883,7 +883,9 @@ pub type DisplayPlaneAlphaFlagsKHR = Flags;
 pub type DisplaySurfaceCreateFlagsKHR = Flags;
 
 pub type ColorSpaceKHR = u32;
+#[deprecated = "Renamed to COLOR_SPACE_SRGB_NONLINEAR_KHR"]
 pub const COLORSPACE_SRGB_NONLINEAR_KHR: u32 = 0;
+pub const COLOR_SPACE_SRGB_NONLINEAR_KHR: u32 = 0;
 
 pub type PresentModeKHR = u32;
 pub const PRESENT_MODE_IMMEDIATE_KHR: u32 = 0;
