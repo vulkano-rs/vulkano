@@ -19,7 +19,7 @@ use vk;
 lazy_static! {
     static ref VK_LIB: Result<shared_library::dynamic_library::DynamicLibrary, LoadingError> = {
         #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
-        #[cfg(unix)] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
+        #[cfg(unix)] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
         let path = get_path();
         shared_library::dynamic_library::DynamicLibrary::open(Some(path))
                                     .map_err(|err| LoadingError::LibraryLoadFailure(err))
