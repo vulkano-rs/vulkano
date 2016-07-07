@@ -62,7 +62,9 @@
 //! // TODO: finish example
 //! # }
 //! ```
-//!
+
+use std::error;
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
@@ -113,6 +115,7 @@ pub struct VertexMemberInfo {
 }
 
 /// Type of a member of a vertex struct.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum VertexMemberTy {
     I8,
@@ -168,9 +171,49 @@ pub unsafe trait Definition<I>: 'static + Send + Sync {
 
     /// Builds the vertex definition to use to link this definition to a vertex shader's input
     /// interface.
-    // TODO: return error if problem
-    fn definition(&self, interface: &I) -> (Self::BuffersIter, Self::AttribsIter);
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>;
 }
+
+/// Error that can happen when the vertex definition doesn't match the input of the vertex shader.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IncompatibleVertexDefinitionError {
+    /// An attribute of the vertex shader is missing in the vertex source.
+    MissingAttribute {
+        /// Name of the missing attribute.
+        attribute: String,
+    },
+
+    /// The format of an attribute does not match.
+    FormatMismatch {
+        /// Name of the attribute.
+        attribute: String,
+        /// The format in the vertex shader.
+        shader: (Format, usize),
+        /// The format in the vertex definition.
+        definition: (VertexMemberTy, usize),
+    },
+}
+
+impl error::Error for IncompatibleVertexDefinitionError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            IncompatibleVertexDefinitionError::MissingAttribute { .. } => "an attribute is missing",
+            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
+                "the format of an attribute does not match"
+            },
+        }
+    }
+}
+
+impl fmt::Display for IncompatibleVertexDefinitionError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
 
 /// Extension trait of `Definition`. The `L` parameter is an acceptable vertex source for this
 /// vertex definition.
@@ -197,13 +240,30 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
     type BuffersIter = OptionIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> (Self::BuffersIter, Self::AttribsIter) {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
         let attrib = {
             let mut attribs = Vec::with_capacity(interface.elements().len());
             for e in interface.elements() {
-                let infos = <T as Vertex>::member(e.name.as_ref().unwrap()).expect("missing vertex attrib");
-                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start),
-                        "Vertex attribute `{:?}` does not match expected format", e.name);
+                let name = e.name.as_ref().unwrap();
+
+                let infos = match <T as Vertex>::member(name) {
+                    Some(m) => m,
+                    None => return Err(IncompatibleVertexDefinitionError::MissingAttribute {
+                        attribute: name.clone().into_owned()
+                    })
+                };
+
+                if !infos.ty.matches(infos.array_size, e.format,
+                                     e.location.end - e.location.start)
+                {
+                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                        attribute: name.clone().into_owned(),
+                        shader: (e.format, (e.location.end - e.location.start) as usize),
+                        definition: (infos.ty, infos.array_size),
+                    })
+                }
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
@@ -215,7 +275,7 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
         }.into_iter();      // TODO: meh
 
         let buffers = Some((0, mem::size_of::<T>(), InputRate::Vertex)).into_iter();
-        (buffers, attrib)
+        Ok((buffers, attrib))
     }
 }
 
@@ -246,18 +306,33 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> (Self::BuffersIter, Self::AttribsIter) {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
         let attrib = {
             let mut attribs = Vec::with_capacity(interface.elements().len());
             for e in interface.elements() {
-                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(e.name.as_ref().unwrap()) {
+                let name = e.name.as_ref().unwrap();
+
+                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
                     (infos, 0)
-                } else if let Some(infos) = <U as Vertex>::member(e.name.as_ref().unwrap()) {
+                } else if let Some(infos) = <U as Vertex>::member(name) {
                     (infos, 1)
                 } else {
-                    panic!("missing vertex attrib")
+                    return Err(IncompatibleVertexDefinitionError::MissingAttribute {
+                        attribute: name.clone().into_owned()
+                    });
                 };
-                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start));
+
+                if !infos.ty.matches(infos.array_size, e.format,
+                                     e.location.end - e.location.start)
+                {
+                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                        attribute: name.clone().into_owned(),
+                        shader: (e.format, (e.location.end - e.location.start) as usize),
+                        definition: (infos.ty, infos.array_size),
+                    })
+                }
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
@@ -273,7 +348,7 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
             (1, mem::size_of::<U>(), InputRate::Vertex)
         ].into_iter();
 
-        (buffers, attrib)
+        Ok((buffers, attrib))
     }
 }
 
@@ -307,18 +382,33 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> (Self::BuffersIter, Self::AttribsIter) {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
         let attrib = {
             let mut attribs = Vec::with_capacity(interface.elements().len());
             for e in interface.elements() {
-                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(e.name.as_ref().unwrap()) {
+                let name = e.name.as_ref().unwrap();
+
+                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
                     (infos, 0)
-                } else if let Some(infos) = <U as Vertex>::member(e.name.as_ref().unwrap()) {
+                } else if let Some(infos) = <U as Vertex>::member(name) {
                     (infos, 1)
                 } else {
-                    panic!("missing vertex attrib")
+                    return Err(IncompatibleVertexDefinitionError::MissingAttribute {
+                        attribute: name.clone().into_owned()
+                    });
                 };
-                assert!(infos.ty.matches(infos.array_size, e.format, e.location.end - e.location.start));
+
+                if !infos.ty.matches(infos.array_size, e.format,
+                                     e.location.end - e.location.start)
+                {
+                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                        attribute: name.clone().into_owned(),
+                        shader: (e.format, (e.location.end - e.location.start) as usize),
+                        definition: (infos.ty, infos.array_size),
+                    })
+                }
 
                 let mut offset = infos.offset;
                 for loc in e.location.clone() {
@@ -334,7 +424,7 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
             (1, mem::size_of::<U>(), InputRate::Instance)
         ].into_iter();
 
-        (buffers, attrib)
+        Ok((buffers, attrib))
     }
 }
 
