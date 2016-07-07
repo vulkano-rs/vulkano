@@ -51,6 +51,7 @@ use pipeline::shader::TessEvaluationShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
+use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::viewport::ViewportsState;
 
 /// Description of a `GraphicsPipeline`.
@@ -412,7 +413,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // Vertex bindings.
         let (binding_descriptions, attribute_descriptions) = {
-            let (buffers_iter, attribs_iter) = params.vertex_input.definition(params.vertex_shader.input_definition());
+            let (buffers_iter, attribs_iter) = try!(params.vertex_input.definition(params.vertex_shader.input_definition()));
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             for (num, stride, rate) in buffers_iter {
@@ -1021,12 +1022,8 @@ pub enum GraphicsPipelineCreationError {
     /// expects.
     FragmentShaderRenderPassIncompatible,
 
-    /// One of the vertex attributes requested by the vertex shader is missing from the vertex
-    /// input.
-    MissingVertexAttribute {
-        /// Name of the attribute.
-        name: String
-    },
+    /// The vertex definition is not compatible with the input of the vertex shader.
+    IncompatibleVertexDefinition(IncompatibleVertexDefinitionError),
 
     /// The maximum stride value for vertex input (ie. the distance between two vertex elements)
     /// has been exceeded.
@@ -1181,9 +1178,8 @@ impl error::Error for GraphicsPipelineCreationError {
                 "the output of the fragment shader is not compatible with what the render pass \
                  subpass expects"
             },
-            GraphicsPipelineCreationError::MissingVertexAttribute { .. } => {
-                "one of the vertex attributes requested by the vertex shader is missing from the \
-                 vertex input"
+            GraphicsPipelineCreationError::IncompatibleVertexDefinition(_) => {
+                "the vertex definition is not compatible with the input of the vertex shader"
             },
             GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
                 "the maximum stride value for vertex input (ie. the distance between two vertex \
@@ -1277,27 +1273,14 @@ impl error::Error for GraphicsPipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => {
-                Some(err)
-            },
-            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => {
-                Some(err)
-            },
+            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
             _ => None
         }
     }
@@ -1314,6 +1297,13 @@ impl From<OomError> for GraphicsPipelineCreationError {
     #[inline]
     fn from(err: OomError) -> GraphicsPipelineCreationError {
         GraphicsPipelineCreationError::OomError(err)
+    }
+}
+
+impl From<IncompatibleVertexDefinitionError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: IncompatibleVertexDefinitionError) -> GraphicsPipelineCreationError {
+        GraphicsPipelineCreationError::IncompatibleVertexDefinition(err)
     }
 }
 
