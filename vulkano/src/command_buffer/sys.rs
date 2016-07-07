@@ -123,7 +123,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let (rp, sp) = if let Kind::SecondaryRenderPass { subpass, .. } = kind {
-            (subpass.render_pass().render_pass().internal_object(), subpass.index())
+            (subpass.render_pass().inner().internal_object(), subpass.index())
         } else {
             (0, 0)
         };
@@ -229,7 +229,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     pub unsafe fn fill_buffer<T: ?Sized, B>(&mut self, buffer: BufferSlice<T, B>, data: u32)
         where B: Buffer
     {
-        assert_eq!(buffer.buffer().inner_buffer().device().internal_object(),
+        assert_eq!(buffer.buffer().inner().device().internal_object(),
                    self.device.internal_object());
 
         debug_assert_eq!(buffer.offset() % 4, 0);
@@ -243,7 +243,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdFillBuffer(cmd, buffer.buffer().inner_buffer().internal_object(),
+        vk.CmdFillBuffer(cmd, buffer.buffer().inner().internal_object(),
                          buffer.offset() as vk::DeviceSize,
                          buffer.size() as vk::DeviceSize, data);
     }
@@ -272,7 +272,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                                          data: &D)
         where B: Buffer, D: Copy + 'static
     {
-        assert_eq!(buffer.buffer().inner_buffer().device().internal_object(),
+        assert_eq!(buffer.buffer().inner().device().internal_object(),
                    self.device.internal_object());
 
         let size = cmp::min(buffer.size(), mem::size_of_val(data));
@@ -283,7 +283,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdUpdateBuffer(cmd, buffer.buffer().inner_buffer().internal_object(),
+        vk.CmdUpdateBuffer(cmd, buffer.buffer().inner().internal_object(),
                            buffer.offset() as vk::DeviceSize, size as vk::DeviceSize,
                            data as *const D as *const _);
     }
@@ -314,10 +314,10 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
               Bd: Buffer,
               I: IntoIterator<Item = BufferCopyRegion>
     {
-        assert_eq!(src.inner_buffer().device().internal_object(),
+        assert_eq!(src.inner().device().internal_object(),
                    self.device.internal_object());
-        assert_eq!(src.inner_buffer().device().internal_object(),
-                   dest.inner_buffer().device().internal_object());
+        assert_eq!(src.inner().device().internal_object(),
+                   dest.inner().device().internal_object());
 
         let regions: SmallVec<[_; 4]> = {
             let mut res = SmallVec::new();
@@ -339,8 +339,8 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdCopyBuffer(cmd, src.inner_buffer().internal_object(),
-                         dest.inner_buffer().internal_object(), regions.len() as u32,
+        vk.CmdCopyBuffer(cmd, src.inner().internal_object(),
+                         dest.inner().internal_object(), regions.len() as u32,
                          regions.as_ptr());
     }
 }

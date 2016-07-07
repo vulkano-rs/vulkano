@@ -131,7 +131,7 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
 
 unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
-    fn inner_image(&self) -> &UnsafeImage {
+    fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
@@ -235,7 +235,7 @@ unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn inner_view(&self) -> &UnsafeImageView {
+    fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
 

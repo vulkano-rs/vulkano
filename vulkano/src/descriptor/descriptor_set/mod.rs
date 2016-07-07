@@ -25,8 +25,7 @@ mod unsafe_layout;
 /// Objects of this type can be passed when submitting a draw command.
 pub unsafe trait DescriptorSet: 'static + Send + Sync {
     /// Returns the inner `UnsafeDescriptorSet`.
-    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
-    fn inner_descriptor_set(&self) -> &UnsafeDescriptorSet;
+    fn inner(&self) -> &UnsafeDescriptorSet;
 }
 
 /// Trait for objects that describe the layout of the descriptors of a set.

@@ -38,7 +38,7 @@ impl EmptyPipeline {
 
 unsafe impl PipelineLayout for EmptyPipeline {
     #[inline]
-    fn inner_pipeline_layout(&self) -> &UnsafePipelineLayout {
+    fn inner(&self) -> &UnsafePipelineLayout {
         &self.inner
     }
 }

@@ -165,7 +165,7 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn inner_buffer(&self) -> &UnsafeBuffer {
+    fn inner(&self) -> &UnsafeBuffer {
         &self.inner
     }
     

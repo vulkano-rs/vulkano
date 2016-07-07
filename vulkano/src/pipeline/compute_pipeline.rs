@@ -80,7 +80,7 @@ impl<Pl> ComputePipeline<Pl> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: PipelineLayout::inner_pipeline_layout(&**pipeline_layout).internal_object(),
+                layout: PipelineLayout::inner(&**pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };

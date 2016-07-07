@@ -23,27 +23,26 @@ use sync::Semaphore;
 /// Trait for types that represent images.
 pub unsafe trait Image: 'static + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
-    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
-    fn inner_image(&self) -> &UnsafeImage;
+    fn inner(&self) -> &UnsafeImage;
 
     //fn align(&self, subresource_range: ) -> ;
 
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
-        self.inner_image().format()
+        self.inner().format()
     }
 
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
-        self.inner_image().samples()
+        self.inner().samples()
     }
 
     /// Returns the dimensions of the image.
     #[inline]
     fn dimensions(&self) -> Dimensions {
-        self.inner_image().dimensions()
+        self.inner().dimensions()
     }
 
     /// Given a range, returns the list of blocks which each range is contained in.
@@ -106,13 +105,13 @@ pub unsafe trait Image: 'static + Send + Sync {
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     fn supports_blit_source(&self) -> bool {
-        self.inner_image().supports_blit_source()
+        self.inner().supports_blit_source()
     }
 
     /// Returns true if the image can be used as a destination for blits.
     #[inline]
     fn supports_blit_destination(&self) -> bool {
-        self.inner_image().supports_blit_destination()
+        self.inner().supports_blit_destination()
     }
 }
 
@@ -135,8 +134,7 @@ pub unsafe trait ImageView: 'static + Send + Sync {
     fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
 
     /// Returns the inner unsafe image view object used by this image view.
-    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
-    fn inner_view(&self) -> &UnsafeImageView;
+    fn inner(&self) -> &UnsafeImageView;
 
     /// Returns the blocks of the parent image this image view overlaps.
     fn blocks(&self) -> Vec<(u32, u32)>;
@@ -144,7 +142,7 @@ pub unsafe trait ImageView: 'static + Send + Sync {
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {
-        self.inner_view().format()
+        self.inner().format()
     }
 
     #[inline]

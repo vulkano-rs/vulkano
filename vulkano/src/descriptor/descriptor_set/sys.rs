@@ -124,20 +124,20 @@ impl UnsafeDescriptorSet {
             match write.inner {
                 DescriptorWriteInner::UniformBuffer { ref buffer, offset, size } |
                 DescriptorWriteInner::DynamicUniformBuffer { ref buffer, offset, size } => {
-                    assert!(buffer.inner_buffer().usage_uniform_buffer());
+                    assert!(buffer.inner().usage_uniform_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
-                        buffer: buffer.inner_buffer().internal_object(),
+                        buffer: buffer.inner().internal_object(),
                         offset: offset as u64,
                         range: size as u64,
                     })
                 },
                 DescriptorWriteInner::StorageBuffer { ref buffer, offset, size } |
                 DescriptorWriteInner::DynamicStorageBuffer { ref buffer, offset, size } => {
-                    assert!(buffer.inner_buffer().usage_storage_buffer());
+                    assert!(buffer.inner().usage_storage_buffer());
                     self_resources_buffers.push(buffer.clone());
                     Some(vk::DescriptorBufferInfo {
-                        buffer: buffer.inner_buffer().internal_object(),
+                        buffer: buffer.inner().internal_object(),
                         offset: offset as u64,
                         range: size as u64,
                     })
@@ -157,7 +157,7 @@ impl UnsafeDescriptorSet {
                     })
                 },
                 DescriptorWriteInner::CombinedImageSampler(ref sampler, ref view, ref image, ref blocks) => {
-                    assert!(view.inner_view().usage_sampled());
+                    assert!(view.inner().usage_sampled());
                     let layout = view.descriptor_set_combined_image_sampler_layout();
                     self_resources_samplers.push(sampler.clone());
                     self_resources_image_views.push(view.clone());
@@ -166,12 +166,12 @@ impl UnsafeDescriptorSet {
                     }
                     Some(vk::DescriptorImageInfo {
                         sampler: sampler.internal_object(),
-                        imageView: view.inner_view().internal_object(),
+                        imageView: view.inner().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorWriteInner::StorageImage(ref view, ref image, ref blocks) => {
-                    assert!(view.inner_view().usage_storage());
+                    assert!(view.inner().usage_storage());
                     assert!(view.identity_swizzle());
                     let layout = view.descriptor_set_storage_image_layout();
                     self_resources_image_views.push(view.clone());
@@ -180,12 +180,12 @@ impl UnsafeDescriptorSet {
                     }
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: view.inner_view().internal_object(),
+                        imageView: view.inner().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorWriteInner::SampledImage(ref view, ref image, ref blocks) => {
-                    assert!(view.inner_view().usage_sampled());
+                    assert!(view.inner().usage_sampled());
                     let layout = view.descriptor_set_sampled_image_layout();
                     self_resources_image_views.push(view.clone());
                     for &block in blocks.iter() {
@@ -193,12 +193,12 @@ impl UnsafeDescriptorSet {
                     }
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: view.inner_view().internal_object(),
+                        imageView: view.inner().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },
                 DescriptorWriteInner::InputAttachment(ref view, ref image, ref blocks) => {
-                    assert!(view.inner_view().usage_input_attachment());
+                    assert!(view.inner().usage_input_attachment());
                     assert!(view.identity_swizzle());
                     let layout = view.descriptor_set_input_attachment_layout();
                     self_resources_image_views.push(view.clone());
@@ -207,7 +207,7 @@ impl UnsafeDescriptorSet {
                     }
                     Some(vk::DescriptorImageInfo {
                         sampler: 0,
-                        imageView: view.inner_view().internal_object(),
+                        imageView: view.inner().internal_object(),
                         imageLayout: layout as u32,
                     })
                 },

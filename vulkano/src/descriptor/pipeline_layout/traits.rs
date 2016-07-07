@@ -14,8 +14,7 @@ use descriptor::pipeline_layout::UnsafePipelineLayout;
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayout: PipelineLayoutDesc + 'static + Send + Sync {
     /// Returns the inner `UnsafePipelineLayout`.
-    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
-    fn inner_pipeline_layout(&self) -> &UnsafePipelineLayout;
+    fn inner(&self) -> &UnsafePipelineLayout;
 }
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.

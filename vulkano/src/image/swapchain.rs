@@ -105,7 +105,7 @@ impl SwapchainImage {
 
 unsafe impl Image for SwapchainImage {
     #[inline]
-    fn inner_image(&self) -> &UnsafeImage {
+    fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
@@ -208,7 +208,7 @@ unsafe impl ImageView for SwapchainImage {
     }
 
     #[inline]
-    fn inner_view(&self) -> &UnsafeImageView {
+    fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
 

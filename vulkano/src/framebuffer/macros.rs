@@ -114,7 +114,7 @@ macro_rules! ordered_passes_renderpass {
 
         unsafe impl RenderPass for CustomRenderPass {
             #[inline]
-            fn render_pass(&self) -> &UnsafeRenderPass {
+            fn inner(&self) -> &UnsafeRenderPass {
                 &self.render_pass
             }
         }

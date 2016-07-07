@@ -316,7 +316,7 @@ unsafe impl VulkanObject for UnsafeRenderPass {
 
 unsafe impl RenderPass for UnsafeRenderPass {
     #[inline]
-    fn render_pass(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &UnsafeRenderPass {
         self
     }
 }
