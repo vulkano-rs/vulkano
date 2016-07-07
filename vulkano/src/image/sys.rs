@@ -507,6 +507,90 @@ impl UnsafeImage {
         self.samples
     }
 
+    /// Queries the layout of an image in memory. Only valid for images with linear tiling.
+    ///
+    /// This function is only valid for images with a color format. See the other similar functions
+    /// for the other aspects.
+    ///
+    /// The layout is invariant for each image. However it is not cached, as this would waste
+    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
+    /// somewhere in order to avoid calling this semi-expensive function at every single memory
+    /// access. 
+    ///
+    /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
+    /// you can easily calculate the position of any layer.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must *not* have a depth, stencil or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn color_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_COLOR_BIT)
+    }
+
+    /// Same as `color_linear_layout`, except that it retreives the depth component of the image.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must have a depth or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn depth_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_DEPTH_BIT)
+    }
+
+    /// Same as `color_linear_layout`, except that it retreives the stencil component of the image.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must have a stencil or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn stencil_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_STENCIL_BIT)
+    }
+
+    // Implementation of the `*_layout` functions.
+    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: u32) -> LinearLayout {
+        let vk = self.device.pointers();
+
+        assert!(mip_level < self.mipmaps);
+
+        let subresource = vk::ImageSubresource {
+            aspectMask: aspect,
+            mipLevel: mip_level,
+            arrayLayer: 0,
+        };
+
+        let mut out = mem::uninitialized();
+        vk.GetImageSubresourceLayout(self.device.internal_object(), self.image, &subresource,
+                                     &mut out);
+
+        LinearLayout {
+            offset: out.offset as usize,
+            size: out.size as usize,
+            row_pitch: out.rowPitch as usize,
+            array_pitch: out.arrayPitch as usize,
+            depth_pitch: out.depthPitch as usize,
+        }
+    }
+
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     pub fn supports_blit_source(&self) -> bool {
@@ -616,6 +700,30 @@ impl From<Error> for ImageCreationError {
             _ => panic!("unexpected error: {:?}", err)
         }
     }
+}
+
+/// Describes the memory layout of an image with linear tiling.
+///
+/// Obtained by calling `*_linear_layout` on the image.
+///
+/// The address of a texel at `(x, y, z, layer)` is `layer * array_pitch + z * depth_pitch +
+/// y * row_pitch + x * size_of_each_texel + offset`. `size_of_each_texel` must be determined
+/// depending on the format. The same formula applies for compressed formats, except that the
+/// coordinates must be in number of blocks.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct LinearLayout {
+    /// Number of bytes from the start of the memory and the start of the queried subresource.
+    pub offset: usize,
+    /// Total number of bytes for the queried subresource. Can be used for a safety check.
+    pub size: usize,
+    /// Number of bytes between two texels or two blocks in adjacent rows.
+    pub row_pitch: usize,
+    /// Number of bytes between two texels or two blocks in adjacent array layers. This value is
+    /// undefined for images with only one array layer.
+    pub array_pitch: usize,
+    /// Number of bytes between two texels or two blocks in adjacent depth layers. This value is
+    /// undefined for images that are not three-dimensional.
+    pub depth_pitch: usize,
 }
 
 #[derive(Debug)]
