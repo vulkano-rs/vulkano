@@ -17,8 +17,7 @@ use sync::Semaphore;
 
 pub unsafe trait Buffer: 'static + Send + Sync {
     /// Returns the inner buffer.
-    // TODO: should be named "inner()" after https://github.com/rust-lang/rust/issues/12808 is fixed
-    fn inner_buffer(&self) -> &UnsafeBuffer;
+    fn inner(&self) -> &UnsafeBuffer;
 
     /// Returns whether accessing a range of this buffer should signal a fence.
     fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
@@ -58,7 +57,7 @@ pub unsafe trait Buffer: 'static + Send + Sync {
 
     #[inline]
     fn size(&self) -> usize {
-        self.inner_buffer().size()
+        self.inner().size()
     }
 }
 

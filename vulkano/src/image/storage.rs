@@ -159,7 +159,7 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
 
 unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
-    fn inner_image(&self) -> &UnsafeImage {
+    fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
@@ -287,7 +287,7 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
-    fn inner_view(&self) -> &UnsafeImageView {
+    fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
 

@@ -152,7 +152,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
             let (rp, sp) = if let Some(ref sp) = secondary_cont {
                 keep_alive.push(sp.render_pass().clone() as Arc<_>);
-                (sp.render_pass().render_pass().internal_object(), sp.index())
+                (sp.render_pass().inner().internal_object(), sp.index())
             } else {
                 (0, 0)
             };
@@ -346,7 +346,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         assert!(buffer.size() <= 65536);
         assert!(buffer.offset() % 4 == 0);
         assert!(buffer.size() % 4 == 0);
-        assert!(buffer.buffer().inner_buffer().usage_transfer_dest());
+        assert!(buffer.buffer().inner().usage_transfer_dest());
 
         // FIXME: check queue family of the buffer
 
@@ -358,7 +358,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         {
             let buffer_offset = buffer.offset() as vk::DeviceSize;
             let buffer_size = buffer.size() as vk::DeviceSize;
-            let buffer = buffer.buffer().inner_buffer().internal_object();
+            let buffer = buffer.buffer().inner().internal_object();
             let mut data = Some(data.clone());        // TODO: meh for Cloning, but I guess there's no other choice
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
@@ -395,7 +395,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         assert!(offset + size <= buffer.size());
         assert!(offset % 4 == 0);
         assert!(size % 4 == 0);
-        assert!(buffer.inner_buffer().usage_transfer_dest());
+        assert!(buffer.inner().usage_transfer_dest());
 
         self.add_buffer_resource_outside(buffer.clone() as Arc<_>, true, offset .. offset + size,
                                          vk::PIPELINE_STAGE_TRANSFER_BIT,
@@ -407,7 +407,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         {
             let buffer = buffer.clone();
             self.staging_commands.push(Box::new(move |vk, cmd| {
-                vk.CmdFillBuffer(cmd, buffer.inner_buffer().internal_object(),
+                vk.CmdFillBuffer(cmd, buffer.inner().internal_object(),
                                  offset as vk::DeviceSize, size as vk::DeviceSize, data);
             }));
         }
@@ -437,10 +437,10 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     {
         debug_assert!(self.render_pass_staging_commands.is_empty());
 
-        assert_eq!(&**source.inner_buffer().device() as *const _,
-                   &**destination.inner_buffer().device() as *const _);
-        assert!(source.inner_buffer().usage_transfer_src());
-        assert!(destination.inner_buffer().usage_transfer_dest());
+        assert_eq!(&**source.inner().device() as *const _,
+                   &**destination.inner().device() as *const _);
+        assert!(source.inner().usage_transfer_src());
+        assert!(destination.inner().usage_transfer_dest());
 
         self.add_buffer_resource_outside(source.clone() as Arc<_>, false, 0 .. source.size(),
                                          vk::PIPELINE_STAGE_TRANSFER_BIT,
@@ -451,8 +451,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         {
             let source_size = source.size() as u64;     // FIXME: what is destination is too small?
-            let source = source.inner_buffer().internal_object();
-            let destination = destination.inner_buffer().internal_object();
+            let source = source.inner().internal_object();
+            let destination = destination.inner().internal_object();
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
                 let copy = vk::BufferCopy {
@@ -486,7 +486,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         let color = image.decode(color).unwrap(); /* FIXME: error */
 
         {
-            let image = image.inner_image().internal_object();
+            let image = image.inner().internal_object();
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
                 let color = match color {
@@ -546,8 +546,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         {
             let source_offset = source.offset() as vk::DeviceSize;
-            let source = source.buffer().inner_buffer().internal_object();
-            let image = image.inner_image().internal_object();
+            let source = source.buffer().inner().internal_object();
+            let image = image.inner().internal_object();
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
                 let region = vk::BufferImageCopy {
@@ -615,8 +615,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         {
             let dest_offset = dest.offset() as vk::DeviceSize;
-            let dest = dest.buffer().inner_buffer().internal_object();
-            let image = image.inner_image().internal_object();
+            let dest = dest.buffer().inner().internal_object();
+            let image = image.inner().internal_object();
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
                 let region = vk::BufferImageCopy {
@@ -678,8 +678,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                                         vk::ACCESS_TRANSFER_WRITE_BIT);
 
         {
-            let source = source.inner_image().internal_object();
-            let destination = destination.inner_image().internal_object();
+            let source = source.inner().internal_object();
+            let destination = destination.inner().internal_object();
 
             self.staging_commands.push(Box::new(move |vk, cmd| {
                 let region = vk::ImageBlit {
@@ -762,11 +762,11 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
-            assert!(b.inner_buffer().usage_vertex_buffer());
+            assert!(b.inner().usage_vertex_buffer());
             self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
                                             vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
                                             vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-            b.inner_buffer().internal_object()
+            b.inner().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         {
@@ -809,14 +809,14 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
-            assert!(b.inner_buffer().usage_vertex_buffer());
+            assert!(b.inner().usage_vertex_buffer());
             self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
                                             vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
                                             vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-            b.inner_buffer().internal_object()
+            b.inner().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
-        assert!(indices.buffer().inner_buffer().usage_index_buffer());
+        assert!(indices.buffer().inner().usage_index_buffer());
 
         self.add_buffer_resource_inside(indices.buffer().clone() as Arc<_>, false,
                                         indices.offset() .. indices.offset() + indices.size(),
@@ -829,7 +829,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             let indices_offset = indices.offset() as u64;
             let indices_len = indices.len() as u32;
             let indices_ty = I::ty() as u32;
-            let indices = indices.buffer().inner_buffer().internal_object();
+            let indices = indices.buffer().inner().internal_object();
             let num_instances = vertices.2 as u32;
 
             self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
@@ -862,11 +862,11 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         let offsets = (0 .. vertices.0.len()).map(|_| 0).collect::<SmallVec<[_; 8]>>();
         let ids = vertices.0.map(|b| {
-            assert!(b.inner_buffer().usage_vertex_buffer());
+            assert!(b.inner().usage_vertex_buffer());
             self.add_buffer_resource_inside(b.clone(), false, 0 .. b.size(),
                                             vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
                                             vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-            b.inner_buffer().internal_object()
+            b.inner().internal_object()
         }).collect::<SmallVec<[_; 8]>>();
 
         self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size(),
@@ -876,7 +876,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         {
             let mut ids = Some(ids);
             let mut offsets = Some(offsets);
-            let buffer_internal = buffer.inner_buffer().internal_object();
+            let buffer_internal = buffer.inner().internal_object();
             let buffer_draw_count = buffer.len() as u32;
             let buffer_size = buffer.size() as u32;
 
@@ -915,12 +915,12 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
 
             for set in descriptor_sets.iter() {
-                for &(ref img, block, layout) in set.inner_descriptor_set().images_list().iter() {
+                for &(ref img, block, layout) in set.inner().images_list().iter() {
                     self.add_image_resource_outside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
-                for buffer in set.inner_descriptor_set().buffers_list().iter() {
+                for buffer in set.inner().buffers_list().iter() {
                     self.add_buffer_resource_outside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                     vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
@@ -928,11 +928,11 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             }
 
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner_descriptor_set().internal_object()).collect::<SmallVec<[_; 32]>>());
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner().internal_object()).collect::<SmallVec<[_; 32]>>());
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let pipeline = PipelineLayout::inner(&**pipeline.layout()).internal_object();
                 self.staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_COMPUTE,
@@ -942,7 +942,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             }
 
             if mem::size_of_val(push_constants) >= 1 {
-                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let pipeline = PipelineLayout::inner(&**pipeline.layout()).internal_object();
                 let size = mem::size_of_val(push_constants);
                 let push_constants = push_constants.clone();
                 assert!((size % 4) == 0);
@@ -1016,22 +1016,22 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
             let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
             for set in descriptor_sets.iter() {
-                for &(ref img, block, layout) in set.inner_descriptor_set().images_list().iter() {
+                for &(ref img, block, layout) in set.inner().images_list().iter() {
                     self.add_image_resource_inside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,
                                                    false, layout, layout, vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                    vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
-                for buffer in set.inner_descriptor_set().buffers_list().iter() {
+                for buffer in set.inner().buffers_list().iter() {
                     self.add_buffer_resource_inside(buffer.clone(), false, 0 .. buffer.size() /* TODO */,
                                                     vk::PIPELINE_STAGE_ALL_COMMANDS_BIT /* FIXME */,
                                                     vk::ACCESS_SHADER_READ_BIT | vk::ACCESS_UNIFORM_READ_BIT /* TODO */);
                 }
             }
             for d in descriptor_sets.iter() { self.keep_alive.push(mem::transmute(d.clone()) /* FIXME: */); }
-            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner_descriptor_set().internal_object()).collect::<SmallVec<[_; 32]>>());
+            let mut descriptor_sets = Some(descriptor_sets.into_iter().map(|set| set.inner().internal_object()).collect::<SmallVec<[_; 32]>>());
 
             if mem::size_of_val(push_constants) >= 1 {
-                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let pipeline = PipelineLayout::inner(&**pipeline.layout()).internal_object();
                 let size = mem::size_of_val(push_constants);
                 let push_constants = push_constants.clone();
                 assert!((size % 4) == 0);
@@ -1047,7 +1047,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
             // TODO: shouldn't rebind everything every time
             if !descriptor_sets.as_ref().unwrap().is_empty() {
-                let pipeline = PipelineLayout::inner_pipeline_layout(&**pipeline.layout()).internal_object();
+                let pipeline = PipelineLayout::inner(&**pipeline.layout()).internal_object();
                 self.render_pass_staging_commands.push(Box::new(move |vk, cmd| {
                     let descriptor_sets = descriptor_sets.take().unwrap();
                     vk.CmdBindDescriptorSets(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline,
@@ -1125,7 +1125,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
 
         {
             let mut clear_values = Some(clear_values);
-            let render_pass = render_pass.render_pass().internal_object();
+            let render_pass = render_pass.inner().internal_object();
             let (fw, fh) = (framebuffer.width(), framebuffer.height());
             let framebuffer = framebuffer.internal_object();
 
@@ -1448,7 +1448,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                             dstAccessMask: access.accesses,
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                            buffer: (buffer.0).0.inner_buffer().internal_object(),
+                            buffer: (buffer.0).0.inner().internal_object(),
                             offset: range.start as u64,
                             size: (range.end - range.start) as u64,
                         });
@@ -1474,7 +1474,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                             dstAccessMask: access.accesses,
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                            buffer: (buffer.0).0.inner_buffer().internal_object(),
+                            buffer: (buffer.0).0.inner().internal_object(),
                             offset: range.start as u64,
                             size: (range.end - range.start) as u64,
                         });
@@ -1523,7 +1523,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                             newLayout: access.old_layout as u32,
                             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                            image: (image.0).0.inner_image().internal_object(),
+                            image: (image.0).0.inner().internal_object(),
                             subresourceRange: vk::ImageSubresourceRange {
                                 aspectMask: access.aspects,
                                 baseMipLevel: range_mipmaps.start,
@@ -1564,7 +1564,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                         newLayout: access.old_layout as u32,
                         srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
                         dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-                        image: (image.0).0.inner_image().internal_object(),
+                        image: (image.0).0.inner().internal_object(),
                         subresourceRange: vk::ImageSubresourceRange {
                             aspectMask: access.aspects,
                             baseMipLevel: range_mipmaps.start,
@@ -2240,7 +2240,7 @@ fn transition_cb<P>(pool: P, image: Arc<Image>, block: (u32, u32),
             newLayout: new_layout as u32,
             srcQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
             dstQueueFamilyIndex: vk::QUEUE_FAMILY_IGNORED,
-            image: image.inner_image().internal_object(),
+            image: image.inner().internal_object(),
             subresourceRange: vk::ImageSubresourceRange {
                 aspectMask: aspect_mask,
                 baseMipLevel: range_mipmaps.start,

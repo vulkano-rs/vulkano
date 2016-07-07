@@ -54,15 +54,15 @@ impl<L> Framebuffer<L> {
                   attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
         where L: RenderPass + RenderPassAttachmentsList<A>
     {
-        let vk = render_pass.render_pass().device().pointers();
-        let device = render_pass.render_pass().device().clone();
+        let vk = render_pass.inner().device().pointers();
+        let device = render_pass.inner().device().clone();
 
         let attachments = try!(render_pass.convert_attachments_list(attachments))
                                 .collect::<SmallVec<[_; 8]>>();
 
         // Checking the dimensions against the limits.
         {
-            let limits = render_pass.render_pass().device().physical_device().limits();
+            let limits = render_pass.inner().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
@@ -86,7 +86,7 @@ impl<L> Framebuffer<L> {
                     return Err(FramebufferCreationError::AttachmentTooSmall);
                 }
 
-                ids.push(a.inner_view().internal_object());
+                ids.push(a.inner().internal_object());
             }
 
             ids
@@ -97,7 +97,7 @@ impl<L> Framebuffer<L> {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                renderPass: render_pass.render_pass().internal_object(),
+                renderPass: render_pass.inner().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
                 width: dimensions[0],
@@ -126,8 +126,8 @@ impl<L> Framebuffer<L> {
         where R: RenderPass,
               L: RenderPass + RenderPassCompatible<R>
     {
-        (&*self.render_pass.render_pass() as *const UnsafeRenderPass as usize ==
-         &*render_pass.render_pass() as *const UnsafeRenderPass as usize) ||
+        (&*self.render_pass.inner() as *const UnsafeRenderPass as usize ==
+         &*render_pass.inner() as *const UnsafeRenderPass as usize) ||
             self.render_pass.is_compatible_with(render_pass)
     }
 

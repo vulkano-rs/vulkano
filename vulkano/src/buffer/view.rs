@@ -83,13 +83,13 @@ impl<F, B> BufferView<F, B> where B: Buffer {
         where S: Into<BufferSlice<'a, T, B>>, B: 'static, T: 'static, F: FormatDesc + 'static
     {
         let buffer = buffer.into();
-        let device = buffer.resource.inner_buffer().device();
+        let device = buffer.resource.inner().device();
         let format = format.format();
 
         // TODO: check minTexelBufferOffsetAlignment
 
-        if !buffer.buffer().inner_buffer().usage_uniform_texel_buffer() &&
-           !buffer.buffer().inner_buffer().usage_storage_texel_buffer()
+        if !buffer.buffer().inner().usage_uniform_texel_buffer() &&
+           !buffer.buffer().inner().usage_storage_texel_buffer()
         {
             return Err(BufferViewCreationError::WrongBufferUsage);
         }
@@ -102,13 +102,13 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             output.bufferFeatures
         };
 
-        if buffer.buffer().inner_buffer().usage_uniform_texel_buffer() {
+        if buffer.buffer().inner().usage_uniform_texel_buffer() {
             if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
                 return Err(BufferViewCreationError::UnsupportedFormat);
             }
         }
 
-        if buffer.buffer().inner_buffer().usage_storage_texel_buffer() {
+        if buffer.buffer().inner().usage_storage_texel_buffer() {
             if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
                 return Err(BufferViewCreationError::UnsupportedFormat);
             }
@@ -118,7 +118,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
             pNext: ptr::null(),
             flags: 0,   // reserved,
-            buffer: buffer.resource.inner_buffer().internal_object(),
+            buffer: buffer.resource.inner().internal_object(),
             format: format as u32,
             offset: buffer.offset as u64,
             range: buffer.size as u64,
@@ -144,13 +144,13 @@ impl<F, B> BufferView<F, B> where B: Buffer {
     /// Returns true if the buffer view can be used as a uniform texel buffer.
     #[inline]
     pub fn uniform_texel_buffer(&self) -> bool {
-        self.buffer.inner_buffer().usage_uniform_texel_buffer()
+        self.buffer.inner().usage_uniform_texel_buffer()
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer.
     #[inline]
     pub fn storage_texel_buffer(&self) -> bool {
-        self.buffer.inner_buffer().usage_storage_texel_buffer()
+        self.buffer.inner().usage_storage_texel_buffer()
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer with atomic accesses.
@@ -173,8 +173,8 @@ impl<F, B> Drop for BufferView<F, B> where B: Buffer {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.buffer.inner_buffer().device().pointers();
-            vk.DestroyBufferView(self.buffer.inner_buffer().device().internal_object(), self.view,
+            let vk = self.buffer.inner().device().pointers();
+            vk.DestroyBufferView(self.buffer.inner().device().internal_object(), self.view,
                                  ptr::null());
         }
     }

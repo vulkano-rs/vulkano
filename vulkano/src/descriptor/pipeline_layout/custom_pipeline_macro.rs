@@ -76,7 +76,7 @@ macro_rules! pipeline_layout {
         #[allow(unsafe_code)]
         unsafe impl PipelineLayout for CustomPipeline {
             #[inline]
-            fn inner_pipeline_layout(&self) -> &UnsafePipelineLayout {
+            fn inner(&self) -> &UnsafePipelineLayout {
                 &self.inner
             }
         }
@@ -174,7 +174,7 @@ macro_rules! pipeline_layout {
                 {
                     #![allow(unsafe_code)]
                     unsafe {
-                        let layout = layout.inner_pipeline_layout().descriptor_set_layout($num).unwrap();
+                        let layout = layout.inner().descriptor_set_layout($num).unwrap();
                         let mut set = try!(UnsafeDescriptorSet::uninitialized_raw(pool, layout));
                         set.write(descriptors.writes());
                         Ok(Set { inner: set })
@@ -195,7 +195,7 @@ macro_rules! pipeline_layout {
             #[allow(unsafe_code)]
             unsafe impl DescriptorSet for Set {
                 #[inline]
-                fn inner_descriptor_set(&self) -> &UnsafeDescriptorSet {
+                fn inner(&self) -> &UnsafeDescriptorSet {
                     &self.inner
                 }
             }

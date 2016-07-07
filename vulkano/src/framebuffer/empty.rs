@@ -70,7 +70,7 @@ impl EmptySinglePassRenderPass {
 
 unsafe impl RenderPass for EmptySinglePassRenderPass {
     #[inline]
-    fn render_pass(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &UnsafeRenderPass {
         &self.render_pass
     }
 }
