@@ -44,6 +44,7 @@ use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDefMatch;
+use pipeline::shader::ShaderInterfaceMismatchError;
 use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::shader::TessControlShaderEntryPoint;
 use pipeline::shader::TessEvaluationShaderEntryPoint;
@@ -170,8 +171,10 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Vo: ShaderInterfaceDef,
               Rp: RenderPassSubpassInterface<Fo>,
     {
-        // TODO: return proper errors
-        assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+        if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
+           return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+        }
+
         GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipeline, (), (), (),
                                       EmptyPipeline, (), (), (), EmptyPipeline, _, _, _, _>
                                       (device, params)
@@ -204,12 +207,18 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Go: ShaderInterfaceDef,
               Rp: RenderPassSubpassInterface<Fo>,
     {
-        // TODO: return proper errors
         if let Some(ref geometry_shader) = params.geometry_shader {
-            assert!(geometry_shader.input().matches(params.vertex_shader.output()));
-            assert!(params.fragment_shader.input().matches(geometry_shader.output()));
+            if let Err(err) = geometry_shader.input().matches(params.vertex_shader.output()) {
+                return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(err));
+            };
+
+            if let Err(err) = params.fragment_shader.input().matches(geometry_shader.output()) {
+               return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+            }
         } else {
-            assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+            if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
+               return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+            }
         }
 
         GraphicsPipeline::new_inner(device, params)
@@ -247,13 +256,21 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Fo: ShaderInterfaceDef,
               Rp: RenderPassSubpassInterface<Fo>,
     {
-        // TODO: return proper errors
         if let Some(ref tess) = params.tessellation {
-            assert!(tess.tessellation_control_shader.input().matches(params.vertex_shader.output()));
-            assert!(tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()));
-            assert!(params.fragment_shader.input().matches(tess.tessellation_evaluation_shader.output()));
+            if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
+                return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+            }
+            if let Err(err) = tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()) {
+                return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+            }
+            if let Err(err) = params.fragment_shader.input().matches(tess.tessellation_evaluation_shader.output()) {
+                return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
+            }
+
         } else {
-            assert!(params.fragment_shader.input().matches(params.vertex_shader.output()));
+            if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
+               return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+            }
         }
 
         GraphicsPipeline::new_inner(device, params)
@@ -976,6 +993,30 @@ pub enum GraphicsPipelineCreationError {
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout,
 
+    /// The interface between the vertex shader and the geometry shader mismatches.
+    VertexGeometryStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the vertex shader and the tessellation control shader mismatches.
+    VertexTessControlStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the vertex shader and the fragment shader mismatches.
+    VertexFragmentStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the tessellation control shader and the tessellation evaluation 
+    /// shader mismatches.
+    TessControlTessEvalStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the tessellation evaluation shader and the geometry shader
+    /// mismatches.
+    TessEvalGeometryStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the tessellation evaluation shader and the fragment shader
+    /// mismatches.
+    TessEvalFragmentStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The interface between the geometry shader and the fragment shader mismatches.
+    GeometryFragmentStagesMismatch(ShaderInterfaceMismatchError),
+
     /// The output of the fragment shader is not compatible with what the render pass subpass
     /// expects.
     FragmentShaderRenderPassIncompatible,
@@ -1108,6 +1149,31 @@ impl error::Error for GraphicsPipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
+            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(_) => {
+                "the interface between the vertex shader and the geometry shader mismatches"
+            },
+            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(_) => {
+                "the interface between the vertex shader and the tessellation control shader \
+                 mismatches"
+            },
+            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(_) => {
+                "the interface between the vertex shader and the fragment shader mismatches"
+            },
+            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(_) => {
+                "the interface between the tessellation control shader and the tessellation \
+                 evaluation shader mismatches"
+            },
+            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(_) => {
+                "the interface between the tessellation evaluation shader and the geometry \
+                 shader mismatches"
+            },
+            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(_) => {
+                "the interface between the tessellation evaluation shader and the fragment \
+                 shader mismatches"
+            },
+            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => {
+                "the interface between the geometry shader and the fragment shader mismatches"
+            },
             GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
                 "the pipeline layout is not compatible with what the shaders expect"
             },
@@ -1211,6 +1277,27 @@ impl error::Error for GraphicsPipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => {
+                Some(err)
+            },
+            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => {
+                Some(err)
+            },
             _ => None
         }
     }

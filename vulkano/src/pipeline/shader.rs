@@ -18,6 +18,8 @@
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
 use std::borrow::Cow;
+use std::error;
+use std::fmt;
 use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::marker::PhantomData;
@@ -600,29 +602,28 @@ unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
 /// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
 /// compatible with another one.
 pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef where I: ShaderInterfaceDef {
-    /// Returns true if the two definitions match.
-    // TODO: return a descriptive error instead
-    fn matches(&self, other: &I) -> bool;
+    /// Returns `Ok` if the two definitions match.
+    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError>;
 }
 
 // TODO: turn this into a default impl that can be specialized
 unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
     where T: ShaderInterfaceDef, I: ShaderInterfaceDef
 {
-    fn matches(&self, other: &I) -> bool {
+    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
-            return false;
+            return Err(ShaderInterfaceMismatchError::ElementsCountMismatch);
         }
 
         for a in self.elements() {
             for loc in a.location.clone() {
                 let b = match other.elements().find(|e| loc >= e.location.start && loc < e.location.end) {
-                    None => return false,
+                    None => return Err(ShaderInterfaceMismatchError::MissingElement { location: loc }),
                     Some(b) => b,
                 };
 
                 if a.format != b.format {
-                    return false;
+                    return Err(ShaderInterfaceMismatchError::FormatMismatch);
                 }
 
                 // TODO: enforce this?
@@ -633,7 +634,36 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
             }
         }
 
-        true
+        Ok(())
+    }
+}
+
+/// Error that can happen when the interface mismatches between two shader stages.
+// TODO: improve diagnostic a bit
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ShaderInterfaceMismatchError {
+    ElementsCountMismatch,
+    MissingElement { location: u32 },
+    FormatMismatch,
+}
+
+impl error::Error for ShaderInterfaceMismatchError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            ShaderInterfaceMismatchError::ElementsCountMismatch => "the number of elements \
+                                                                    mismatches",
+            ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
+            ShaderInterfaceMismatchError::FormatMismatch => "the format of an element does not \
+                                                             match",
+        }
+    }
+}
+
+impl fmt::Display for ShaderInterfaceMismatchError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
 
