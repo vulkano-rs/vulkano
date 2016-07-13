@@ -29,6 +29,7 @@
 
 use std::cmp;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -42,6 +43,10 @@ use device::Device;
 use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
+use image::Image;
+use image::sys::Layout;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 use OomError;
 use VulkanObject;
@@ -343,6 +348,33 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                          dest.inner().internal_object(), regions.len() as u32,
                          regions.as_ptr());
     }
+
+    /// Adds a pipeline barrier to the command buffer.
+    ///
+    /// This function itself is not unsafe, but creating a pipeline barrier builder is.
+    pub fn pipeline_barrier(&mut self, barrier: PipelineBarrierBuilder) {
+        // If barrier is empty, don't do anything.
+        if barrier.src_stage_mask == 0 || barrier.dst_stage_mask == 0 {
+            debug_assert!(barrier.src_stage_mask == 0 && barrier.dst_stage_mask == 0);
+            debug_assert!(barrier.memory_barriers.is_empty());
+            debug_assert!(barrier.buffer_barriers.is_empty());
+            debug_assert!(barrier.image_barriers.is_empty());
+            return;
+        }
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+
+        unsafe {
+            vk.CmdPipelineBarrier(cmd, barrier.src_stage_mask, barrier.dst_stage_mask,
+                                  barrier.dependency_flags, barrier.memory_barriers.len() as u32,
+                                  barrier.memory_barriers.as_ptr(),
+                                  barrier.buffer_barriers.len() as u32,
+                                  barrier.buffer_barriers.as_ptr(),
+                                  barrier.image_barriers.len() as u32,
+                                  barrier.image_barriers.as_ptr());
+        }
+    }
 }
 
 unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> where P: CommandPool {
@@ -414,6 +446,190 @@ pub struct BufferCopyRegion {
     pub destination_offset: usize,
     /// Size in bytes of the copy.
     pub size: usize,
+}
+
+/// Prototype for a pipeline barrier that's going to be added to a command buffer builder.
+///
+/// Note: we use a builder-like API here so that users can pass multiple buffers or images of
+/// multiple different types. Doing so with a single function would be very tedious in terms of
+/// API.
+pub struct PipelineBarrierBuilder {
+    src_stage_mask: vk::PipelineStageFlags,
+    dst_stage_mask: vk::PipelineStageFlags,
+    dependency_flags: vk::DependencyFlags,
+    memory_barriers: SmallVec<[vk::MemoryBarrier; 2]>,
+    buffer_barriers: SmallVec<[vk::BufferMemoryBarrier; 8]>,
+    image_barriers: SmallVec<[vk::ImageMemoryBarrier; 8]>,
+}
+
+impl PipelineBarrierBuilder {
+    /// Adds a command that adds a pipeline barrier to a command buffer.
+    pub fn new() -> PipelineBarrierBuilder {
+        PipelineBarrierBuilder {
+            src_stage_mask: 0,
+            dst_stage_mask: 0,
+            dependency_flags: vk::DEPENDENCY_BY_REGION_BIT,
+            memory_barriers: SmallVec::new(),
+            buffer_barriers: SmallVec::new(),
+            image_barriers: SmallVec::new(),
+        }
+    }
+
+    /// Returns true if no barrier or execution dependency has been added yet.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.src_stage_mask == 0 || self.dst_stage_mask == 0
+    }
+
+    /// Adds an execution dependency. This means that all the stages in `source` of the previous
+    /// commands must finish before any of the stages in `dest` of the following commands can start.
+    ///
+    /// # Safety
+    ///
+    /// - If the pipeline stages include geometry or tessellation stages, then the corresponding
+    ///   features must have been enabled.
+    /// - There are certain rules regarding the pipeline barriers inside render passes.
+    ///
+    #[inline]
+    pub unsafe fn add_execution_dependency(&mut self, source: PipelineStages, dest: PipelineStages,
+                                           by_region: bool)
+    {
+        if !by_region {
+            self.dependency_flags = 0;
+        }
+
+        self.src_stage_mask |= source.into();
+        self.dst_stage_mask |= dest.into();
+    }
+
+    /// Adds a memory barrier. This means that all the memory writes by the given source stages
+    /// for the given source accesses must be visible by the given dest stages for the given dest
+    /// accesses.
+    ///
+    /// Also adds an execution dependency.
+    ///
+    /// # Safety
+    ///
+    /// - If the pipeline stages include geometry or tessellation stages, then the corresponding
+    ///   features must have been enabled.
+    /// - There are certain rules regarding the pipeline barriers inside render passes.
+    ///
+    pub unsafe fn add_memory_barrier(&mut self, source_stage: PipelineStages,
+                                     source_access: AccessFlagBits, dest_stage: PipelineStages,
+                                     dest_access: AccessFlagBits, by_region: bool)
+    {
+        self.add_execution_dependency(source_stage, dest_stage, by_region);
+
+        self.memory_barriers.push(vk::MemoryBarrier {
+            sType: vk::STRUCTURE_TYPE_MEMORY_BARRIER,
+            pNext: ptr::null(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: dest_access.into(),
+        });
+    }
+
+    /// Adds a buffer memory barrier. This means that all the memory writes to the given buffer by
+    /// the given source stages for the given source accesses must be visible by the given dest
+    /// stages for the given dest accesses.
+    ///
+    /// Also adds an execution dependency.
+    ///
+    /// Also allows transfering buffer ownership between queues.
+    ///
+    /// # Safety
+    ///
+    /// - If the pipeline stages include geometry or tessellation stages, then the corresponding
+    ///   features must have been enabled.
+    /// - There are certain rules regarding the pipeline barriers inside render passes.
+    /// - The buffer must be alive for at least as long as the command buffer to which this barrier
+    ///   is added.
+    /// - Queue ownership transfers must be correct.
+    ///
+    pub unsafe fn add_buffer_memory_barrier<'a, T: ?Sized, B>
+                  (&mut self, buffer: BufferSlice<'a, T, B>, source_stage: PipelineStages,
+                   source_access: AccessFlagBits, dest_stage: PipelineStages,
+                   dest_access: AccessFlagBits, by_region: bool,
+                   queue_transfer: Option<(u32, u32)>)
+        where B: Buffer
+    {
+        self.add_execution_dependency(source_stage, dest_stage, by_region);
+
+        debug_assert!(buffer.size() + buffer.offset() <= buffer.buffer().size());
+
+        let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
+            (src_queue, dest_queue)
+        } else {
+            (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+        };
+
+        self.buffer_barriers.push(vk::BufferMemoryBarrier {
+            sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            pNext: ptr::null(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: dest_access.into(),
+            srcQueueFamilyIndex: src_queue,
+            dstQueueFamilyIndex: dest_queue,
+            buffer: buffer.buffer().inner().internal_object(),
+            offset: buffer.offset() as vk::DeviceSize,
+            size: buffer.size() as vk::DeviceSize,
+        });
+    }
+
+    /// Adds an image memory barrier. This is the equivalent of `add_buffer_memory_barrier` but
+    /// for images.
+    ///
+    /// In addition to transfering image ownership between queues, it also allows changing the
+    /// layout of images.
+    ///
+    /// # Safety
+    ///
+    /// - If the pipeline stages include geometry or tessellation stages, then the corresponding
+    ///   features must have been enabled.
+    /// - There are certain rules regarding the pipeline barriers inside render passes.
+    /// - The buffer must be alive for at least as long as the command buffer to which this barrier
+    ///   is added.
+    /// - Queue ownership transfers must be correct.
+    /// - Image layouts transfers must be correct.
+    /// - Access flags must be compatible with the image usage flags passed at image creation.
+    ///
+    pub unsafe fn add_image_memory_barrier<I>(&mut self, image: &Arc<I>, mipmaps: Range<u32>,
+                  layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
+                  dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
+                  queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)
+        where I: Image
+    {
+        self.add_execution_dependency(source_stage, dest_stage, by_region);
+
+        debug_assert!(mipmaps.start < mipmaps.end);
+        // TODO: debug_assert!(mipmaps.end <= image.mipmap_levels());
+        debug_assert!(layers.start < layers.end);
+        debug_assert!(layers.end <= image.dimensions().array_layers());
+
+        let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
+            (src_queue, dest_queue)
+        } else {
+            (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+        };
+
+        self.image_barriers.push(vk::ImageMemoryBarrier {
+            sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            pNext: ptr::null(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: dest_access.into(),
+            oldLayout: current_layout as u32,
+            newLayout: new_layout as u32,
+            srcQueueFamilyIndex: src_queue,
+            dstQueueFamilyIndex: dest_queue,
+            image: image.inner().internal_object(),
+            subresourceRange: vk::ImageSubresourceRange {
+                aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
+                baseMipLevel: mipmaps.start,
+                levelCount: mipmaps.end - mipmaps.start,
+                baseArrayLayer: layers.start,
+                layerCount: layers.end - layers.start,
+            },
+        });
+    }
 }
 
 pub struct UnsafeCommandBuffer<P> where P: CommandPool {
