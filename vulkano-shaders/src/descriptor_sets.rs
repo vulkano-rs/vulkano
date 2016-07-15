@@ -208,9 +208,9 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                 } else if let &enums::Dim::DimBuffer = dim {
                     // We are a texel buffer.
                     let desc = format!("DescriptorDescTy::TexelBuffer {{
-                        sampled: {},
+                        storage: {},
                         format: None,       // TODO: specify format if known
-                    }}", sampled);
+                    }}", !sampled);
 
                     Some((desc, true))
 

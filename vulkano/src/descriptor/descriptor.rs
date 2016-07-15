@@ -48,7 +48,13 @@ pub enum DescriptorDescTy {
     Sampler,                // TODO: the sampler has some restrictions as well
     CombinedImageSampler(DescriptorImageDesc),               // TODO: the sampler has some restrictions as well
     Image(DescriptorImageDesc),
-    TexelBuffer { sampled: bool, format: Option<Format> },
+    TexelBuffer {
+        /// If `true`, this describes a storage texel buffer.
+        storage: bool,
+        /// The format of the content, or `None` if the format is unknown. Depending on the
+        /// context, it may be invalid to have a `None` value here.
+        format: Option<Format>,
+    },
     InputAttachment { multisampled: bool, array_layers: DescriptorImageDescArray },
     Buffer(DescriptorBufferDesc),
 }
@@ -75,9 +81,9 @@ impl DescriptorDescTy {
                     (true, true) => DescriptorType::StorageBufferDynamic,
                 }
             },
-            DescriptorDescTy::TexelBuffer { sampled, .. } => {
-                if sampled { DescriptorType::UniformTexelBuffer }
-                else { DescriptorType::StorageTexelBuffer }
+            DescriptorDescTy::TexelBuffer { storage, .. } => {
+                if storage { DescriptorType::StorageTexelBuffer }
+                else { DescriptorType::UniformTexelBuffer }
             },
         })
     }
@@ -115,10 +121,10 @@ impl DescriptorDescTy {
                 }
             },
 
-            (DescriptorDescTy::TexelBuffer { sampled: me_sampled, format: me_format },
-             DescriptorDescTy::TexelBuffer { sampled: other_sampled, format: other_format }) =>
+            (DescriptorDescTy::TexelBuffer { storage: me_storage, format: me_format },
+             DescriptorDescTy::TexelBuffer { storage: other_storage, format: other_format }) =>
             {
-                if me_sampled != other_sampled {
+                if me_storage != other_storage {
                     return false;
                 }
 
