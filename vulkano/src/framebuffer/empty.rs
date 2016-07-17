@@ -60,7 +60,7 @@ impl EmptySinglePassRenderPass {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>) -> Arc<EmptySinglePassRenderPass> {

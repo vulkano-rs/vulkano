@@ -97,7 +97,7 @@ impl DisplayPlane {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
@@ -167,7 +167,7 @@ impl Display {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
@@ -232,7 +232,7 @@ impl Display {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     // TODO: move iterator creation here from display_modes_raw?
     #[inline]

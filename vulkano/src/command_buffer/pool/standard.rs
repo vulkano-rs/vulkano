@@ -63,7 +63,7 @@ impl StandardCommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the queue family don't belong to the same physical device.
+    /// - Panics if the device and the queue family don't belong to the same physical device.
     ///
     pub fn new(device: &Arc<Device>, queue_family: QueueFamily) -> StandardCommandPool {
         assert_eq!(device.physical_device().internal_object(),

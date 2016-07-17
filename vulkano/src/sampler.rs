@@ -93,7 +93,7 @@ impl Sampler {
     ///
     /// # Panic
     ///
-    /// - Panicks if out of memory or the maximum number of samplers has exceeded.
+    /// - Panics if out of memory or the maximum number of samplers has exceeded.
     ///
     #[inline]
     pub fn simple_repeat_linear(device: &Arc<Device>) -> Arc<Sampler> {
@@ -109,7 +109,7 @@ impl Sampler {
     ///
     /// # Panic
     ///
-    /// - Panicks if out of memory or the maximum number of samplers has exceeded.
+    /// - Panics if out of memory or the maximum number of samplers has exceeded.
     ///
     #[inline]
     pub fn simple_repeat_linear_no_mipmap(device: &Arc<Device>) -> Arc<Sampler> {
@@ -139,9 +139,9 @@ impl Sampler {
     ///
     /// # Panic
     ///
-    /// - Panicks if multiple `ClampToBorder` values are passed and the border color is different.
-    /// - Panicks if `max_anisotropy < 1.0`.
-    /// - Panicks if `min_lod > max_lod`.
+    /// - Panics if multiple `ClampToBorder` values are passed and the border color is different.
+    /// - Panics if `max_anisotropy < 1.0`.
+    /// - Panics if `min_lod > max_lod`.
     ///
     #[inline(always)]
     pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
@@ -296,7 +296,7 @@ impl Sampler {
     ///
     /// # Panic
     ///
-    /// - Panicks if multiple `ClampToBorder` values are passed and the border color is different.
+    /// - Panics if multiple `ClampToBorder` values are passed and the border color is different.
     ///
     pub fn unnormalized(device: &Arc<Device>, filter: Filter,
                         address_u: UnnormalizedSamplerAddressMode,

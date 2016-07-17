@@ -67,8 +67,8 @@ impl PrimaryCommandBufferBuilder<Arc<StandardCommandPool>> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
-    /// - Panicks if the device and queue family do not belong to the same physical device.
+    /// - Panics if the device or host ran out of memory.
+    /// - Panics if the device and queue family do not belong to the same physical device.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>, queue_family: QueueFamily)
@@ -94,11 +94,11 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the size of `data` is not the same as the size of the buffer slice.
-    /// - Panicks if the size of `data` is superior to 65536 bytes.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
+    /// - Panics if the size of `data` is not the same as the size of the buffer slice.
+    /// - Panics if the size of `data` is superior to 65536 bytes.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
+    /// - Panics if the queue family doesn't support transfer operations.
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> PrimaryCommandBufferBuilder<P>
@@ -118,10 +118,10 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if `offset + data` is superior to the size of the buffer.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
+    /// - Panics if `offset + data` is superior to the size of the buffer.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
+    /// - Panics if the queue family doesn't support transfer operations.
     ///
     /// # Safety
     ///
@@ -239,7 +239,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the framebuffer is not compatible with the renderpass.
+    /// - Panics if the framebuffer is not compatible with the renderpass.
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
@@ -273,7 +273,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the framebuffer is not compatible with the renderpass.
+    /// - Panics if the framebuffer is not compatible with the renderpass.
     ///
     // FIXME: rest of the parameters (render area and clear attachment values)
     #[inline]
@@ -310,7 +310,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn build(self) -> Arc<PrimaryCommandBuffer<P>> {
@@ -372,7 +372,7 @@ impl<P> PrimaryCommandBufferBuilderInlineDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if no more subpasses remain.
+    /// - Panics if no more subpasses remain.
     ///
     #[inline]
     pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw<P> {
@@ -395,7 +395,7 @@ impl<P> PrimaryCommandBufferBuilderInlineDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if no more subpasses remain.
+    /// - Panics if no more subpasses remain.
     ///
     #[inline]
     pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw<P> {
@@ -416,7 +416,7 @@ impl<P> PrimaryCommandBufferBuilderInlineDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if not at the last subpass.
+    /// - Panics if not at the last subpass.
     ///
     #[inline]
     pub fn draw_end(self) -> PrimaryCommandBufferBuilder<P> {
@@ -447,7 +447,7 @@ impl<P> PrimaryCommandBufferBuilderSecondaryDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if no more subpasses remain.
+    /// - Panics if no more subpasses remain.
     ///
     #[inline]
     pub fn next_subpass_inline(self) -> PrimaryCommandBufferBuilderInlineDraw<P> {
@@ -470,7 +470,7 @@ impl<P> PrimaryCommandBufferBuilderSecondaryDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if no more subpasses remain.
+    /// - Panics if no more subpasses remain.
     ///
     #[inline]
     pub fn next_subpass_secondary(self) -> PrimaryCommandBufferBuilderSecondaryDraw<P> {
@@ -491,7 +491,7 @@ impl<P> PrimaryCommandBufferBuilderSecondaryDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the secondary command buffers wasn't created with a compatible
+    /// - Panics if the secondary command buffers wasn't created with a compatible
     ///   renderpass or is using the wrong subpass.
     #[inline]
     pub fn execute_commands<R, Ps>(mut self, cb: &Arc<SecondaryGraphicsCommandBuffer<R, Ps>>)
@@ -512,7 +512,7 @@ impl<P> PrimaryCommandBufferBuilderSecondaryDraw<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if not at the last subpass.
+    /// - Panics if not at the last subpass.
     ///
     #[inline]
     pub fn draw_end(self) -> PrimaryCommandBufferBuilder<P> {
@@ -540,8 +540,8 @@ pub struct PrimaryCommandBuffer<P = Arc<StandardCommandPool>> where P: CommandPo
 ///
 /// # Panic
 ///
-/// - Panicks if the queue doesn't belong to the device this command buffer was created with.
-/// - Panicks if the queue doesn't belong to the family the pool was created with.
+/// - Panics if the queue doesn't belong to the device this command buffer was created with.
+/// - Panics if the queue doesn't belong to the family the pool was created with.
 ///
 #[inline]
 pub fn submit<P>(cmd: &Arc<PrimaryCommandBuffer<P>>, queue: &Arc<Queue>)
@@ -571,8 +571,8 @@ impl<R> SecondaryGraphicsCommandBufferBuilder<R, Arc<StandardCommandPool>>
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
-    /// - Panicks if the device and queue family do not belong to the same physical device.
+    /// - Panics if the device or host ran out of memory.
+    /// - Panics if the device and queue family do not belong to the same physical device.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>,
@@ -686,7 +686,7 @@ impl<R, P> SecondaryGraphicsCommandBufferBuilder<R, P>
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn build(self) -> Arc<SecondaryGraphicsCommandBuffer<R, P>> {
@@ -717,8 +717,8 @@ impl SecondaryComputeCommandBufferBuilder<Arc<StandardCommandPool>> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
-    /// - Panicks if the device and queue family do not belong to the same physical device.
+    /// - Panics if the device or host ran out of memory.
+    /// - Panics if the device and queue family do not belong to the same physical device.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>, queue_family: QueueFamily)
@@ -745,11 +745,11 @@ impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the size of `data` is not the same as the size of the buffer slice.
-    /// - Panicks if the size of `data` is superior to 65536 bytes.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
+    /// - Panics if the size of `data` is not the same as the size of the buffer slice.
+    /// - Panics if the size of `data` is superior to 65536 bytes.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
+    /// - Panics if the queue family doesn't support transfer operations.
     ///
     #[inline]
     pub fn update_buffer<'a, B, T, Bb>(self, buffer: B, data: &T) -> SecondaryComputeCommandBufferBuilder<P>
@@ -769,10 +769,10 @@ impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if `offset + data` is superior to the size of the buffer.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
+    /// - Panics if `offset + data` is superior to the size of the buffer.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
+    /// - Panics if the queue family doesn't support transfer operations.
     ///
     /// # Safety
     ///
@@ -797,7 +797,7 @@ impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn build(self) -> Arc<SecondaryComputeCommandBuffer<P>> {

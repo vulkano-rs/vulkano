@@ -73,7 +73,7 @@ impl UnsafeDescriptorSetLayout {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new<I>(device: &Arc<Device>, descriptors: I) -> Arc<UnsafeDescriptorSetLayout>

@@ -48,8 +48,8 @@ impl Surface {
     ///
     /// # Panic
     ///
-    /// - Panicks if `display_mode` and `plane` don't belong to the same physical device.
-    /// - Panicks if `plane` doesn't support the display of `display_mode`.
+    /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
+    /// - Panics if `plane` doesn't support the display of `display_mode`.
     ///
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, SurfaceCreationError>
@@ -345,7 +345,7 @@ impl Surface {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the surface don't belong to the same instance.
+    /// - Panics if the device and the surface don't belong to the same instance.
     ///
     pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> { // TODO: wrong error type
         unsafe {

@@ -84,8 +84,8 @@ impl Swapchain {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the surface don't belong to the same instance.
-    /// - Panicks if `color_attachment` is false in `usage`.
+    /// - Panics if the device and the surface don't belong to the same instance.
+    /// - Panics if `color_attachment` is false in `usage`.
     ///
     #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,

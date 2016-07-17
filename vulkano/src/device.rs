@@ -76,10 +76,10 @@ impl Device {
     ///
     /// # Panic
     ///
-    /// - Panicks if one of the requested features is not supported by the physical device.
-    /// - Panicks if one of the queue families doesn't belong to the given device.
-    /// - Panicks if you request more queues from a family than available.
-    /// - Panicks if one of the priorities is outside of the `[0.0 ; 1.0]` range.
+    /// - Panics if one of the requested features is not supported by the physical device.
+    /// - Panics if one of the queue families doesn't belong to the given device.
+    /// - Panics if you request more queues from a family than available.
+    /// - Panics if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features,
@@ -230,7 +230,7 @@ impl Device {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     // FIXME: must synchronize all queuees
     #[inline]
@@ -281,7 +281,7 @@ impl Device {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the queue family don't belong to the same physical device.
+    /// - Panics if the device and the queue family don't belong to the same physical device.
     ///
     pub fn standard_command_pool(me: &Arc<Self>, queue: QueueFamily) -> Arc<StandardCommandPool> {
         let mut standard_command_pools = me.standard_command_pools.lock().unwrap();
@@ -473,7 +473,7 @@ impl Queue {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn wait(&self) {

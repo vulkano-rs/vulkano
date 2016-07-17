@@ -72,9 +72,9 @@ impl UnsafeImage {
     ///
     /// # Panic
     ///
-    /// - Panicks if one of the dimensions is 0.
-    /// - Panicks if the number of mipmaps is 0.
-    /// - Panicks if the number of samples is 0.
+    /// - Panics if one of the dimensions is 0.
+    /// - Panics if the number of mipmaps is 0.
+    /// - Panics if the number of samples is 0.
     ///
     #[inline]
     pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &Usage, format: Format,
@@ -804,7 +804,7 @@ impl UnsafeImageView {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     #[inline]
     pub unsafe fn new(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
                       -> UnsafeImageView
