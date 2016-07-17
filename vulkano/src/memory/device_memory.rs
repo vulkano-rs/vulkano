@@ -42,8 +42,8 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// - Panicks if `size` is 0.
-    /// - Panicks if `memory_type` doesn't belong to the same physical device as `device`.
+    /// - Panics if `size` is 0.
+    /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     ///
     // TODO: VK_ERROR_TOO_MANY_OBJECTS error
     #[inline]
@@ -87,8 +87,8 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// - Panicks if `memory_type` doesn't belong to the same physical device as `device`.
-    /// - Panicks if the memory type is not host-visible.
+    /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
+    /// - Panics if the memory type is not host-visible.
     ///
     pub fn alloc_and_map(device: &D, memory_type: &MemoryType, size: usize)
                          -> Result<MappedDeviceMemory<D>, OomError>

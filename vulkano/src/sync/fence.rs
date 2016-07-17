@@ -57,7 +57,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new(device: &D) -> Arc<Fence<D>>
@@ -78,7 +78,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn signaled(device: &D) -> Arc<Fence<D>>
@@ -164,7 +164,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// Panicks if not all fences belong to the same device.
+    /// Panics if not all fences belong to the same device.
     pub fn multi_wait<'a, I>(iter: I, timeout: Duration) -> Result<(), FenceWaitError>
         where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
     {
@@ -220,7 +220,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// Panicks if not all fences belong to the same device.
+    /// Panics if not all fences belong to the same device.
     pub fn multi_reset<'a, I>(iter: I)
         where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
     {

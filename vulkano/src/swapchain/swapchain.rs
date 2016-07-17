@@ -84,8 +84,8 @@ impl Swapchain {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the surface don't belong to the same instance.
-    /// - Panicks if `color_attachment` is false in `usage`.
+    /// - Panics if the device and the surface don't belong to the same instance.
+    /// - Panics if `color_attachment` is false in `usage`.
     ///
     #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
@@ -128,13 +128,13 @@ impl Swapchain {
 
         // If we recreate a swapchain, make sure that the surface is the same.
         if let Some(sc) = old_swapchain {
-            // TODO: return proper error instead of panicking?
+            // TODO: return proper error instead of panicing?
             assert_eq!(surface.internal_object(), sc.surface.internal_object());
         }
 
         // Checking that the surface doesn't already have a swapchain.
         if old_swapchain.is_none() {
-            // TODO: return proper error instead of panicking?
+            // TODO: return proper error instead of panicing?
             let has_already = surface.flag().swap(true, Ordering::AcqRel);
             if has_already { panic!("The surface already has a swapchain alive"); }
         }

@@ -58,7 +58,7 @@ impl Version {
     ///
     /// # Panic
     ///
-    /// Panicks if the values in the `Version` are out of acceptable range.
+    /// Panics if the values in the `Version` are out of acceptable range.
     #[inline]
     pub fn into_vulkan_version(&self) -> u32 {
         assert!(self.major <= 0x3ff);

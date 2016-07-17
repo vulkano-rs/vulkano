@@ -32,7 +32,7 @@ impl StdNonHostVisibleMemoryTypePool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the `device` and `memory_type` don't belong to the same physical device.
+    /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>, memory_type: MemoryType)
@@ -53,8 +53,8 @@ impl StdNonHostVisibleMemoryTypePool {
     ///
     /// # Panic
     ///
-    /// - Panicks if `size` is 0.
-    /// - Panicks if `alignment` is 0.
+    /// - Panics if `size` is 0.
+    /// - Panics if `alignment` is 0.
     ///
     pub fn alloc(me: &Arc<Self>, size: usize, alignment: usize)
                  -> Result<StdNonHostVisibleMemoryTypePoolAlloc, OomError>

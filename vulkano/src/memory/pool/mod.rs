@@ -38,10 +38,10 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
     ///
     /// # Panic
     ///
-    /// - Panicks if `memory_type` doesn't belong to the same physical device as the device which
+    /// - Panics if `memory_type` doesn't belong to the same physical device as the device which
     ///   was used to create this pool.
-    /// - Panicks if `size` is 0.
-    /// - Panicks if `alignment` is 0.
+    /// - Panics if `size` is 0.
+    /// - Panics if `alignment` is 0.
     ///
     fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
              -> Result<Self::Alloc, OomError>;

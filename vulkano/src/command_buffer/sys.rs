@@ -218,7 +218,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the buffer was not created with the same device as this command buffer.
+    /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
     /// # Safety
     ///
@@ -260,7 +260,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the buffer was not created with the same device as this command buffer.
+    /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
     /// # Safety
     ///
@@ -301,7 +301,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if one of the buffers was not created with the same device as this
+    /// - Panics if one of the buffers was not created with the same device as this
     ///   command buffer.
     ///
     /// # Safety

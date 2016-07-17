@@ -48,9 +48,9 @@ impl Instance {
     ///
     /// # Panic
     ///
-    /// - Panicks if the version numbers passed in `ApplicationInfo` are too large can't be
+    /// - Panics if the version numbers passed in `ApplicationInfo` are too large can't be
     ///   converted into a Vulkan version number.
-    /// - Panicks if the application name or engine name contain a null character.
+    /// - Panics if the application name or engine name contain a null character.
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
@@ -271,7 +271,7 @@ impl<'a> ApplicationInfo<'a> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the required environment variables are missing, which happens if the project
+    /// - Panics if the required environment variables are missing, which happens if the project
     ///   wasn't built by Cargo.
     ///
     pub fn from_cargo_toml() -> ApplicationInfo<'a> {
@@ -418,7 +418,7 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the human-readable name of the device.
     #[inline]
-    pub fn name(&self) -> String {  // FIXME: for some reason this panicks if you use a `&str`
+    pub fn name(&self) -> String {  // FIXME: for some reason this panics if you use a `&str`
         unsafe {
             let val = self.infos().properties.deviceName;
             let val = CStr::from_ptr(val.as_ptr());

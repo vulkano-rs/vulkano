@@ -61,7 +61,7 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new(device: &D) -> Arc<Semaphore<D>>

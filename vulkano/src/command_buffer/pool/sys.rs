@@ -51,7 +51,7 @@ impl UnsafeCommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the queue family doesn't belong to the same physical device as `device`.
+    /// - Panics if the queue family doesn't belong to the same physical device as `device`.
     ///
     pub fn new(device: &Arc<Device>, queue_family: QueueFamily, transient: bool,
                reset_cb: bool) -> Result<UnsafeCommandPool, OomError>

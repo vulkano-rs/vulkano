@@ -65,7 +65,7 @@ impl OcclusionQueriesPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new(device: &Arc<Device>, num_slots: u32)

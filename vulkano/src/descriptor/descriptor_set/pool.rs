@@ -91,7 +91,7 @@ impl DescriptorPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the device or host ran out of memory.
     ///
     // FIXME: capacity of the pool
     #[inline]

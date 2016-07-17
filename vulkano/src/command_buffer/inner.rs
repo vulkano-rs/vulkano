@@ -325,10 +325,10 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the size of `data` is not the same as the size of the buffer slice.
-    /// - Panicks if the size of `data` is superior to 65536 bytes.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
+    /// - Panics if the size of `data` is not the same as the size of the buffer slice.
+    /// - Panics if the size of `data` is superior to 65536 bytes.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
     ///
     /// # Safety
     ///
@@ -375,10 +375,10 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if `offset + data` is superior to the size of the buffer.
-    /// - Panicks if the offset or size is not a multiple of 4.
-    /// - Panicks if the buffer wasn't created with the right usage.
-    /// - Panicks if the queue family doesn't support transfer operations.
+    /// - Panics if `offset + data` is superior to the size of the buffer.
+    /// - Panics if the offset or size is not a multiple of 4.
+    /// - Panics if the buffer wasn't created with the right usage.
+    /// - Panics if the queue family doesn't support transfer operations.
     ///
     /// # Safety
     ///
@@ -421,8 +421,8 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the buffers don't belong to the same device.
-    /// - Panicks if one of the buffers wasn't created with the right usage.
+    /// - Panics if the buffers don't belong to the same device.
+    /// - Panics if one of the buffers wasn't created with the right usage.
     ///
     /// # Safety
     ///
@@ -1062,7 +1062,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Panic
     ///
-    /// - Panicks if the framebuffer is not compatible with the renderpass.
+    /// - Panics if the framebuffer is not compatible with the renderpass.
     ///
     /// # Safety
     ///
@@ -1755,8 +1755,8 @@ pub struct InnerCommandBuffer<P = Arc<StandardCommandPool>> where P: CommandPool
 ///
 /// # Panic
 ///
-/// - Panicks if the queue doesn't belong to the device this command buffer was created with.
-/// - Panicks if the queue doesn't belong to the family the pool was created with.
+/// - Panics if the queue doesn't belong to the device this command buffer was created with.
+/// - Panics if the queue doesn't belong to the family the pool was created with.
 ///
 pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
                  queue: &Arc<Queue>) -> Result<Arc<Submission>, OomError>   // TODO: wrong error type

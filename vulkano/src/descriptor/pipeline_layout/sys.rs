@@ -40,7 +40,7 @@ impl UnsafePipelineLayout {
     ///
     /// # Panic
     ///
-    /// Panicks if one of the `UnsafeDescriptorSetLayout` was not created with `device`.
+    /// Panics if one of the `UnsafeDescriptorSetLayout` was not created with `device`.
     #[inline]
     pub fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
                          -> Result<UnsafePipelineLayout, UnsafePipelineLayoutCreationError>

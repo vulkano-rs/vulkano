@@ -89,8 +89,8 @@ impl UnsafeDescriptorSet {
     ///
     /// # Panic
     ///
-    /// - Panicks if the pool and the layout were not created from the same `Device`.
-    /// - Panicks if the device or host ran out of memory.
+    /// - Panics if the pool and the layout were not created from the same `Device`.
+    /// - Panics if the device or host ran out of memory.
     ///
     // FIXME: this has to check whether there's still enough room in the pool
     #[inline]

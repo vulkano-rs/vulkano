@@ -59,7 +59,7 @@ impl UnsafeBuffer {
     ///
     /// # Panic
     ///
-    /// Panicks if `sparse.sparse` is false and `sparse.sparse_residency` or
+    /// Panics if `sparse.sparse` is false and `sparse.sparse_residency` or
     /// `sparse.sparse_aliased` is true.
     ///
     pub unsafe fn new<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, sharing: Sharing<I>,
