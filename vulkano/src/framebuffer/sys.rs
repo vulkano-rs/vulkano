@@ -53,7 +53,7 @@ impl UnsafeRenderPass {
     ///
     /// # Panic
     ///
-    /// - Can panick if it detects some violations in the restrictions. Only unexpensive checks are
+    /// - Can panic if it detects some violations in the restrictions. Only unexpensive checks are
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///

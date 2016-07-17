@@ -418,7 +418,7 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the human-readable name of the device.
     #[inline]
-    pub fn name(&self) -> String {  // FIXME: for some reason this panicks if you use a `&str`
+    pub fn name(&self) -> String {  // FIXME: for some reason this panics if you use a `&str`
         unsafe {
             let val = self.infos().properties.deviceName;
             let val = CStr::from_ptr(val.as_ptr());
