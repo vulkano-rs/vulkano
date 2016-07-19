@@ -1279,6 +1279,7 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
 
     // True if the command buffer has always been submitted once. Only relevant if `flags` is
     // `OneTimeSubmit`.
+    // TODO: don't put that here?
     already_submitted: AtomicBool,
 
     // True if we are a secondary command buffer.
