@@ -5,15 +5,15 @@ title: "Tutorial 5: the first triangle"
 
 # The first triangle
 
-With some exceptions, Vulkan doesn't provide any function to easily draw shapes. There is
-no draw_rectangle, draw_cube or draw_text function for example. Instead everything is handled
-the same way: through the graphics pipeline. It doesn't matter whether you draw a simple
-triangle or a 3D model with thousands of polygons and advanced shadowing techniques, everything
-uses the same mechanics.
+Vulkan doesn't provide any function to easily draw shapes. There is no draw_rectangle, draw_cube
+or draw_text function for example. Instead everything is handled the same way: through the
+graphics pipeline. It doesn't matter whether you draw a simple triangle or a 3D model with
+thousands of polygons and advanced shadowing techniques, everything uses the same mechanics.
 
-This is the point where the learning curve becomes very steep, as you need to learn how the
-graphics pipeline works even if you just want to draw a single triangle. However once you have
-passed that step, it will become easier to understand the rest.
+If you are not familiar with other graphical APIs, this is the point where the learning curve
+becomes very steep, as you need to learn how the graphics pipeline works even if you just want
+to draw a single triangle. However once you have passed that step, it will become easier to
+understand the rest.
 
 Before we can draw a triangle, we need to prepare two things during the initialization:
 
@@ -27,8 +27,7 @@ circles, etc., but in graphics programming the only shapes that we are going to 
 triangles (note: tessellation unlocks the possibility to use other polygons, but this is an
 advanced topic).
 
-Here is an example of an object's shape. As you can see, it is made of hundreds of triangles and
-only triangles.
+Here is an example of an object's shape. It is made of hundreds of triangles and only triangles.
 
 TODO: The famous Utah Teapot
 
@@ -47,15 +46,20 @@ struct Vertex {
 impl_vertex!(Vertex, position);
 {% endhighlight %}
 
-Our struct contains a position field which we will use to store the position of each vertex on
-the window. Being a true vectorial renderer, Vulkan doesn't use coordinates in pixels. Instead it
-considers that the window has a width and a height of 2 units, and that the origin is at the
-center of the window.
+In order for the struct to be processed by vulkano, it must implement the `Vertex` trait provided
+by vulkano. This can be done automatically by calling the `impl_vertex!` macro whose parameters
+are the name of the struct and its fields. In the future it will be possible to simply add
+`#[derive(VulkanoVertex)]` instead, but this is not yet available in stable Rust.
+
+The struct contains a field named `position` which we will use to store the position of each
+vertex on the window. Being a true vectorial renderer, Vulkan doesn't use coordinates in pixels.
+Instead it considers that the window has a width and a height of 2 units, and that the origin is
+at the center of the window.
 
 TODO: The windows coordinates system
 
-When we give positions to Vulkan, we need to use this coordinate system. Let's pick a shape for
-our triangle, for example this one:
+When we give positions to Vulkan, we need to use the coordinate system described by this image.
+Let's pick a shape for our triangle, for example this one:
 
 TODO: Finding the coordinates of our triangle
 
@@ -67,10 +71,19 @@ let vertex2 = Vertex { position: [ 0.0, -0.5] };
 let vertex3 = Vertex { position: [ 0.5,  0.25] };
 {% endhighlight %}
 
-Since we are going to pass this data to the video card, we have to put it in a buffer. This is
+But since this data is going to be read by the video card, we have to put it in a buffer. This is
 done in the same way as we did earlier.
 
 {% highlight rust %}
+let shape = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
+                                    .expect("failed to create buffer");
+
+{
+    let mut content = shape.write(Duration::new(0, 0)).unwrap();
+    content[0] = Vertex { position: [-0.5,  0.5] };
+    content[1] = Vertex { position: [ 0.0, -0.5] };
+    content[2] = Vertex { position: [ 0.5,  0.25] };
+}
 {% endhighlight %}
 
 ## The graphics pipeline
@@ -78,10 +91,10 @@ done in the same way as we did earlier.
 ### Shaders
 
 In the 1990s, drawing an object with a video card consisted in sending a shape alongside with
-various parameters like the color, lightning direction, fog distance, etc. Over time these
-parameters became too limiting for game creators, and in the year 2000s a more flexible system
-was introduced with what are called shaders. A few years later, all these parameters were removed
-and totally replaced with shaders.
+various parameters like the color of the shape, direction of the lighting, fog distance, etc.
+Over time these parameters became too limiting for game creators, and in the year 2000s a more
+flexible system was introduced with what are called shaders. A few years later, all these
+predefined parameters were removed and totally replaced with shaders.
 
 In order to draw a triangle, you will need some basic understanding about how the drawing process
 (also called the pipeline) works.
@@ -90,17 +103,19 @@ TODO: The graphics pipeline
 
 The list of coordinates at the left of the schema represents the vertices of the shape that we
 have created earlier. When we will ask the GPU to draw this shape, it will first execute what is
-called a vertex shader, once for each vertex (that means three times here). A vertex shader is
+called a vertex shader, once for each vertex (which means three times here). A vertex shader is
 a small program whose purpose is to tell the GPU what the screen coordinates of each vertex is.
 
 Then the GPU builds our triangle and determines which pixels of the screen are inside of it. It
 will then execute a fragment shader once for each of these pixels. A fragment shader is a small
 program whose purpose is to tell the GPU what the color of each pixel needs to be.
 
-The tricky part is that we need to write the vertex and fragment shaders. To do so, we are going
-to write it using a programming language named GLSL, which is very similar to the C programming
-language. Teaching you GLSL would be a bit too complicated for now, so I will just give you the
-source codes. Here is the source code that we will use for the vertex shader:
+The tricky part is that we need to write the vertex and fragment shaders ourselves. To do, we are
+going to write them using a programming language named GLSL, which is very similar to the C
+programming language. The shaders that we pass to Vulkan have to be in a specific format named
+SPIR-V, which GLSL can compile to. Teaching you GLSL would be a bit too complicated for now, so
+I will just give you the source codes. Here is the source code that we will use for the vertex
+shader:
 
 {% highlight glsl %}
 #version 450
@@ -149,15 +164,74 @@ but this will be covered in later tutorials.
 ### Compiling the shaders
 
 Before we can pass our shaders to Vulkan, we have to compile them in a format named **SPIR-V**.
+This can be done through yet-another crate named `vulkano-shaders`.
+
+To use it, we have to tweak our Cargo.toml:
+
+{% highlight toml %}
+[build-dependencies]
+vulkano-shaders = "0.1"
+{% endhighlight %}
+
+Note that this is not a regular dependency, but a *build dependency*. We are not going to use
+the vulkano-shaders crate in the example itself, but in the *build script* of the example.
+
+{% highlight toml %}
+build = "build.rs"
+{% endhighlight %}
+
+Let's create a file named `build.rs` which will contain our build script.
 
 {% highlight rust %}
-mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_vs.glsl")} }
+extern crate vulkano_shaders;
+
+fn main() {
+    vulkano_shaders::build_glsl_shaders([
+        ("src/vs.glsl", vulkano_shaders::ShaderType::Vertex),
+        ("src/fs.glsl", vulkano_shaders::ShaderType::Fragment),
+    ].iter().cloned());
+}
+{% endhighlight %}
+
+This code will be compiled and executed before our real code, and will compile the `vs.glsl` and
+`fs.glsl` files into SPIR-V and put the result in the `target` directory of Cargo.
+
+But the vulkano-shaders crate does more than just compile the shaders. It also analyzes their code
+and generates several Rust structs and functions that will provide information to vulkano about
+the shaders. The consequence of this, is that the files generated by vulkano-shaders are in fact
+not raw SPIR-V, but Rust code. In order to import them, we have to use the standard `include!`
+macro:
+
+{% highlight rust %}
+mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/vs.glsl")} }
+mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/fs.glsl")} }
+{% endhighlight %}
+
+The paths are the same as what we passed (including the extension), except that they are
+prefixed with `/shaders/`.
+
+For better isolation, we put the code inside modules.
+
+The Rust code generated for each shader always contains a struct named `Shader` with a `load`
+function. This is the glue between vulkano-shaders and vulkano.
+
+{% highlight rust %}
 let vs = vs::Shader::load(&device).expect("failed to create shader module");
-mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_fs.glsl")} }
 let fs = fs::Shader::load(&device).expect("failed to create shader module");
 {% endhighlight %}
 
+We now have a `vs` variable that represents our vertex shader, and a `fs` variable that represents
+our fragment shader.
+
+Note that in the future this whole process will be available through a procedural macro provided
+by vulkano itself, which will greatly simplify things. However this is not yet possible in stable
+Rust.
+
 ### Building the graphics pipeline object
+
+But the shaders are not enough. Before we can draw, we also need to build a pipeline object that
+contains our two shaders but also a lot of additional parameters that describe how the rendering
+process will need to be performed.
 
 {% highlight rust %}
 use vulkano::descriptor::pipeline_layout::EmptyPipeline;
@@ -202,18 +276,45 @@ let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
 }).unwrap();
 {% endhighlight %}
 
-This big struct contains all the parameters required to describe the draw operation to Vulkan.
+A few noteworthy elements:
+
+- The `vertex_input` field describes how the GPU will load our vertices. This is where we specify
+  the format of our vertices (the `Vertex` struct). TODO: talk about the fact that the vertex type is inferred
+
+- The `vertex_shader` and `fragment_shader` fields contain our shaders.
+
+- The `viewport` field contains the dimensions of the final image. This parameter can be used to
+  ask the GPU to only draw to a specific location of the image. You also have the possibility (not
+  covered here) to pass the value `Dynamic`, which means that you will instead specify these
+  dimensions when adding the draw command to the command buffer. Passing `Dynamic` can be slower
+  on some implementations.
+
+- `input_assembly` tells the implementation how vertices are linked together to form triangles.
+  Since we have only a single triangle, this isn't really relevant here.
+
+- `render_pass` must link to our render pass object. The pipeline will only be usable in the
+  corresponding render pass.
 
 ## Drawing
 
 Now that we have prepared our shape and graphics pipeline object, we can finally draw this
 triangle!
 
-Remember the target object? We will need to use it to start a draw operation.
+Let's modify our command buffer building code again.
 
-Starting a draw operation needs several things: a source of vertices (here we use our vertex_buffer), a source of indices (we use our indices variable), a program, the program's uniforms, and some draw parameters. We will explain what uniforms and draw parameters are in the next tutorials, but for the moment we will just ignore them by passing a EmptyUniforms marker and by building the default draw parameters.
+The draw command can only be added between `draw_inline` and `draw_end`.
 
-target.draw(&vertex_buffer, &indices, &program, &glium::uniforms::EmptyUniforms,
-            &Default::default()).unwrap();
+The five parameters are the pipeline object, the source of vertices, any additional customization
+for our pipeline object (like the viewport dimensions if you pass `Dynamic`), and two parameters
+that contain the external resources to pass to the shaders. We will cover everything later. For
+now only the first two parameters are relevant.
 
-The "draw command" designation could make you think that drawing is a heavy operation that takes a lot of time. In reality drawing a triangle takes less than a few microseconds, and if everything goes well you should see a nice little triangle:
+{% highlight rust %}
+let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
+    .draw_inline(&render_pass, &framebuffer, render_pass::ClearValues {
+        color: [0.0, 0.0, 1.0, 1.0]
+    })
+    .draw(&pipeline, &vertex_buffer, &DynamicState::none(), (), &())
+    .draw_end()
+    .build();
+{% endhighlight %}
