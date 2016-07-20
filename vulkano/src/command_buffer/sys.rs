@@ -395,6 +395,115 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                      ranges.len() as u32, ranges.as_ptr());
     }
 
+    /// Clears attachments of the current render pass.
+    ///
+    /// You must pass a list of attachment ids and clear values, and a list of rectangles. Each
+    /// rectangle of each attachment will be cleared.
+    ///
+    /// No memory barriers are needed between this function and preceding or subsequent draw or
+    /// attachment clear commands in the same subpass.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if one of the ranges is invalid (ie. if the end is before the start).
+    ///
+    /// # Safety
+    ///
+    /// - The attachments ids must be valid, and the clear value must match the format of the
+    ///   attachments.
+    /// - Must be called from within a render pass.
+    /// - The rects must be in range of the framebuffer.
+    ///
+    pub unsafe fn clear_attachments<Ia, Ir>(&mut self, attachments: Ia, rects: Ir)
+        where Ia: Iterator<Item = (u32, ClearValue)>,
+              Ir: Iterator<Item = [Range<u32>; 3]>,
+    {
+        let rects: SmallVec<[_; 3]> = rects.filter_map(|rect| {
+            assert!(rect[0].start <= rect[0].end);
+            assert!(rect[1].start <= rect[1].end);
+            assert!(rect[2].start <= rect[2].end);
+
+            if rect[0].start == rect[0].end || rect[1].start == rect[1].end ||
+               rect[2].start == rect[2].end
+            {
+                return None;
+            }
+
+            Some(vk::ClearRect {
+                rect: vk::Rect2D {
+                    offset: vk::Offset2D {
+                        x: rect[0].start as i32,
+                        y: rect[1].start as i32,
+                    },
+                    extent: vk::Extent2D {
+                        width: rect[0].end - rect[0].start,
+                        height: rect[1].end - rect[1].start,
+                    },
+                },
+                baseArrayLayer: rect[2].start,
+                layerCount: rect[2].end - rect[2].start,
+            })
+        }).collect();
+
+        let attachments: SmallVec<[_; 8]> = attachments.map(|(attachment, clear_value)| {
+            let (clear_value, aspect_mask) = match clear_value {
+                ClearValue::None => panic!(),
+                ClearValue::Float(val) => {
+                    let clear = vk::ClearValue::color(vk::ClearColorValue::float32(val));
+                    let aspect = vk::IMAGE_ASPECT_COLOR_BIT;
+                    (clear, aspect)
+                },
+                ClearValue::Int(val) => {
+                    let clear = vk::ClearValue::color(vk::ClearColorValue::int32(val));
+                    let aspect = vk::IMAGE_ASPECT_COLOR_BIT;
+                    (clear, aspect)
+                },
+                ClearValue::Uint(val) => {
+                    let clear = vk::ClearValue::color(vk::ClearColorValue::uint32(val));
+                    let aspect = vk::IMAGE_ASPECT_COLOR_BIT;
+                    (clear, aspect)
+                },
+                ClearValue::Depth(val) => {
+                    let clear = vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: val, stencil: 0
+                    });
+                    let aspect = vk::IMAGE_ASPECT_DEPTH_BIT;
+                    (clear, aspect)
+                },
+                ClearValue::Stencil(val) => {
+                    let clear = vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: 0.0, stencil: val
+                    });
+                    let aspect = vk::IMAGE_ASPECT_STENCIL_BIT;
+                    (clear, aspect)
+                },
+                ClearValue::DepthStencil((depth, stencil)) => {
+                    let clear = vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: depth, stencil: stencil,
+                    });
+                    let aspect = vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT;
+                    (clear, aspect)
+                },
+            };
+
+            vk::ClearAttachment {
+                aspectMask: aspect_mask,
+                colorAttachment: attachment,
+                clearValue: clear_value,
+            }
+        }).collect();
+
+        // Do nothing if nothing to do.
+        if rects.is_empty() || attachments.is_empty() {
+            return;
+        }
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
+                               rects.len() as u32, rects.as_ptr());
+    }
+
     /// Fills a buffer by repeating a 32 bits data.
     ///
     /// This is similar to the `memset` function in C/C++.
