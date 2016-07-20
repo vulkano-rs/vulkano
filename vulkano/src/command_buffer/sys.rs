@@ -40,11 +40,14 @@ use buffer::BufferSlice;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use device::Device;
+use format::ClearValue;
+use format::FormatTy;
 use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use image::Image;
 use image::sys::Layout;
+use image::sys::UnsafeImage;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -210,6 +213,186 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub fn is_secondary(&self) -> bool {
         self.secondary_cb
+    }
+
+    /// Clears an image with a color format, from outside of a render pass.
+    ///
+    /// If `general_layout` is true, then the `General` image layout is used. Otherwise the
+    /// `TransferDstOptimal` layout is used.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the image was not created with the same device as this command buffer.
+    /// - Panics if the mipmap levels range or the array layers range is invalid, ie. if the end
+    ///   is inferior to the start.
+    ///
+    /// # Safety
+    ///
+    /// - The image must be kept alive and must be properly synchronized while this command
+    ///   buffer runs.
+    /// - The ranges must be in range of the image.
+    /// - The image must have a non-compressed color format.
+    /// - The clear value must match the format of the image.
+    /// - The queue family must support graphics or compute operations.
+    /// - The image must have been created with the "transfer_dest" usage.
+    /// - Must be called outside of a render pass.
+    ///
+    pub unsafe fn clear_color_image<I>(&mut self, image: &UnsafeImage, general_layout: bool,
+                                       color: ClearValue, ranges: I)
+        where I: Iterator<Item = ImageSubresourcesRange>
+    {
+        assert_eq!(image.device().internal_object(), self.device.internal_object());
+
+        let clear_value = match color {
+            ClearValue::None => panic!(),
+            ClearValue::Float(val) => {
+                debug_assert_eq!(image.format().ty(), FormatTy::Float);
+                vk::ClearColorValue::float32(val)
+            },
+            ClearValue::Int(val) => {
+                debug_assert_eq!(image.format().ty(), FormatTy::Sint);
+                vk::ClearColorValue::int32(val)
+            },
+            ClearValue::Uint(val) => {
+                debug_assert_eq!(image.format().ty(), FormatTy::Uint);
+                vk::ClearColorValue::uint32(val)
+            },
+            ClearValue::Depth(_) => panic!(),
+            ClearValue::Stencil(_) => panic!(),
+            ClearValue::DepthStencil(_) => panic!(),
+        };
+
+        let ranges: SmallVec<[_; 4]> = ranges.filter_map(|range| {
+            assert!(range.mipmap_levels.start <= range.mipmap_levels.end);
+            assert!(range.array_layers.start <= range.array_layers.end);
+            debug_assert!(range.mipmap_levels.end <= image.mipmap_levels());
+            debug_assert!(range.array_layers.end <= image.dimensions().array_layers());
+
+            if range.mipmap_levels.start == range.mipmap_levels.end {
+                return None;
+            }
+
+            if range.array_layers.start == range.array_layers.end {
+                return None;
+            }
+
+            Some(vk::ImageSubresourceRange {
+                aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                baseMipLevel: range.mipmap_levels.start,
+                levelCount: range.mipmap_levels.end - range.mipmap_levels.start,
+                baseArrayLayer: range.array_layers.start,
+                layerCount: range.array_layers.end - range.array_layers.start,
+            })
+        }).collect();
+
+        // Do nothing if no range to clear.
+        if ranges.is_empty() {
+            return;
+        }
+
+        let layout = if general_layout { vk::IMAGE_LAYOUT_GENERAL }
+                     else { vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdClearColorImage(cmd, image.internal_object(), layout, &clear_value,
+                              ranges.len() as u32, ranges.as_ptr());
+    }
+
+    /// Clears an image with a depth, stencil or depth-stencil format, from outside of a
+    /// render pass.
+    ///
+    /// If the `ClearValue` is a depth value, then only the depth component will be cleared. Same
+    /// for stencil. If it contains a depth-stencil value, then they will both be cleared.
+    ///
+    /// If `general_layout` is true, then the `General` image layout is used. Otherwise the
+    /// `TransferDstOptimal` layout is used.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the image was not created with the same device as this command buffer.
+    /// - Panics if the mipmap levels range or the array layers range is invalid, ie. if the end
+    ///   is inferior to the start.
+    ///
+    /// # Safety
+    ///
+    /// - The image must be kept alive and must be properly synchronized while this command
+    ///   buffer runs.
+    /// - The ranges must be in range of the image.
+    /// - The image must have a depth, stencil or depth-stencil format.
+    /// - The clear value must match the format of the image.
+    /// - The queue family must support graphics operations.
+    /// - The image must have been created with the "transfer_dest" usage.
+    /// - Must be called outside of a render pass.
+    ///
+    pub unsafe fn clear_depth_stencil_image<I>(&mut self, image: &UnsafeImage, general_layout: bool,
+                                               color: ClearValue, ranges: I)
+        where I: Iterator<Item = ImageSubresourcesRange>
+    {
+        assert_eq!(image.device().internal_object(), self.device.internal_object());
+
+        let (clear_value, aspect_mask) = match color {
+            ClearValue::None => panic!(),
+            ClearValue::Float(_) => panic!(),
+            ClearValue::Int(_) => panic!(),
+            ClearValue::Uint(_) => panic!(),
+            ClearValue::Depth(val) => {
+                debug_assert!(image.format().ty() == FormatTy::Depth ||
+                              image.format().ty() == FormatTy::DepthStencil);
+                let clear = vk::ClearDepthStencilValue { depth: val, stencil: 0 };
+                let aspect = vk::IMAGE_ASPECT_DEPTH_BIT;
+                (clear, aspect)
+            },
+            ClearValue::Stencil(val) => {
+                debug_assert!(image.format().ty() == FormatTy::Stencil ||
+                              image.format().ty() == FormatTy::DepthStencil);
+                let clear = vk::ClearDepthStencilValue { depth: 0.0, stencil: val };
+                let aspect = vk::IMAGE_ASPECT_STENCIL_BIT;
+                (clear, aspect)
+            },
+            ClearValue::DepthStencil((depth, stencil)) => {
+                debug_assert_eq!(image.format().ty(), FormatTy::DepthStencil);
+                let clear = vk::ClearDepthStencilValue { depth: depth, stencil: stencil };
+                let aspect = vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT;
+                (clear, aspect)
+            },
+        };
+
+        let ranges: SmallVec<[_; 4]> = ranges.filter_map(|range| {
+            assert!(range.mipmap_levels.start <= range.mipmap_levels.end);
+            assert!(range.array_layers.start <= range.array_layers.end);
+            debug_assert!(range.mipmap_levels.end <= image.mipmap_levels());
+            debug_assert!(range.array_layers.end <= image.dimensions().array_layers());
+
+            if range.mipmap_levels.start == range.mipmap_levels.end {
+                return None;
+            }
+
+            if range.array_layers.start == range.array_layers.end {
+                return None;
+            }
+
+            Some(vk::ImageSubresourceRange {
+                aspectMask: aspect_mask,
+                baseMipLevel: range.mipmap_levels.start,
+                levelCount: range.mipmap_levels.end - range.mipmap_levels.start,
+                baseArrayLayer: range.array_layers.start,
+                layerCount: range.array_layers.end - range.array_layers.start,
+            })
+        }).collect();
+
+        // Do nothing if no range to clear.
+        if ranges.is_empty() {
+            return;
+        }
+
+        let layout = if general_layout { vk::IMAGE_LAYOUT_GENERAL }
+                     else { vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdClearDepthStencilImage(cmd, image.internal_object(), layout, &clear_value,
+                                     ranges.len() as u32, ranges.as_ptr());
     }
 
     /// Fills a buffer by repeating a 32 bits data.
@@ -435,6 +618,12 @@ pub enum Flags {
 
     /// The command buffer can only be submitted once. Any further submit is forbidden.
     OneTimeSubmit,
+}
+
+/// Range of an image subresource.
+pub struct ImageSubresourcesRange {
+    pub mipmap_levels: Range<u32>,
+    pub array_layers: Range<u32>,
 }
 
 /// A copy between two buffers.

@@ -488,6 +488,11 @@ impl UnsafeImage {
     }
 
     #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    #[inline]
     pub fn format(&self) -> Format {
         self.format
     }
