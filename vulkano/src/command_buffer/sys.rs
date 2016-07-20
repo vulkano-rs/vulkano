@@ -45,6 +45,7 @@ use format::FormatTy;
 use framebuffer::RenderPass;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
+use framebuffer::UnsafeRenderPass;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -225,6 +226,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Panics if the image was not created with the same device as this command buffer.
     /// - Panics if the mipmap levels range or the array layers range is invalid, ie. if the end
     ///   is inferior to the start.
+    /// - Panics if the clear values is not a color value.
     ///
     /// # Safety
     ///
@@ -313,6 +315,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Panics if the image was not created with the same device as this command buffer.
     /// - Panics if the mipmap levels range or the array layers range is invalid, ie. if the end
     ///   is inferior to the start.
+    /// - Panics if the clear values is not a depth, stencil or depth-stencil value.
     ///
     /// # Safety
     ///
@@ -406,6 +409,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// # Panic
     ///
     /// - Panics if one of the ranges is invalid (ie. if the end is before the start).
+    /// - Panics if one of the clear values is `None`.
     ///
     /// # Safety
     ///
@@ -666,6 +670,123 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                   barrier.image_barriers.len() as u32,
                                   barrier.image_barriers.as_ptr());
         }
+    }
+
+    /// Enters a render pass.
+    ///
+    /// Any clear value that is equal to `None` is replaced with a dummy value. It is expected that
+    /// `None` is passed only for attachments that are not cleared.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the render pass or framebuffer was not created with the same device as this
+    ///   command buffer.
+    /// - Panics if one of the ranges is invalid.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called outside of a render pass.
+    /// - The queue family must support graphics operations.
+    /// - The render pass and the framebuffer must be kept alive.
+    /// - The render pass and the framebuffer must be compatible.
+    /// - The clear values must be valid for the attachments.
+    ///
+    pub unsafe fn begin_render_pass<L, I>(&mut self, render_pass: &UnsafeRenderPass,
+                                          framebuffer: &Framebuffer<L>, clear_values: I,
+                                          rect: [Range<u32>; 2], secondary: bool)
+        where I: Iterator<Item = ClearValue>
+    {
+        assert_eq!(render_pass.device().internal_object(), framebuffer.device().internal_object());
+        assert_eq!(self.device.internal_object(), framebuffer.device().internal_object());
+
+        let clear_values: SmallVec<[_; 12]> = clear_values.map(|clear_value| {
+            match clear_value {
+                ClearValue::None => {
+                    vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
+                },
+                ClearValue::Float(val) => {
+                    vk::ClearValue::color(vk::ClearColorValue::float32(val))
+                },
+                ClearValue::Int(val) => {
+                    vk::ClearValue::color(vk::ClearColorValue::int32(val))
+                },
+                ClearValue::Uint(val) => {
+                    vk::ClearValue::color(vk::ClearColorValue::uint32(val))
+                },
+                ClearValue::Depth(val) => {
+                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: val, stencil: 0
+                    })
+                },
+                ClearValue::Stencil(val) => {
+                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: 0.0, stencil: val
+                    })
+                },
+                ClearValue::DepthStencil((depth, stencil)) => {
+                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                        depth: depth, stencil: stencil,
+                    })
+                },
+            }
+        }).collect();
+
+        assert!(rect[0].start <= rect[0].end);
+        assert!(rect[1].start <= rect[1].end);
+
+        let infos = vk::RenderPassBeginInfo {
+            sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            pNext: ptr::null(),
+            renderPass: render_pass.internal_object(),
+            framebuffer: framebuffer.internal_object(),
+            renderArea: vk::Rect2D {
+                offset: vk::Offset2D {
+                    x: rect[0].start as i32,
+                    y: rect[1].start as i32,
+                },
+                extent: vk::Extent2D {
+                    width: rect[0].end - rect[0].start,
+                    height: rect[1].end - rect[1].start,
+                },
+            },
+            clearValueCount: clear_values.len() as u32,
+            pClearValues: clear_values.as_ptr(),
+        };
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBeginRenderPass(cmd, &infos,
+                              if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
+                              else { vk::SUBPASS_CONTENTS_INLINE });
+    }
+
+    /// Goes to the next subpass of the render pass.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called inside of a render pass.
+    /// - Must not be at the last subpass of the render pass.
+    ///
+    #[inline]
+    pub unsafe fn next_subpass(&mut self, secondary: bool) {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdNextSubpass(cmd, if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
+                               else { vk::SUBPASS_CONTENTS_INLINE });
+    }
+
+    /// Ends the current render pass.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called inside of a render pass.
+    /// - Must be at the last subpass of the render pass.
+    ///
+    #[inline]
+    pub unsafe fn end_render_pass(&mut self) {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdEndRenderPass(cmd);
     }
 }
 
