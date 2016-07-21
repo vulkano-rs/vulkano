@@ -243,7 +243,7 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let set = match UnsafeDescriptorSetLayout::raw(&device1, iter::empty()) {
+        let set = match UnsafeDescriptorSetLayout::raw(device1, iter::empty()) {
             Ok(s) => Arc::new(s),
             Err(_) => return
         };

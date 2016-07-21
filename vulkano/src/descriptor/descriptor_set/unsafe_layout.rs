@@ -16,6 +16,7 @@ use check_errors;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
+use SafeDeref;
 use vk;
 
 use descriptor::descriptor::DescriptorDesc;
@@ -25,19 +26,21 @@ use device::Device;
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
-pub struct UnsafeDescriptorSetLayout {
+///
+/// The `P` template parameter contains a pointer to the `Device` object.
+pub struct UnsafeDescriptorSetLayout<P = Arc<Device>> where P: SafeDeref<Target = Device> {
+    // The layout.
     layout: vk::DescriptorSetLayout,
-    device: Arc<Device>,
+    // The device this layout belongs to.
+    device: P,
 }
 
-impl UnsafeDescriptorSetLayout {
+impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     /// See the docs of new().
-    pub fn raw<I>(device: &Arc<Device>, descriptors: I)
-                  -> Result<UnsafeDescriptorSetLayout, OomError>
+    pub fn raw<I>(device: P, descriptors: I)
+                  -> Result<UnsafeDescriptorSetLayout<P>, OomError>
         where I: IntoIterator<Item = DescriptorDesc>
     {
-        let vk = device.pointers();
-
         let bindings = descriptors.into_iter().map(|desc| {
             vk::DescriptorSetLayoutBinding {
                 binding: desc.binding,
@@ -58,6 +61,7 @@ impl UnsafeDescriptorSetLayout {
             };
 
             let mut output = mem::uninitialized();
+            let vk = device.pointers();
             try!(check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos,
                                                            ptr::null(), &mut output)));
             output
@@ -65,10 +69,10 @@ impl UnsafeDescriptorSetLayout {
 
         Ok(UnsafeDescriptorSetLayout {
             layout: layout,
-            device: device.clone(),
+            device: device,
         })
     }
-    
+
     /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
     ///
     /// # Panic
@@ -76,7 +80,7 @@ impl UnsafeDescriptorSetLayout {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new<I>(device: &Arc<Device>, descriptors: I) -> Arc<UnsafeDescriptorSetLayout>
+    pub fn new<I>(device: P, descriptors: I) -> Arc<UnsafeDescriptorSetLayout<P>>
         where I: IntoIterator<Item = DescriptorDesc>
     {
         Arc::new(UnsafeDescriptorSetLayout::raw(device, descriptors).unwrap())
@@ -84,12 +88,12 @@ impl UnsafeDescriptorSetLayout {
 
     /// Returns the device used to create this layout.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
+    pub fn device(&self) -> &P {
         &self.device
     }
 }
 
-unsafe impl VulkanObject for UnsafeDescriptorSetLayout {
+unsafe impl<P> VulkanObject for UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     type Object = vk::DescriptorSetLayout;
 
     #[inline]
@@ -98,7 +102,7 @@ unsafe impl VulkanObject for UnsafeDescriptorSetLayout {
     }
 }
 
-impl Drop for UnsafeDescriptorSetLayout {
+impl<P> Drop for UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -117,6 +121,6 @@ mod tests {
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _layout = UnsafeDescriptorSetLayout::new(&device, iter::empty());
+        let _layout = UnsafeDescriptorSetLayout::new(device, iter::empty());
     }
 }
