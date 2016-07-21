@@ -126,8 +126,9 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
     match (win.get_wayland_display(), win.get_wayland_surface()) {
         (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface),
         _ => {
-            // No wayland display found, assume xlib will work.
-            Surface::from_xlib(instance,
+            // No wayland display found, assume x11 will work.
+            // Use XCB as Nvidia drivers do not implement CreateXlibSurfaceKHR.
+            Surface::from_xcb(instance,
                                win.get_xlib_display().unwrap(),
                                win.get_xlib_window().unwrap())
         }
