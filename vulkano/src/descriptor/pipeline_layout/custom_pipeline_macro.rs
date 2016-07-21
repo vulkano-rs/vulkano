@@ -231,7 +231,7 @@ macro_rules! pipeline_layout {
                     binding += 1;
                 )*
 
-                UnsafeDescriptorSetLayout::raw(device, descriptors.into_iter())
+                UnsafeDescriptorSetLayout::raw(device.clone(), descriptors.into_iter())
             }
 
             #[inline]
