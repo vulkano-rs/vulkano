@@ -10,6 +10,8 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use buffer::Buffer;
+use buffer::BufferView;
 use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::DescriptorBufferDesc;
@@ -126,6 +128,8 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor::descriptor_set::DescriptorWrite;
             use $crate::descriptor::pipeline_layout::PipelineLayout;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformTexelBuffer;
+            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageTexelBuffer;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::SampledImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
@@ -294,6 +298,46 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for &'a
     #[inline]
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::storage_buffer(binding, *self)
+    }
+}
+
+pub struct UniformTexelBuffer;
+unsafe impl DescriptorMarker for UniformTexelBuffer {
+    #[inline]
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::TexelBuffer {
+            storage: false,
+            format: None,       // TODO:
+        }
+    }
+}
+
+unsafe impl<'a, B, F> ValidParameter<UniformTexelBuffer> for &'a Arc<BufferView<F, B>>   // TODO: format not checked
+    where B: Buffer, F: 'static + Send + Sync
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::uniform_texel_buffer(binding, *self)
+    }
+}
+
+pub struct StorageTexelBuffer;
+unsafe impl DescriptorMarker for StorageTexelBuffer {
+    #[inline]
+    fn descriptor_type() -> DescriptorDescTy {
+        DescriptorDescTy::TexelBuffer {
+            storage: true,
+            format: None,       // TODO:
+        }
+    }
+}
+
+unsafe impl<'a, B, F> ValidParameter<StorageTexelBuffer> for &'a Arc<BufferView<F, B>>   // TODO: format not checked
+    where B: Buffer, F: 'static + Send + Sync
+{
+    #[inline]
+    fn write(&self, binding: u32) -> DescriptorWrite {
+        DescriptorWrite::storage_texel_buffer(binding, *self)
     }
 }
 

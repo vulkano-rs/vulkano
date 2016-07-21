@@ -22,6 +22,7 @@ use vk;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::BufferView;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
@@ -30,6 +31,9 @@ use image::Image;
 use image::ImageView;
 use image::Layout as ImageLayout;
 use sampler::Sampler;
+
+// TODO: shouldn't store the resources ; instead, the resources should be kept alive in the object
+//       that wraps around UnsafeDescriptorSet
 
 /// Low-level descriptor set.
 pub struct UnsafeDescriptorSet {
@@ -43,6 +47,14 @@ pub struct UnsafeDescriptorSet {
     resources_images: Vec<(Arc<Image>, (u32, u32), ImageLayout)>,
     resources_image_views: Vec<Arc<ImageView>>,
     resources_buffers: Vec<Arc<Buffer>>,
+    resources_buffer_views: Vec<Arc<BufView>>,
+}
+
+// Local trait implemented on all buffer views so that we avoid template parameters
+// TODO: crappy ; remove eventually
+trait BufView: 'static + Send + Sync { fn obj(&self) -> vk::BufferView; }
+impl<F, B> BufView for BufferView<F, B> where F: 'static + Send + Sync, B: Buffer {
+    fn obj(&self) -> vk::BufferView { self.internal_object() }
 }
 
 impl UnsafeDescriptorSet {
@@ -82,6 +94,7 @@ impl UnsafeDescriptorSet {
             resources_images: Vec::new(),
             resources_image_views: Vec::new(),
             resources_buffers: Vec::new(),
+            resources_buffer_views: Vec::new(),
         })
     }
     
@@ -118,6 +131,7 @@ impl UnsafeDescriptorSet {
         let ref mut self_resources_samplers = self.resources_samplers;
         let ref mut self_resources_images = self.resources_images;
         let ref mut self_resources_image_views = self.resources_image_views;
+        let ref mut self_resources_buffer_views = self.resources_buffer_views;
         let self_set = self.set;
 
         let buffer_descriptors = write.iter().filter_map(|write| {
@@ -215,26 +229,43 @@ impl UnsafeDescriptorSet {
             }
         }).collect::<SmallVec<[_; 64]>>();
 
+        let buffer_views_descriptors = write.iter().filter_map(|write| {
+            match write.inner {
+                DescriptorWriteInner::UniformTexelBuffer(ref view) |
+                DescriptorWriteInner::StorageTexelBuffer(ref view) => {
+                    self_resources_buffer_views.push(view.clone());
+                    Some(view.obj())
+                },
+                _ => None
+            }
+        }).collect::<SmallVec<[_; 16]>>();
+
 
         let mut next_buffer_desc = 0;
         let mut next_image_desc = 0;
+        let mut next_buffer_view_desc = 0;
 
         let vk_writes = write.iter().map(|write| {
-            let (buffer_info, image_info) = match write.inner {
+            let (buffer_info, image_info, buffer_view_info) = match write.inner {
                 DescriptorWriteInner::Sampler(_) | DescriptorWriteInner::CombinedImageSampler(_, _, _, _) |
                 DescriptorWriteInner::SampledImage(_, _, _) | DescriptorWriteInner::StorageImage(_, _, _) |
                 DescriptorWriteInner::InputAttachment(_, _, _) => {
                     let img = image_descriptors.as_ptr().offset(next_image_desc as isize);
                     next_image_desc += 1;
-                    (ptr::null(), img)
+                    (ptr::null(), img, ptr::null())
                 },
-                //DescriptorWriteInner::UniformTexelBuffer(_) | DescriptorWriteInner::StorageTexelBuffer(_) =>
                 DescriptorWriteInner::UniformBuffer { .. } | DescriptorWriteInner::StorageBuffer { .. } |
                 DescriptorWriteInner::DynamicUniformBuffer { .. } |
                 DescriptorWriteInner::DynamicStorageBuffer { .. } => {
                     let buf = buffer_descriptors.as_ptr().offset(next_buffer_desc as isize);
                     next_buffer_desc += 1;
-                    (buf, ptr::null())
+                    (buf, ptr::null(), ptr::null())
+                },
+                DescriptorWriteInner::UniformTexelBuffer(_) |
+                DescriptorWriteInner::StorageTexelBuffer(_) => {
+                    let buf = buffer_views_descriptors.as_ptr().offset(next_buffer_view_desc as isize);
+                    next_buffer_view_desc += 1;
+                    (ptr::null(), ptr::null(), buf)
                 },
             };
 
@@ -249,12 +280,13 @@ impl UnsafeDescriptorSet {
                 descriptorType: write.ty() as u32,
                 pImageInfo: image_info,
                 pBufferInfo: buffer_info,
-                pTexelBufferView: ptr::null(),      // TODO:
+                pTexelBufferView: buffer_view_info,
             }
         }).collect::<SmallVec<[_; 64]>>();
 
         debug_assert_eq!(next_buffer_desc, buffer_descriptors.len());
         debug_assert_eq!(next_image_desc, image_descriptors.len());
+        debug_assert_eq!(next_buffer_view_desc, buffer_views_descriptors.len());
 
         if !vk_writes.is_empty() {
             vk.UpdateDescriptorSets(self.pool.device().internal_object(),
@@ -318,8 +350,8 @@ enum DescriptorWriteInner {
     Sampler(Arc<Sampler>),
     SampledImage(Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
     CombinedImageSampler(Arc<Sampler>, Arc<ImageView>, Arc<Image>, Vec<(u32, u32)>),
-    //UniformTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
-    //StorageTexelBuffer(Arc<Buffer>),      // FIXME: requires buffer views
+    UniformTexelBuffer(Arc<BufView>),
+    StorageTexelBuffer(Arc<BufView>),
     UniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     StorageBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
     DynamicUniformBuffer { buffer: Arc<Buffer>, offset: usize, size: usize },
@@ -367,6 +399,34 @@ impl DescriptorWrite {
             binding: binding,
             first_array_element: 0,
             inner: DescriptorWriteInner::CombinedImageSampler(sampler.clone(), image.clone(), ImageView::parent_arc(image), image.blocks())
+        }
+    }
+
+    #[inline]
+    pub fn uniform_texel_buffer<'a, F, B>(binding: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
+        where B: Buffer + 'static,
+              F: 'static + Send + Sync,
+    {
+        assert!(view.uniform_texel_buffer());
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::UniformTexelBuffer(view.clone() as Arc<_>),
+        }
+    }
+
+    #[inline]
+    pub fn storage_texel_buffer<'a, F, B>(binding: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
+        where B: Buffer + 'static,
+              F: 'static + Send + Sync,
+    {
+        assert!(view.storage_texel_buffer());
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::StorageTexelBuffer(view.clone() as Arc<_>),
         }
     }
 
@@ -521,8 +581,8 @@ impl DescriptorWrite {
             DescriptorWriteInner::CombinedImageSampler(_, _, _, _) => DescriptorType::CombinedImageSampler,
             DescriptorWriteInner::SampledImage(_, _, _) => DescriptorType::SampledImage,
             DescriptorWriteInner::StorageImage(_, _, _) => DescriptorType::StorageImage,
-            //DescriptorWriteInner::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
-            //DescriptorWriteInner::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
+            DescriptorWriteInner::UniformTexelBuffer(_) => DescriptorType::UniformTexelBuffer,
+            DescriptorWriteInner::StorageTexelBuffer(_) => DescriptorType::StorageTexelBuffer,
             DescriptorWriteInner::UniformBuffer { .. } => DescriptorType::UniformBuffer,
             DescriptorWriteInner::StorageBuffer { .. } => DescriptorType::StorageBuffer,
             DescriptorWriteInner::DynamicUniformBuffer { .. } => DescriptorType::UniformBufferDynamic,
