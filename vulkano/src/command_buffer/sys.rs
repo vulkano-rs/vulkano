@@ -37,6 +37,7 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferSlice;
+use buffer::sys::UnsafeBuffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use device::Device;
@@ -224,8 +225,6 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// # Panic
     ///
     /// - Panics if the image was not created with the same device as this command buffer.
-    /// - Panics if the mipmap levels range or the array layers range is invalid, ie. if the end
-    ///   is inferior to the start.
     /// - Panics if the clear values is not a color value.
     ///
     /// # Safety
@@ -265,25 +264,25 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let ranges: SmallVec<[_; 4]> = ranges.filter_map(|range| {
-            assert!(range.mipmap_levels.start <= range.mipmap_levels.end);
-            assert!(range.array_layers.start <= range.array_layers.end);
-            debug_assert!(range.mipmap_levels.end <= image.mipmap_levels());
-            debug_assert!(range.array_layers.end <= image.dimensions().array_layers());
+            debug_assert!(range.first_mipmap_level + range.num_mipmap_levels <=
+                          image.mipmap_levels());
+            debug_assert!(range.first_array_layer + range.num_array_layers <=
+                          image.dimensions().array_layers());
 
-            if range.mipmap_levels.start == range.mipmap_levels.end {
+            if range.num_mipmap_levels == 0 {
                 return None;
             }
 
-            if range.array_layers.start == range.array_layers.end {
+            if range.num_array_layers == 0 {
                 return None;
             }
 
             Some(vk::ImageSubresourceRange {
                 aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                baseMipLevel: range.mipmap_levels.start,
-                levelCount: range.mipmap_levels.end - range.mipmap_levels.start,
-                baseArrayLayer: range.array_layers.start,
-                layerCount: range.array_layers.end - range.array_layers.start,
+                baseMipLevel: range.first_mipmap_level,
+                levelCount: range.num_mipmap_levels,
+                baseArrayLayer: range.first_array_layer,
+                layerCount: range.num_array_layers,
             })
         }).collect();
 
@@ -362,25 +361,25 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let ranges: SmallVec<[_; 4]> = ranges.filter_map(|range| {
-            assert!(range.mipmap_levels.start <= range.mipmap_levels.end);
-            assert!(range.array_layers.start <= range.array_layers.end);
-            debug_assert!(range.mipmap_levels.end <= image.mipmap_levels());
-            debug_assert!(range.array_layers.end <= image.dimensions().array_layers());
+            debug_assert!(range.first_mipmap_level + range.num_mipmap_levels <=
+                          image.mipmap_levels());
+            debug_assert!(range.first_array_layer + range.num_array_layers <=
+                          image.dimensions().array_layers());
 
-            if range.mipmap_levels.start == range.mipmap_levels.end {
+            if range.num_mipmap_levels == 0 {
                 return None;
             }
 
-            if range.array_layers.start == range.array_layers.end {
+            if range.num_array_layers == 0 {
                 return None;
             }
 
             Some(vk::ImageSubresourceRange {
                 aspectMask: aspect_mask,
-                baseMipLevel: range.mipmap_levels.start,
-                levelCount: range.mipmap_levels.end - range.mipmap_levels.start,
-                baseArrayLayer: range.array_layers.start,
-                layerCount: range.array_layers.end - range.array_layers.start,
+                baseMipLevel: range.first_mipmap_level,
+                levelCount: range.num_mipmap_levels,
+                baseArrayLayer: range.first_array_layer,
+                layerCount: range.num_array_layers,
             })
         }).collect();
 
@@ -401,14 +400,14 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Clears attachments of the current render pass.
     ///
     /// You must pass a list of attachment ids and clear values, and a list of rectangles. Each
-    /// rectangle of each attachment will be cleared.
+    /// rectangle of each attachment will be cleared. The rectangle's format is
+    /// `[(x, width), (y, height), (array_layer, num_array_layers)]`.
     ///
     /// No memory barriers are needed between this function and preceding or subsequent draw or
     /// attachment clear commands in the same subpass.
     ///
     /// # Panic
     ///
-    /// - Panics if one of the ranges is invalid (ie. if the end is before the start).
     /// - Panics if one of the clear values is `None`.
     ///
     /// # Safety
@@ -420,32 +419,26 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     pub unsafe fn clear_attachments<Ia, Ir>(&mut self, attachments: Ia, rects: Ir)
         where Ia: Iterator<Item = (u32, ClearValue)>,
-              Ir: Iterator<Item = [Range<u32>; 3]>,
+              Ir: Iterator<Item = [(u32, u32); 3]>,
     {
         let rects: SmallVec<[_; 3]> = rects.filter_map(|rect| {
-            assert!(rect[0].start <= rect[0].end);
-            assert!(rect[1].start <= rect[1].end);
-            assert!(rect[2].start <= rect[2].end);
-
-            if rect[0].start == rect[0].end || rect[1].start == rect[1].end ||
-               rect[2].start == rect[2].end
-            {
+            if rect[0].1 == 0 || rect[1].1 == 0 || rect[2].1 == 0 {
                 return None;
             }
 
             Some(vk::ClearRect {
                 rect: vk::Rect2D {
                     offset: vk::Offset2D {
-                        x: rect[0].start as i32,
-                        y: rect[1].start as i32,
+                        x: rect[0].0 as i32,
+                        y: rect[1].0 as i32,
                     },
                     extent: vk::Extent2D {
-                        width: rect[0].end - rect[0].start,
-                        height: rect[1].end - rect[1].start,
+                        width: rect[0].1,
+                        height: rect[1].1,
                     },
                 },
-                baseArrayLayer: rect[2].start,
-                layerCount: rect[2].end - rect[2].start,
+                baseArrayLayer: rect[2].0,
+                layerCount: rect[2].1,
             })
         }).collect();
 
@@ -527,26 +520,25 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The buffer must have been created with the "transfer_dest" usage.
     /// - Must be called outside of a render pass.
     ///
-    pub unsafe fn fill_buffer<T: ?Sized, B>(&mut self, buffer: BufferSlice<T, B>, data: u32)
-        where B: Buffer
+    pub unsafe fn fill_buffer(&mut self, buffer: &UnsafeBuffer, offset: usize, size: usize,
+                              data: u32)
     {
-        assert_eq!(buffer.buffer().inner().device().internal_object(),
-                   self.device.internal_object());
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
-        debug_assert_eq!(buffer.offset() % 4, 0);
+        debug_assert_eq!(offset % 4, 0);
+        debug_assert!(offset + size <= buffer.size());
 
-        let size = if buffer.offset() + buffer.size() == buffer.buffer().size() {
+        let size = if offset + size == buffer.size() {
             vk::WHOLE_SIZE
         } else {
-            debug_assert_eq!(buffer.size() % 4, 0);
-            buffer.size() as vk::DeviceSize
+            debug_assert_eq!(size % 4, 0);
+            size as vk::DeviceSize
         };
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdFillBuffer(cmd, buffer.buffer().inner().internal_object(),
-                         buffer.offset() as vk::DeviceSize,
-                         buffer.size() as vk::DeviceSize, data);
+        vk.CmdFillBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
+                         size as vk::DeviceSize, data);
     }
 
     /// Fills a buffer with some data.
@@ -568,25 +560,22 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The buffer must have been created with the "transfer_dest" usage.
     /// - Must be called outside of a render pass.
     ///
-    // TODO: does the data have to be 4-bytes aligned? https://github.com/KhronosGroup/Vulkan-Docs/issues/263
-    pub unsafe fn update_buffer<T: ?Sized, B, D: ?Sized>(&mut self, buffer: BufferSlice<T, B>,
-                                                         data: &D)
-        where B: Buffer, D: Copy + 'static
+    pub unsafe fn update_buffer<D: ?Sized>(&mut self, buffer: &UnsafeBuffer, offset: usize,
+                                           size: usize, data: &D)
+        where D: Copy + 'static
     {
-        assert_eq!(buffer.buffer().inner().device().internal_object(),
-                   self.device.internal_object());
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
-        let size = cmp::min(buffer.size(), mem::size_of_val(data));
+        let size = cmp::min(size, mem::size_of_val(data));
 
-        debug_assert_eq!(buffer.offset() % 4, 0);
+        debug_assert_eq!(offset % 4, 0);
         debug_assert_eq!(size % 4, 0);
         debug_assert!(size <= 65536);
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdUpdateBuffer(cmd, buffer.buffer().inner().internal_object(),
-                           buffer.offset() as vk::DeviceSize, size as vk::DeviceSize,
-                           data as *const D as *const _);
+        vk.CmdUpdateBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
+                           size as vk::DeviceSize, data as *const D as *const _);
     }
 
     /// Copies data from a source buffer to a destination buffer.
@@ -610,20 +599,20 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Must be called outside of a render pass.
     /// - The offsets and size of the regions must be in range.
     ///
-    pub unsafe fn copy_buffer<Bs, Bd, I>(&mut self, src: &Arc<Bs>, dest: &Arc<Bd>, regions: I)
-        where Bs: Buffer,
-              Bd: Buffer,
-              I: IntoIterator<Item = BufferCopyRegion>
+    pub unsafe fn copy_buffer<I>(&mut self, src: &UnsafeBuffer, dest: &UnsafeBuffer, regions: I)
+        where I: IntoIterator<Item = BufferCopyRegion>
     {
-        assert_eq!(src.inner().device().internal_object(),
-                   self.device.internal_object());
-        assert_eq!(src.inner().device().internal_object(),
-                   dest.inner().device().internal_object());
+        assert_eq!(src.device().internal_object(), self.device.internal_object());
+        assert_eq!(src.device().internal_object(), dest.device().internal_object());
 
         let regions: SmallVec<[_; 4]> = {
             let mut res = SmallVec::new();
             for region in regions.into_iter() {
                 if region.size == 0 { continue; }
+                debug_assert!(region.source_offset < src.size());
+                debug_assert!(region.source_offset + region.size <= src.size());
+                debug_assert!(region.destination_offset < dest.size());
+                debug_assert!(region.destination_offset + region.size <= dest.size());
 
                 res.push(vk::BufferCopy {
                     srcOffset: region.source_offset as vk::DeviceSize,
@@ -634,14 +623,15 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             res
         };
 
+        // Calling vkCmdCopyBuffer with 0 regions is forbidden. We just don't call the function
+        // then.
         if regions.is_empty() {
             return;
         }
 
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
-        vk.CmdCopyBuffer(cmd, src.inner().internal_object(),
-                         dest.inner().internal_object(), regions.len() as u32,
+        vk.CmdCopyBuffer(cmd, src.internal_object(), dest.internal_object(), regions.len() as u32,
                          regions.as_ptr());
     }
 
@@ -852,8 +842,10 @@ pub enum Flags {
 
 /// Range of an image subresource.
 pub struct ImageSubresourcesRange {
-    pub mipmap_levels: Range<u32>,
-    pub array_layers: Range<u32>,
+    pub first_mipmap_level: u32,
+    pub num_mipmap_levels: u32,
+    pub first_array_layer: u32,
+    pub num_array_layers: u32,
 }
 
 /// A copy between two buffers.
