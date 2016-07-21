@@ -11,14 +11,15 @@ the result.
 
 ## Creating a window
 
-Creating a window is out of the scope of Vulkan. Instead we have to use platform-specific
-functionnalities dedicated to opening a window.
+Creating a window is out of the scope of Vulkan. Instead, just like for OpenGL and other
+graphical APIs we have to use platform-specific functionnalities dedicated to opening a window.
 
 For the purpose of this tutorial, we are going to use the `winit` and the `vulkano-win` crates.
 The former will be used to open a window and handle keyboard and mouse input, and the latter
-is used as a glue between `winit` and `vulkano`.
+is used as a glue between `winit` and `vulkano`. It is possible to manipulate windows in vulkano
+without using any third-party crate, but doing so would require unsafe code.
 
-To do so, let's add these dependencies to our Cargo.toml:
+Let's add these dependencies to our Cargo.toml:
 
 {% highlight toml %}
 winit = "0.5"
@@ -50,8 +51,8 @@ The reason is that surfaces are actually not part of Vulkan itself, but of sever
 to the Vulkan API. These extensions are disabled by default and need to be manually enabled when
 creating the instance before one can use their capabilities.
 
-Fortunately the `vulkano_win` provides a function named `required_extensions()` that will return
-a list of the extensions that are needed.
+To make this task easier, the `vulkano_win` provides a function named `required_extensions()` that
+will return a list of the extensions that are needed on the current platform.
 
 In order to make this work, we need to modify the way the instance is created:
 
@@ -68,3 +69,11 @@ a window.
 ## Events handling
 
 ## Creating a swapchain
+
+Since the window is ultimately on the screen, things are a bit special.
+
+## Clearing the image
+
+{% highlight rust %}
+let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
+{% endhighlight %}

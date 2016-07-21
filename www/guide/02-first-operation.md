@@ -47,27 +47,40 @@ To do so, let's create two buffers first: one source and one destination. There 
 ways to create a buffer in vulkano, but for now we're going to use a `CpuAccessibleBuffer`.
 
 {% highlight rust %}
-let source = CpuAccessibleBuffer::new(&device, 3, &BufferUsage::all(), Some(queue.family()))
+let source = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
                                     .expect("failed to create buffer");
-let destination = CpuAccessibleBuffer::new(&device, 3, &BufferUsage::all(), Some(queue.family()))
+let destination = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
                                     .expect("failed to create buffer");
 {% endhighlight %}
+
+Creating a buffer in Vulkan requires passing several informations.
+
+The first parameter is the device to use. Most objects in Vulkan and in vulkano are linked to a
+specific device, and only objects that belong to the same device can interact with each other.
+Most of the time you will only have one `Device` object alive, so it's not a problem.
+
+The second parameter is present only because we use `CpuAccessibleBuffer::array` and corresponds
+to the capacity of the array in number of elements.
+
+The third parameter tells the Vulkan implementation in which ways the buffer is going to be used.
+Thanks to this, the implementation may be capable of performing some optimizations. Here we just
+pass a dummy value, but in a real code you should indicate.
+
+The final parameter is the queue family which are going to perform operations on the buffer.
 
 ## Copying
 
 In Vulkan you can't just submit a command to a queue. Instead you must create a *command buffer*
-which contains one or more commands, and submit the command buffer.
+which contains one or more commands, and then submit the command buffer.
 
-{% highlight rust %}
-let cb_pool = CommandPool::new(&device);
-{% endhighlight %}
+That sounds complicated, but it is not:
 
 {% highlight rust %}
 let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
 {% endhighlight %}
 
-We now have our command buffer! The last thing we need to do is submit it to a
-queue for execution.
+We now have our command buffer! It is ready to be executed. The last thing we need to do is
+submit it to a queue for execution.
 
 {% highlight rust %}
 
