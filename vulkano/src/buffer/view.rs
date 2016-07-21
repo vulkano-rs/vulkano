@@ -141,6 +141,12 @@ impl<F, B> BufferView<F, B> where B: Buffer {
         }))
     }
 
+    /// Returns the buffer associated to this view.
+    #[inline]
+    pub fn buffer(&self) -> &Arc<B> {
+        &self.buffer
+    }
+
     /// Returns true if the buffer view can be used as a uniform texel buffer.
     #[inline]
     pub fn uniform_texel_buffer(&self) -> bool {
