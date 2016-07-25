@@ -112,6 +112,7 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        #[allow(unsafe_code)]
         unsafe impl RenderPass for CustomRenderPass {
             #[inline]
             fn inner(&self) -> &UnsafeRenderPass {
@@ -119,6 +120,7 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        #[allow(unsafe_code)]
         unsafe impl RenderPassDesc for CustomRenderPass {
             type AttachmentsIter = AttachmentsIter;
             type PassesIter = PassesIter;
@@ -360,6 +362,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[allow(non_camel_case_types)]
+        #[allow(unsafe_code)]
         unsafe impl<'a, $($atch_name: 'static + ImageView),*> RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
             // TODO: shouldn't build a Vec
             type AttachmentsIter = VecIntoIter<(Arc<ImageView>, Arc<Image>, Layout, Layout)>;
@@ -407,6 +410,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[allow(non_camel_case_types)]
+        #[allow(unsafe_code)]
         unsafe impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),*>
             RenderPassClearValues<ClearValues<$($atch),*>> for CustomRenderPass
         {
@@ -462,6 +466,7 @@ macro_rules! ordered_passes_renderpass {
     (__impl_clear_values__ [$total:expr] [] []) => {
         pub type ClearValues = ();
 
+        #[allow(unsafe_code)]
         unsafe impl RenderPassClearValues<()> for CustomRenderPass {
             type ClearValuesIter = ClearValuesIter;
 

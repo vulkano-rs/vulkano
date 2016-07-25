@@ -80,6 +80,7 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
     let entry_point = format!(r#"
     /// Returns a logical struct describing the entry point named `{ep_name}`.
     #[inline]
+    #[allow(unsafe_code)]
     pub fn {ep_name}_entry_point(&self) -> {ty} {{
         unsafe {{
             #[allow(dead_code)]
@@ -170,6 +171,7 @@ fn write_interface_struct(struct_name: &str, attributes: &[(u32, String, (String
         #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
         pub struct {name};
 
+        #[allow(unsafe_code)]
         unsafe impl ::vulkano::pipeline::shader::ShaderInterfaceDef for {name} {{
             type Iter = {name}Iter;
             fn elements(&self) -> {name}Iter {{
