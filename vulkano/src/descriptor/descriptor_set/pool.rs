@@ -48,6 +48,14 @@ impl DescriptorPool {
                 descriptorCount: 10,
             },
             vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+                descriptorCount: 10,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
+                descriptorCount: 10,
+            },
+            vk::DescriptorPoolSize {
                  ty: vk::DESCRIPTOR_TYPE_STORAGE_IMAGE,
                  descriptorCount: 10,
             },
