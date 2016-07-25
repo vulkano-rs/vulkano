@@ -38,10 +38,7 @@ pub unsafe trait Buffer: 'static + Send + Sync {
     /// The return value must not be empty.
     fn blocks(&self, range: Range<usize>) -> Vec<usize>;
 
-    /// Returns the range of bytes of the memory used by a block.
-    ///
-    /// **Important**: This is not the range in the buffer, but the range in the memory that is
-    ///                backing the buffer.
+    /// Returns the range of bytes of the buffer slice used by a block.
     fn block_memory_range(&self, block: usize) -> Range<usize>;
 
     ///
