@@ -33,6 +33,7 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::u32;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
@@ -40,6 +41,9 @@ use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
+use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::descriptor_set::UnsafeDescriptorSet;
+use descriptor::descriptor::ShaderStages;
 use device::Device;
 use format::ClearValue;
 use format::FormatTy;
@@ -50,6 +54,9 @@ use framebuffer::UnsafeRenderPass;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
+use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
+use pipeline::input_assembly::IndexType;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -777,6 +784,220 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         let vk = self.device.pointers();
         let cmd = self.cmd.take().unwrap();
         vk.CmdEndRenderPass(cmd);
+    }
+
+    /// Binds a graphics pipeline to the graphics pipeline bind point.
+    ///
+    /// # Safety
+    ///
+    /// - The queue family must support graphics operations.
+    /// - If the variable multisample rate feature is not supported, the current subpass has no
+    ///   attachments, and this is not the first call to this function with a graphics pipeline
+    ///   after transitioning to the current subpass, then the sample count specified by this
+    ///   pipeline must match that set in the previous pipeline.
+    ///
+    #[inline]
+    pub unsafe fn bind_pipeline_graphics<V, L, R>(&mut self, pipeline: &GraphicsPipeline<V, L, R>) {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline.internal_object());
+    }
+
+    /// Binds a compute pipeline to the compute pipeline bind point.
+    ///
+    /// # Safety
+    ///
+    /// - The queue family must support compute operations.
+    ///
+    #[inline]
+    pub unsafe fn bind_pipeline_compute<L>(&mut self, pipeline: &ComputePipeline<L>) {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_COMPUTE, pipeline.internal_object());
+    }
+
+    /// Calls `vkCmdDraw`.
+    #[inline]
+    pub unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32,
+                       first_instance: u32)
+    {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
+    }
+
+    /// Calls `vkCmdDrawIndexed`.
+    #[inline]
+    pub unsafe fn draw_indexed(&mut self, vertex_count: u32, instance_count: u32,
+                               first_vertex: u32, vertex_offset: i32, first_instance: u32)
+    {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDrawIndexed(cmd, vertex_count, instance_count, first_vertex, vertex_offset,
+                          first_instance);
+    }
+
+    /// Calls `vkCmdDrawIndirect`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the buffer was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn draw_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize, draw_count: u32,
+                                stride: u32)
+    {
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDrawIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize, draw_count,
+                           stride);
+    }
+
+    /// Calls `vkCmdDrawIndexedIndirect`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the buffer was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn draw_indexed_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize,
+                                        draw_count: u32, stride: u32)
+    {
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDrawIndexedIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize,
+                                  draw_count, stride);
+    }
+
+    /// Calls `vkCmdDispatch`.
+    #[inline]
+    pub unsafe fn dispatch(&mut self, x: u32, y: u32, z: u32) {
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDispatch(cmd, x, y, z);
+    }
+
+    /// Calls `vkCmdDispatchIndirect`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the buffer was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn dispatch_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize) {
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdDispatchIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize);
+    }
+
+    /// Calls `vkCmdBindVertexBuffers`.
+    ///
+    /// The iterator yields a list of buffers and offset of the first byte.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if one of the buffers was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn bind_vertex_buffers<'a, I>(&mut self, buffer: &UnsafeBuffer, first_binding: u32,
+                                             buffers: I)
+        where I: IntoIterator<Item = (&'a UnsafeBuffer, usize)>
+    {
+        let mut raw_buffers: SmallVec<[_; 8]> = SmallVec::new();
+        let mut raw_offsets: SmallVec<[_; 8]> = SmallVec::new();
+
+        for (buf, off) in buffers {
+            assert_eq!(buf.device().internal_object(), self.device.internal_object());
+            raw_buffers.push(buf.internal_object());
+            raw_offsets.push(off as vk::DeviceSize);
+        }
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBindVertexBuffers(cmd, first_binding, raw_buffers.len() as u32, raw_buffers.as_ptr(),
+                                raw_offsets.as_ptr());
+    }
+
+    /// Calls `vkCmdBindIndexBuffer`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the buffer was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn bind_index_buffer(&mut self, buffer: &UnsafeBuffer, offset: usize,
+                                    index_ty: IndexType)
+    {
+        assert_eq!(buffer.device().internal_object(), self.device.internal_object());
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBindIndexBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
+                              index_ty as u32);
+    }
+
+    /// Calls `vkCmdBindDescriptorSets`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the layout or one of the sets were not created with the same device as this
+    ///   command buffer.
+    ///
+    #[inline]
+    // TODO: change the API to take implementations of DescriptorSet instead of UnsafeDescriptorSet
+    pub unsafe fn bind_descriptor_sets<'a, L, Ides, Idyn>(&mut self, graphics_bind_point: bool,
+                                                          layout: &L, first_set: u32,
+                                                          descriptor_sets: Ides,
+                                                          dynamic_offsets: Idyn)
+        where L: PipelineLayout,
+              Ides: IntoIterator<Item = &'a UnsafeDescriptorSet>,
+              Idyn: IntoIterator<Item = u32>
+    {
+        let bind_point = if graphics_bind_point { vk::PIPELINE_BIND_POINT_GRAPHICS }
+                         else { vk::PIPELINE_BIND_POINT_COMPUTE };
+
+        assert_eq!(layout.inner().device().internal_object(), self.device.internal_object());
+
+        let descriptor_sets: SmallVec<[_; 16]> = descriptor_sets.into_iter().map(|set| {
+            assert_eq!(set.layout().device().internal_object(), self.device.internal_object());
+            set.internal_object()
+        }).collect();
+
+        let dynamic_offsets: SmallVec<[_; 64]> = dynamic_offsets.into_iter().collect();
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdBindDescriptorSets(cmd, bind_point, layout.inner().internal_object(), first_set,
+                                 descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
+                                 dynamic_offsets.len() as u32, dynamic_offsets.as_ptr());
+    }
+
+    /// Calls `vkCmdPushConstants`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the layout was not created with the same device as this command buffer.
+    ///
+    #[inline]
+    pub unsafe fn push_constants<L, D: ?Sized>(&mut self, layout: &L,
+                                               stages: ShaderStages, offset: usize, data: &D)
+        where L: PipelineLayout
+    {
+        assert_eq!(layout.inner().device().internal_object(), self.device.internal_object());
+
+        debug_assert!(offset <= u32::MAX as usize);
+        debug_assert!(mem::size_of_val(data) <= u32::MAX as usize);
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.take().unwrap();
+        vk.CmdPushConstants(cmd, layout.inner().internal_object(), stages.into(), offset as u32,
+                            mem::size_of_val(data) as u32, data as *const D as *const _);
     }
 }
 
