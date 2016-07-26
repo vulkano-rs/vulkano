@@ -206,9 +206,10 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     }
 
     /// Resets the fence.
-    // FIXME: must synchronize the fence
+    // This function takes a `&mut self` because the Vulkan API requires that the fence be
+    // externally synchronized.
     #[inline]
-    pub fn reset(&self) {
+    pub fn reset(&mut self) {
         unsafe {
             let vk = self.device.pointers();
             vk.ResetFences(self.device.internal_object(), 1, &self.fence);
@@ -220,9 +221,10 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// # Panic
     ///
-    /// Panics if not all fences belong to the same device.
+    /// - Panics if not all fences belong to the same device.
+    ///
     pub fn multi_reset<'a, I>(iter: I)
-        where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
+        where I: IntoIterator<Item = &'a mut Fence<D>>, D: 'a
     {
         let mut device: Option<&Device> = None;
 
@@ -318,6 +320,7 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
     use sync::Fence;
 
@@ -349,8 +352,8 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device);
-        fence.reset();
+        let mut fence = Fence::signaled(&device);
+        Arc::get_mut(&mut fence).unwrap().reset();
         assert!(!fence.ready().unwrap());
     }
 
@@ -372,9 +375,10 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1);
-        let fence2 = Fence::signaled(&device2);
+        let mut fence1 = Fence::signaled(&device1);
+        let mut fence2 = Fence::signaled(&device2);
 
-        let _ = Fence::multi_reset([&*fence1, &*fence2].iter().cloned());
+        let _ = Fence::multi_reset(Some(Arc::get_mut(&mut fence1).unwrap()).into_iter()
+                                   .chain(Some(Arc::get_mut(&mut fence2).unwrap()).into_iter()));
     }
 }
