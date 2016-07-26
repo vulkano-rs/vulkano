@@ -176,8 +176,7 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
 
     #[inline]
     fn block_memory_range(&self, _: usize) -> Range<usize> {
-        let offset = self.memory.offset();
-        offset .. offset + self.size()
+        0 .. self.size()
     }
 
     fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
