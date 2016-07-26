@@ -143,7 +143,7 @@ impl {name} {{
             let data = [{spirv_data}];
 
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device.clone(), &data))
             }})
         }}
     }}

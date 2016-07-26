@@ -36,6 +36,7 @@ use device::Device;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
+use SafeDeref;
 use check_errors;
 use vk;
 
@@ -44,12 +45,14 @@ use vk;
 /// Note that it is advised to wrap around a `ShaderModule` with a struct that is different for
 /// each shader.
 #[derive(Debug)]
-pub struct ShaderModule {
-    device: Arc<Device>,
+pub struct ShaderModule<P = Arc<Device>> where P: SafeDeref<Target = Device> {
+    // The module.
     module: vk::ShaderModule,
+    // Pointer to the device.
+    device: P,
 }
 
-impl ShaderModule {
+impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// Builds a new shader module from SPIR-V.
     ///
     /// # Safety
@@ -58,11 +61,7 @@ impl ShaderModule {
     /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
     ///   this function either.
     ///
-    pub unsafe fn new(device: &Arc<Device>, spirv: &[u8])
-                      -> Result<Arc<ShaderModule>, OomError>
-    {
-        let vk = device.pointers();
-
+    pub unsafe fn new(device: P, spirv: &[u8]) -> Result<Arc<ShaderModule<P>>, OomError> {
         debug_assert!((spirv.len() % 4) == 0);
 
         let module = {
@@ -74,6 +73,7 @@ impl ShaderModule {
                 pCode: spirv.as_ptr() as *const _,
             };
 
+            let vk = device.pointers();
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateShaderModule(device.internal_object(), &infos,
                                                     ptr::null(), &mut output)));
@@ -81,8 +81,8 @@ impl ShaderModule {
         };
 
         Ok(Arc::new(ShaderModule {
-            device: device.clone(),
             module: module,
+            device: device,
         }))
     }
 
@@ -100,7 +100,7 @@ impl ShaderModule {
     ///
     pub unsafe fn vertex_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> VertexShaderEntryPoint<'a, S, I, O, L>
+        -> VertexShaderEntryPoint<'a, S, I, O, L, P>
     {
         VertexShaderEntryPoint {
             module: self,
@@ -126,7 +126,7 @@ impl ShaderModule {
     ///
     pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> TessControlShaderEntryPoint<'a, S, I, O, L>
+        -> TessControlShaderEntryPoint<'a, S, I, O, L, P>
     {
         TessControlShaderEntryPoint {
             module: self,
@@ -152,7 +152,7 @@ impl ShaderModule {
     ///
     pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> TessEvaluationShaderEntryPoint<'a, S, I, O, L>
+        -> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
     {
         TessEvaluationShaderEntryPoint {
             module: self,
@@ -178,7 +178,7 @@ impl ShaderModule {
     ///
     pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I,
-         output: O, layout: L) -> GeometryShaderEntryPoint<'a, S, I, O, L>
+         output: O, layout: L) -> GeometryShaderEntryPoint<'a, S, I, O, L, P>
     {
         GeometryShaderEntryPoint {
             module: self,
@@ -205,7 +205,7 @@ impl ShaderModule {
     ///
     pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>
         (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> FragmentShaderEntryPoint<'a, S, I, O, L>
+        -> FragmentShaderEntryPoint<'a, S, I, O, L, P>
     {
         FragmentShaderEntryPoint {
             module: self,
@@ -230,7 +230,7 @@ impl ShaderModule {
     ///
     #[inline]
     pub unsafe fn compute_shader_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L)
-                                                       -> ComputeShaderEntryPoint<'a, S, L>
+                                                       -> ComputeShaderEntryPoint<'a, S, L, P>
     {
         ComputeShaderEntryPoint {
             module: self,
@@ -241,7 +241,7 @@ impl ShaderModule {
     }
 }
 
-unsafe impl VulkanObject for ShaderModule {
+unsafe impl<P> VulkanObject for ShaderModule<P> where P: SafeDeref<Target = Device> {
     type Object = vk::ShaderModule;
 
     #[inline]
@@ -250,7 +250,7 @@ unsafe impl VulkanObject for ShaderModule {
     }
 }
 
-impl Drop for ShaderModule {
+impl<P> Drop for ShaderModule<P> where P: SafeDeref<Target = Device> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -264,8 +264,10 @@ impl Drop for ShaderModule {
 ///
 /// Can be obtained by calling `vertex_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct VertexShaderEntryPoint<'a, S, I, O, L> {
-    module: &'a ShaderModule,
+pub struct VertexShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     input: I,
     layout: L,
@@ -273,10 +275,12 @@ pub struct VertexShaderEntryPoint<'a, S, I, O, L> {
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L> VertexShaderEntryPoint<'a, S, I, O, L> {
+impl<'a, S, I, O, L, P> VertexShaderEntryPoint<'a, S, I, O, L, P>
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 
@@ -310,8 +314,10 @@ impl<'a, S, I, O, L> VertexShaderEntryPoint<'a, S, I, O, L> {
 ///
 /// Can be obtained by calling `tess_control_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
-    module: &'a ShaderModule,
+pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     layout: L,
     input: I,
@@ -319,10 +325,12 @@ pub struct TessControlShaderEntryPoint<'a, S, I, O, L> {
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
+impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P> 
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 
@@ -355,8 +363,10 @@ impl<'a, S, I, O, L> TessControlShaderEntryPoint<'a, S, I, O, L> {
 ///
 /// Can be obtained by calling `tess_evaluation_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
-    module: &'a ShaderModule,
+pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     layout: L,
     input: I,
@@ -364,10 +374,12 @@ pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
+impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P> 
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 
@@ -400,8 +412,10 @@ impl<'a, S, I, O, L> TessEvaluationShaderEntryPoint<'a, S, I, O, L> {
 ///
 /// Can be obtained by calling `geometry_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
-    module: &'a ShaderModule,
+pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     layout: L,
     primitives: GeometryShaderExecutionMode,
@@ -410,10 +424,12 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L> {
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L> GeometryShaderEntryPoint<'a, S, I, O, L> {
+impl<'a, S, I, O, L, P> GeometryShaderEntryPoint<'a, S, I, O, L, P> 
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 
@@ -487,8 +503,10 @@ impl GeometryShaderExecutionMode {
 ///
 /// Can be obtained by calling `fragment_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct FragmentShaderEntryPoint<'a, S, I, O, L> {
-    module: &'a ShaderModule,
+pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     layout: L,
     input: I,
@@ -496,10 +514,12 @@ pub struct FragmentShaderEntryPoint<'a, S, I, O, L> {
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L> FragmentShaderEntryPoint<'a, S, I, O, L> {
+impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P> 
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 
@@ -532,17 +552,21 @@ impl<'a, S, I, O, L> FragmentShaderEntryPoint<'a, S, I, O, L> {
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct ComputeShaderEntryPoint<'a, S, L> {
-    module: &'a ShaderModule,
+pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>> 
+    where P: 'a + SafeDeref<Target = Device>
+{
+    module: &'a ShaderModule<P>,
     name: &'a CStr,
     layout: L,
     marker: PhantomData<S>,
 }
 
-impl<'a, S, L> ComputeShaderEntryPoint<'a, S, L> {
+impl<'a, S, L, P> ComputeShaderEntryPoint<'a, S, L, P> 
+    where P: 'a + SafeDeref<Target = Device>
+{
     /// Returns the module this entry point comes from.
     #[inline]
-    pub fn module(&self) -> &'a ShaderModule {
+    pub fn module(&self) -> &'a ShaderModule<P> {
         self.module
     }
 

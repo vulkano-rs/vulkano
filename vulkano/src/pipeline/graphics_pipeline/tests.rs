@@ -33,8 +33,8 @@ use pipeline::viewport::ViewportsState;
 fn create() {
     let (device, _) = gfx_dev_and_queue!();
 
-    let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
-    let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+    let vs = unsafe { ShaderModule::new(device.clone(), &BASIC_VS).unwrap() };
+    let fs = unsafe { ShaderModule::new(device.clone(), &BASIC_FS).unwrap() };
 
     let _ = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         vertex_input: SingleBufferDefinition::<()>::new(),
@@ -69,8 +69,8 @@ fn create() {
 fn bad_primitive_restart() {
     let (device, _) = gfx_dev_and_queue!();
 
-    let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
-    let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+    let vs = unsafe { ShaderModule::new(device.clone(), &BASIC_VS).unwrap() };
+    let fs = unsafe { ShaderModule::new(device.clone(), &BASIC_FS).unwrap() };
 
     let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         vertex_input: SingleBufferDefinition::<()>::new(),
@@ -113,8 +113,8 @@ fn bad_primitive_restart() {
 fn multi_viewport_feature() {
     let (device, _) = gfx_dev_and_queue!();
 
-    let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
-    let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+    let vs = unsafe { ShaderModule::new(device.clone(), &BASIC_VS).unwrap() };
+    let fs = unsafe { ShaderModule::new(device.clone(), &BASIC_FS).unwrap() };
 
     let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         vertex_input: SingleBufferDefinition::<()>::new(),
@@ -154,8 +154,8 @@ fn multi_viewport_feature() {
 fn max_viewports() {
     let (device, _) = gfx_dev_and_queue!(multi_viewport);
 
-    let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
-    let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+    let vs = unsafe { ShaderModule::new(device.clone(), &BASIC_VS).unwrap() };
+    let fs = unsafe { ShaderModule::new(device.clone(), &BASIC_FS).unwrap() };
 
     let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         vertex_input: SingleBufferDefinition::<()>::new(),
@@ -195,8 +195,8 @@ fn max_viewports() {
 fn no_depth_attachment() {
     let (device, _) = gfx_dev_and_queue!();
 
-    let vs = unsafe { ShaderModule::new(&device, &BASIC_VS).unwrap() };
-    let fs = unsafe { ShaderModule::new(&device, &BASIC_FS).unwrap() };
+    let vs = unsafe { ShaderModule::new(device.clone(), &BASIC_VS).unwrap() };
+    let fs = unsafe { ShaderModule::new(device.clone(), &BASIC_FS).unwrap() };
 
     let result = GraphicsPipeline::new(&device, GraphicsPipelineParams {
         vertex_input: SingleBufferDefinition::<()>::new(),
