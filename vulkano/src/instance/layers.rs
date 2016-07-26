@@ -7,21 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::ffi::CStr;
 use std::ptr;
 use std::vec::IntoIter;
 
-//use alloc::Alloc;
 use check_errors;
 use OomError;
+use Error;
 use vk;
 use instance::loader;
+use instance::loader::LoadingError;
 use version::Version;
 
 /// Queries the list of layers that are available when creating an instance.
-pub fn layers_list() -> Result<LayersIterator, OomError> {
+pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     unsafe {
-        let entry_points = loader::entry_points().unwrap();     // TODO: return proper error
+        let entry_points = try!(loader::entry_points());
 
         let mut num = 0;
         try!(check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
@@ -65,6 +68,65 @@ impl LayerProperties {
     #[inline]
     pub fn implementation_version(&self) -> u32 {
         self.props.implementationVersion
+    }
+}
+
+/// Error that can happen when loading the list of layers.
+#[derive(Clone, Debug)]
+pub enum LayersListError {
+    /// Failed to load the Vulkan shared library.
+    LoadingError(LoadingError),
+    /// Not enough memory.
+    OomError(OomError),
+}
+
+impl error::Error for LayersListError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            LayersListError::LoadingError(_) => "failed to load the Vulkan shared library",
+            LayersListError::OomError(_) => "not enough memory available",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            LayersListError::LoadingError(ref err) => Some(err),
+            LayersListError::OomError(ref err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for LayersListError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for LayersListError {
+    #[inline]
+    fn from(err: OomError) -> LayersListError {
+        LayersListError::OomError(err)
+    }
+}
+
+impl From<LoadingError> for LayersListError {
+    #[inline]
+    fn from(err: LoadingError) -> LayersListError {
+        LayersListError::LoadingError(err)
+    }
+}
+
+impl From<Error> for LayersListError {
+    #[inline]
+    fn from(err: Error) -> LayersListError {
+        match err {
+            err @ Error::OutOfHostMemory => LayersListError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => LayersListError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err)
+        }
     }
 }
 
