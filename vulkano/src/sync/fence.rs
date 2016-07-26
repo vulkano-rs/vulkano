@@ -47,9 +47,7 @@ pub struct Fence<D = Arc<Device>> where D: SafeDeref<Target = Device> {
 impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// See the docs of new().
     #[inline]
-    pub fn raw(device: &D) -> Result<Fence<D>, OomError>
-        where D: Clone
-    {
+    pub fn raw(device: D) -> Result<Fence<D>, OomError> {
         Fence::new_impl(device, false)
     }
 
@@ -60,17 +58,13 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &D) -> Arc<Fence<D>>
-        where D: Clone
-    {
+    pub fn new(device: D) -> Arc<Fence<D>> {
         Arc::new(Fence::raw(device).unwrap())
     }
 
     /// See the docs of signaled().
     #[inline]
-    pub fn signaled_raw(device: &D) -> Result<Fence<D>, OomError>
-        where D: Clone
-    {
+    pub fn signaled_raw(device: D) -> Result<Fence<D>, OomError> {
         Fence::new_impl(device, true)
     }
 
@@ -81,17 +75,11 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn signaled(device: &D) -> Arc<Fence<D>>
-        where D: Clone
-    {
+    pub fn signaled(device: D) -> Arc<Fence<D>> {
         Arc::new(Fence::signaled_raw(device).unwrap())
     }
 
-    fn new_impl(device: &D, signaled: bool) -> Result<Fence<D>, OomError>
-        where D: Clone
-    {
-        let vk = device.pointers();
-
+    fn new_impl(device: D, signaled: bool) -> Result<Fence<D>, OomError> {
         let fence = unsafe {
             let infos = vk::FenceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -99,6 +87,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
                 flags: if signaled { vk::FENCE_CREATE_SIGNALED_BIT } else { 0 },
             };
 
+            let vk = device.pointers();
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateFence(device.internal_object(), &infos,
                                              ptr::null(), &mut output)));
@@ -107,7 +96,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
 
         Ok(Fence {
             fence: fence,
-            device: device.clone(),
+            device: device,
             signaled: AtomicBool::new(signaled),
         })
     }
@@ -328,7 +317,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::new(&device);
+        let fence = Fence::new(device.clone());
         assert!(!fence.ready().unwrap());
     }
 
@@ -336,7 +325,7 @@ mod tests {
     fn fence_create_signaled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device);
+        let fence = Fence::signaled(device.clone());
         assert!(fence.ready().unwrap());
     }
 
@@ -344,7 +333,7 @@ mod tests {
     fn fence_signaled_wait() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(&device);
+        let fence = Fence::signaled(device.clone());
         fence.wait(Duration::new(0, 10)).unwrap();
     }
 
@@ -352,7 +341,7 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut fence = Fence::signaled(&device);
+        let mut fence = Fence::signaled(device.clone());
         Arc::get_mut(&mut fence).unwrap().reset();
         assert!(!fence.ready().unwrap());
     }
@@ -363,8 +352,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(&device1);
-        let fence2 = Fence::signaled(&device2);
+        let fence1 = Fence::signaled(device1.clone());
+        let fence2 = Fence::signaled(device2.clone());
 
         let _ = Fence::multi_wait([&*fence1, &*fence2].iter().cloned(), Duration::new(0, 10));
     }
@@ -375,8 +364,8 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let mut fence1 = Fence::signaled(&device1);
-        let mut fence2 = Fence::signaled(&device2);
+        let mut fence1 = Fence::signaled(device1.clone());
+        let mut fence2 = Fence::signaled(device2.clone());
 
         let _ = Fence::multi_reset(Some(Arc::get_mut(&mut fence1).unwrap()).into_iter()
                                    .chain(Some(Arc::get_mut(&mut fence2).unwrap()).into_iter()));
