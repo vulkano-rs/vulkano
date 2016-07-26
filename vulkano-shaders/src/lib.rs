@@ -117,6 +117,7 @@ pub struct {name} {{
 impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
+    #[allow(unsafe_code)]
     pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>)
                 -> Result<{name}, ::vulkano::OomError>
     {{

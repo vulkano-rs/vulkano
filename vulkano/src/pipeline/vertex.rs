@@ -448,6 +448,7 @@ unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOn
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ident $(, $member:ident)*) => (
+        #[allow(unsafe_code)]
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
             fn member(name: &str) -> Option<$crate::pipeline::vertex::VertexMemberInfo> {
