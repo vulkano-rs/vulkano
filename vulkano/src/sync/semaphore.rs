@@ -32,11 +32,7 @@ pub struct Semaphore<D = Arc<Device>> where D: SafeDeref<Target = Device> {
 impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     /// See the docs of new().
     #[inline]
-    pub fn raw(device: &D) -> Result<Semaphore<D>, OomError>
-        where D: Clone
-    {
-        let vk = device.pointers();
-
+    pub fn raw(device: D) -> Result<Semaphore<D>, OomError> {
         let semaphore = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
@@ -45,6 +41,7 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
                 flags: 0,   // reserved
             };
 
+            let vk = device.pointers();
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateSemaphore(device.internal_object(), &INFOS,
                                                  ptr::null(), &mut output)));
@@ -52,7 +49,7 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
         };
 
         Ok(Semaphore {
-            device: device.clone(),
+            device: device,
             semaphore: semaphore,
         })
     }
@@ -64,9 +61,7 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &D) -> Arc<Semaphore<D>>
-        where D: Clone
-    {
+    pub fn new(device: D) -> Arc<Semaphore<D>> {
         Arc::new(Semaphore::raw(device).unwrap())
     }
 }
@@ -97,6 +92,6 @@ mod tests {
     #[test]
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = Semaphore::new(&device);
+        let _ = Semaphore::new(device.clone());
     }
 }

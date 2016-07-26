@@ -1787,8 +1787,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
     //       waiting on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
     {
         // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-        //let signalled = try!(Semaphore::new(queue.device()));
-        let signalled = Arc::new(try!(Semaphore::raw(queue.device())));
+        //let signalled = try!(Semaphore::new(queue.device().clone()));
+        let signalled = Arc::new(try!(Semaphore::raw(queue.device().clone())));
         let wait = unsafe { queue.dedicated_semaphore(signalled.clone()) };
         if let Some(wait) = wait {
             pre_semaphores_ids.push(wait.internal_object());
@@ -1806,8 +1806,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
         let mut list = SmallVec::new();
         for _ in 0 .. queue_transitions_hint {
             // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-            //let sem = try!(Semaphore::new(queue.device()));
-            let sem = Arc::new(try!(Semaphore::raw(queue.device())));
+            //let sem = try!(Semaphore::new(queue.device().clone()));
+            let sem = Arc::new(try!(Semaphore::raw(queue.device().clone())));
             post_semaphores_ids.push(sem.internal_object());
             keep_alive_semaphores.push(sem.clone());
             list.push(sem);
@@ -1945,7 +1945,7 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
             let mut infos = SmallVec::<[_; 3]>::new();
 
             let signal_semaphore = if !before_command_buffers.is_empty() {
-                let semaphore = Semaphore::new(queue.device());
+                let semaphore = Semaphore::new(queue.device().clone());
                 let semaphore_id = semaphore.internal_object();
                 pre_semaphores_stages.push(vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT);     // TODO:
                 pre_semaphores_ids.push(semaphore.internal_object());
@@ -1971,7 +1971,7 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
 
             let after_semaphore = if !after_command_buffers.is_empty() {
                 // TODO: Use try!()? - Mixthos
-                let semaphore = Semaphore::new(queue.device());
+                let semaphore = Semaphore::new(queue.device().clone());
                 let semaphore_id = semaphore.internal_object();
                 post_semaphores_ids.push(semaphore.internal_object());
                 keep_alive_semaphores.push(semaphore);
