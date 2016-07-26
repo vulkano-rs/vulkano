@@ -21,6 +21,7 @@ use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
@@ -79,7 +80,8 @@ struct LatestSubmission {
 }
 
 impl<T> CpuAccessibleBuffer<T> {
-    /// Builds a new buffer. Only allowed for sized data.
+    /// Deprecated. Use `from_data` instead.
+    #[deprecated]
     #[inline]
     pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
@@ -89,13 +91,91 @@ impl<T> CpuAccessibleBuffer<T> {
             CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
         }
     }
+
+    /// Builds a new buffer with some data in it. Only allowed for sized data.
+    pub fn from_data<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I, data: T)
+                            -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+        where I: IntoIterator<Item = QueueFamily<'a>>,
+              T: Content + 'static,
+    {
+        unsafe {
+            let uninitialized = try!(
+                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
+            );
+
+            // Note that we are in panic-unsafety land here. However a panic should never ever
+            // happen here, so in theory we are safe.
+            // TODO: check whether that's true ^
+
+            {
+                let mut mapping = uninitialized.write(Duration::new(0, 0)).unwrap();
+                ptr::write::<T>(&mut *mapping, data)
+            }
+
+            Ok(uninitialized)
+        }
+    }
+
+    /// Builds a new uninitialized buffer. Only allowed for sized data.
+    #[inline]
+    pub unsafe fn uninitialized<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+                                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+        where I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        unsafe {
+            CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
+        }
+    }
 }
 
 impl<T> CpuAccessibleBuffer<[T]> {
-    /// Builds a new buffer. Can be used for arrays.
+    /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
+    /// that produces that list of Ts.
+    pub fn from_iter<'a, I, Q>(device: &Arc<Device>, usage: &Usage, queue_families: Q, data: I)
+                               -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+        where I: ExactSizeIterator<Item = T>,
+              T: Content + 'static,
+              Q: IntoIterator<Item = QueueFamily<'a>>
+    {
+        unsafe {
+            let uninitialized = try!(
+                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
+            );
+
+            // Note that we are in panic-unsafety land here. However a panic should never ever
+            // happen here, so in theory we are safe.
+            // TODO: check whether that's true ^
+
+            {
+                let mut mapping = uninitialized.write(Duration::new(0, 0)).unwrap();
+
+                for (i, o) in data.zip(mapping.iter_mut()) {
+                    ptr::write(o, i);
+                }
+            }
+
+            Ok(uninitialized)
+        }
+    }
+
+    /// Deprecated. Use `uninitialized_array` or `from_iter` instead.
+    // TODO: remove
     #[inline]
+    #[deprecated]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+        where I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        unsafe {
+            CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families)
+        }
+    }
+
+    /// Builds a new buffer. Can be used for arrays.
+    #[inline]
+    pub unsafe fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage,
+                                             queue_families: I)
+                                             -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
