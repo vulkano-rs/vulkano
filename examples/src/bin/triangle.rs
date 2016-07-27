@@ -186,24 +186,15 @@ fn main() {
 
     // We now create a buffer that will store the shape of our triangle.
     let vertex_buffer = {
-        let buffer = CpuAccessibleBuffer::<[Vertex]>::array(&device, 3, &BufferUsage::all(),
-                                                            Some(queue.family()))
-                                                            .expect("failed to create buffer");
+        #[derive(Debug, Clone)]
         struct Vertex { position: [f32; 2] }
         impl_vertex!(Vertex, position);
 
-        // The buffer that we created contains uninitialized data.
-        // In order to fill it with data, we have to write to it.
-        {
-            // The `write` function would return `Err` if the buffer was in use by the GPU or
-            // another CPU thread. This obviously can't happen here.
-            let mut mapping = buffer.write(Duration::new(0, 0)).unwrap();
-            mapping[0].position = [-0.5, -0.25];
-            mapping[1].position = [0.0, 0.5];
-            mapping[2].position = [0.25, -0.1];
-        }
-
-        buffer
+        CpuAccessibleBuffer::from_iter(&device, &BufferUsage::all(), Some(queue.family()), [
+            Vertex { position: [-0.5, -0.25] },
+            Vertex { position: [0.0, 0.5] },
+            Vertex { position: [0.25, -0.1] }
+        ].iter().cloned()).expect("failed to create buffer")
     };
 
     // The next step is to create the shaders.
