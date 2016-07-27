@@ -122,9 +122,7 @@ impl<T> CpuAccessibleBuffer<T> {
                                        -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
     }
 }
 
@@ -178,9 +176,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
                                              -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
-        }
+        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
     }
 }
 
