@@ -1774,7 +1774,7 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
 
     // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
     //let fence = try!(Fence::new(queue.device()));
-    let fence = Arc::new(try!(Fence::raw(queue.device())));
+    let fence = Arc::new(try!(Fence::raw(queue.device().clone())));
 
     let mut keep_alive_semaphores = SmallVec::<[_; 8]>::new();
     let mut post_semaphores_ids = SmallVec::<[_; 8]>::new();
