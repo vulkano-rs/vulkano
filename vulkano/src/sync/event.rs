@@ -30,8 +30,10 @@ use vk;
 /// device loss.
 #[derive(Debug)]
 pub struct Event {
+    // The event.
+    event: vk::Event,
+    // The device.
     device: Arc<Device>,
-    event: Mutex<vk::Event>,
 }
 
 impl Event {
@@ -56,7 +58,7 @@ impl Event {
 
         Ok(Event {
             device: device.clone(),
-            event: Mutex::new(event),
+            event: event,
         })
     }
     
@@ -76,9 +78,8 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let event = self.event.lock().unwrap();
             let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             *event)));
+                                                             self.event)));
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -89,11 +90,10 @@ impl Event {
 
     /// See the docs of set().
     #[inline]
-    pub fn set_raw(&self) -> Result<(), OomError> {
+    pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let event = self.event.lock().unwrap();
-            try!(check_errors(vk.SetEvent(self.device.internal_object(), *event)).map(|_| ()));
+            try!(check_errors(vk.SetEvent(self.device.internal_object(), self.event)));
             Ok(())
         }
     }
@@ -107,17 +107,16 @@ impl Event {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn set(&self) {
+    pub fn set(&mut self) {
         self.set_raw().unwrap();
     }
 
     /// See the docs of reset().
     #[inline]
-    pub fn reset_raw(&self) -> Result<(), OomError> {
+    pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let event = self.event.lock().unwrap();
-            try!(check_errors(vk.ResetEvent(self.device.internal_object(), *event)).map(|_| ()));
+            try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)));
             Ok(())
         }
     }
@@ -129,17 +128,17 @@ impl Event {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn reset(&self) {
+    pub fn reset(&mut self) {
         self.reset_raw().unwrap();
     }
 }
 
-unsafe impl SynchronizedVulkanObject for Event {
+unsafe impl VulkanObject for Event {
     type Object = vk::Event;
 
     #[inline]
-    fn internal_object_guard(&self) -> MutexGuard<vk::Event> {
-        self.event.lock().unwrap()
+    fn internal_object(&self) -> vk::Event {
+        self.event
     }
 }
 
@@ -148,14 +147,14 @@ impl Drop for Event {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            let event = self.event.lock().unwrap();
-            vk.DestroyEvent(self.device.internal_object(), *event, ptr::null());
+            vk.DestroyEvent(self.device.internal_object(), self.event, ptr::null());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use sync::Event;
 
     #[test]
@@ -168,10 +167,10 @@ mod tests {
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(&device);
+        let mut event = Event::new(&device);
         assert!(!event.signaled().unwrap());
 
-        event.set();
+        Arc::get_mut(&mut event).unwrap().set();
         assert!(event.signaled().unwrap());
     }
 
@@ -179,11 +178,11 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let event = Event::new(&device);
-        event.set();
+        let mut event = Event::new(&device);
+        Arc::get_mut(&mut event).unwrap().set();
         assert!(event.signaled().unwrap());
 
-        event.reset();
+        Arc::get_mut(&mut event).unwrap().reset();
         assert!(!event.signaled().unwrap());
     }
 }
