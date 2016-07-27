@@ -19,8 +19,8 @@ use std::slice;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-//use alloc::Alloc;
 use instance::loader;
+use instance::loader::LoadingError;
 use check_errors;
 use Error;
 use OomError;
@@ -98,7 +98,7 @@ impl Instance {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
 
-        let entry_points = loader::entry_points().unwrap();     // TODO: return proper error
+        let entry_points = try!(loader::entry_points());
 
         // Creating the Vulkan instance.
         let instance = unsafe {
@@ -299,8 +299,10 @@ impl<'a> Default for ApplicationInfo<'a> {
 }
 
 /// Error that can happen when creating an instance.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum InstanceCreationError {
+    /// Failed to load the Vulkan shared library.
+    LoadingError(LoadingError),
     /// Not enough memory.
     OomError(OomError),
     /// Failed to initialize for an implementation-specific reason.
@@ -317,6 +319,7 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            InstanceCreationError::LoadingError(_) => "failed to load the Vulkan shared library",
             InstanceCreationError::OomError(_) => "not enough memory available",
             InstanceCreationError::InitializationFailed => "initialization failed",
             InstanceCreationError::LayerNotPresent => "layer not present",
@@ -328,6 +331,7 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
+            InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
             _ => None
         }
@@ -345,6 +349,13 @@ impl From<OomError> for InstanceCreationError {
     #[inline]
     fn from(err: OomError) -> InstanceCreationError {
         InstanceCreationError::OomError(err)
+    }
+}
+
+impl From<LoadingError> for InstanceCreationError {
+    #[inline]
+    fn from(err: LoadingError) -> InstanceCreationError {
+        InstanceCreationError::LoadingError(err)
     }
 }
 
