@@ -228,8 +228,8 @@ impl Swapchain {
 
         for _ in 0 .. images.len() + 1 {
             // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-            //swapchain.semaphores_pool.push(try!(Semaphore::new(device)));
-            swapchain.semaphores_pool.push(Arc::new(try!(Semaphore::raw(device))));
+            //swapchain.semaphores_pool.push(try!(Semaphore::new(device.clone())));
+            swapchain.semaphores_pool.push(Arc::new(try!(Semaphore::raw(device.clone()))));
         }
 
         Ok((swapchain, images))

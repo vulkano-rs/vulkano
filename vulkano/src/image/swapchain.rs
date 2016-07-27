@@ -147,7 +147,7 @@ unsafe impl Image for SwapchainImage {
         let dependency = dependency.and_then(|d| d.upgrade());
 
         // TODO: use try!()? - Mixthos
-        let signal = Semaphore::new(submission.queue().device());
+        let signal = Semaphore::new(submission.queue().device().clone());
         let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
 
         if guarded.present_layout {
