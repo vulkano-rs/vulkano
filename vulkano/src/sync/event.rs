@@ -10,13 +10,10 @@
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 
 use device::Device;
 use OomError;
 use Success;
-use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
