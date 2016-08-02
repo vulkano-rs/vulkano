@@ -191,18 +191,6 @@ pub struct MessageTypes {
 }
 
 impl MessageTypes {
-    /// Builds a `MessageTypes` with all fields set to `true`.
-    #[inline]
-    pub fn all() -> MessageTypes {
-        MessageTypes {
-            error: true,
-            warning: true,
-            performance_warning: true,
-            information: true,
-            debug: true,
-        }
-    }
-
     /// Builds a `MessageTypes` with all fields set to `false` expect `error`.
     #[inline]
     pub fn errors() -> MessageTypes {
@@ -265,24 +253,5 @@ impl From<Error> for DebugCallbackCreationError {
     #[inline]
     fn from(err: Error) -> DebugCallbackCreationError {
         panic!("unexpected error: {:?}", err)
-    }
-}
-
-impl fmt::Display for MessageTypes {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        if self.error {
-            write!(fmt, "error")
-        } else if self.warning {
-            write!(fmt, "warning")
-        } else if self.performance_warning {
-            write!(fmt, "performance_warning")
-        } else if self.information {
-            write!(fmt, "information")
-        } else if self.debug {
-            write!(fmt, "debug")
-        } else {
-            write!(fmt, "{:?}", self)
-        }
     }
 }
