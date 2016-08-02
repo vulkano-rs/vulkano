@@ -71,7 +71,7 @@ fn main() {
         debug: true,
     };
 
-    let debug_callback = DebugCallback::new(&instance, all, |msg| {
+    let _debug_callback = DebugCallback::new(&instance, all, |msg| {
         let ty = if msg.ty.error {
             "error"
         } else if msg.ty.warning {
@@ -103,7 +103,4 @@ fn main() {
     ImmutableImage::new(&device, dimensions, pixel_format, Some(queue.family())).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
-
-    // Suppresses a warning - not required
-    let _ = debug_callback;
 }
