@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use crossbeam::sync::MsQueue;
 
 use device::Device;
 use device::Queue;
@@ -54,7 +53,7 @@ pub struct Swapchain {
     /// We need to use a queue so that we don't use the same semaphore twice in a row. The length
     /// of the queue is strictly superior to the number of images, in case the driver lets us
     /// acquire an image before it is presented.
-    semaphores_pool: MsQueue<Arc<Semaphore>>,
+    semaphores_pool: Mutex<Vec<Arc<Semaphore>>>,
 
     images_semaphores: Mutex<Vec<Option<Arc<Semaphore>>>>,
 
@@ -194,7 +193,7 @@ impl Swapchain {
             device: device.clone(),
             surface: surface.clone(),
             swapchain: swapchain,
-            semaphores_pool: MsQueue::new(),
+            semaphores_pool: Mutex::new(Vec::new()),
             images_semaphores: Mutex::new(Vec::new()),
             stale: Mutex::new(false),
         });
@@ -229,7 +228,7 @@ impl Swapchain {
         for _ in 0 .. images.len() + 1 {
             // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
             //swapchain.semaphores_pool.push(try!(Semaphore::new(device.clone())));
-            swapchain.semaphores_pool.push(Arc::new(try!(Semaphore::raw(device.clone()))));
+            swapchain.semaphores_pool.lock().unwrap().push(Arc::new(try!(Semaphore::raw(device.clone()))));
         }
 
         Ok((swapchain, images))
@@ -251,9 +250,7 @@ impl Swapchain {
 
             let vk = self.device.pointers();
 
-            let semaphore = self.semaphores_pool.try_pop().expect("Failed to obtain a semaphore \
-                                                                   from the swapchain semaphores \
-                                                                   pool");
+            let semaphore = self.semaphores_pool.lock().unwrap().remove(0);
 
             let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
                                               .saturating_add(timeout.subsec_nanos() as u64);
@@ -318,7 +315,7 @@ impl Swapchain {
             //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
         }
 
-        self.semaphores_pool.push(wait_semaphore);
+        self.semaphores_pool.lock().unwrap().push(wait_semaphore);
         Ok(())
     }
 
