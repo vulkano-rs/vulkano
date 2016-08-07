@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "examples",
+    "glsl-to-spirv",
+    "vk-sys",
+    "vulkano",
+    "vulkano-shaders",
+    "vulkano-win"
+]
