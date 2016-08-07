@@ -52,11 +52,17 @@ pub use self::outer::SecondaryGraphicsCommandBufferBuilder;
 pub use self::outer::SecondaryGraphicsCommandBuffer;
 pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
+pub use self::standard::primary::StdPrimaryCommandBufferBuilder;
+//pub use self::standard::primary::StdPrimaryCommandBufferBuilder as PrimaryCommandBufferBuilder;
 
-mod inner;
-mod outer;
+use self::pool::CommandPool;
+use self::sys::UnsafeCommandBuffer;
+
+mod inner;      // TODO: remove
+mod outer;      // TODO: remove
 
 pub mod pool;
+pub mod standard;
 pub mod sys;
 
 #[repr(C)]
@@ -76,4 +82,25 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
+}
+
+pub unsafe trait CommandBuffer {
+    /// The command pool used to create this command buffer.
+    type Pool: CommandPool;
+
+    /// Returns the unsafe command buffer corresponding to this object.
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+
+    /// Some command buffers are only allowed to be called once. Therefore whenever a command
+    /// buffer is going to be submitted, the `set_one_time_submit_flag` function is called in
+    /// order to check whether the command buffer is still in a submittable state.
+    ///
+    /// If the command buffer can be called multiple times, then this function call should simply
+    /// do nothing and return `Ok`. If the command buffer can only be called once, then this
+    /// function should do a "compare and store" atomic operation and return `Err` if the flag
+    /// was already set by a previous call.
+    ///
+    /// Calling this function is not unsafe, as the only consequence of calling it spuriously is
+    /// that you will prevent a perfectly-valid command buffer from being submitted.
+    fn set_one_time_submit_flag(&self) -> Result<(), ()>;
 }
