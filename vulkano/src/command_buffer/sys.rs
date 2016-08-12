@@ -1285,7 +1285,24 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
     secondary_cb: bool,
 }
 
+impl<P> UnsafeCommandBuffer<P> where P: CommandPool {
+    /// Returns the device used to create this command buffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 // Since the only moment where we access the pool is in the `Drop` trait, we can safely implement
 // `Sync` on the command buffer.
 // TODO: this could be generalized with a general-purpose wrapper that only allows &mut access
 unsafe impl<P> Sync for UnsafeCommandBuffer<P> where P: CommandPool {}
+
+unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> where P: CommandPool {
+    type Object = vk::CommandBuffer;
+
+    #[inline]
+    fn internal_object(&self) -> vk::CommandBuffer {
+        self.cmd
+    }
+}

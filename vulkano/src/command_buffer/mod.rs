@@ -52,11 +52,14 @@ pub use self::outer::SecondaryGraphicsCommandBufferBuilder;
 pub use self::outer::SecondaryGraphicsCommandBuffer;
 pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
+pub use self::submit::CommandBuffer;
+pub use self::submit::Submit;
 
 mod inner;
 mod outer;
 
 pub mod pool;
+pub mod submit;
 pub mod sys;
 
 #[repr(C)]
