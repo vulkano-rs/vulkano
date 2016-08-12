@@ -12,6 +12,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use command_buffer::pool::CommandPool;
+use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
 use device::Queue;
 use sync::Fence;
@@ -33,7 +34,7 @@ pub unsafe trait CommandBuffer {
     ///
     /// This is a simple shortcut for creating a `Submit` object.
     #[inline]
-    fn submit(self, queue: &Arc<Queue>) where Self: Sized {
+    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized {
         Submit::new().add(self).submit(queue)
     }
 
@@ -93,6 +94,19 @@ pub struct SubmitInfo<Swi, Ssi> {
     pub post_pipeline_barrier: PipelineBarrierBuilder,
 }
 
+// TODO: docs
+// # Leak safety
+//
+// The `Submission` object can hold borrows of command buffers. In order for it to be safe to leak
+// a `Submission`, the borrowed object themselves must be protected by a fence.
+#[must_use]
+pub struct Submission {
+    keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
+}
+
+trait KeepAlive {}
+impl<T> KeepAlive for T {}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Submit<L> {
     list: L,
@@ -118,9 +132,9 @@ impl<L> Submit<L> where L: SubmitList {
     }
 
     /// Submits the list of command buffers.
-    pub fn submit(self, queue: &Arc<Queue>) {
+    pub fn submit(self, queue: &Arc<Queue>) -> Submission {
         let SubmitListOpaque { fence, wait_semaphores, wait_stages, command_buffers,
-                               signal_semaphores, mut submits }
+                               signal_semaphores, mut submits, keep_alive }
                              = self.list.infos(queue.family().id(), queue.id_within_family());
 
         // Filling the pointers inside `submits`.
@@ -162,6 +176,10 @@ impl<L> Submit<L> where L: SubmitList {
             check_errors(vk.QueueSubmit(*queue, submits.len() as u32, submits.as_ptr(),
                                         fence)).unwrap();        // TODO: handle errors (trickier than it looks)
         }
+
+        Submission {
+            keep_alive: keep_alive,
+        }
     }
 }
 
@@ -174,6 +192,7 @@ pub struct SubmitListOpaque {
     command_buffers: SmallVec<[vk::CommandBuffer; 16]>,
     signal_semaphores: SmallVec<[vk::Semaphore; 16]>,
     submits: SmallVec<[vk::SubmitInfo; 8]>,
+    keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
 }
 
 pub unsafe trait SubmitList {
@@ -189,6 +208,7 @@ unsafe impl SubmitList for () {
             command_buffers: SmallVec::new(),
             signal_semaphores: SmallVec::new(),
             submits: SmallVec::new(),
+            keep_alive: SmallVec::new(),
         }
     }
 }
@@ -230,11 +250,13 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
         for (semaphore, stage) in current_infos.semaphores_wait {
             infos.wait_semaphores.push(semaphore.internal_object());
             infos.wait_stages.push(stage.into());
+            infos.keep_alive.push(semaphore);
             new_submit.waitSemaphoreCount += 1;
         }
 
         for semaphore in current_infos.semaphores_signal {
             infos.signal_semaphores.push(semaphore.internal_object());
+            infos.keep_alive.push(semaphore);
             new_submit.signalSemaphoreCount += 1;
         }
 
