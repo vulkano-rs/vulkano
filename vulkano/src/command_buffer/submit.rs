@@ -9,6 +9,7 @@
 
 use std::ptr;
 use std::sync::Arc;
+use std::time::Duration;
 use smallvec::SmallVec;
 
 use command_buffer::pool::CommandPool;
@@ -94,6 +95,16 @@ pub struct SubmitInfo<Swi, Ssi> {
     pub post_pipeline_barrier: PipelineBarrierBuilder,
 }
 
+/// Returned when you submit one or multiple command buffers.
+///
+/// This object holds the resources that are used by the GPU and that must be kept alive for at
+/// least as long as the GPU is executing the submission. Therefore destroying a `Submission`
+/// object will block until the GPU is finished executing.
+///
+/// Whenever you submit a command buffer, you are encouraged to store the returned `Submission`
+/// in a long-living container such as a `Vec`. From time to time, you can clean the obsolete
+/// objects by checking whether `destroying_would_block()` returns false. For example, if you use
+/// a `Vec` you can do `vec.retain(|s| s.destroying_would_block())`.
 // TODO: docs
 // # Leak safety
 //
@@ -101,7 +112,28 @@ pub struct SubmitInfo<Swi, Ssi> {
 // a `Submission`, the borrowed object themselves must be protected by a fence.
 #[must_use]
 pub struct Submission {
+    fence: Arc<Fence>,      // TODO: make optional
     keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
+}
+
+impl Submission {
+    /// Returns `true` if destroying this `Submission` object would block the CPU for some time.
+    #[inline]
+    pub fn destroying_would_block(&self) -> bool {
+        !self.finished()
+    }
+
+    /// Returns `true` if the GPU has finished executing this submission.
+    #[inline]
+    pub fn finished(&self) -> bool {
+        self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?   
+    }
+}
+
+impl Drop for Submission {
+    fn drop(&mut self) {
+        self.fence.wait(Duration::from_secs(10)).unwrap();      // TODO: handle some errors
+    }
 }
 
 trait KeepAlive {}
@@ -136,6 +168,9 @@ impl<L> Submit<L> where L: SubmitList {
         let SubmitListOpaque { fence, wait_semaphores, wait_stages, command_buffers,
                                signal_semaphores, mut submits, keep_alive }
                              = self.list.infos(queue.family().id(), queue.id_within_family());
+
+        // TODO: for now we always create a Fence in order to put it in the submission
+        let fence = fence.unwrap_or_else(|| Fence::new(queue.device().clone()));
 
         // Filling the pointers inside `submits`.
         unsafe {
@@ -172,13 +207,15 @@ impl<L> Submit<L> where L: SubmitList {
         unsafe {
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
-            let fence = fence.as_ref().map(|f| f.internal_object()).unwrap_or(0);
+            //let fence = fence.as_ref().map(|f| f.internal_object()).unwrap_or(0);
+            let fence = fence.internal_object();
             check_errors(vk.QueueSubmit(*queue, submits.len() as u32, submits.as_ptr(),
                                         fence)).unwrap();        // TODO: handle errors (trickier than it looks)
         }
 
         Submission {
             keep_alive: keep_alive,
+            fence: fence,
         }
     }
 }
