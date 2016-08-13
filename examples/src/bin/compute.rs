@@ -133,10 +133,15 @@ fn main() {
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Just so there is no hand-waving we're going to use a new buffer to store the final result
-    let packed_output = CpuAccessibleBuffer::<[u8]>::uninitialized_array(&device,
+
+    // DANGER ZONE: if anything panics or otherwise incorrectly reads packed_output here, we will
+    // have Undefined Behavior. Next safe zone in approximately 50 lines.
+
+    let packed_output = unsafe { CpuAccessibleBuffer::<[u8]>::uninitialized_array(&device,
         byte_len,
         &BufferUsage::all(),
-        Some(queue.family())).expect("failed to create buffer");
+        Some(queue.family())).expect("failed to create buffer")
+    };
 
     {
         // A second shader and pipeline for computing buffers from images
@@ -179,6 +184,8 @@ fn main() {
 
         // Submit this command buffer, which causes computation to begin
         command_buffer::submit(&command, &queue).unwrap();
+
+        // SAFE ZONE: You may read from packed_output again.
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
