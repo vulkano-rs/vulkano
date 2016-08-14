@@ -18,6 +18,8 @@
 //! But don't worry ; this is automatically enforced by this library (as long as you don't use
 //! any unsafe function). See the `memory` module for more info.
 //!
+
+use std::ops;
 use std::sync::Arc;
 use device::Queue;
 use vk;
@@ -110,6 +112,28 @@ macro_rules! pipeline_stages {
             }
         }
 
+        impl ops::BitOr for PipelineStages {
+            type Output = PipelineStages;
+
+            #[inline]
+            fn bitor(self, rhs: PipelineStages) -> PipelineStages {
+                PipelineStages {
+                    $(
+                        $elem: self.$elem || rhs.$elem,
+                    )+
+                }
+            }
+        }
+
+        impl ops::BitOrAssign for PipelineStages {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: PipelineStages) {
+                $(
+                    self.$elem = self.$elem || rhs.$elem;
+                )+
+            }
+        }
+
         #[doc(hidden)]
         impl Into<vk::PipelineStageFlagBits> for PipelineStages {
             #[inline]
@@ -171,6 +195,28 @@ macro_rules! access_flags {
                         $elem: false,
                     )+
                 }
+            }
+        }
+
+        impl ops::BitOr for AccessFlagBits {
+            type Output = AccessFlagBits;
+
+            #[inline]
+            fn bitor(self, rhs: AccessFlagBits) -> AccessFlagBits {
+                AccessFlagBits {
+                    $(
+                        $elem: self.$elem || rhs.$elem,
+                    )+
+                }
+            }
+        }
+
+        impl ops::BitOrAssign for AccessFlagBits {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: AccessFlagBits) {
+                $(
+                    self.$elem = self.$elem || rhs.$elem;
+                )+
             }
         }
 
