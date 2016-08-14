@@ -13,6 +13,8 @@
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -20,15 +22,221 @@ use std::sync::Arc;
 use device::Device;
 
 use check_errors;
+use Error;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use vk;
 
-pub struct OcclusionQueriesPool {
+pub struct UnsafeQueryPool<P = Arc<Device>> where P: SafeDeref<Target = Device> {
     pool: vk::QueryPool,
+    device: P,
     num_slots: u32,
-    device: Arc<Device>,
+}
+
+impl<P> UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
+    /// Builds a new query pool.
+    pub fn new(device: P, ty: QueryType, num_slots: u32)
+               -> Result<UnsafeQueryPool<P>, QueryPoolCreationError>
+    {
+        let (vk_ty, statistics) = match ty {
+            QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
+            QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
+            QueryType::PipelineStatistics(flags) => {
+                if !device.enabled_features().pipeline_statistics_query {
+                    return Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled);
+                }
+
+                (vk::QUERY_TYPE_PIPELINE_STATISTICS, flags.into())
+            },
+        };
+
+        let pool = unsafe {
+            let infos = vk::QueryPoolCreateInfo {
+                sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                queryType: vk_ty,
+                queryCount: num_slots,
+                pipelineStatistics: statistics,
+            };
+
+            let mut output = mem::uninitialized();
+            let vk = device.pointers();
+            try!(check_errors(vk.CreateQueryPool(device.internal_object(), &infos,
+                                                 ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(UnsafeQueryPool {
+            pool: pool,
+            device: device,
+            num_slots: num_slots,
+        })
+    }
+
+    /// Returns the number of slots of that query pool.
+    #[inline]
+    pub fn num_slots(&self) -> u32 {
+        self.num_slots
+    }
+
+    /// Returns the device used to create the pool.
+    #[inline]
+    pub fn device(&self) -> &P {
+        &self.device
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum QueryType {
+    Occlusion,
+    PipelineStatistics(QueryPipelineStatisticFlags),
+    Timestamp,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct QueryPipelineStatisticFlags {
+    pub input_assembly_vertices: bool,
+    pub input_assembly_primitives: bool,
+    pub vertex_shader_invocations: bool,
+    pub geometry_shader_invocations: bool,
+    pub geometry_shader_primitives: bool,
+    pub clipping_invocations: bool,
+    pub clipping_primitives: bool,
+    pub fragment_shader_invocations: bool,
+    pub tessellation_control_shader_patches: bool,
+    pub tessellation_evaluation_shader_invocations: bool,
+    pub compute_shader_invocations: bool,
+}
+
+impl QueryPipelineStatisticFlags {
+    #[inline]
+    pub fn none() -> QueryPipelineStatisticFlags {
+        QueryPipelineStatisticFlags {
+            input_assembly_vertices: false,
+            input_assembly_primitives: false,
+            vertex_shader_invocations: false,
+            geometry_shader_invocations: false,
+            geometry_shader_primitives: false,
+            clipping_invocations: false,
+            clipping_primitives: false,
+            fragment_shader_invocations: false,
+            tessellation_control_shader_patches: false,
+            tessellation_evaluation_shader_invocations: false,
+            compute_shader_invocations: false,
+        }
+    }
+}
+
+impl Into<vk::QueryPipelineStatisticFlags> for QueryPipelineStatisticFlags {
+    fn into(self) -> vk::QueryPipelineStatisticFlags {
+        let mut result = 0;
+        if self.input_assembly_vertices {
+            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT;
+        }
+        if self.input_assembly_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT;
+        }
+        if self.vertex_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT;
+        }
+        if self.geometry_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT;
+        }
+        if self.geometry_shader_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT;
+        }
+        if self.clipping_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT;
+        }
+        if self.clipping_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT;
+        }
+        if self.fragment_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT;
+        }
+        if self.tessellation_control_shader_patches {
+            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT;
+        }
+        if self.tessellation_evaluation_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT;
+        }
+        if self.compute_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
+        }
+        result
+    }
+}
+
+impl<P> Drop for UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            vk.DestroyQueryPool(self.device.internal_object(), self.pool, ptr::null());
+        }
+    }
+}
+
+/// Error that can happen when creating a buffer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QueryPoolCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// A pipeline statistics pool was requested but the corresponding feature wasn't enabled.
+    PipelineStatisticsQueryFeatureNotEnabled,
+}
+
+impl error::Error for QueryPoolCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            QueryPoolCreationError::OomError(_) => "not enough memory available",
+            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
+                "a pipeline statistics pool was requested but the corresponding feature \
+                 wasn't enabled"
+            },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            QueryPoolCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for QueryPoolCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for QueryPoolCreationError {
+    #[inline]
+    fn from(err: OomError) -> QueryPoolCreationError {
+        QueryPoolCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for QueryPoolCreationError {
+    #[inline]
+    fn from(err: Error) -> QueryPoolCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => QueryPoolCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => QueryPoolCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+pub struct OcclusionQueriesPool {
+    inner: UnsafeQueryPool,
 }
 
 impl OcclusionQueriesPool {
@@ -36,28 +244,14 @@ impl OcclusionQueriesPool {
     pub fn raw(device: &Arc<Device>, num_slots: u32)
                -> Result<OcclusionQueriesPool, OomError>
     {
-        let vk = device.pointers();
-
-        let pool = unsafe {
-            let infos = vk::QueryPoolCreateInfo {
-                sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                queryType: vk::QUERY_TYPE_OCCLUSION,
-                queryCount: num_slots,
-                pipelineStatistics: 0,
-            };
-
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateQueryPool(device.internal_object(), &infos,
-                                                 ptr::null(), &mut output)));
-            output
-        };
-
         Ok(OcclusionQueriesPool {
-            pool: pool,
-            num_slots: num_slots,
-            device: device.clone(),
+            inner: match UnsafeQueryPool::new(device.clone(), QueryType::Occlusion, num_slots) {
+                Ok(q) => q,
+                Err(QueryPoolCreationError::OomError(err)) => return Err(err),
+                Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
+                    unreachable!()
+                },
+            }
         })
     }
 
@@ -77,32 +271,38 @@ impl OcclusionQueriesPool {
     /// Returns the number of slots of that query pool.
     #[inline]
     pub fn num_slots(&self) -> u32 {
-        self.num_slots
+        self.inner.num_slots()
     }
 
     /// Returns the device that was used to create this pool.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl Drop for OcclusionQueriesPool {
-    fn drop(&mut self) {
-        unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyQueryPool(self.device.internal_object(), self.pool, ptr::null());
-        }
+        self.inner.device()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use query::OcclusionQueriesPool;
+    use query::QueryPipelineStatisticFlags;
+    use query::QueryPoolCreationError;
+    use query::QueryType;
+    use query::UnsafeQueryPool;
 
     #[test]
     fn occlusion_create() {
         let (device, _) = gfx_dev_and_queue!();
         let _ = OcclusionQueriesPool::new(&device, 256);
+    }
+
+    #[test]
+    fn pipeline_statistics_feature() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let ty = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
+        match UnsafeQueryPool::new(device, ty, 256) {
+            Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => (),
+            _ => panic!()
+        };
     }
 }
