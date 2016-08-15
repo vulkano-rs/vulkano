@@ -13,9 +13,14 @@ use std::time::Duration;
 use smallvec::SmallVec;
 
 use command_buffer::pool::CommandPool;
+use command_buffer::sys::Kind;
+use command_buffer::sys::Flags;
 use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
+use device::Device;
 use device::Queue;
+use framebuffer::EmptySinglePassRenderPass;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -258,19 +263,16 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
 
         let mut infos = rest.infos(queue_family, queue_within_family);
         let device = current.inner().device().clone();
+        let qf = device.physical_device().queue_family_by_id(queue_family).unwrap();
         let current_infos = unsafe { current.on_submit(queue_family, queue_within_family, || {
             if let Some(fence) = infos.fence.as_ref() {
                 return fence.clone();
             }
 
-            let new_fence = Fence::new(device);
+            let new_fence = Fence::new(device.clone());
             infos.fence = Some(new_fence.clone());
             new_fence
         })};
-
-        // TODO: not implemented ; where to store the created command buffers?
-        assert!(current_infos.pre_pipeline_barrier.is_empty());
-        assert!(current_infos.post_pipeline_barrier.is_empty());
 
         let mut new_submit = vk::SubmitInfo {
             sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
@@ -284,6 +286,30 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
             pSignalSemaphores: ptr::null(),
         };
 
+        if !current_infos.pre_pipeline_barrier.is_empty() {
+            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, qf),
+                                                         Kind::Primary::<EmptySinglePassRenderPass,
+                                                                         EmptySinglePassRenderPass>,
+                                                         Flags::OneTimeSubmit).unwrap();
+            cb.pipeline_barrier(current_infos.pre_pipeline_barrier);
+            new_submit.commandBufferCount += 1;
+            infos.command_buffers.push(cb.internal_object());
+            infos.keep_alive.push(Arc::new(cb) as Arc<_>);
+        }
+
+        infos.command_buffers.push(current.inner().internal_object());
+
+        if !current_infos.post_pipeline_barrier.is_empty() {
+            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, qf),
+                                                         Kind::Primary::<EmptySinglePassRenderPass,
+                                                                         EmptySinglePassRenderPass>,
+                                                         Flags::OneTimeSubmit).unwrap();
+            cb.pipeline_barrier(current_infos.post_pipeline_barrier);
+            new_submit.commandBufferCount += 1;
+            infos.command_buffers.push(cb.internal_object());
+            infos.keep_alive.push(Arc::new(cb) as Arc<_>);
+        }
+
         for (semaphore, stage) in current_infos.semaphores_wait {
             infos.wait_semaphores.push(semaphore.internal_object());
             infos.wait_stages.push(stage.into());
@@ -296,8 +322,6 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
             infos.keep_alive.push(semaphore);
             new_submit.signalSemaphoreCount += 1;
         }
-
-        infos.command_buffers.push(current.inner().internal_object());
 
         infos.submits.push(new_submit);
 
