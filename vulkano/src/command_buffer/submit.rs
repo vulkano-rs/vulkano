@@ -328,3 +328,59 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
         infos
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+    use std::iter::Empty;
+    use std::sync::Arc;
+
+    use command_buffer::pool::StandardCommandPool;
+    use command_buffer::submit::CommandBuffer;
+    use command_buffer::submit::SubmitInfo;
+    use command_buffer::sys::Kind;
+    use command_buffer::sys::Flags;
+    use command_buffer::sys::PipelineBarrierBuilder;
+    use command_buffer::sys::UnsafeCommandBuffer;
+    use command_buffer::sys::UnsafeCommandBufferBuilder;
+    use device::Device;
+    use framebuffer::EmptySinglePassRenderPass;
+    use sync::Fence;
+    use sync::PipelineStages;
+    use sync::Semaphore;
+
+    #[test]
+    fn basic_submit() {
+        struct Basic { inner: UnsafeCommandBuffer<Arc<StandardCommandPool>> }
+        unsafe impl CommandBuffer for Basic {
+            type Pool = Arc<StandardCommandPool>;
+            type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
+            type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
+
+            fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> { &self.inner }
+
+            unsafe fn on_submit<F>(&self, queue_family: u32, queue_within_family: u32, fence: F)
+                                   -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                                 Self::SemaphoresSignalIterator>
+                where F: FnOnce() -> Arc<Fence>
+            {
+                SubmitInfo {
+                    semaphores_wait: iter::empty(),
+                    semaphores_signal: iter::empty(),
+                    pre_pipeline_barrier: PipelineBarrierBuilder::new(),
+                    post_pipeline_barrier: PipelineBarrierBuilder::new(),
+                }
+            }
+        }
+
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let pool = Device::standard_command_pool(&device, queue.family());
+        let kind = Kind::Primary::<EmptySinglePassRenderPass, EmptySinglePassRenderPass>;
+
+        let cb = UnsafeCommandBufferBuilder::new(pool, kind, Flags::OneTimeSubmit).unwrap();
+        let cb = Basic { inner: cb.build().unwrap() };
+
+        let _s = cb.submit(&queue);
+    }
+}
