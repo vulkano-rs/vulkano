@@ -39,8 +39,9 @@ pub unsafe trait CommandBuffer {
     /// multiple command buffers at once instead.
     ///
     /// This is a simple shortcut for creating a `Submit` object.
+    // TODO: remove 'static
     #[inline]
-    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized {
+    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized + 'static {
         Submit::new().add(self).submit(queue)
     }
 
@@ -80,10 +81,10 @@ pub unsafe trait CommandBuffer {
     /// The implementation must ensure that the command buffer doesn't get destroyed before the
     /// fence is signaled, or before a fence of a later submission to the same queue is signaled.
     ///
-    unsafe fn on_submit<F>(&self, queue_family: u32, queue_within_family: u32, fence: F)
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
-        where F: FnOnce() -> Arc<Fence>;
+        where F: FnMut() -> Arc<Fence>;
 }
 
 /// Information about how the submitting function should synchronize the submission.
@@ -163,8 +164,9 @@ impl<L> Submit<L> where L: SubmitList {
     /// In the Vulkan API, a submission is divided into batches that each contain one or more
     /// command buffers. Vulkano will automatically determine which command buffers can be grouped
     /// into the same batch.
+    // TODO: remove 'static
     #[inline]
-    pub fn add<C>(self, command_buffer: C) -> Submit<(C, L)> where C: CommandBuffer {
+    pub fn add<C>(self, command_buffer: C) -> Submit<(C, L)> where C: CommandBuffer + 'static {
         Submit { list: (command_buffer, self.list) }
     }
 
@@ -172,7 +174,7 @@ impl<L> Submit<L> where L: SubmitList {
     pub fn submit(self, queue: &Arc<Queue>) -> Submission {
         let SubmitListOpaque { fence, wait_semaphores, wait_stages, command_buffers,
                                signal_semaphores, mut submits, keep_alive }
-                             = self.list.infos(queue.family().id(), queue.id_within_family());
+                             = self.list.infos(queue);
 
         // TODO: for now we always create a Fence in order to put it in the submission
         let fence = fence.unwrap_or_else(|| Fence::new(queue.device().clone()));
@@ -238,11 +240,11 @@ pub struct SubmitListOpaque {
 }
 
 pub unsafe trait SubmitList {
-    fn infos(self, queue_family: u32, queue_within_family: u32) -> SubmitListOpaque;
+    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque;
 }
 
 unsafe impl SubmitList for () {
-    fn infos(self, _: u32, _: u32) -> SubmitListOpaque {
+    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
         SubmitListOpaque {
             fence: None,
             wait_semaphores: SmallVec::new(),
@@ -255,16 +257,16 @@ unsafe impl SubmitList for () {
     }
 }
 
-unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
-    fn infos(self, queue_family: u32, queue_within_family: u32) -> SubmitListOpaque {
+// TODO: remove 'static
+unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer + 'static, R: SubmitList {
+    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
         // TODO: attempt to group multiple submits into one when possible
 
         let (current, rest) = self;
 
-        let mut infos = rest.infos(queue_family, queue_within_family);
+        let mut infos = rest.infos(queue);
         let device = current.inner().device().clone();
-        let qf = device.physical_device().queue_family_by_id(queue_family).unwrap();
-        let current_infos = unsafe { current.on_submit(queue_family, queue_within_family, || {
+        let current_infos = unsafe { current.on_submit(queue, || {
             if let Some(fence) = infos.fence.as_ref() {
                 return fence.clone();
             }
@@ -287,7 +289,7 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
         };
 
         if !current_infos.pre_pipeline_barrier.is_empty() {
-            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, qf),
+            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
                                                          Kind::Primary::<EmptySinglePassRenderPass,
                                                                          EmptySinglePassRenderPass>,
                                                          Flags::OneTimeSubmit).unwrap();
@@ -300,7 +302,7 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
         infos.command_buffers.push(current.inner().internal_object());
 
         if !current_infos.post_pipeline_barrier.is_empty() {
-            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, qf),
+            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
                                                          Kind::Primary::<EmptySinglePassRenderPass,
                                                                          EmptySinglePassRenderPass>,
                                                          Flags::OneTimeSubmit).unwrap();
@@ -324,6 +326,7 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer, R: SubmitList {
         }
 
         infos.submits.push(new_submit);
+        infos.keep_alive.push(Arc::new(current) as Arc<_>);
 
         infos
     }
@@ -344,6 +347,7 @@ mod tests {
     use command_buffer::sys::UnsafeCommandBuffer;
     use command_buffer::sys::UnsafeCommandBufferBuilder;
     use device::Device;
+    use device::Queue;
     use framebuffer::EmptySinglePassRenderPass;
     use sync::Fence;
     use sync::PipelineStages;
@@ -359,7 +363,7 @@ mod tests {
 
             fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> { &self.inner }
 
-            unsafe fn on_submit<F>(&self, queue_family: u32, queue_within_family: u32, fence: F)
+            unsafe fn on_submit<F>(&self, _: &Arc<Queue>, fence: F)
                                    -> SubmitInfo<Self::SemaphoresWaitIterator,
                                                  Self::SemaphoresSignalIterator>
                 where F: FnOnce() -> Arc<Fence>
