@@ -26,6 +26,7 @@ use command_buffer::sys::Kind;
 use device::Device;
 use device::Queue;
 use framebuffer::EmptySinglePassRenderPass;
+use image::traits::TrackedImage;
 use instance::QueueFamily;
 use sync::Fence;
 use sync::PipelineStages;
@@ -73,6 +74,13 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     #[inline]
     unsafe fn extract_current_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
+    {
+        None
+    }
+
+    #[inline]
+    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
     {
         None
     }

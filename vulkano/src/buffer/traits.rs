@@ -16,6 +16,7 @@ use std::sync::mpsc::Sender;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::Submission;
 use device::Queue;
+use image::Image;
 use memory::Content;
 
 use sync::AccessFlagBits;
@@ -68,7 +69,7 @@ pub unsafe trait Buffer: 'static + Send + Sync {
     }
 }
 
-/// Extension trait for `Buffer`. Types that implement this can used in a `StdCommandBuffer`.
+/// Extension trait for `Buffer`. Types that implement this can be used in a `StdCommandBuffer`.
 ///
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
@@ -87,8 +88,17 @@ pub unsafe trait TrackedBuffer: Buffer {
     /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
     /// other buffer. Otherwise a panic will occur.
     #[inline]
-    fn is_same<B>(&self, other: &B) -> bool where B: Buffer {
+    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
         self.inner().internal_object() == other.inner().internal_object()
+    }
+
+    /// Returns true if TODO.
+    ///
+    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
+    /// other image. Otherwise a panic will occur.
+    #[inline]
+    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
+        false
     }
 
     /// Returns the state of the buffer when it has not yet been used.
@@ -156,7 +166,7 @@ pub struct PipelineMemoryBarrierRequest {
     pub destination_access: AccessFlagBits,
 }
 
-/// Trait for objects that represent the state of a slice of the buffer in a command buffer.
+/// Trait for objects that represent the state of the buffer in a command buffer.
 pub trait CommandBufferState {
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
@@ -199,8 +209,13 @@ unsafe impl<B> TrackedBuffer for Arc<B> where B: TrackedBuffer, Arc<B>: Buffer {
     type FinishedState = B::FinishedState;
 
     #[inline]
-    fn is_same<Bo>(&self, other: &Bo) -> bool where Bo: Buffer {
-        (**self).is_same(other)
+    fn is_same_buffer<Bo>(&self, other: &Bo) -> bool where Bo: Buffer {
+        (**self).is_same_buffer(other)
+    }
+
+    #[inline]
+    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
+        (**self).is_same_image(other)
     }
 
     #[inline]

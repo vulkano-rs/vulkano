@@ -7,10 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::any::Any;
 use std::ops::Range;
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::Receiver;
 
+use buffer::Buffer;
 use command_buffer::Submission;
+use device::Queue;
 use format::ClearValue;
 use format::Format;
 use image::sys::Dimensions;
@@ -18,7 +23,12 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
+use sync::Fence;
 use sync::Semaphore;
+
+use VulkanObject;
 
 /// Trait for types that represent images.
 pub unsafe trait Image: 'static + Send + Sync {
@@ -113,6 +123,122 @@ pub unsafe trait Image: 'static + Send + Sync {
     fn supports_blit_destination(&self) -> bool {
         self.inner().supports_blit_destination()
     }
+}
+
+/// Extension trait for `Image`. Types that implement this can be used in a `StdCommandBuffer`.
+///
+/// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
+/// represented by the `CommandListState` associated type of this trait. You can make multiple
+/// buffers or images share the same state by making `is_same` return true.
+pub unsafe trait TrackedImage: Image {
+    /// State of the image in a list of commands.
+    ///
+    /// The `Any` bound is here for stupid reasons, sorry.
+    // TODO: remove Any bound
+    type CommandListState: Any + CommandListState<FinishedState = Self::FinishedState>;
+    /// State of the buffer in a finished list of commands.
+    type FinishedState: CommandBufferState;
+
+    /// Returns true if TODO.
+    ///
+    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
+    /// other buffer. Otherwise a panic will occur.
+    #[inline]
+    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
+        false
+    }
+
+    /// Returns true if TODO.
+    ///
+    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
+    /// other image. Otherwise a panic will occur.
+    #[inline]
+    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
+        self.inner().internal_object() == other.inner().internal_object()
+    }
+
+    /// Returns the state of the image when it has not yet been used.
+    fn initial_state(&self) -> Self::CommandListState;
+}
+
+/// Trait for objects that represent the state of a slice of the image in a list of commands.
+pub trait CommandListState {
+    type FinishedState: CommandBufferState;
+
+    /// Returns a new state that corresponds to the moment after a slice of the image has been
+    /// used in the pipeline. The parameters indicate in which way it has been used.
+    ///
+    /// If the transition should result in a pipeline barrier, then it must be returned by this
+    /// function.
+    fn transition(self, num_command: usize, image: &UnsafeImage, first_mipmap: u32,
+                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
+                  stage: PipelineStages, access: AccessFlagBits)
+                  -> (Self, Option<PipelineBarrierRequest>)
+        where Self: Sized;
+
+    /// Function called when the command buffer builder is turned into a real command buffer.
+    ///
+    /// This function can return an additional pipeline barrier that will be applied at the end
+    /// of the command buffer.
+    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+}
+
+/// Requests that a pipeline barrier is created.
+pub struct PipelineBarrierRequest {
+    /// The number of the command after which the barrier should be placed. Must usually match
+    /// the number that was passed to the previous call to `transition`, or 0 if the image hasn't
+    /// been used yet.
+    pub after_command_num: usize,
+
+    /// The source pipeline stages of the transition.
+    pub source_stage: PipelineStages,
+
+    /// The destination pipeline stages of the transition.
+    pub destination_stages: PipelineStages,
+
+    /// If true, the pipeliner barrier is by region.
+    pub by_region: bool,
+
+    /// An optional memory barrier. See the docs of `PipelineMemoryBarrierRequest`.
+    pub memory_barrier: Option<PipelineMemoryBarrierRequest>,
+}
+
+/// Requests that a memory barrier is created as part of the pipeline barrier.
+///
+/// By default, a pipeline barrier only guarantees that the source operations are executed before
+/// the destination operations, but it doesn't make memory writes made by source operations visible
+/// to the destination operations. In order to make so, you have to add a memory barrier.
+///
+/// The memory barrier always concerns the image that is currently being processed. You can't add
+/// a memory barrier that concerns another resource.
+pub struct PipelineMemoryBarrierRequest {
+    pub first_mipmap: u32,
+    pub num_mipmaps: u32,
+    pub first_layer: u32,
+    pub num_layers: u32,
+
+    pub old_layout: Layout,
+    pub new_layout: Layout,
+
+    /// Source accesses.
+    pub source_access: AccessFlagBits,
+    /// Destination accesses.
+    pub destination_access: AccessFlagBits,
+}
+
+/// Trait for objects that represent the state of the image in a command buffer.
+pub trait CommandBufferState {
+    /// Called right before the command buffer is submitted.
+    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
+    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where I: Image, F: FnOnce() -> Arc<Fence>;
+}
+
+pub struct SubmitInfos {
+    pub pre_semaphore: Option<(Receiver<Arc<Semaphore>>, PipelineStages)>,
+    pub post_semaphore: Option<Sender<Arc<Semaphore>>>,
+    pub pre_barrier: Option<PipelineBarrierRequest>,
+    pub post_barrier: Option<PipelineBarrierRequest>,
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the

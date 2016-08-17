@@ -25,6 +25,7 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
+use image::traits::TrackedImage;
 use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::Fence;
@@ -99,13 +100,26 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
                                                -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
     {
-        if self.buffer.is_same(buffer) {
+        if self.buffer.is_same_buffer(buffer) {
             let s: &mut Option<Ob::CommandListState> = (&mut self.buffer_state as &mut Any)
                                                                         .downcast_mut().unwrap();
             Some(s.take().unwrap())
 
         } else {
             self.previous.extract_current_buffer_state(buffer)
+        }
+    }
+
+    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        if self.buffer.is_same_image(image) {
+            let s: &mut Option<I::CommandListState> = (&mut self.buffer_state as &mut Any)
+                                                                        .downcast_mut().unwrap();
+            Some(s.take().unwrap())
+
+        } else {
+            self.previous.extract_current_image_state(image)
         }
     }
 
