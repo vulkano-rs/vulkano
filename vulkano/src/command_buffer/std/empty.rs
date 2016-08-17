@@ -14,6 +14,7 @@ use std::sync::Arc;
 use buffer::traits::TrackedBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
+use command_buffer::std::OutsideRenderPass;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -98,6 +99,8 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
         }
     }
 }
+
+unsafe impl<P> OutsideRenderPass for PrimaryCbBuilder<P> where P: CommandPool {}
 
 pub struct PrimaryCb<P = Arc<StandardCommandPool>> where P: CommandPool {
     cb: UnsafeCommandBuffer<P>,
