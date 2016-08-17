@@ -93,14 +93,14 @@ pub unsafe trait StdCommandsList {
     /// This function accepts additional arguments that will customize the output:
     ///
     /// - `additional_elements` is a closure that must be called on the command buffer builder
-    ///   after it has finished building and before `final_transitions` are added.
-    /// - `transitions` is a list of pipeline barriers accompanied by a command number. The
+    ///   after it has finished building and before `final_barrier` are added.
+    /// - `barriers` is a list of pipeline barriers accompanied by a command number. The
     ///   pipeline barrier must happen after the given command number. Usually you want all the
     ///   the command numbers to be inferior to `num_commands`.
-    /// - `final_transitions` is a pipeline barrier that must be added at the end of the
+    /// - `final_barrier` is a pipeline barrier that must be added at the end of the
     ///   command buffer builder.
-    unsafe fn raw_build<I, F>(self, additional_elements: F, transitions: I,
-                              final_transitions: PipelineBarrierBuilder) -> Self::Output
+    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+                              final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>;
 }

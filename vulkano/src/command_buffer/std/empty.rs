@@ -85,22 +85,26 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
         None
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, transitions: I,
-                              final_transitions: PipelineBarrierBuilder) -> Self::Output
+    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+                              final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        let mut pipeline_barrier = PipelineBarrierBuilder::new();
-        for (_, transition) in transitions {
-            pipeline_barrier.merge(transition);
-        }
-
         let kind = Kind::Primary::<EmptySinglePassRenderPass, EmptySinglePassRenderPass>;
         let mut cb = UnsafeCommandBufferBuilder::new(self.pool, kind,
-                                                     self.flags).unwrap();  // TODO: handle
+                                                     self.flags).unwrap();  // TODO: handle error
+
+        // Since we're at the start of the command buffer, there's no need wonder when to add the
+        // barriers. We have no choice but to add them immediately.
+        let mut pipeline_barrier = PipelineBarrierBuilder::new();
+        for (_, barrier) in barriers {
+            pipeline_barrier.merge(barrier);
+        }
         cb.pipeline_barrier(pipeline_barrier);
+
+        // Then add the rest.
         additional_elements(&mut cb);
-        cb.pipeline_barrier(final_transitions);
+        cb.pipeline_barrier(final_barrier);
         
         PrimaryCb {
             cb: cb.build().unwrap(),        // TODO: handle error
@@ -129,7 +133,9 @@ unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
     {
-        // TODO: must handle SimultaneousUse and Once flags
+        // TODO: Must handle non-SimultaneousUse and Once flags ; for now the `SimultaneousUse`
+        //       flag is mandatory, so there's no safety issue. However it will need to be handled
+        //       before allowing other flags to be used.
 
         SubmitInfo {
             semaphores_wait: iter::empty(),
