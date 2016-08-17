@@ -37,10 +37,17 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
+use buffer::traits::CommandBufferState;
+use buffer::traits::CommandListState;
 use buffer::traits::GpuAccessResult;
+use buffer::traits::SubmitInfos;
+use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
+use buffer::traits::PipelineBarrierRequest;
+use buffer::traits::PipelineMemoryBarrierRequest;
 use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
@@ -50,6 +57,9 @@ use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::FenceWaitError;
 use sync::Sharing;
+use sync::Fence;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 use OomError;
 
@@ -390,6 +400,173 @@ unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Content = T;
+}
+
+unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type CommandListState = CpuAccessibleBufferClState;
+    type FinishedState = CpuAccessibleBufferFinished;
+
+    #[inline]
+    fn initial_state(&self) -> Self::CommandListState {
+        // We don't know when the user is going to write to the buffer, so we just assume that it's
+        // all the time.
+        CpuAccessibleBufferClState {
+            size: self.size(),
+            stages: PipelineStages { host: true, .. PipelineStages::none() },
+            access: AccessFlagBits { host_write: true, .. AccessFlagBits::none() },
+            first_stages: None,
+            write: true,
+            earliest_previous_transition: 0,
+            needs_flush_at_the_end: false,
+        }
+    }
+}
+
+pub struct CpuAccessibleBufferClState {
+    size: usize,
+    stages: PipelineStages,
+    access: AccessFlagBits,
+    first_stages: Option<PipelineStages>,
+    write: bool,
+    earliest_previous_transition: usize,
+    needs_flush_at_the_end: bool,
+}
+
+impl CommandListState for CpuAccessibleBufferClState {
+    type FinishedState = CpuAccessibleBufferFinished;
+
+    fn transition(self, num_command: usize, _: &UnsafeBuffer, _: usize, _: usize, write: bool,
+                  stage: PipelineStages, access: AccessFlagBits)
+                  -> (Self, Option<PipelineBarrierRequest>)
+    {
+        debug_assert!(!stage.host);
+        debug_assert!(!access.host_read);
+        debug_assert!(!access.host_write);
+
+        if write {
+            // Write after read or write after write.
+            let new_state = CpuAccessibleBufferClState {
+                size: self.size,
+                stages: stage,
+                access: access,
+                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
+                write: true,
+                earliest_previous_transition: num_command,
+                needs_flush_at_the_end: true,
+            };
+
+            let barrier = PipelineBarrierRequest {
+                after_command_num: self.earliest_previous_transition,
+                source_stage: self.stages,
+                destination_stages: stage,
+                by_region: true,
+                memory_barrier: if self.write {
+                    Some(PipelineMemoryBarrierRequest {
+                        offset: 0,
+                        size: self.size,
+                        source_access: self.access,
+                        destination_access: access,
+                    })
+                } else {
+                    None
+                },
+            };
+
+            (new_state, Some(barrier))
+
+        } else if self.write {
+            // Read after write.
+            let new_state = CpuAccessibleBufferClState {
+                size: self.size,
+                stages: stage,
+                access: access,
+                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
+                write: false,
+                earliest_previous_transition: num_command,
+                needs_flush_at_the_end: self.needs_flush_at_the_end,
+            };
+
+            let barrier = PipelineBarrierRequest {
+                after_command_num: self.earliest_previous_transition,
+                source_stage: self.stages,
+                destination_stages: stage,
+                by_region: true,
+                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                    offset: 0,
+                    size: self.size,
+                    source_access: self.access,
+                    destination_access: access,
+                }),
+            };
+
+            (new_state, Some(barrier))
+
+        } else {
+            // Read after read.
+            let new_state = CpuAccessibleBufferClState {
+                size: self.size,
+                stages: self.stages | stage,
+                access: self.access | access,
+                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
+                write: false,
+                earliest_previous_transition: self.earliest_previous_transition,
+                needs_flush_at_the_end: self.needs_flush_at_the_end,
+            };
+
+            (new_state, None)
+        }
+    }
+
+    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>) {
+        let barrier = if self.needs_flush_at_the_end {
+            let barrier = PipelineBarrierRequest {
+                after_command_num: self.earliest_previous_transition,
+                source_stage: self.stages,
+                destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
+                by_region: true,
+                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                    offset: 0,
+                    size: self.size,
+                    source_access: self.access,
+                    destination_access: AccessFlagBits { host_read: true,
+                                                         .. AccessFlagBits::none() },
+                }),
+            };
+
+            Some(barrier)
+        } else {
+            None
+        };
+
+        let finished = CpuAccessibleBufferFinished {
+            first_stages: self.first_stages.unwrap_or(PipelineStages::none()),
+            write: self.needs_flush_at_the_end,
+        };
+
+        (finished, barrier)
+    }
+}
+
+pub struct CpuAccessibleBufferFinished {
+    first_stages: PipelineStages,
+    write: bool,
+}
+
+impl CommandBufferState for CpuAccessibleBufferFinished {
+    fn on_submit<B, F>(&self, buffer: &B, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where B: Buffer, F: FnOnce() -> Arc<Fence>
+    {
+        // FIXME: implement correctly
+
+        SubmitInfos {
+            pre_semaphore: None,
+            post_semaphore: None,
+            pre_barrier: None,
+            post_barrier: None,
+        }
+    }
 }
 
 /// Object that can be used to read or write the content of a `CpuAccessBuffer`.

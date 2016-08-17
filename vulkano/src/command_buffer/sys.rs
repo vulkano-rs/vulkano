@@ -39,8 +39,10 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
+use buffer::traits::PipelineBarrierRequest as BufferPipelineBarrierRequest;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
+use command_buffer::pool::CommandPoolFinished;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor::ShaderStages;
@@ -302,7 +304,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                      else { vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdClearColorImage(cmd, image.internal_object(), layout, &clear_value,
                               ranges.len() as u32, ranges.as_ptr());
     }
@@ -399,7 +401,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                      else { vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdClearDepthStencilImage(cmd, image.internal_object(), layout, &clear_value,
                                      ranges.len() as u32, ranges.as_ptr());
     }
@@ -503,7 +505,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         }
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
                                rects.len() as u32, rects.as_ptr());
     }
@@ -543,7 +545,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdFillBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
                          size as vk::DeviceSize, data);
     }
@@ -580,7 +582,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         debug_assert!(size <= 65536);
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdUpdateBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
                            size as vk::DeviceSize, data as *const D as *const _);
     }
@@ -637,7 +639,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         }
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdCopyBuffer(cmd, src.internal_object(), dest.internal_object(), regions.len() as u32,
                          regions.as_ptr());
     }
@@ -656,7 +658,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         }
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
 
         unsafe {
             vk.CmdPipelineBarrier(cmd, barrier.src_stage_mask, barrier.dst_stage_mask,
@@ -751,7 +753,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBeginRenderPass(cmd, &infos,
                               if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
                               else { vk::SUBPASS_CONTENTS_INLINE });
@@ -767,7 +769,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn next_subpass(&mut self, secondary: bool) {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdNextSubpass(cmd, if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
                                else { vk::SUBPASS_CONTENTS_INLINE });
     }
@@ -782,7 +784,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn end_render_pass(&mut self) {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdEndRenderPass(cmd);
     }
 
@@ -799,7 +801,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn bind_pipeline_graphics<V, L, R>(&mut self, pipeline: &GraphicsPipeline<V, L, R>) {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, pipeline.internal_object());
     }
 
@@ -812,7 +814,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn bind_pipeline_compute<L>(&mut self, pipeline: &ComputePipeline<L>) {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_COMPUTE, pipeline.internal_object());
     }
 
@@ -822,7 +824,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                        first_instance: u32)
     {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance);
     }
 
@@ -832,7 +834,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                first_vertex: u32, vertex_offset: i32, first_instance: u32)
     {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDrawIndexed(cmd, vertex_count, instance_count, first_vertex, vertex_offset,
                           first_instance);
     }
@@ -850,7 +852,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDrawIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize, draw_count,
                            stride);
     }
@@ -868,7 +870,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDrawIndexedIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize,
                                   draw_count, stride);
     }
@@ -877,7 +879,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn dispatch(&mut self, x: u32, y: u32, z: u32) {
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDispatch(cmd, x, y, z);
     }
 
@@ -892,7 +894,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdDispatchIndirect(cmd, buffer.internal_object(), offset as vk::DeviceSize);
     }
 
@@ -919,7 +921,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         }
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBindVertexBuffers(cmd, first_binding, raw_buffers.len() as u32, raw_buffers.as_ptr(),
                                 raw_offsets.as_ptr());
     }
@@ -937,7 +939,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBindIndexBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
                               index_ty as u32);
     }
@@ -972,7 +974,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         let dynamic_offsets: SmallVec<[_; 64]> = dynamic_offsets.into_iter().collect();
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdBindDescriptorSets(cmd, bind_point, layout.inner().internal_object(), first_set,
                                  descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
                                  dynamic_offsets.len() as u32, dynamic_offsets.as_ptr());
@@ -995,7 +997,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         debug_assert!(mem::size_of_val(data) <= u32::MAX as usize);
 
         let vk = self.device.pointers();
-        let cmd = self.cmd.take().unwrap();
+        let cmd = self.cmd.clone().take().unwrap();
         vk.CmdPushConstants(cmd, layout.inner().internal_object(), stages.into(), offset as u32,
                             mem::size_of_val(data) as u32, data as *const D as *const _);
     }
@@ -1113,6 +1115,18 @@ impl PipelineBarrierBuilder {
         self.src_stage_mask == 0 || self.dst_stage_mask == 0
     }
 
+    /// Merges another pipeline builder into this one.
+    #[inline]
+    pub fn merge(&mut self, mut other: PipelineBarrierBuilder) {
+        self.src_stage_mask |= other.src_stage_mask;
+        self.dst_stage_mask |= other.dst_stage_mask;
+        self.dependency_flags &= other.dependency_flags;
+
+        self.memory_barriers.extend(other.memory_barriers.into_iter());
+        self.buffer_barriers.extend(other.buffer_barriers.into_iter());
+        self.image_barriers.extend(other.image_barriers.into_iter());
+    }
+
     /// Adds an execution dependency. This means that all the stages in `source` of the previous
     /// commands must finish before any of the stages in `dest` of the following commands can start.
     ///
@@ -1158,6 +1172,37 @@ impl PipelineBarrierBuilder {
             srcAccessMask: source_access.into(),
             dstAccessMask: dest_access.into(),
         });
+    }
+
+    pub unsafe fn add_buffer_barrier_request(&mut self, buffer: &UnsafeBuffer,
+                                             request: BufferPipelineBarrierRequest)
+    {
+        if !request.by_region {
+            self.dependency_flags = 0;
+        }
+
+        self.src_stage_mask |= request.source_stage.into();
+        self.dst_stage_mask |= request.destination_stages.into();
+
+        if let Some(memory_barrier) = request.memory_barrier {
+            let (src_queue, dest_queue) = /*if let Some((src_queue, dest_queue)) = queue_transfer {
+                (src_queue, dest_queue)
+            } else {*/
+                (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+            /*}*/;
+
+            self.buffer_barriers.push(vk::BufferMemoryBarrier {
+                sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                pNext: ptr::null(),
+                srcAccessMask: memory_barrier.source_access.into(),
+                dstAccessMask: memory_barrier.destination_access.into(),
+                srcQueueFamilyIndex: src_queue,
+                dstQueueFamilyIndex: dest_queue,
+                buffer: buffer.internal_object(),
+                offset: memory_barrier.offset as vk::DeviceSize,
+                size: memory_barrier.size as vk::DeviceSize,
+            });
+        }
     }
 
     /// Adds a buffer memory barrier. This means that all the memory writes to the given buffer by
@@ -1304,5 +1349,14 @@ unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
         self.cmd
+    }
+}
+
+impl<P> Drop for UnsafeCommandBuffer<P> where P: CommandPool {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            self.pool.free(self.secondary_cb, Some(self.cmd.into()).into_iter());
+        }
     }
 }

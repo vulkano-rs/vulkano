@@ -348,6 +348,15 @@ impl Usage {
         }
     }
 
+    /// Builds a `Usage` with `transfer_dest` set to true and the rest to false.
+    #[inline]
+    pub fn transfer_dest() -> Usage {
+        Usage {
+            transfer_dest: true,
+            .. Usage::none()
+        }
+    }
+
     /// Builds a `Usage` with `vertex_buffer` set to true and the rest to false.
     #[inline]
     pub fn vertex_buffer() -> Usage {
