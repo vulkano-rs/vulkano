@@ -14,6 +14,7 @@ use command_buffer::pool::CommandPool;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
+use framebuffer::RenderPass;
 use instance::QueueFamily;
 
 pub use self::empty::PrimaryCb;
@@ -36,7 +37,7 @@ pub unsafe trait StdCommandsList {
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
                                        -> UpdateCommand<'a, Self, B, D>
-        where Self: Sized, B: TrackedBuffer, D: Copy + 'static
+        where Self: Sized + OutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
         UpdateCommand::new(self, buffer, data)
     }
@@ -94,3 +95,13 @@ pub unsafe trait StdCommandsList {
 
 /// Extension trait for `StdCommandsList` that indicates that we're outside a render pass.
 pub unsafe trait OutsideRenderPass: StdCommandsList {}
+
+/// Extension trait for `StdCommandsList` that indicates that we're inside a render pass.
+pub unsafe trait InsideRenderPass: StdCommandsList {
+    type RenderPass: RenderPass;
+    type Framebuffer;
+
+    fn render_pass(&self) -> &Self::RenderPass;
+
+    fn framebuffer(&self) -> &Self::Framebuffer;
+}

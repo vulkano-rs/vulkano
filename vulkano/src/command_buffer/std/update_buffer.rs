@@ -17,6 +17,7 @@ use buffer::traits::CommandBufferState;
 use buffer::traits::CommandListState;
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
+use command_buffer::std::OutsideRenderPass;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -40,7 +41,7 @@ pub struct UpdateCommand<'a, L, B, D: ?Sized> where B: TrackedBuffer, L: StdComm
 
 impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: StdCommandsList,
+          L: StdCommandsList + OutsideRenderPass,
           D: Copy + 'static,
 {
     pub fn new(mut previous: L, buffer: B, data: &'a D) -> UpdateCommand<'a, L, B, D> {
