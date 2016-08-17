@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::borrow::Cow;
-use std::env;
 use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -276,12 +275,12 @@ impl<'a> ApplicationInfo<'a> {
     ///
     pub fn from_cargo_toml() -> ApplicationInfo<'a> {
         let version = Version {
-            major: env::var("CARGO_PKG_VERSION_MAJOR").unwrap().parse().unwrap(),
-            minor: env::var("CARGO_PKG_VERSION_MINOR").unwrap().parse().unwrap(),
-            patch: env::var("CARGO_PKG_VERSION_PATCH").unwrap().parse().unwrap(),
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
         };
 
-        let name = env::var("CARGO_PKG_NAME").unwrap();
+        let name = env!("CARGO_PKG_NAME");
 
         ApplicationInfo {
             application_name: Some(name.into()),
