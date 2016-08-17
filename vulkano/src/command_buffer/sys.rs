@@ -56,6 +56,7 @@ use framebuffer::UnsafeRenderPass;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
+use image::traits::PipelineBarrierRequest as ImagePipelineBarrierRequest;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::IndexType;
@@ -1190,6 +1191,10 @@ impl PipelineBarrierBuilder {
             } else {*/
                 (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
             /*}*/;
+            
+            // TODO: add more debug asserts
+
+            debug_assert!(memory_barrier.offset + memory_barrier.size <= buffer.size());
 
             self.buffer_barriers.push(vk::BufferMemoryBarrier {
                 sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -1201,6 +1206,51 @@ impl PipelineBarrierBuilder {
                 buffer: buffer.internal_object(),
                 offset: memory_barrier.offset as vk::DeviceSize,
                 size: memory_barrier.size as vk::DeviceSize,
+            });
+        }
+    }
+
+    pub unsafe fn add_image_barrier_request(&mut self, image: &UnsafeImage,
+                                            request: ImagePipelineBarrierRequest)
+    {
+        if !request.by_region {
+            self.dependency_flags = 0;
+        }
+
+        self.src_stage_mask |= request.source_stage.into();
+        self.dst_stage_mask |= request.destination_stages.into();
+
+        if let Some(memory_barrier) = request.memory_barrier {
+            let (src_queue, dest_queue) = /*if let Some((src_queue, dest_queue)) = queue_transfer {
+                (src_queue, dest_queue)
+            } else {*/
+                (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+            /*}*/;
+
+            // TODO: add more debug asserts
+
+            debug_assert!(memory_barrier.first_mipmap +
+                          memory_barrier.num_mipmaps <= image.mipmap_levels());
+            debug_assert!(memory_barrier.first_layer +
+                          memory_barrier.num_layers <= image.dimensions().array_layers());
+
+            self.image_barriers.push(vk::ImageMemoryBarrier {
+                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                pNext: ptr::null(),
+                srcAccessMask: memory_barrier.source_access.into(),
+                dstAccessMask: memory_barrier.destination_access.into(),
+                oldLayout: memory_barrier.old_layout as u32,
+                newLayout: memory_barrier.new_layout as u32,
+                srcQueueFamilyIndex: src_queue,
+                dstQueueFamilyIndex: dest_queue,
+                image: image.internal_object(),
+                subresourceRange: vk::ImageSubresourceRange {
+                    aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
+                    baseMipLevel: memory_barrier.first_mipmap,
+                    levelCount: memory_barrier.num_mipmaps,
+                    baseArrayLayer: memory_barrier.first_layer,
+                    layerCount: memory_barrier.num_layers,
+                },
             });
         }
     }

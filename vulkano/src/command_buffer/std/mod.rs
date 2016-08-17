@@ -15,6 +15,7 @@ use command_buffer::submit::CommandBuffer;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use framebuffer::RenderPass;
+use image::traits::TrackedImage;
 use instance::QueueFamily;
 
 pub use self::empty::PrimaryCb;
@@ -75,6 +76,17 @@ pub unsafe trait StdCommandsList {
     ///
     unsafe fn extract_current_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer;
+
+    /// Returns the current status of an image, or `None` if the image hasn't been used yet.
+    ///
+    /// See the description of `extract_current_buffer_state`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the state of that image has already been previously extracted.
+    ///
+    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
 
     /// Turns the commands list into a command buffer.
     ///
