@@ -10,8 +10,6 @@
 use std::any::Any;
 use std::ops::Range;
 use std::sync::Arc;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
 
 use buffer::sys::UnsafeBuffer;
 use command_buffer::Submission;
@@ -175,8 +173,8 @@ pub trait CommandBufferState {
 }
 
 pub struct SubmitInfos {
-    pub pre_semaphore: Option<(Receiver<Arc<Semaphore>>, PipelineStages)>,
-    pub post_semaphore: Option<Sender<Arc<Semaphore>>>,
+    pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
+    pub post_semaphore: Option<Arc<Semaphore>>,
     pub pre_barrier: Option<PipelineBarrierRequest>,
     pub post_barrier: Option<PipelineBarrierRequest>,
 }
