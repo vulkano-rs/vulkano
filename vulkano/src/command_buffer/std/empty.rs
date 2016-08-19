@@ -85,6 +85,11 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
         None
     }
 
+    #[inline]
+    fn buildable_state(&self) -> bool {
+        true
+    }
+
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),

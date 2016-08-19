@@ -116,6 +116,11 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         self.previous.extract_current_image_state(image)
     }
 
+    #[inline]
+    fn buildable_state(&self) -> bool {
+        true
+    }
+
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),

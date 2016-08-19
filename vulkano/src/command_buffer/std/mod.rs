@@ -66,8 +66,14 @@ pub unsafe trait StdCommandsList {
         DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
     }
 
+    /// Returns true if the command buffer can be built. This function should always return true,
+    /// except when we're building a primary command buffer that is inside a render pass.
+    fn buildable_state(&self) -> bool;
+
     /// Turns the commands list into a command buffer that can be submitted.
     fn build(self) -> Self::Output where Self: Sized {
+        assert!(self.buildable_state());
+
         unsafe {
             self.raw_build(|_| {}, iter::empty(), PipelineBarrierBuilder::new())
         }
@@ -122,6 +128,8 @@ pub unsafe trait StdCommandsList {
     ///   the command numbers to be inferior to `num_commands`.
     /// - `final_barrier` is a pipeline barrier that must be added at the end of the
     ///   command buffer builder.
+    ///
+    /// This function doesn't check that `buildable_state` returns true.
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),

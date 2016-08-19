@@ -101,6 +101,11 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         self.previous.check_queue_validity(queue)
     }
 
+    #[inline]
+    fn buildable_state(&self) -> bool {
+        true
+    }
+
     unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
                                                -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
