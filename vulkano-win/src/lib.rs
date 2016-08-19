@@ -25,8 +25,10 @@ pub fn required_extensions() -> InstanceExtensions {
         ..InstanceExtensions::none()
     };
 
-    let supported = InstanceExtensions::supported_by_core();
-    supported.intersection(&ideal)
+    match InstanceExtensions::supported_by_core() {
+        Ok(supported) => supported.intersection(&ideal),
+        Err(_) => InstanceExtensions::none()
+    }
 }
 
 pub trait VkSurfaceBuild {

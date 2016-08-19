@@ -7,11 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
 use std::ffi::CString;
+use std::fmt;
 use std::ptr;
 
+use Error;
 use OomError;
 use instance::loader;
+use instance::loader::LoadingError;
 use vk;
 use check_errors;
 
@@ -64,8 +68,8 @@ macro_rules! instance_extensions {
         
         impl $sname {
             /// See the docs of supported_by_core().
-            pub fn supported_by_core_raw() -> Result<$sname, OomError> {
-                let entry_points = loader::entry_points().unwrap();     // TODO: return proper error
+            pub fn supported_by_core_raw() -> Result<$sname, SupportedExtensionsError> {
+                let entry_points = try!(loader::entry_points());
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
@@ -100,8 +104,12 @@ macro_rules! instance_extensions {
             }
             
             /// Returns an `Extensions` object with extensions supported by the core driver.
-            pub fn supported_by_core() -> $sname {
-                $sname::supported_by_core_raw().unwrap()
+            pub fn supported_by_core() -> Result<$sname, LoadingError> {
+                match $sname::supported_by_core_raw() {
+                    Ok(l) => Ok(l),
+                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+                }
             }
         }
     );
@@ -124,6 +132,69 @@ extensions! {
     DeviceExtensions,
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
+}
+
+/// Error that can happen when loading the list of layers.
+#[derive(Clone, Debug)]
+pub enum SupportedExtensionsError {
+    /// Failed to load the Vulkan shared library.
+    LoadingError(LoadingError),
+    /// Not enough memory.
+    OomError(OomError),
+}
+
+impl error::Error for SupportedExtensionsError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            SupportedExtensionsError::LoadingError(_) => "failed to load the Vulkan shared library",
+            SupportedExtensionsError::OomError(_) => "not enough memory available",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            SupportedExtensionsError::LoadingError(ref err) => Some(err),
+            SupportedExtensionsError::OomError(ref err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for SupportedExtensionsError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for SupportedExtensionsError {
+    #[inline]
+    fn from(err: OomError) -> SupportedExtensionsError {
+        SupportedExtensionsError::OomError(err)
+    }
+}
+
+impl From<LoadingError> for SupportedExtensionsError {
+    #[inline]
+    fn from(err: LoadingError) -> SupportedExtensionsError {
+        SupportedExtensionsError::LoadingError(err)
+    }
+}
+
+impl From<Error> for SupportedExtensionsError {
+    #[inline]
+    fn from(err: Error) -> SupportedExtensionsError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                SupportedExtensionsError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                SupportedExtensionsError::OomError(OomError::from(err))
+            },
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
 }
 
 #[cfg(test)]
