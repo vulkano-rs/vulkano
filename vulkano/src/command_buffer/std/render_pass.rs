@@ -129,6 +129,11 @@ unsafe impl<L, Rp, Rpf> InsideRenderPass for BeginRenderPassCommand<L, Rp, Rpf>
     type Framebuffer = Arc<Framebuffer<Rpf>>;
 
     #[inline]
+    fn current_subpass(&self) -> u32 {
+        0
+    }
+
+    #[inline]
     fn render_pass(&self) -> &Arc<Self::RenderPass> {
         &self.render_pass
     }
@@ -171,6 +176,133 @@ unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
     }
 }
 
+/// Wraps around a commands list and adds a command at the end of it that jumps to the next subpass.
+pub struct NextSubpassCommand<L> where L: StdCommandsList {
+    // Parent commands list.
+    previous: L,
+    secondary: bool,
+}
+
+impl<L> NextSubpassCommand<L> where L: StdCommandsList + InsideRenderPass {
+    /// See the documentation of the `next_subpass` method.
+    #[inline]
+    pub fn new(previous: L, secondary: bool) -> NextSubpassCommand<L> {
+        // FIXME: put this check
+        //assert!(previous.current_subpass() + 1 < previous.render_pass().num_subpasses());      // TODO: error instead
+
+        NextSubpassCommand {
+            previous: previous,
+            secondary: secondary,
+        }
+    }
+}
+
+unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
+    where L: StdCommandsList + InsideRenderPass
+{
+    type Pool = L::Pool;
+    type Output = NextSubpassCommandCb<L>;
+
+    #[inline]
+    fn num_commands(&self) -> usize {
+        self.previous.num_commands() + 1
+    }
+
+    #[inline]
+    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> {
+        if !queue.supports_graphics() {
+            return Err(());
+        }
+
+        self.previous.check_queue_validity(queue)
+    }
+
+    #[inline]
+    fn buildable_state(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        self.previous.extract_current_buffer_state(buffer)
+    }
+
+    #[inline]
+    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        self.previous.extract_current_image_state(image)
+    }
+
+    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+                              final_barrier: PipelineBarrierBuilder) -> Self::Output
+        where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
+              I: Iterator<Item = (usize, PipelineBarrierBuilder)>
+    {
+        let secondary = self.secondary;
+
+        let parent = self.previous.raw_build(|cb| {
+            cb.next_subpass(secondary);
+            additional_elements(cb);
+        }, barriers, final_barrier);
+
+        NextSubpassCommandCb {
+            previous: parent,
+        }
+    }
+}
+
+unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
+    where L: StdCommandsList + InsideRenderPass
+{
+    type RenderPass = L::RenderPass;
+    type Framebuffer = L::Framebuffer;
+
+    #[inline]
+    fn current_subpass(&self) -> u32 {
+        self.previous.current_subpass() + 1
+    }
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+        self.previous.render_pass()
+    }
+
+    #[inline]
+    fn framebuffer(&self) -> &Self::Framebuffer {
+        self.previous.framebuffer()
+    }
+}
+
+/// Wraps around a command buffer and adds an end render pass command at the end of it.
+pub struct NextSubpassCommandCb<L> where L: StdCommandsList {
+    // The previous commands.
+    previous: L::Output,
+}
+
+unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: StdCommandsList {
+    type Pool = L::Pool;
+    type SemaphoresWaitIterator = <L::Output as CommandBuffer>::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = <L::Output as CommandBuffer>::SemaphoresSignalIterator;
+
+    #[inline]
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
+        self.previous.inner()
+    }
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>
+    {
+        self.previous.on_submit(queue, &mut fence)
+    }
+}
+
 /// Wraps around a commands list and adds an end render pass command at the end of it.
 pub struct EndRenderPassCommand<L> where L: StdCommandsList {
     // Parent commands list.
@@ -181,6 +313,8 @@ impl<L> EndRenderPassCommand<L> where L: StdCommandsList + InsideRenderPass {
     /// See the documentation of the `end_render_pass` method.
     #[inline]
     pub fn new(previous: L) -> EndRenderPassCommand<L> {
+        // FIXME: check that the number of subpasses is correct
+
         EndRenderPassCommand {
             previous: previous,
         }

@@ -77,6 +77,13 @@ pub unsafe trait StdCommandsList {
         render_pass::BeginRenderPassCommand::new(self, framebuffer)
     }
 
+    /// Adds a command that jumps to the next subpass of the current render pass.
+    fn next_subpass(self, secondary: bool) -> render_pass::NextSubpassCommand<Self>
+        where Self: Sized + InsideRenderPass
+    {
+        render_pass::NextSubpassCommand::new(self, secondary)
+    }
+
     /// Adds a command that ends the current render pass.
     ///
     /// This must be called after you went through all the subpasses and before you can build
@@ -165,6 +172,12 @@ pub unsafe trait OutsideRenderPass: StdCommandsList {}
 pub unsafe trait InsideRenderPass: StdCommandsList {
     type RenderPass: RenderPass;
     type Framebuffer;
+
+    /// Returns the number of the subpass we're in. The value is 0-indexed, so immediately after
+    /// calling `begin_render_pass` the value will be `0`.
+    ///
+    /// The value should always be strictly inferior to the number of subpasses in the render pass.
+    fn current_subpass(&self) -> u32;
 
     // TODO: don't use Arc
     fn render_pass(&self) -> &Arc<Self::RenderPass>;
