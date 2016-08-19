@@ -17,19 +17,19 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
+use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 
-pub use self::dispatch::DispatchCommand;
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
-pub use self::update_buffer::UpdateCommand;
 
-mod dispatch;
-mod empty;
-mod update_buffer;
+pub mod dispatch;
+pub mod empty;
+pub mod render_pass;
+pub mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
 pub unsafe trait StdCommandsList {
@@ -43,10 +43,10 @@ pub unsafe trait StdCommandsList {
     /// After this command is executed, the content of `buffer` will become `data`.
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
-                                       -> UpdateCommand<'a, Self, B, D>
+                                       -> update_buffer::UpdateCommand<'a, Self, B, D>
         where Self: Sized + OutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
-        UpdateCommand::new(self, buffer, data)
+        update_buffer::UpdateCommand::new(self, buffer, data)
     }
 
     /// Adds a command that executes a compute shader.
@@ -59,11 +59,32 @@ pub unsafe trait StdCommandsList {
     #[inline]
     fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
                                dimensions: [u32; 3], push_constants: &'a Pc)
-                               -> DispatchCommand<'a, Self, Pl, S, Pc>
+                               -> dispatch::DispatchCommand<'a, Self, Pl, S, Pc>
         where Self: Sized + StdCommandsList + OutsideRenderPass, Pl: PipelineLayout,
               S: TrackedDescriptorSetsCollection, Pc: 'a
     {
-        DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
+        dispatch::DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
+    }
+
+    /// Adds a command that starts a render pass.
+    ///
+    /// You must call this before you can add draw commands.
+    #[inline]
+    fn begin_render_pass<Rp>(self, framebuffer: Arc<Framebuffer<Rp>>)
+                             -> render_pass::BeginRenderPassCommand<Self, Rp, Rp>
+        where Self: Sized + OutsideRenderPass, Rp: RenderPass
+    {
+        render_pass::BeginRenderPassCommand::new(self, framebuffer)
+    }
+
+    /// Adds a command that ends the current render pass.
+    ///
+    /// This must be called after you went through all the subpasses and before you can build
+    /// the command buffer or add further commands.
+    fn end_render_pass(self) -> render_pass::EndRenderPassCommand<Self>
+        where Self: Sized + InsideRenderPass
+    {
+        render_pass::EndRenderPassCommand::new(self)
     }
 
     /// Returns true if the command buffer can be built. This function should always return true,
@@ -72,7 +93,8 @@ pub unsafe trait StdCommandsList {
 
     /// Turns the commands list into a command buffer that can be submitted.
     fn build(self) -> Self::Output where Self: Sized {
-        assert!(self.buildable_state());
+        assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
+                                         render pass");
 
         unsafe {
             self.raw_build(|_| {}, iter::empty(), PipelineBarrierBuilder::new())
@@ -144,7 +166,8 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     type RenderPass: RenderPass;
     type Framebuffer;
 
-    fn render_pass(&self) -> &Self::RenderPass;
+    // TODO: don't use Arc
+    fn render_pass(&self) -> &Arc<Self::RenderPass>;
 
     fn framebuffer(&self) -> &Self::Framebuffer;
 }
