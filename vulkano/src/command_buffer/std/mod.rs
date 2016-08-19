@@ -19,6 +19,7 @@ use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
+use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
@@ -68,13 +69,19 @@ pub unsafe trait StdCommandsList {
 
     /// Adds a command that starts a render pass.
     ///
+    /// If `secondary` is true, then you will only be able to add secondary command buffers while
+    /// you're inside the first subpass on the render pass. If `secondary` is false, you will only
+    /// be able to add inline draw commands and not secondary command buffers.
+    ///
     /// You must call this before you can add draw commands.
     #[inline]
-    fn begin_render_pass<Rp>(self, framebuffer: Arc<Framebuffer<Rp>>)
-                             -> render_pass::BeginRenderPassCommand<Self, Rp, Rp>
-        where Self: Sized + OutsideRenderPass, Rp: RenderPass
+    fn begin_render_pass<Rp, C>(self, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool,
+                                clear_values: C)
+                                -> render_pass::BeginRenderPassCommand<Self, Rp, Rp>
+        where Self: Sized + OutsideRenderPass,
+              Rp: RenderPass + RenderPassClearValues<C>
     {
-        render_pass::BeginRenderPassCommand::new(self, framebuffer)
+        render_pass::BeginRenderPassCommand::new(self, framebuffer, secondary, clear_values)
     }
 
     /// Adds a command that jumps to the next subpass of the current render pass.
@@ -178,6 +185,10 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     ///
     /// The value should always be strictly inferior to the number of subpasses in the render pass.
     fn current_subpass(&self) -> u32;
+
+    /// If true, only secondary command buffers can be added inside the subpass. If false, only
+    /// inline draw commands can be added.
+    fn secondary_subpass(&self) -> bool;
 
     // TODO: don't use Arc
     fn render_pass(&self) -> &Arc<Self::RenderPass>;

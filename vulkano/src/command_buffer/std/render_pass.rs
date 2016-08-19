@@ -9,6 +9,8 @@
 
 use std::iter;
 use std::sync::Arc;
+use std::ops::Range;
+use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::InsideRenderPass;
@@ -20,8 +22,10 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
+use format::ClearValue;
 use framebuffer::Framebuffer;
 use framebuffer::RenderPass;
+use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use sync::Fence;
@@ -32,6 +36,10 @@ pub struct BeginRenderPassCommand<L, Rp, Rpf>
 {
     // Parent commands list.
     previous: L,
+    // True if only secondary command buffers can be added.
+    secondary: bool,
+    rect: [Range<u32>; 2],
+    clear_values: SmallVec<[ClearValue; 6]>,
     render_pass: Arc<Rp>,
     framebuffer: Arc<Framebuffer<Rpf>>,
 }
@@ -40,13 +48,21 @@ impl<L, Rp> BeginRenderPassCommand<L, Rp, Rp>
     where L: StdCommandsList + OutsideRenderPass, Rp: RenderPass
 {
     /// See the documentation of the `begin_render_pass` method.
-    pub fn new(previous: L, framebuffer: Arc<Framebuffer<Rp>>)
-        -> BeginRenderPassCommand<L, Rp, Rp>
+    // TODO: allow setting more parameters
+    pub fn new<C>(previous: L, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool, clear_values: C)
+                  -> BeginRenderPassCommand<L, Rp, Rp>
+        where Rp: RenderPassClearValues<C>
     {
         // FIXME: transition states of the images in the framebuffer
 
+        let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
+                                      .collect();
+
         BeginRenderPassCommand {
             previous: previous,
+            secondary: secondary,
+            rect: [0 .. framebuffer.width(), 0 .. framebuffer.height()],
+            clear_values: clear_values,
             render_pass: framebuffer.render_pass().clone(),
             framebuffer: framebuffer.clone(),
         }
@@ -99,25 +115,25 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        // We need to flush all the barriers because regular (ie. non-self-referencing) barriers
-        // aren't allowed inside render passes.
+        let my_command_num = self.num_commands();
+        let barriers = barriers.map(move |(n, b)| { assert!(n < my_command_num); (n, b) });
 
-        let mut pipeline_barrier = PipelineBarrierBuilder::new();
-        for (num, barrier) in barriers {
-            debug_assert!(num <= self.num_commands());
-            pipeline_barrier.merge(barrier);
-        }
+        let my_render_pass = self.render_pass;
+        let my_framebuffer = self.framebuffer;
+        let mut my_clear_values = self.clear_values;
+        let my_rect = self.rect;
+        let my_secondary = self.secondary;
 
         let parent = self.previous.raw_build(|cb| {
-            cb.end_render_pass();
-            cb.pipeline_barrier(pipeline_barrier);
+            cb.begin_render_pass(my_render_pass.inner(), &my_framebuffer,
+                                 my_clear_values.into_iter(), my_rect, my_secondary);
             additional_elements(cb);
-        }, iter::empty(), final_barrier);
+        }, barriers, final_barrier);
 
         BeginRenderPassCommandCb {
             previous: parent,
-            render_pass: self.render_pass,
-            framebuffer: self.framebuffer,
+            render_pass: my_render_pass,
+            framebuffer: my_framebuffer,
         }
     }
 }
@@ -131,6 +147,11 @@ unsafe impl<L, Rp, Rpf> InsideRenderPass for BeginRenderPassCommand<L, Rp, Rpf>
     #[inline]
     fn current_subpass(&self) -> u32 {
         0
+    }
+
+    #[inline]
+    fn secondary_subpass(&self) -> bool {
+        self.secondary
     }
 
     #[inline]
@@ -180,6 +201,7 @@ unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
 pub struct NextSubpassCommand<L> where L: StdCommandsList {
     // Parent commands list.
     previous: L,
+    // True if only secondary command buffers can be added.
     secondary: bool,
 }
 
@@ -264,6 +286,11 @@ unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
     #[inline]
     fn current_subpass(&self) -> u32 {
         self.previous.current_subpass() + 1
+    }
+
+    #[inline]
+    fn secondary_subpass(&self) -> bool {
+        self.secondary
     }
 
     #[inline]
