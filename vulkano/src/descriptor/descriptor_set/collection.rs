@@ -13,9 +13,18 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
+use buffer::traits::TrackedBuffer;
+use command_buffer::std::StdCommandsList;
+use command_buffer::submit::SubmitInfo;
+use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
+use device::Queue;
+use image::traits::TrackedImage;
+use sync::Fence;
+use sync::PipelineStages;
+use sync::Semaphore;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -35,6 +44,75 @@ pub unsafe trait DescriptorSetsCollection {
     fn description(&self) -> Self::SetsIter;
 }
 
+/// Extension trait for a descriptor sets collection so that it can be used with the standard
+/// commands list interface.
+pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
+    /// State of the resources inside the collection.
+    type State: TrackedDescriptorSetsCollectionState<Finished = Self::Finished>;
+    /// Finished state of the resources inside the collection.
+    type Finished: TrackedDescriptorSetsCollectionFinished;
+
+    /// Extracts from the commands list the states relevant to the buffers and images contained in
+    /// the descriptor sets. Then transitions them to the right state and returns a pipeline
+    /// barrier to insert as part of the transition. The `usize` is the location of the barrier.
+    unsafe fn extract_from_commands_list_and_transition<L>(&self, list: &mut L)
+                                                    -> (Self::State, usize, PipelineBarrierBuilder)
+        where L: StdCommandsList;
+}
+
+/// State of the resources inside the collection.
+pub unsafe trait TrackedDescriptorSetsCollectionState {
+    /// Finished state of the resources inside the collection.
+    type Finished: TrackedDescriptorSetsCollectionFinished;
+
+    /// Extracts the state of a buffer of the collection, or `None` if the buffer isn't in the
+    /// collection.
+    ///
+    /// Whether the buffer passed as parameter is the same as one in the collection must be
+    /// determined with the `is_same` method of `TrackedBuffer` or `TrackedImage`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the state of that buffer has already been previously extracted.
+    ///
+    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    /// Returns the state of an image, or `None` if the image isn't in the collection.
+    ///
+    /// See the description of `extract_buffer_state`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the state of that image has already been previously extracted.
+    ///
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
+
+    /// Turns the object into a `TrackedDescriptorSetsCollectionFinished`. All the buffers and
+    /// images whose state hasn't been extracted must be have `finished()` called on them as well.
+    ///
+    /// The function returns a pipeline barrier to append at the end of the command buffer.
+    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
+}
+
+/// Finished state of the resources inside the collection.
+pub unsafe trait TrackedDescriptorSetsCollectionFinished {
+    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
+    /// submitted.
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+
+    /// Iterator that returns the list of semaphores to signal after the command buffer has
+    /// finished execution.
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
+
+    // TODO: write docs
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>;
+}
+
 unsafe impl DescriptorSetsCollection for () {
     type ListIter = EmptyIter<Arc<DescriptorSet>>;
     type SetsIter = EmptyIter<EmptyIter<DescriptorDesc>>;
@@ -48,6 +126,63 @@ unsafe impl DescriptorSetsCollection for () {
     #[inline]
     fn description(&self) -> Self::SetsIter {
         iter::empty()
+    }
+}
+
+unsafe impl TrackedDescriptorSetsCollection for () {
+    type State = EmptyState;
+    type Finished = EmptyState;
+
+    #[inline]
+    unsafe fn extract_from_commands_list_and_transition<L>(&self, list: &mut L)
+        -> (Self::State, usize, PipelineBarrierBuilder)
+        where L: StdCommandsList
+    {
+        (EmptyState, 0, PipelineBarrierBuilder::new())
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EmptyState;
+
+unsafe impl TrackedDescriptorSetsCollectionState for EmptyState {
+    type Finished = EmptyState;
+
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer
+    {
+        None
+    }
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        None
+    }
+
+    #[inline]
+    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
+        (EmptyState, PipelineBarrierBuilder::new())
+    }
+}
+
+unsafe impl TrackedDescriptorSetsCollectionFinished for EmptyState {
+    type SemaphoresWaitIterator = EmptyIter<(Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator = EmptyIter<Arc<Semaphore>>;
+
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>
+    {
+        SubmitInfo {
+            semaphores_wait: iter::empty(),
+            semaphores_signal: iter::empty(),
+            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
+            post_pipeline_barrier: PipelineBarrierBuilder::new(),
+        }
     }
 }
 

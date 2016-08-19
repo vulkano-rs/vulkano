@@ -189,6 +189,13 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
     }
 }
 
+unsafe impl<'a, L, B, D: ?Sized> OutsideRenderPass for UpdateCommand<'a, L, B, D>
+    where B: TrackedBuffer,
+          L: StdCommandsList,
+          D: Copy + 'static,
+{
+}
+
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: StdCommandsList {
     // The previous commands.

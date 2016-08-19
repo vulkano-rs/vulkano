@@ -8,20 +8,26 @@
 // according to those terms.
 
 use std::iter;
+use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
+use descriptor::PipelineLayout;
+use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use framebuffer::RenderPass;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
+use pipeline::ComputePipeline;
 
+pub use self::dispatch::DispatchCommand;
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 pub use self::update_buffer::UpdateCommand;
 
+mod dispatch;
 mod empty;
 mod update_buffer;
 
@@ -41,6 +47,23 @@ pub unsafe trait StdCommandsList {
         where Self: Sized + OutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
         UpdateCommand::new(self, buffer, data)
+    }
+
+    /// Adds a command that executes a compute shader.
+    ///
+    /// The `dimensions` are the number of working groups to start. The GPU will execute the
+    /// compute shader `dimensions[0] * dimensions[1] * dimensions[2]` times.
+    ///
+    /// The `pipeline` is the compute pipeline that will be executed, and the sets and push
+    /// constants will be accessible to all the invocations.
+    #[inline]
+    fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
+                               dimensions: [u32; 3], push_constants: &'a Pc)
+                               -> DispatchCommand<'a, Self, Pl, S, Pc>
+        where Self: Sized + StdCommandsList + OutsideRenderPass, Pl: PipelineLayout,
+              S: TrackedDescriptorSetsCollection, Pc: 'a
+    {
+        DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
     }
 
     /// Turns the commands list into a command buffer that can be submitted.
