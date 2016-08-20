@@ -79,7 +79,7 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
     where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type Pool = L::Pool;
-    type Output = DispatchCommandCb<L, Pl, S>;
+    type Output = DispatchCommandCb<L::Output, Pl, S>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -186,10 +186,10 @@ unsafe impl<'a, L, Pl, S, Pc> OutsideRenderPass for DispatchCommand<'a, L, Pl, S
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct DispatchCommandCb<L, Pl, S>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
     // The barrier. We store it here to keep it alive.
     pipeline: Arc<ComputePipeline<Pl>>,
     // The descriptor sets. Stored here to keep them alive.
@@ -199,13 +199,13 @@ pub struct DispatchCommandCb<L, Pl, S>
 }
 
 unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<<L::Output as CommandBuffer>::SemaphoresWaitIterator,
+    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
                                         <S::Finished as TrackedDescriptorSetsCollectionFinished>::
                                             SemaphoresWaitIterator>;
-    type SemaphoresSignalIterator = Chain<<L::Output as CommandBuffer>::SemaphoresSignalIterator,
+    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
                                           <S::Finished as TrackedDescriptorSetsCollectionFinished>::
                                             SemaphoresSignalIterator>;
 

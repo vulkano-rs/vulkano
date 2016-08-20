@@ -73,7 +73,7 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
     where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
 {
     type Pool = L::Pool;
-    type Output = BeginRenderPassCommandCb<L, Rp, Rpf>;
+    type Output = BeginRenderPassCommandCb<L::Output, Rp, Rpf>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -167,20 +167,20 @@ unsafe impl<L, Rp, Rpf> InsideRenderPass for BeginRenderPassCommand<L, Rp, Rpf>
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommandCb<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+    where L: CommandBuffer, Rp: RenderPass, Rpf: RenderPass
 {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
     render_pass: Arc<Rp>,
     framebuffer: Arc<Framebuffer<Rpf>>,
 }
 
 unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+    where L: CommandBuffer, Rp: RenderPass, Rpf: RenderPass
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = <L::Output as CommandBuffer>::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = <L::Output as CommandBuffer>::SemaphoresSignalIterator;
+    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -223,7 +223,7 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
     where L: StdCommandsList + InsideRenderPass
 {
     type Pool = L::Pool;
-    type Output = NextSubpassCommandCb<L>;
+    type Output = NextSubpassCommandCb<L::Output>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -305,15 +305,15 @@ unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
 }
 
 /// Wraps around a command buffer and adds an end render pass command at the end of it.
-pub struct NextSubpassCommandCb<L> where L: StdCommandsList {
+pub struct NextSubpassCommandCb<L> where L: CommandBuffer {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
 }
 
-unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: StdCommandsList {
+unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: CommandBuffer {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = <L::Output as CommandBuffer>::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = <L::Output as CommandBuffer>::SemaphoresSignalIterator;
+    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -350,7 +350,7 @@ impl<L> EndRenderPassCommand<L> where L: StdCommandsList + InsideRenderPass {
 
 unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsList {
     type Pool = L::Pool;
-    type Output = EndRenderPassCommandCb<L>;
+    type Output = EndRenderPassCommandCb<L::Output>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -416,15 +416,15 @@ unsafe impl<L> OutsideRenderPass for EndRenderPassCommand<L> where L: StdCommand
 }
 
 /// Wraps around a command buffer and adds an end render pass command at the end of it.
-pub struct EndRenderPassCommandCb<L> where L: StdCommandsList {
+pub struct EndRenderPassCommandCb<L> where L: CommandBuffer {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
 }
 
-unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: StdCommandsList {
+unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: CommandBuffer {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = <L::Output as CommandBuffer>::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = <L::Output as CommandBuffer>::SemaphoresSignalIterator;
+    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
