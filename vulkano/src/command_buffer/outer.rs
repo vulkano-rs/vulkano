@@ -15,6 +15,7 @@ use buffer::Buffer;
 use buffer::BufferSlice;
 use buffer::TypedBuffer;
 use command_buffer::DrawIndirectCommand;
+use command_buffer::DynamicState;
 use command_buffer::inner::InnerCommandBufferBuilder;
 use command_buffer::inner::InnerCommandBuffer;
 use command_buffer::inner::Submission;
@@ -40,8 +41,6 @@ use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::Source as VertexSource;
-use pipeline::viewport::Viewport;
-use pipeline::viewport::Scissor;
 
 use OomError;
 
@@ -813,30 +812,4 @@ pub struct SecondaryComputeCommandBuffer<P = Arc<StandardCommandPool>>
     where P: CommandPool
 {
     inner: InnerCommandBuffer<P>,
-}
-
-/// The dynamic state to use for a draw command.
-#[derive(Debug, Clone)]
-pub struct DynamicState {
-    pub line_width: Option<f32>,
-    pub viewports: Option<Vec<Viewport>>,
-    pub scissors: Option<Vec<Scissor>>,
-}
-
-impl DynamicState {
-    #[inline]
-    pub fn none() -> DynamicState {
-        DynamicState {
-            line_width: None,
-            viewports: None,
-            scissors: None,
-        }
-    }
-}
-
-impl Default for DynamicState {
-    #[inline]
-    fn default() -> DynamicState {
-        DynamicState::none()
-    }
 }

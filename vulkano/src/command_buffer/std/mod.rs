@@ -11,6 +11,7 @@ use std::iter;
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -23,11 +24,14 @@ use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
+use pipeline::vertex::Source;
 
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 
 pub mod dispatch;
+pub mod draw;
 pub mod empty;
 pub mod render_pass;
 pub mod update_buffer;
@@ -99,6 +103,20 @@ pub unsafe trait StdCommandsList {
         where Self: Sized + InsideRenderPass
     {
         render_pass::EndRenderPassCommand::new(self)
+    }
+
+    /// Adds a command that draws.
+    ///
+    /// Can only be used from inside a render pass.
+    #[inline]
+    fn draw<'a, Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
+                                       dynamic: &DynamicState, vertices: V, sets: S,
+                                       push_constants: &'a Pc)
+                                       -> draw::DrawCommand<'a, Self, Pv, Pl, Prp, S, Pc>
+        where Self: Sized + StdCommandsList + InsideRenderPass, Pl: PipelineLayout,
+              S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
+    {
+        draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)
     }
 
     /// Returns true if the command buffer can be built. This function should always return true,

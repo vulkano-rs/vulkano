@@ -43,7 +43,6 @@
 
 pub use self::inner::Submission;
 pub use self::outer::submit;
-pub use self::outer::DynamicState;
 pub use self::outer::PrimaryCommandBufferBuilder;
 pub use self::outer::PrimaryCommandBufferBuilderInlineDraw;
 pub use self::outer::PrimaryCommandBufferBuilderSecondaryDraw;
@@ -54,6 +53,9 @@ pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
 pub use self::submit::CommandBuffer;
 pub use self::submit::Submit;
+
+use pipeline::viewport::Viewport;
+use pipeline::viewport::Scissor;
 
 mod inner;
 mod outer;
@@ -80,4 +82,30 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
+}
+
+/// The dynamic state to use for a draw command.
+#[derive(Debug, Clone)]
+pub struct DynamicState {
+    pub line_width: Option<f32>,
+    pub viewports: Option<Vec<Viewport>>,
+    pub scissors: Option<Vec<Scissor>>,
+}
+
+impl DynamicState {
+    #[inline]
+    pub fn none() -> DynamicState {
+        DynamicState {
+            line_width: None,
+            viewports: None,
+            scissors: None,
+        }
+    }
+}
+
+impl Default for DynamicState {
+    #[inline]
+    fn default() -> DynamicState {
+        DynamicState::none()
+    }
 }

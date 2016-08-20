@@ -832,11 +832,11 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Calls `vkCmdDrawIndexed`.
     #[inline]
     pub unsafe fn draw_indexed(&mut self, vertex_count: u32, instance_count: u32,
-                               first_vertex: u32, vertex_offset: i32, first_instance: u32)
+                               first_index: u32, vertex_offset: i32, first_instance: u32)
     {
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdDrawIndexed(cmd, vertex_count, instance_count, first_vertex, vertex_offset,
+        vk.CmdDrawIndexed(cmd, vertex_count, instance_count, first_index, vertex_offset,
                           first_instance);
     }
 
@@ -908,8 +908,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Panics if one of the buffers was not created with the same device as this command buffer.
     ///
     #[inline]
-    pub unsafe fn bind_vertex_buffers<'a, I>(&mut self, buffer: &UnsafeBuffer, first_binding: u32,
-                                             buffers: I)
+    pub unsafe fn bind_vertex_buffers<'a, I>(&mut self, first_binding: u32, buffers: I)
         where I: IntoIterator<Item = (&'a UnsafeBuffer, usize)>
     {
         let mut raw_buffers: SmallVec<[_; 8]> = SmallVec::new();
