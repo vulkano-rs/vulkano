@@ -88,7 +88,7 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
           D: Copy + 'static,
 {
     type Pool = L::Pool;
-    type Output = UpdateCommandCb<L, B>;
+    type Output = UpdateCommandCb<L::Output, B>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -202,9 +202,9 @@ unsafe impl<'a, L, B, D: ?Sized> OutsideRenderPass for UpdateCommand<'a, L, B, D
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
-pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: StdCommandsList {
+pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: CommandBuffer {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
     // The buffer to update.
     buffer: B,
     // The state of the buffer to update, or `None` if we don't manage it. Will be used to
@@ -213,12 +213,12 @@ pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: StdCommandsList {
 }
 
 unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
-    where B: TrackedBuffer, L: StdCommandsList
+    where B: TrackedBuffer, L: CommandBuffer
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<<L::Output as CommandBuffer>::SemaphoresWaitIterator,
+    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
                                         OptionIntoIter<(Arc<Semaphore>, PipelineStages)>>;
-    type SemaphoresSignalIterator = Chain<<L::Output as CommandBuffer>::SemaphoresSignalIterator,
+    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
                                           OptionIntoIter<Arc<Semaphore>>>;
 
     #[inline]

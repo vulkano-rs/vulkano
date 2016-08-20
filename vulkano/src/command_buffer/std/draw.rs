@@ -116,7 +116,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type Pool = L::Pool;
-    type Output = DrawCommandCb<L, Pv, Pl, Prp, S>;
+    type Output = DrawCommandCb<L::Output, Pv, Pl, Prp, S>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -264,10 +264,10 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> InsideRenderPass for DrawCommand<'a, L, P
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     // The previous commands.
-    previous: L::Output,
+    previous: L,
     // The barrier. We store it here to keep it alive.
     pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
     // The descriptor sets. Stored here to keep them alive.
@@ -279,13 +279,13 @@ pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
 }
 
 unsafe impl<L, Pv, Pl, Prp, S> CommandBuffer for DrawCommandCb<L, Pv, Pl, Prp, S>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<<L::Output as CommandBuffer>::SemaphoresWaitIterator,
+    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
                                         <S::Finished as TrackedDescriptorSetsCollectionFinished>::
                                             SemaphoresWaitIterator>;
-    type SemaphoresSignalIterator = Chain<<L::Output as CommandBuffer>::SemaphoresSignalIterator,
+    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
                                           <S::Finished as TrackedDescriptorSetsCollectionFinished>::
                                             SemaphoresSignalIterator>;
 
