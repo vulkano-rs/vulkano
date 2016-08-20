@@ -57,6 +57,14 @@ impl Instance {
                       layers: L) -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
+        // TODO: For now there are still buggy drivers that will segfault if you don't pass any
+        //       appinfos. Therefore for now we ensure that it can't be `None`.
+        let def = Default::default();
+        let app_infos = match app_infos {
+            Some(a) => Some(a),
+            None => Some(&def)
+        };
+
         // Building the CStrings from the `str`s within `app_infos`.
         // They need to be created ahead of time, since we pass pointers to them.
         let app_infos_strings = if let Some(app_infos) = app_infos {
@@ -77,7 +85,7 @@ impl Instance {
                 applicationVersion: app_infos.application_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
                 pEngineName: app_infos_strings.as_ref().unwrap().1.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
                 engineVersion: app_infos.engine_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
-                apiVersion: 0,      // TODO:
+                apiVersion: Version { major: 1, minor: 0, patch: 0 }.into_vulkan_version(),      // TODO:
             })
 
         } else {
