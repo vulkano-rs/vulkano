@@ -648,6 +648,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Adds a pipeline barrier to the command buffer.
     ///
     /// This function itself is not unsafe, but creating a pipeline barrier builder is.
+    #[inline]
     pub fn pipeline_barrier(&mut self, barrier: PipelineBarrierBuilder) {
         // If barrier is empty, don't do anything.
         if barrier.src_stage_mask == 0 || barrier.dst_stage_mask == 0 {
@@ -1098,6 +1099,7 @@ pub struct PipelineBarrierBuilder {
 
 impl PipelineBarrierBuilder {
     /// Adds a command that adds a pipeline barrier to a command buffer.
+    #[inline]
     pub fn new() -> PipelineBarrierBuilder {
         PipelineBarrierBuilder {
             src_stage_mask: 0,

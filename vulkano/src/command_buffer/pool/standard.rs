@@ -10,11 +10,13 @@
 use std::cmp;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 use std::iter::Chain;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::vec::IntoIter as VecIntoIter;
+use fnv::FnvHasher;
 
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
@@ -45,7 +47,7 @@ pub struct StandardCommandPool {
     queue_family: u32,
 
     // For each "thread id" (see `THREAD_ID` above), we store thread-specific info.
-    per_thread: Mutex<HashMap<usize, StandardCommandPoolPerThread>>,
+    per_thread: Mutex<HashMap<usize, StandardCommandPoolPerThread, BuildHasherDefault<FnvHasher>>>,
 
     // Dummy marker in order to not implement `Send` and `Sync`.
     //
@@ -72,7 +74,7 @@ impl StandardCommandPool {
         StandardCommandPool {
             device: device.clone(),
             queue_family: queue_family.id(),
-            per_thread: Mutex::new(HashMap::new()),
+            per_thread: Mutex::new(Default::default()),
             dummy_avoid_send_sync: PhantomData,
         }
     }
