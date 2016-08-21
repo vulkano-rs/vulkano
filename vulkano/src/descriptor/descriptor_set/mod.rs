@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::StdCommandsList;
+use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
@@ -57,15 +57,15 @@ pub unsafe trait TrackedDescriptorSet: DescriptorSet {
     type State: TrackedDescriptorSetState<Finished = Self::Finished>;
     type Finished: TrackedDescriptorSetFinished;
 
-    /// Extracts from the commands list the states relevant to the buffers and images contained in
-    /// the descriptor set. Then transitions them to the right state.
-    unsafe fn extract_from_commands_list_and_transition<L>(&self, list: &mut L)
-                                                    -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: StdCommandsList;
+    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
+    /// Then transitions them to the right state.
+    unsafe fn extract_states_and_transition<L>(&self, list: &mut L)
+                                               -> (Self::State, usize, PipelineBarrierBuilder)
+        where L: ResourcesStates;
 }
 
 // TODO: re-read docs
-pub unsafe trait TrackedDescriptorSetState {
+pub unsafe trait TrackedDescriptorSetState: ResourcesStates {
     type Finished: TrackedDescriptorSetFinished;
 
     /// Extracts the state of a buffer of the descriptor set, or `None` if the buffer isn't in
@@ -83,7 +83,7 @@ pub unsafe trait TrackedDescriptorSetState {
 
     /// Returns the state of an image, or `None` if the image isn't in the descriptor set.
     ///
-    /// See the description of `extract_current_buffer_state`.
+    /// See the description of `extract_buffer_state`.
     ///
     /// # Panic
     ///

@@ -18,6 +18,7 @@ use buffer::traits::CommandListState;
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::OutsideRenderPass;
+use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -63,7 +64,7 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
             let stage = PipelineStages { transfer: true, .. PipelineStages::none() };
             let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
 
-            previous.extract_current_buffer_state(&buffer)
+            previous.extract_buffer_state(&buffer)
                     .unwrap_or(buffer.initial_state())
                     .transition(previous.num_commands() + 1, buffer.inner(),
                                 0, buffer.size(), true, stage, access)
@@ -106,33 +107,6 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
     #[inline]
     fn buildable_state(&self) -> bool {
         true
-    }
-
-    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if self.buffer.is_same_buffer(buffer) {
-            let s: &mut Option<Ob::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_current_buffer_state(buffer)
-        }
-    }
-
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if self.buffer.is_same_image(image) {
-            let s: &mut Option<I::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_current_image_state(image)
-        }
     }
 
     #[inline]
@@ -205,6 +179,39 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
             previous: parent,
             buffer: my_buffer,
             buffer_state: finished_state,
+        }
+    }
+}
+
+unsafe impl<'a, L, B, D: ?Sized> ResourcesStates for UpdateCommand<'a, L, B, D>
+    where B: TrackedBuffer,
+          L: StdCommandsList,
+          D: Copy + 'static,
+{
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        if self.buffer.is_same_buffer(buffer) {
+            let s: &mut Option<Ob::CommandListState> = (&mut self.buffer_state as &mut Any)
+                                                                        .downcast_mut().unwrap();
+            Some(s.take().unwrap())
+
+        } else {
+            self.previous.extract_buffer_state(buffer)
+        }
+    }
+
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        if self.buffer.is_same_image(image) {
+            let s: &mut Option<I::CommandListState> = (&mut self.buffer_state as &mut Any)
+                                                                        .downcast_mut().unwrap();
+            Some(s.take().unwrap())
+
+        } else {
+            self.previous.extract_image_state(image)
         }
     }
 }

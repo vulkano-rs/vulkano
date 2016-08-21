@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::StdCommandsList;
+use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
@@ -52,42 +52,18 @@ pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
     /// Finished state of the resources inside the collection.
     type Finished: TrackedDescriptorSetsCollectionFinished;
 
-    /// Extracts from the commands list the states relevant to the buffers and images contained in
-    /// the descriptor sets. Then transitions them to the right state and returns a pipeline
-    /// barrier to insert as part of the transition. The `usize` is the location of the barrier.
-    unsafe fn extract_from_commands_list_and_transition<L>(&self, list: &mut L)
-                                                    -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: StdCommandsList;
+    /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
+    /// Then transitions them to the right state and returns a pipeline barrier to insert as part
+    /// of the transition. The `usize` is the location of the barrier.
+    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
+                                               -> (Self::State, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates;
 }
 
 /// State of the resources inside the collection.
-pub unsafe trait TrackedDescriptorSetsCollectionState {
+pub unsafe trait TrackedDescriptorSetsCollectionState: ResourcesStates {
     /// Finished state of the resources inside the collection.
     type Finished: TrackedDescriptorSetsCollectionFinished;
-
-    /// Extracts the state of a buffer of the collection, or `None` if the buffer isn't in the
-    /// collection.
-    ///
-    /// Whether the buffer passed as parameter is the same as one in the collection must be
-    /// determined with the `is_same` method of `TrackedBuffer` or `TrackedImage`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that buffer has already been previously extracted.
-    ///
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    /// Returns the state of an image, or `None` if the image isn't in the collection.
-    ///
-    /// See the description of `extract_buffer_state`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that image has already been previously extracted.
-    ///
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
 
     /// Turns the object into a `TrackedDescriptorSetsCollectionFinished`. All the buffers and
     /// images whose state hasn't been extracted must be have `finished()` called on them as well.
@@ -134,9 +110,9 @@ unsafe impl TrackedDescriptorSetsCollection for () {
     type Finished = EmptyState;
 
     #[inline]
-    unsafe fn extract_from_commands_list_and_transition<L>(&self, list: &mut L)
+    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
         -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: StdCommandsList
+        where S: ResourcesStates
     {
         (EmptyState, 0, PipelineBarrierBuilder::new())
     }
@@ -149,6 +125,13 @@ unsafe impl TrackedDescriptorSetsCollectionState for EmptyState {
     type Finished = EmptyState;
 
     #[inline]
+    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
+        (EmptyState, PipelineBarrierBuilder::new())
+    }
+}
+
+unsafe impl ResourcesStates for EmptyState {
+    #[inline]
     unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
@@ -160,11 +143,6 @@ unsafe impl TrackedDescriptorSetsCollectionState for EmptyState {
         where I: TrackedImage
     {
         None
-    }
-
-    #[inline]
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
-        (EmptyState, PipelineBarrierBuilder::new())
     }
 }
 

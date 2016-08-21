@@ -14,6 +14,7 @@ use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::OutsideRenderPass;
+use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -62,7 +63,7 @@ impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
                push_constants: &'a Pc) -> DispatchCommand<'a, L, Pl, S, Pc>
     {
         let (sets_state, barrier_loc, barrier) = unsafe {
-            sets.extract_from_commands_list_and_transition(&mut previous)
+            sets.extract_states_and_transition(&mut previous)
         };
 
         DispatchCommand {
@@ -95,27 +96,6 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         }
 
         self.previous.check_queue_validity(queue)
-    }
-
-    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if let Some(s) = self.sets_state.extract_buffer_state(buffer) {
-            return Some(s);
-        }
-
-        self.previous.extract_current_buffer_state(buffer)
-    }
-
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if let Some(s) = self.sets_state.extract_image_state(image) {
-            return Some(s);
-        }
-
-        self.previous.extract_current_image_state(image)
     }
 
     #[inline]
@@ -194,6 +174,31 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
             sets: my_sets,
             sets_state: finished_state,
         }
+    }
+}
+
+unsafe impl<'a, L, Pl, S, Pc> ResourcesStates for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+{
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        if let Some(s) = self.sets_state.extract_buffer_state(buffer) {
+            return Some(s);
+        }
+
+        self.previous.extract_buffer_state(buffer)
+    }
+
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        if let Some(s) = self.sets_state.extract_image_state(image) {
+            return Some(s);
+        }
+
+        self.previous.extract_image_state(image)
     }
 }
 
