@@ -15,6 +15,7 @@ use smallvec::SmallVec;
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::InsideRenderPass;
 use command_buffer::std::OutsideRenderPass;
+use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -97,21 +98,6 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
         false
     }
 
-    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        // FIXME: state of images in the framebuffer
-        self.previous.extract_current_buffer_state(buffer)
-    }
-
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        // FIXME: state of images in the framebuffer
-        self.previous.extract_current_image_state(image)
-    }
-
     #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
@@ -150,6 +136,25 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
             render_pass: my_render_pass,
             framebuffer: my_framebuffer,
         }
+    }
+}
+
+unsafe impl<L, Rp, Rpf> ResourcesStates for BeginRenderPassCommand<L, Rp, Rpf>
+    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+{
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        // FIXME: state of images in the framebuffer
+        self.previous.extract_buffer_state(buffer)
+    }
+
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        // FIXME: state of images in the framebuffer
+        self.previous.extract_image_state(image)
     }
 }
 
@@ -260,21 +265,6 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
     }
 
     #[inline]
-    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        self.previous.extract_current_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        self.previous.extract_current_image_state(image)
-    }
-
-    #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
         self.previous.is_compute_pipeline_bound(pipeline)
@@ -302,6 +292,25 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
         NextSubpassCommandCb {
             previous: parent,
         }
+    }
+}
+
+unsafe impl<L> ResourcesStates for NextSubpassCommand<L>
+    where L: StdCommandsList + InsideRenderPass
+{
+    #[inline]
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        self.previous.extract_buffer_state(buffer)
+    }
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        self.previous.extract_image_state(image)
     }
 }
 
@@ -400,21 +409,6 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
     }
 
     #[inline]
-    unsafe fn extract_current_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        self.previous.extract_current_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        self.previous.extract_current_image_state(image)
-    }
-
-    #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
         self.previous.is_compute_pipeline_bound(pipeline)
@@ -450,6 +444,23 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
         EndRenderPassCommandCb {
             previous: parent,
         }
+    }
+}
+
+unsafe impl<L> ResourcesStates for EndRenderPassCommand<L> where L: StdCommandsList {
+    #[inline]
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        self.previous.extract_buffer_state(buffer)
+    }
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        self.previous.extract_image_state(image)
     }
 }
 

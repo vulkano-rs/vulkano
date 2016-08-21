@@ -37,7 +37,7 @@ pub mod render_pass;
 pub mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
-pub unsafe trait StdCommandsList {
+pub unsafe trait StdCommandsList: ResourcesStates {
     /// The type of the pool that will be used to create the command buffer.
     type Pool: CommandPool;
     /// The type of the command buffer that will be generated.
@@ -142,35 +142,6 @@ pub unsafe trait StdCommandsList {
     // TODO: error type?
     fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()>;
 
-    /// Returns the current status of a buffer, or `None` if the buffer hasn't been used yet.
-    ///
-    /// Whether the buffer passed as parameter is the same as the one in the commands list must be
-    /// determined with the `is_same` method of `TrackedBuffer`.
-    ///
-    /// Calling this function tells the commands list that you are going to manage the
-    /// synchronization that buffer yourself. Hence why the function is unsafe.
-    ///
-    /// This function is not meant to be called, except when writing a wrapper around a
-    /// commands list.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that buffer has already been previously extracted.
-    ///
-    unsafe fn extract_current_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    /// Returns the current status of an image, or `None` if the image hasn't been used yet.
-    ///
-    /// See the description of `extract_current_buffer_state`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that image has already been previously extracted.
-    ///
-    unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
-
     /// Returns true if the given compute pipeline is currently binded in the commands list.
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
 
@@ -219,4 +190,34 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     fn render_pass(&self) -> &Arc<Self::RenderPass>;
 
     fn framebuffer(&self) -> &Self::Framebuffer;
+}
+
+/// Trait for objects that hold states of buffers and images.
+pub unsafe trait ResourcesStates {
+    /// Returns the state of a buffer, or `None` if the buffer hasn't been used yet.
+    ///
+    /// Whether the buffer passed as parameter is the same as the one in the commands list must be
+    /// determined with the `is_same` method of `TrackedBuffer`.
+    ///
+    /// Calling this function extracts the state from the list, meaning that the state will be
+    /// managed by the code that called this function instead of being managed by the object
+    /// itself. Hence why the function is unsafe.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the state of that buffer has already been previously extracted.
+    ///
+    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    /// Returns the state of an image, or `None` if the image hasn't been used yet.
+    ///
+    /// See the description of `extract_buffer_state`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the state of that image has already been previously extracted.
+    ///
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
 }
