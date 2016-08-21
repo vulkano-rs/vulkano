@@ -14,17 +14,27 @@ use std::sync::Mutex;
 use std::sync::Weak;
 
 use command_buffer::Submission;
+use device::Queue;
 use format::Format;
 use image::traits::AccessRange;
+use image::traits::CommandBufferState;
+use image::traits::CommandListState;
 use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::PipelineBarrierRequest;
+use image::traits::PipelineMemoryBarrierRequest;
+use image::traits::SubmitInfos;
+use image::traits::TrackedImage;
 use image::traits::Transition;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
+use sync::AccessFlagBits;
+use sync::Fence;
+use sync::PipelineStages;
 use sync::Semaphore;
 
 use OomError;
@@ -235,5 +245,110 @@ unsafe impl ImageView for SwapchainImage {
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+unsafe impl TrackedImage for SwapchainImage {
+    type CommandListState = SwapchainImageCbState;
+    type FinishedState = SwapchainImageFinishedState;
+
+    fn initial_state(&self) -> SwapchainImageCbState {
+        SwapchainImageCbState {
+            stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
+            access: AccessFlagBits { memory_read: true, .. AccessFlagBits::none() },
+            command_num: 0,
+            layout: Layout::PresentSrc,
+        }
+    }
+}
+
+pub struct SwapchainImageCbState {
+    stages: PipelineStages,
+    access: AccessFlagBits,
+    command_num: usize,
+    layout: Layout,
+}
+
+/// Trait for objects that represent the state of a slice of the image in a list of commands.
+impl CommandListState for SwapchainImageCbState {
+    type FinishedState = SwapchainImageFinishedState;
+
+    fn transition(self, num_command: usize, _: &UnsafeImage, _: u32, _: u32, _: u32, _: u32,
+                  _: bool, layout: Layout, stage: PipelineStages, access: AccessFlagBits)
+                  -> (Self, Option<PipelineBarrierRequest>)
+    {
+        let new_state = SwapchainImageCbState {
+            stages: stage,
+            access: access,
+            command_num: num_command,
+            layout: layout,
+        };
+
+        let transition = PipelineBarrierRequest {
+            after_command_num: self.command_num,
+            source_stage: self.stages,
+            destination_stages: stage,
+            by_region: true,
+            memory_barrier: Some(PipelineMemoryBarrierRequest {
+                first_mipmap: 0,
+                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
+                first_layer: 0,
+                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
+
+                old_layout: self.layout,
+                new_layout: layout,
+
+                source_access: self.access,
+                destination_access: access,
+            })
+        };
+
+        (new_state, Some(transition))
+    }
+
+    fn finish(self) -> (SwapchainImageFinishedState, Option<PipelineBarrierRequest>) {
+        let finished = SwapchainImageFinishedState;
+
+        let transition = PipelineBarrierRequest {
+            after_command_num: self.command_num,
+            source_stage: self.stages,
+            destination_stages: PipelineStages {
+                bottom_of_pipe: true,
+                .. PipelineStages::none()
+            },
+            by_region: true,
+            memory_barrier: Some(PipelineMemoryBarrierRequest {
+                first_mipmap: 0,
+                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
+                first_layer: 0,
+                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
+
+                old_layout: self.layout,
+                new_layout: Layout::PresentSrc,
+
+                source_access: self.access,
+                destination_access: AccessFlagBits {
+                    memory_read: true,
+                    .. AccessFlagBits::none()
+                },
+            })
+        };
+
+        (finished, Some(transition))
+    }
+}
+
+pub struct SwapchainImageFinishedState;
+
+impl CommandBufferState for SwapchainImageFinishedState {
+    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where I: Image, F: FnOnce() -> Arc<Fence>
+    {
+        SubmitInfos {
+            pre_semaphore: None,        // FIXME:
+            post_semaphore: None,       // FIXME:
+            pre_barrier: None,          // FIXME: transition from undefined at first usage
+            post_barrier: None,
+        }
     }
 }
