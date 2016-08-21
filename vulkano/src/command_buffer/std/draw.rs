@@ -30,9 +30,11 @@ use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollectionFinis
 use device::Queue;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
+use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 use sync::Fence;
+use VulkanObject;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
 pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
@@ -154,6 +156,19 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     }
 
     #[inline]
+    fn is_compute_pipeline_bound<OPl>(&self, pipeline: &Arc<ComputePipeline<OPl>>) -> bool {
+
+        self.previous.is_compute_pipeline_bound(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_bound<OPv, OPl, OPrp>(&self, pipeline: &Arc<GraphicsPipeline<OPv, OPl, OPrp>>)
+                                                   -> bool
+    {
+        pipeline.internal_object() == self.pipeline.internal_object()
+    }
+
+    #[inline]
     fn buildable_state(&self) -> bool {
         self.previous.buildable_state()
     }
@@ -189,6 +204,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
         // while it's partially moved out.
         let my_barrier = self.pipeline_barrier;
         let my_pipeline = self.pipeline;
+        let bind_pipeline = !self.previous.is_graphics_pipeline_bound(&my_pipeline);
         let my_sets = self.sets;
         let my_push_constants = self.push_constants;
         let my_vertex_buffers = self.vertex_buffers;
@@ -197,7 +213,10 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
         // Passing to the parent.
         let parent = self.previous.raw_build(|cb| {
             // TODO: is the pipeline layout always the same as in the graphics pipeline? 
-            cb.bind_pipeline_graphics(&my_pipeline);       // TODO: don't bind if not necessary
+            if bind_pipeline {
+                cb.bind_pipeline_graphics(&my_pipeline);
+            }
+
             let sets: SmallVec<[_; 8]> = my_sets.list().collect();      // TODO: ideally shouldn't collect, but there are lifetime problems
             cb.bind_descriptor_sets(true, &**my_pipeline.layout(), 0,
                                     sets.iter().map(|s| s.inner()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary

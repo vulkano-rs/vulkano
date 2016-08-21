@@ -28,6 +28,8 @@ use device::Queue;
 use framebuffer::EmptySinglePassRenderPass;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
+use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -83,6 +85,19 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
         where I: TrackedImage
     {
         None
+    }
+
+    #[inline]
+    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+
+        false
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool
+    {
+        false
     }
 
     #[inline]
