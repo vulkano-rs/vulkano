@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::error;
+use std::hash::BuildHasherDefault;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
 use smallvec::SmallVec;
+use fnv::FnvHasher;
 
 use command_buffer::pool::StandardCommandPool;
 use instance::Features;
@@ -49,7 +51,7 @@ pub struct Device {
     device: vk::Device,
     vk: vk::DevicePointers,
     standard_pool: Mutex<Option<Weak<StdMemoryPool>>>,      // TODO: use Weak::new() instead
-    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>>>,     // TODO: use a better hasher
+    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
 }
@@ -198,7 +200,7 @@ impl Device {
             device: device,
             vk: vk,
             standard_pool: Mutex::new(None),
-            standard_command_pools: Mutex::new(HashMap::new()),
+            standard_command_pools: Mutex::new(Default::default()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
         });

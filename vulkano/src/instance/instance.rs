@@ -57,6 +57,16 @@ impl Instance {
                       layers: L) -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
+        let layers = layers.into_iter().map(|&layer| {
+            CString::new(layer).unwrap()
+        }).collect::<SmallVec<[_; 16]>>();
+
+        Instance::new_inner(app_infos, extensions, layers)
+    }
+
+    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
+                 layers: SmallVec<[CString; 16]>) -> Result<Arc<Instance>, InstanceCreationError>
+    {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
         let def = Default::default();
@@ -92,10 +102,7 @@ impl Instance {
             None
         };
 
-        let layers = layers.into_iter().map(|&layer| {
-            // FIXME: check whether each layer is supported
-            CString::new(layer).unwrap()
-        }).collect::<SmallVec<[_; 16]>>();
+        // FIXME: check whether each layer is supported
         let layers_ptr = layers.iter().map(|layer| {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
