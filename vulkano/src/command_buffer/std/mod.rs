@@ -171,6 +171,13 @@ pub unsafe trait StdCommandsList {
     unsafe fn extract_current_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage;
 
+    /// Returns true if the given compute pipeline is currently binded in the commands list.
+    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
+
+    /// Returns true if the given graphics pipeline is currently binded in the commands list.
+    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool;
+
     /// Turns the commands list into a command buffer.
     ///
     /// This function accepts additional arguments that will customize the output:

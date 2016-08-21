@@ -27,6 +27,8 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
+use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
@@ -131,6 +133,19 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         } else {
             self.previous.extract_current_image_state(image)
         }
+    }
+
+    #[inline]
+    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+
+        self.previous.is_compute_pipeline_binded(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool
+    {
+        self.previous.is_graphics_pipeline_binded(pipeline)
     }
 
     unsafe fn raw_build<I, F>(mut self, additional_elements: F, barriers: I,

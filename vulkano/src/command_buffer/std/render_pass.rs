@@ -28,6 +28,8 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
+use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
 use sync::Fence;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
@@ -108,6 +110,19 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
     {
         // FIXME: state of images in the framebuffer
         self.previous.extract_current_image_state(image)
+    }
+
+    #[inline]
+    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+
+        self.previous.is_compute_pipeline_binded(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool
+    {
+        self.previous.is_graphics_pipeline_binded(pipeline)
     }
 
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
@@ -259,6 +274,19 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
         self.previous.extract_current_image_state(image)
     }
 
+    #[inline]
+    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+
+        self.previous.is_compute_pipeline_binded(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool
+    {
+        self.previous.is_graphics_pipeline_binded(pipeline)
+    }
+
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
@@ -384,6 +412,19 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
         where I: TrackedImage
     {
         self.previous.extract_current_image_state(image)
+    }
+
+    #[inline]
+    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+
+        self.previous.is_compute_pipeline_binded(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+                                                -> bool
+    {
+        self.previous.is_graphics_pipeline_binded(pipeline)
     }
 
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,

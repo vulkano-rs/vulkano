@@ -29,7 +29,9 @@ use device::Queue;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
+use pipeline::GraphicsPipeline;
 use sync::Fence;
+use VulkanObject;
 
 /// Wraps around a commands list and adds a dispatch command at the end of it.
 pub struct DispatchCommand<'a, L, Pl, S, Pc>
@@ -117,6 +119,18 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
     }
 
     #[inline]
+    fn is_compute_pipeline_binded<OPl>(&self, pipeline: &Arc<ComputePipeline<OPl>>) -> bool {
+        pipeline.internal_object() == self.pipeline.internal_object()
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_binded<Pv, OPl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, OPl, Prp>>)
+                                                 -> bool
+    {
+        self.previous.is_graphics_pipeline_binded(pipeline)
+    }
+
+    #[inline]
     fn buildable_state(&self) -> bool {
         true
     }
@@ -155,11 +169,15 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         let my_sets = self.sets;
         let my_push_constants = self.push_constants;
         let my_dimensions = self.dimensions;
+        let bind_pipeline = !self.previous.is_compute_pipeline_binded(&my_pipeline);
 
         // Passing to the parent.
         let parent = self.previous.raw_build(|cb| {
             // TODO: is the pipeline layout always the same as in the compute pipeline? 
-            cb.bind_pipeline_compute(&my_pipeline);       // TODO: don't bind if not necessary
+            if bind_pipeline {
+                cb.bind_pipeline_compute(&my_pipeline);
+            }
+
             let sets: SmallVec<[_; 8]> = my_sets.list().collect();      // TODO: ideally shouldn't collect, but there are lifetime problems
             cb.bind_descriptor_sets(false, &**my_pipeline.layout(), 0,
                                     sets.iter().map(|s| s.inner()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary
