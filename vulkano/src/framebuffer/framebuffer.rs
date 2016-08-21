@@ -9,12 +9,18 @@
 
 use std::error;
 use std::fmt;
+use std::iter;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use buffer::traits::TrackedBuffer;
+use command_buffer::std::ResourcesStates;
+use command_buffer::submit::SubmitInfo;
+use command_buffer::sys::PipelineBarrierBuilder;
 use device::Device;
+use device::Queue;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
@@ -22,6 +28,10 @@ use framebuffer::UnsafeRenderPass;
 use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
+use image::traits::TrackedImage;
+use sync::Fence;
+use sync::PipelineStages;
+use sync::Semaphore;
 
 use Error;
 use OomError;
@@ -173,6 +183,14 @@ impl<L> Framebuffer<L> {
     pub fn attachments(&self) -> &[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)] {
         &self.resources
     }
+
+    pub unsafe fn extract_and_transition<S>(&self, states: &mut S)
+                                    -> (FramebufferAttachmentsState, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates
+    {
+        // FIXME: implement
+        (FramebufferAttachmentsState {}, 0, PipelineBarrierBuilder::new())
+    }
 }
 
 unsafe impl<L> VulkanObject for Framebuffer<L> {
@@ -252,6 +270,51 @@ impl From<Error> for FramebufferCreationError {
     #[inline]
     fn from(err: Error) -> FramebufferCreationError {
         FramebufferCreationError::from(OomError::from(err))
+    }
+}
+
+// FIXME: implement
+pub struct FramebufferAttachmentsState {
+
+}
+
+unsafe impl ResourcesStates for FramebufferAttachmentsState {
+    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
+                                               -> Option<Ob::CommandListState>
+        where Ob: TrackedBuffer
+    {
+        // FIXME: implement
+        None
+    }
+
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        // FIXME: implement
+        None
+    }
+}
+
+impl FramebufferAttachmentsState {
+    pub fn finish(self) -> (FramebufferAttachmentsFinishedState, PipelineBarrierBuilder) {
+        // FIXME: implement
+        (FramebufferAttachmentsFinishedState {}, PipelineBarrierBuilder::new())
+    }
+}
+
+// FIXME: implement
+pub struct FramebufferAttachmentsFinishedState {
+
+}
+
+impl FramebufferAttachmentsFinishedState {
+    // TODO: write docs
+    pub unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+                               -> SubmitInfo<iter::Empty<(Arc<Semaphore>, PipelineStages)>,
+                                             iter::Empty<Arc<Semaphore>>>
+        where F: FnMut() -> Arc<Fence>
+    {
+        unimplemented!()
     }
 }
 
