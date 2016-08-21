@@ -821,12 +821,16 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             }
         };
 
-        let dynamic_states = vk::PipelineDynamicStateCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0,   // reserved
-            dynamicStateCount: dynamic_states.len() as u32,
-            pDynamicStates: dynamic_states.as_ptr(),
+        let dynamic_states = if !dynamic_states.is_empty() {
+            Some(vk::PipelineDynamicStateCreateInfo {
+                sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                dynamicStateCount: dynamic_states.len() as u32,
+                pDynamicStates: dynamic_states.as_ptr(),
+            })
+        } else {
+            None
         };
 
         let pipeline = unsafe {
@@ -845,7 +849,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pMultisampleState: &multisample,
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
-                pDynamicState: &dynamic_states,
+                pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
+                                             .unwrap_or(ptr::null()),
                 layout: PipelineLayout::inner(&**params.layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
