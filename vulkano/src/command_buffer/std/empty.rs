@@ -88,13 +88,13 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     }
 
     #[inline]
-    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
         false
     }
 
     #[inline]
-    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
                                                 -> bool
     {
         false

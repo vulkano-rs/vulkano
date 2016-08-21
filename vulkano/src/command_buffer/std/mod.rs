@@ -172,10 +172,10 @@ pub unsafe trait StdCommandsList {
         where I: TrackedImage;
 
     /// Returns true if the given compute pipeline is currently binded in the commands list.
-    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
+    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
 
     /// Returns true if the given graphics pipeline is currently binded in the commands list.
-    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
                                                 -> bool;
 
     /// Turns the commands list into a command buffer.

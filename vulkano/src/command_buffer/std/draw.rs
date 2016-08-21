@@ -156,13 +156,13 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     }
 
     #[inline]
-    fn is_compute_pipeline_binded<OPl>(&self, pipeline: &Arc<ComputePipeline<OPl>>) -> bool {
+    fn is_compute_pipeline_bound<OPl>(&self, pipeline: &Arc<ComputePipeline<OPl>>) -> bool {
 
-        self.previous.is_compute_pipeline_binded(pipeline)
+        self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_binded<OPv, OPl, OPrp>(&self, pipeline: &Arc<GraphicsPipeline<OPv, OPl, OPrp>>)
+    fn is_graphics_pipeline_bound<OPv, OPl, OPrp>(&self, pipeline: &Arc<GraphicsPipeline<OPv, OPl, OPrp>>)
                                                    -> bool
     {
         pipeline.internal_object() == self.pipeline.internal_object()
@@ -204,7 +204,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
         // while it's partially moved out.
         let my_barrier = self.pipeline_barrier;
         let my_pipeline = self.pipeline;
-        let bind_pipeline = !self.previous.is_graphics_pipeline_binded(&my_pipeline);
+        let bind_pipeline = !self.previous.is_graphics_pipeline_bound(&my_pipeline);
         let my_sets = self.sets;
         let my_push_constants = self.push_constants;
         let my_vertex_buffers = self.vertex_buffers;

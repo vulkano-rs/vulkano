@@ -136,16 +136,16 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
     }
 
     #[inline]
-    fn is_compute_pipeline_binded<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
-        self.previous.is_compute_pipeline_binded(pipeline)
+        self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_binded<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
+    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
                                                 -> bool
     {
-        self.previous.is_graphics_pipeline_binded(pipeline)
+        self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
     unsafe fn raw_build<I, F>(mut self, additional_elements: F, barriers: I,
