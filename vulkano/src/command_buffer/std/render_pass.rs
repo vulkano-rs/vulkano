@@ -25,6 +25,8 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use format::ClearValue;
 use framebuffer::Framebuffer;
+use framebuffer::FramebufferAttachmentsState;
+use framebuffer::FramebufferAttachmentsFinishedState;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
@@ -45,6 +47,9 @@ pub struct BeginRenderPassCommand<L, Rp, Rpf>
     clear_values: SmallVec<[ClearValue; 6]>,
     render_pass: Arc<Rp>,
     framebuffer: Arc<Framebuffer<Rpf>>,
+    framebuffer_state: FramebufferAttachmentsState,
+    barrier_position: usize,
+    barrier: PipelineBarrierBuilder,
 }
 
 impl<L, Rp> BeginRenderPassCommand<L, Rp, Rp>
@@ -52,11 +57,13 @@ impl<L, Rp> BeginRenderPassCommand<L, Rp, Rp>
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
-    pub fn new<C>(previous: L, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool, clear_values: C)
-                  -> BeginRenderPassCommand<L, Rp, Rp>
+    pub fn new<C>(mut previous: L, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool,
+                  clear_values: C) -> BeginRenderPassCommand<L, Rp, Rp>
         where Rp: RenderPassClearValues<C>
     {
-        // FIXME: transition states of the images in the framebuffer
+        let (state, barrier_pos, barrier) = unsafe {
+            framebuffer.extract_and_transition(&mut previous)
+        };
 
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
                                       .collect();
@@ -68,6 +75,9 @@ impl<L, Rp> BeginRenderPassCommand<L, Rp, Rp>
             clear_values: clear_values,
             render_pass: framebuffer.render_pass().clone(),
             framebuffer: framebuffer.clone(),
+            framebuffer_state: state,
+            barrier_position: barrier_pos,
+            barrier: barrier,
         }
     }
 }
@@ -100,7 +110,6 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
 
     #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
-
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
@@ -112,12 +121,15 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
     }
 
     unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
-                              final_barrier: PipelineBarrierBuilder) -> Self::Output
+                              mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
         let my_command_num = self.num_commands();
         let barriers = barriers.map(move |(n, b)| { assert!(n < my_command_num); (n, b) });
+
+        let (finished_fb_state, local_final_barrier) = self.framebuffer_state.finish();
+        final_barrier.merge(local_final_barrier);
 
         let my_render_pass = self.render_pass;
         let my_framebuffer = self.framebuffer;
@@ -125,16 +137,20 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
         let my_rect = self.rect;
         let my_secondary = self.secondary;
 
+        let barriers_for_parent = Some((self.barrier_position, self.barrier)).into_iter()
+                                                                             .chain(barriers);
+
         let parent = self.previous.raw_build(|cb| {
             cb.begin_render_pass(my_render_pass.inner(), &my_framebuffer,
                                  my_clear_values.into_iter(), my_rect, my_secondary);
             additional_elements(cb);
-        }, barriers, final_barrier);
+        }, barriers_for_parent, final_barrier);
 
         BeginRenderPassCommandCb {
             previous: parent,
             render_pass: my_render_pass,
             framebuffer: my_framebuffer,
+            state: finished_fb_state,
         }
     }
 }
@@ -142,18 +158,26 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
 unsafe impl<L, Rp, Rpf> ResourcesStates for BeginRenderPassCommand<L, Rp, Rpf>
     where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
 {
+    #[inline]
     unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
                                                -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
     {
-        // FIXME: state of images in the framebuffer
+        if let Some(buf) = self.framebuffer_state.extract_buffer_state(buffer) {
+            return Some(buf);
+        }
+
         self.previous.extract_buffer_state(buffer)
     }
 
+    #[inline]
     unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
-        // FIXME: state of images in the framebuffer
+        if let Some(img) = self.framebuffer_state.extract_image_state(image) {
+            return Some(img);
+        }
+
         self.previous.extract_image_state(image)
     }
 }
@@ -193,6 +217,7 @@ pub struct BeginRenderPassCommandCb<L, Rp, Rpf>
     previous: L,
     render_pass: Arc<Rp>,
     framebuffer: Arc<Framebuffer<Rpf>>,
+    state: FramebufferAttachmentsFinishedState,
 }
 
 unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
@@ -213,7 +238,28 @@ unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
     {
-        self.previous.on_submit(queue, &mut fence)
+        // FIXME: merge semaphore iterators
+
+        let framebuffer_submit_reqs = self.state.on_submit(queue, &mut fence);
+        let parent_reqs = self.previous.on_submit(queue, &mut fence);
+
+        assert!(framebuffer_submit_reqs.semaphores_wait.len() == 0);        // not implemented
+        assert!(framebuffer_submit_reqs.semaphores_signal.len() == 0);      // not implemented
+
+        SubmitInfo {
+            semaphores_wait: parent_reqs.semaphores_wait,
+            semaphores_signal: parent_reqs.semaphores_signal,
+            pre_pipeline_barrier: {
+                let mut b = parent_reqs.pre_pipeline_barrier;
+                b.merge(framebuffer_submit_reqs.pre_pipeline_barrier);
+                b
+            },
+            post_pipeline_barrier: {
+                let mut b = parent_reqs.post_pipeline_barrier;
+                b.merge(framebuffer_submit_reqs.post_pipeline_barrier);
+                b
+            },
+        }
     }
 }
 
