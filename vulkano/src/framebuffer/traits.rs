@@ -23,6 +23,17 @@ use sync::PipelineStages;
 
 use vk;
 
+use VulkanObject;
+
+pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
+    type RenderPass: RenderPass;
+
+    // TODO: don't return an Arc
+    fn render_pass(&self) -> &Arc<Self::RenderPass>;
+
+    fn dimensions(&self) -> [u32; 2];
+}
+
 /// Trait for objects that describe a render pass.
 ///
 /// # Safety

@@ -50,9 +50,9 @@ use device::Device;
 use format::ClearValue;
 use format::FormatTy;
 use framebuffer::RenderPass;
-use framebuffer::Framebuffer;
 use framebuffer::Subpass;
 use framebuffer::UnsafeRenderPass;
+use framebuffer::traits::Framebuffer;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -86,10 +86,9 @@ pub struct UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
 impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Creates a new builder.
-    pub fn new<R, Rf>(pool: P, kind: Kind<R, Rf>, flags: Flags)
-                      -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass + 'static + Send + Sync,
-              Rf: RenderPass + 'static + Send + Sync
+    pub fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
+                     -> Result<UnsafeCommandBufferBuilder<P>, OomError>
+        where R: RenderPass, F: Framebuffer
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -115,11 +114,10 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The allocated command buffer must belong to the pool and must not be used anywhere else
     ///   in the code for the duration of this command buffer.
     ///
-    pub unsafe fn already_allocated<R, Rf>(pool: P, cmd: AllocatedCommandBuffer,
-                                           kind: Kind<R, Rf>, flags: Flags)
-                                           -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass + 'static + Send + Sync,
-              Rf: RenderPass + 'static + Send + Sync
+    pub unsafe fn already_allocated<R, F>(pool: P, cmd: AllocatedCommandBuffer,
+                                          kind: Kind<R, F>, flags: Flags)
+                                          -> Result<UnsafeCommandBufferBuilder<P>, OomError>
+        where R: RenderPass, F: Framebuffer
     {
         let device = pool.device().clone();
         let vk = device.pointers();
@@ -149,7 +147,8 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let framebuffer = if let Kind::SecondaryRenderPass { subpass, framebuffer: Some(ref framebuffer) } = kind {
-            assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
+            // TODO: restore check
+            //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
             framebuffer.internal_object()
         } else {
             0
@@ -692,13 +691,15 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The render pass and the framebuffer must be compatible.
     /// - The clear values must be valid for the attachments.
     ///
-    pub unsafe fn begin_render_pass<L, I>(&mut self, render_pass: &UnsafeRenderPass,
-                                          framebuffer: &Framebuffer<L>, clear_values: I,
+    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: &UnsafeRenderPass,
+                                          framebuffer: &F, clear_values: I,
                                           rect: [Range<u32>; 2], secondary: bool)
-        where I: Iterator<Item = ClearValue>
+        where I: Iterator<Item = ClearValue>,
+              F: Framebuffer
     {
-        assert_eq!(render_pass.device().internal_object(), framebuffer.device().internal_object());
-        assert_eq!(self.device.internal_object(), framebuffer.device().internal_object());
+        // TODO: restore these checks
+        //assert_eq!(render_pass.device().internal_object(), framebuffer.device().internal_object());
+        //assert_eq!(self.device.internal_object(), framebuffer.device().internal_object());
 
         let clear_values: SmallVec<[_; 12]> = clear_values.map(|clear_value| {
             match clear_value {
@@ -1029,7 +1030,7 @@ impl<P> Drop for UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Clone)]        // TODO: Debug
-pub enum Kind<'a, R: 'a, Rf> {
+pub enum Kind<'a, R: 'a, F: 'a> {
     /// A primary command buffer can execute all commands and can call secondary command buffers.
     Primary,
 
@@ -1044,7 +1045,7 @@ pub enum Kind<'a, R: 'a, Rf> {
         subpass: Subpass<'a, R>,
         /// The framebuffer object that will be used when calling the command buffer.
         /// This parameter is optional and is an optimization hint for the implementation.
-        framebuffer: Option<Arc<Framebuffer<Rf>>>,
+        framebuffer: Option<&'a F>,
     },
 }
 

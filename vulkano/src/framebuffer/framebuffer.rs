@@ -19,6 +19,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
 use framebuffer::UnsafeRenderPass;
+use framebuffer::traits::Framebuffer as FramebufferTrait;
 use image::Layout as ImageLayout;
 use image::traits::Image;
 use image::traits::ImageView;
@@ -172,6 +173,20 @@ impl<L> Framebuffer<L> {
     #[inline]
     pub fn attachments(&self) -> &[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)] {
         &self.resources
+    }
+}
+
+unsafe impl<L> FramebufferTrait for Framebuffer<L> where L: RenderPass {
+    type RenderPass = L;
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+        &self.render_pass
+    }
+
+    #[inline]
+    fn dimensions(&self) -> [u32; 2] {
+        [self.dimensions[0], self.dimensions[1]]
     }
 }
 

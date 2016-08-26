@@ -24,7 +24,7 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use format::ClearValue;
-use framebuffer::Framebuffer;
+use framebuffer::traits::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
@@ -34,8 +34,8 @@ use pipeline::GraphicsPipeline;
 use sync::Fence;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
-pub struct BeginRenderPassCommand<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+pub struct BeginRenderPassCommand<L, Rp, F>
+    where L: StdCommandsList, Rp: RenderPass, F: Framebuffer
 {
     // Parent commands list.
     previous: L,
@@ -44,39 +44,42 @@ pub struct BeginRenderPassCommand<L, Rp, Rpf>
     rect: [Range<u32>; 2],
     clear_values: SmallVec<[ClearValue; 6]>,
     render_pass: Arc<Rp>,
-    framebuffer: Arc<Framebuffer<Rpf>>,
+    framebuffer: F,
 }
 
-impl<L, Rp> BeginRenderPassCommand<L, Rp, Rp>
-    where L: StdCommandsList + OutsideRenderPass, Rp: RenderPass
+impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
+    where L: StdCommandsList + OutsideRenderPass, F: Framebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
-    pub fn new<C>(previous: L, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool, clear_values: C)
-                  -> BeginRenderPassCommand<L, Rp, Rp>
-        where Rp: RenderPassClearValues<C>
+    pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
+                  -> BeginRenderPassCommand<L, F::RenderPass, F>
+        where F::RenderPass: RenderPassClearValues<C>
     {
         // FIXME: transition states of the images in the framebuffer
 
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
                                       .collect();
 
+        let rect = [0 .. framebuffer.dimensions()[0], 0 .. framebuffer.dimensions()[1]];
+        let render_pass = framebuffer.render_pass().clone();
+
         BeginRenderPassCommand {
             previous: previous,
             secondary: secondary,
-            rect: [0 .. framebuffer.width(), 0 .. framebuffer.height()],
+            rect: rect,
             clear_values: clear_values,
-            render_pass: framebuffer.render_pass().clone(),
-            framebuffer: framebuffer.clone(),
+            render_pass: render_pass,
+            framebuffer: framebuffer,
         }
     }
 }
 
-unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
+    where L: StdCommandsList, Rp: RenderPass, Fb: Framebuffer
 {
     type Pool = L::Pool;
-    type Output = BeginRenderPassCommandCb<L::Output, Rp, Rpf>;
+    type Output = BeginRenderPassCommandCb<L::Output, Rp, Fb>;
 
     #[inline]
     fn num_commands(&self) -> usize {
@@ -139,8 +142,8 @@ unsafe impl<L, Rp, Rpf> StdCommandsList for BeginRenderPassCommand<L, Rp, Rpf>
     }
 }
 
-unsafe impl<L, Rp, Rpf> ResourcesStates for BeginRenderPassCommand<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+unsafe impl<L, Rp, F> ResourcesStates for BeginRenderPassCommand<L, Rp, F>
+    where L: StdCommandsList, Rp: RenderPass, F: Framebuffer
 {
     unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
                                                -> Option<Ob::CommandListState>
@@ -158,11 +161,11 @@ unsafe impl<L, Rp, Rpf> ResourcesStates for BeginRenderPassCommand<L, Rp, Rpf>
     }
 }
 
-unsafe impl<L, Rp, Rpf> InsideRenderPass for BeginRenderPassCommand<L, Rp, Rpf>
-    where L: StdCommandsList, Rp: RenderPass, Rpf: RenderPass
+unsafe impl<L, Rp, F> InsideRenderPass for BeginRenderPassCommand<L, Rp, F>
+    where L: StdCommandsList, Rp: RenderPass, F: Framebuffer
 {
     type RenderPass = Rp;
-    type Framebuffer = Arc<Framebuffer<Rpf>>;
+    type Framebuffer = F;
 
     #[inline]
     fn current_subpass(&self) -> u32 {
@@ -186,17 +189,17 @@ unsafe impl<L, Rp, Rpf> InsideRenderPass for BeginRenderPassCommand<L, Rp, Rpf>
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
-pub struct BeginRenderPassCommandCb<L, Rp, Rpf>
-    where L: CommandBuffer, Rp: RenderPass, Rpf: RenderPass
+pub struct BeginRenderPassCommandCb<L, Rp, F>
+    where L: CommandBuffer, Rp: RenderPass, F: Framebuffer
 {
     // The previous commands.
     previous: L,
     render_pass: Arc<Rp>,
-    framebuffer: Arc<Framebuffer<Rpf>>,
+    framebuffer: F,
 }
 
-unsafe impl<L, Rp, Rpf> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Rpf>
-    where L: CommandBuffer, Rp: RenderPass, Rpf: RenderPass
+unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
+    where L: CommandBuffer, Rp: RenderPass, Fb: Framebuffer
 {
     type Pool = L::Pool;
     type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
