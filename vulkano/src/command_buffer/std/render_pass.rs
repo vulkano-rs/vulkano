@@ -47,8 +47,8 @@ pub struct BeginRenderPassCommand<L, Rp, F>
     framebuffer: F,
 }
 
-impl<L, Rp, F> BeginRenderPassCommand<L, Rp, F>
-    where L: StdCommandsList + OutsideRenderPass, Rp: RenderPass, F: Framebuffer
+impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
+    where L: StdCommandsList + OutsideRenderPass, F: Framebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters

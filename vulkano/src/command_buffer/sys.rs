@@ -691,9 +691,9 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The render pass and the framebuffer must be compatible.
     /// - The clear values must be valid for the attachments.
     ///
-    pub unsafe fn begin_render_pass<L, I, F>(&mut self, render_pass: &UnsafeRenderPass,
-                                             framebuffer: &F, clear_values: I,
-                                             rect: [Range<u32>; 2], secondary: bool)
+    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: &UnsafeRenderPass,
+                                          framebuffer: &F, clear_values: I,
+                                          rect: [Range<u32>; 2], secondary: bool)
         where I: Iterator<Item = ClearValue>,
               F: Framebuffer
     {

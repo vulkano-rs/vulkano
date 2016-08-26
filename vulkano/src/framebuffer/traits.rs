@@ -26,7 +26,7 @@ use vk;
 use VulkanObject;
 
 pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
-    type RenderPass;
+    type RenderPass: RenderPass;
 
     // TODO: don't return an Arc
     fn render_pass(&self) -> &Arc<Self::RenderPass>;

@@ -176,7 +176,7 @@ impl<L> Framebuffer<L> {
     }
 }
 
-unsafe impl<L> FramebufferTrait for Framebuffer<L> {
+unsafe impl<L> FramebufferTrait for Framebuffer<L> where L: RenderPass {
     type RenderPass = L;
 
     #[inline]
