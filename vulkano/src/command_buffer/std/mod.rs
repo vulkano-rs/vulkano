@@ -18,7 +18,7 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
-use framebuffer::Framebuffer;
+use framebuffer::traits::Framebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
@@ -79,11 +79,10 @@ pub unsafe trait StdCommandsList: ResourcesStates {
     ///
     /// You must call this before you can add draw commands.
     #[inline]
-    fn begin_render_pass<Rp, C>(self, framebuffer: Arc<Framebuffer<Rp>>, secondary: bool,
-                                clear_values: C)
-                                -> render_pass::BeginRenderPassCommand<Self, Rp, Rp>
+    fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
+                               -> render_pass::BeginRenderPassCommand<Self, F::RenderPass, F>
         where Self: Sized + OutsideRenderPass,
-              Rp: RenderPass + RenderPassClearValues<C>
+              F: Framebuffer, F::RenderPass: RenderPass + RenderPassClearValues<C>
     {
         render_pass::BeginRenderPassCommand::new(self, framebuffer, secondary, clear_values)
     }
@@ -174,7 +173,7 @@ pub unsafe trait OutsideRenderPass: StdCommandsList {}
 /// Extension trait for `StdCommandsList` that indicates that we're inside a render pass.
 pub unsafe trait InsideRenderPass: StdCommandsList {
     type RenderPass: RenderPass;
-    type Framebuffer;
+    type Framebuffer: Framebuffer;
 
     /// Returns the number of the subpass we're in. The value is 0-indexed, so immediately after
     /// calling `begin_render_pass` the value will be `0`.
