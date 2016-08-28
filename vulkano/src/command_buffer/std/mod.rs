@@ -33,6 +33,7 @@ pub use self::empty::PrimaryCbBuilder;
 pub mod dispatch;
 pub mod draw;
 pub mod empty;
+pub mod fill_buffer;
 pub mod render_pass;
 pub mod update_buffer;
 
@@ -52,6 +53,14 @@ pub unsafe trait StdCommandsList: ResourcesStates {
         where Self: Sized + OutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
         update_buffer::UpdateCommand::new(self, buffer, data)
+    }
+
+    /// Adds a command that writes the content of a buffer.
+    #[inline]
+    fn fill_buffer<B>(self, buffer: B, data: u32) -> fill_buffer::FillCommand<Self, B>
+        where Self: Sized + OutsideRenderPass, B: TrackedBuffer
+    {
+        fill_buffer::FillCommand::new(self, buffer, data)
     }
 
     /// Adds a command that executes a compute shader.
