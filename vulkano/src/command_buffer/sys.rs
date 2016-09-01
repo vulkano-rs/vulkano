@@ -644,6 +644,23 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                          regions.as_ptr());
     }
 
+    /// Executes secondary command buffers..
+    // TODO: check for same device
+    // TODO: allow multiple command buffers from different pools
+    pub unsafe fn execute_commands<'sec, I, SecP: 'sec>(&mut self, command_buffers: I)
+        where I: IntoIterator<Item = &'sec UnsafeCommandBuffer<SecP>>,
+              SecP: CommandPool
+    {
+        let raw_cbs: SmallVec<[_; 16]> = command_buffers.into_iter().map(|cb| {
+            debug_assert!(cb.secondary_cb);
+            cb.cmd
+        }).collect();
+
+        let vk = self.device.pointers();
+        let cmd = self.cmd.clone().take().unwrap();
+        vk.CmdExecuteCommands(cmd, raw_cbs.len() as u32, raw_cbs.as_ptr());
+    }
+
     /// Adds a pipeline barrier to the command buffer.
     ///
     /// This function itself is not unsafe, but creating a pipeline barrier builder is.
