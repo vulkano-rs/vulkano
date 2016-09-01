@@ -27,15 +27,7 @@ script:
     - cargo test --no-run -j 1 -v --manifest-path vulkano/Cargo.toml
     - cargo build -j 1 --manifest-path examples/Cargo.toml
 
-after_success: 
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo install ghp &&
-        export PATH=/home/travis/.cargo/bin:$PATH &&
-        cargo doc --manifest-path vulkano/Cargo.toml &&
-        ghp vulkano/target/doc &&
-        git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
+after_success:
     - |
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&

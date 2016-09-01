@@ -26,7 +26,9 @@ What does vulkano do?
 
 **Warning: this library breaks every five minutes for the moment.**
 
-## [Documentation](http://tomaka.github.io/vulkano/vulkano/index.html)
+## [Documentation](https://docs.rs/vulkano)
+
+[![](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 
 To get started you are encouraged to read the examples in `examples/src/bin`, starting with
 the `triangle` example.
