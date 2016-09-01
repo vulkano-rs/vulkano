@@ -133,11 +133,11 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
             if instance.loaded_extensions().khr_xlib_surface {
                 Surface::from_xlib(instance,
                                    win.get_xlib_display().unwrap(),
-                                   win.get_xlib_window().unwrap())
+                                   win.get_xlib_window().unwrap() as _)
             } else {
                 Surface::from_xcb(instance,
                                    win.get_xcb_connection().unwrap(),
-                                   win.get_xlib_window().unwrap())
+                                   win.get_xlib_window().unwrap() as _)
             }
         }
     }

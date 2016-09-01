@@ -10,6 +10,7 @@
 use std::error;
 use std::fmt;
 use std::mem;
+use std::os::raw::c_ulong;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -142,7 +143,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xcb<C, W>(instance: &Arc<Instance>, connection: *const C, window: *const W)
+    pub unsafe fn from_xcb<C>(instance: &Arc<Instance>, connection: *const C, window: u32)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -157,7 +158,7 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 connection: connection as *mut _,
-                window: window as *mut _,
+                window: window,
             };
 
             let mut output = mem::uninitialized();
@@ -181,7 +182,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xlib<D, W>(instance: &Arc<Instance>, display: *const D, window: *const W)
+    pub unsafe fn from_xlib<D>(instance: &Arc<Instance>, display: *const D, window: c_ulong)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -196,7 +197,7 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 dpy: display as *mut _,
-                window: window as *mut _,
+                window: window,
             };
 
             let mut output = mem::uninitialized();
@@ -913,7 +914,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -922,7 +923,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }

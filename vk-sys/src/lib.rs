@@ -17,6 +17,7 @@ use std::ffi::CString;
 use std::fmt;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
+use std::os::raw::c_ulong;
 
 pub type Flags = u32;
 pub type Bool32 = u32;
@@ -2297,7 +2298,7 @@ pub struct XlibSurfaceCreateInfoKHR {
     pub pNext: *const c_void,
     pub flags: XlibSurfaceCreateFlagsKHR,
     pub dpy: *mut c_void,
-    pub window: *const c_void,
+    pub window: c_ulong,
 }
 
 pub type XcbSurfaceCreateFlagsKHR = Flags;
@@ -2308,7 +2309,7 @@ pub struct XcbSurfaceCreateInfoKHR {
     pub pNext: *const c_void,
     pub flags: XcbSurfaceCreateFlagsKHR,
     pub connection: *const c_void,
-    pub window: *const c_void,
+    pub window: u32,
 }
 
 
