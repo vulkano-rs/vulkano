@@ -912,7 +912,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                 self.current_compute_pipeline = Some(pipeline);
             }
 
-            let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
+            let descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
 
             for set in descriptor_sets.iter() {
                 for &(ref img, block, layout) in set.inner().images_list().iter() {
@@ -1014,7 +1014,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                 assert!(!pipeline.has_dynamic_scissors());
             }
 
-            let mut descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
+            let descriptor_sets = DescriptorSetsCollection::list(&sets).collect::<SmallVec<[_; 32]>>();
             for set in descriptor_sets.iter() {
                 for &(ref img, block, layout) in set.inner().images_list().iter() {
                     self.add_image_resource_inside(img.clone(), 0 .. 1 /* FIXME */, 0 .. 1 /* FIXME */,

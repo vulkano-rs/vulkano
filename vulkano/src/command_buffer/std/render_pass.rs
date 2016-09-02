@@ -124,7 +124,7 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
 
         let my_render_pass = self.render_pass;
         let my_framebuffer = self.framebuffer;
-        let mut my_clear_values = self.clear_values;
+        let my_clear_values = self.clear_values;
         let my_rect = self.rect;
         let my_secondary = self.secondary;
 

@@ -213,8 +213,8 @@ unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A
             let write_dep = mem::replace(&mut guarded.write_submission,
                                          Some(Arc::downgrade(submission)));
 
-            let mut read_submissions = mem::replace(&mut guarded.read_submissions,
-                                                    SmallVec::new());
+            let read_submissions = mem::replace(&mut guarded.read_submissions,
+                                                SmallVec::new());
 
             // We use a temporary variable to bypass a lifetime error in rustc.
             let list = read_submissions.into_iter()
