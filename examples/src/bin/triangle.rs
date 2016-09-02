@@ -33,10 +33,11 @@ use vulkano_win::VkSurfaceBuild;
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer;
 use vulkano::command_buffer::DynamicState;
-use vulkano::command_buffer::PrimaryCommandBufferBuilder;
-use vulkano::command_buffer::Submission;
+use vulkano::command_buffer::std::PrimaryCbBuilder;
+use vulkano::command_buffer::std::StdCommandsList;
+use vulkano::command_buffer::submit::CommandBuffer;
+use vulkano::command_buffer::submit::Submission;
 use vulkano::descriptor::pipeline_layout::EmptyPipeline;
 use vulkano::device::Device;
 use vulkano::framebuffer::Framebuffer;
@@ -55,7 +56,6 @@ use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 
-use std::sync::Arc;
 use std::time::Duration;
 
 fn main() {
@@ -359,7 +359,7 @@ fn main() {
     //
     // Destroying a `Submission` blocks until the GPU is finished executing it. In order to avoid
     // that, we store them in a `Vec` and clean them from time to time.
-    let mut submissions: Vec<Arc<Submission>> = Vec::new();
+    let mut submissions: Vec<Submission> = Vec::new();
 
     loop {
         // Clearing the old submissions by keeping alive only the ones whose destructor would block.
@@ -383,14 +383,14 @@ fn main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer = PrimaryCommandBufferBuilder::new(&device, queue.family())
+        let command_buffer = PrimaryCbBuilder::new(&device, queue.family())
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
             //
             // The third parameter contains the list of values to clear the attachments with. Only
             // the attachments that use `load: Clear` appear in this struct.
-            .draw_inline(&render_pass, &framebuffers[image_num], render_pass::ClearValues {
+            .begin_render_pass(framebuffers[image_num].clone(), false, render_pass::ClearValues {
                 color: [0.0, 0.0, 1.0, 1.0]
             })
 
@@ -398,18 +398,18 @@ fn main() {
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-            .draw(&pipeline, &vertex_buffer, &DynamicState::none(), (), &())
+            .draw(pipeline.clone(), &DynamicState::none(), &vertex_buffer, (), &())
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
             // next subpass.
-            .draw_end()
+            .end_render_pass()
 
             // Finish building the command buffer by calling `build`.
             .build();
 
         // Now all we need to do is submit the command buffer to the queue.
-        submissions.push(command_buffer::submit(&command_buffer, &queue).unwrap());
+        submissions.push(command_buffer.submit(&queue));
 
         // The color output is now expected to contain our triangle. But in order to show it on
         // the screen, we have to *present* the image by calling `present`.
