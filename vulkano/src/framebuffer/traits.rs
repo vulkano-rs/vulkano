@@ -34,6 +34,34 @@ pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
     fn dimensions(&self) -> [u32; 2];
 }
 
+unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
+    type RenderPass = F::RenderPass;
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+        (**self).render_pass()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> [u32; 2] {
+        (**self).dimensions()
+    }
+}
+
+unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
+    type RenderPass = F::RenderPass;
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+        (**self).render_pass()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> [u32; 2] {
+        (**self).dimensions()
+    }
+}
+
 /// Trait for objects that describe a render pass.
 ///
 /// # Safety
