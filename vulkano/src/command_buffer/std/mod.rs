@@ -33,6 +33,7 @@ pub use self::empty::PrimaryCbBuilder;
 pub mod dispatch;
 pub mod draw;
 pub mod empty;
+pub mod execute;
 pub mod fill_buffer;
 pub mod render_pass;
 pub mod update_buffer;
@@ -61,6 +62,21 @@ pub unsafe trait StdCommandsList: ResourcesStates {
         where Self: Sized + OutsideRenderPass, B: TrackedBuffer
     {
         fill_buffer::FillCommand::new(self, buffer, data)
+    }
+
+    /// Adds a command that executes a secondary command buffer.
+    ///
+    /// When you create a command buffer, you have the possibility to create either a primary
+    /// command buffer or a secondary command buffer. Secondary command buffers can't be executed
+    /// directly, but can be executed from a primary command buffer.
+    ///
+    /// A secondary command buffer can't execute another secondary command buffer. The only way
+    /// you can use `execute` is to make a primary command buffer call a secondary command buffer.
+    #[inline]
+    fn execute<Cb>(self, command_buffer: Cb) -> execute::ExecuteCommand<Cb, Self>
+        where Self: Sized, Cb: CommandBuffer
+    {
+        execute::ExecuteCommand::new(self, command_buffer)
     }
 
     /// Adds a command that executes a compute shader.
