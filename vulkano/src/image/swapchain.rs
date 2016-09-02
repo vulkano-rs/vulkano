@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -20,10 +18,8 @@ use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ViewType;
-use image::traits::AccessRange;
 use image::traits::CommandBufferState;
 use image::traits::CommandListState;
-use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
@@ -32,7 +28,6 @@ use image::traits::PipelineBarrierRequest;
 use image::traits::PipelineMemoryBarrierRequest;
 use image::traits::SubmitInfos;
 use image::traits::TrackedImage;
-use image::traits::Transition;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -40,7 +35,6 @@ use swapchain::Swapchain;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 use OomError;
 
@@ -122,80 +116,6 @@ unsafe impl Image for SwapchainImage {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
-    }
-
-    #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
-    }
-
-    #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::PresentSrc, false, true)
-    }
-
-    #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::PresentSrc, false, true)
-    }
-
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let mut guarded = self.guarded.lock().unwrap();
-
-        let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
-        let dependency = dependency.and_then(|d| d.upgrade());
-
-        // TODO: use try!()? - Mixthos
-        let signal = Semaphore::new(submission.queue().device().clone());
-        let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
-
-        if guarded.present_layout {
-            return GpuAccessResult {
-                dependencies: if let Some(dependency) = dependency {
-                    vec![dependency]
-                } else {
-                    vec![]
-                },
-                additional_wait_semaphore: Some(wait),
-                additional_signal_semaphore: Some(signal),
-                before_transitions: vec![],
-                after_transitions: vec![],
-            };
-        }
-
-        guarded.present_layout = true;
-
-        GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
-            additional_wait_semaphore: Some(wait),
-            additional_signal_semaphore: Some(signal),
-            before_transitions: vec![Transition {
-                block: (0, 0),
-                from: Layout::Undefined,
-                to: Layout::PresentSrc,
-            }],
-            after_transitions: vec![],
-        }
     }
 }
 

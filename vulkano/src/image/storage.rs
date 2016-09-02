@@ -7,9 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
 use std::iter::Empty;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -26,13 +24,10 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::AccessRange;
-use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::Transition;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -165,92 +160,6 @@ unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
-    }
-
-    #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
-    }
-
-    #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::General, false, false)
-    }
-
-    #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::General, false, false)
-    }
-
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
-                   queue_id, self.queue_families);
-        }
-
-        let mut guarded = self.guarded.lock().unwrap();
-
-        let is_written = {
-            let mut written = false;
-            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
-            written
-        };
-
-        let dependencies = if is_written {
-            let write_dep = mem::replace(&mut guarded.write_submission,
-                                         Some(Arc::downgrade(submission)));
-
-            let read_submissions = mem::replace(&mut guarded.read_submissions,
-                                                SmallVec::new());
-
-            // We use a temporary variable to bypass a lifetime error in rustc.
-            let list = read_submissions.into_iter()
-                                       .chain(write_dep.into_iter())
-                                       .filter_map(|s| s.upgrade())
-                                       .collect::<Vec<_>>();
-            list
-
-        } else {
-            guarded.read_submissions.push(Arc::downgrade(submission));
-            guarded.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
-        };
-
-        let transition = if !guarded.correct_layout {
-            vec![Transition {
-                block: (0, 0),
-                from: Layout::Undefined,
-                to: Layout::General,
-            }]
-        } else {
-            vec![]
-        };
-
-        guarded.correct_layout = true;
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-            before_transitions: transition,
-            after_transitions: vec![],
-        }
     }
 }
 

@@ -20,21 +20,17 @@
 
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
-use buffer::traits::GpuAccessResult;
 use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
@@ -167,73 +163,6 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
     #[inline]
     fn inner(&self) -> &UnsafeBuffer {
         &self.inner
-    }
-    
-    #[inline]
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
-        vec![0]
-    }
-
-    #[inline]
-    fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
-    }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
-        Some(true)
-    }
-
-    #[inline]
-    fn host_accesses(&self, _: usize) -> bool {
-        false
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!()
-        }
-
-        let write = {
-            let mut write = false;
-            while let Some(range) = ranges.next() {
-                if range.write { write = true; break; }
-            }
-            write
-        };
-
-        if write {
-            assert!(self.started_reading.load(Ordering::Acquire) == false);
-        }
-
-        let dependency = {
-            let mut latest_submission = self.latest_write_submission.lock().unwrap();
-
-            if write {
-                mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
-            } else {
-                latest_submission.clone()
-            }
-        };
-        let dependency = dependency.and_then(|d| d.upgrade());
-
-        if write {
-            assert!(self.started_reading.load(Ordering::Acquire) == false);
-        } else {        
-            self.started_reading.store(true, Ordering::Release);
-        }
-
-        GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-        }
     }
 }
 
