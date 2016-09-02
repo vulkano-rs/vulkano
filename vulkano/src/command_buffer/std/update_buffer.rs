@@ -147,7 +147,7 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         let mut transitions_to_apply = PipelineBarrierBuilder::new();
 
         // The barriers to transfer to the parent.
-        let mut barriers = barriers.filter_map(|(after_command_num, barrier)| {
+        let barriers = barriers.filter_map(|(after_command_num, barrier)| {
             if after_command_num >= my_command_num || !transitions_to_apply.is_empty() {
                 transitions_to_apply.merge(barrier);
                 None

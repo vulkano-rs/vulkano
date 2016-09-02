@@ -1137,7 +1137,7 @@ impl PipelineBarrierBuilder {
 
     /// Merges another pipeline builder into this one.
     #[inline]
-    pub fn merge(&mut self, mut other: PipelineBarrierBuilder) {
+    pub fn merge(&mut self, other: PipelineBarrierBuilder) {
         self.src_stage_mask |= other.src_stage_mask;
         self.dst_stage_mask |= other.dst_stage_mask;
         self.dependency_flags &= other.dependency_flags;

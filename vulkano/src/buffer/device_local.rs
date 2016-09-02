@@ -213,8 +213,8 @@ unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
             let write_dep = mem::replace(&mut submissions.write_submission,
                                          Some(Arc::downgrade(submission)));
 
-            let mut read_submissions = mem::replace(&mut submissions.read_submissions,
-                                                    SmallVec::new());
+            let read_submissions = mem::replace(&mut submissions.read_submissions,
+                                                SmallVec::new());
 
             // We use a temporary variable to bypass a lifetime error in rustc.
             let list = read_submissions.into_iter()
