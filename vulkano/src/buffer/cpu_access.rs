@@ -20,7 +20,6 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -35,11 +34,9 @@ use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
 use buffer::traits::CommandBufferState;
 use buffer::traits::CommandListState;
-use buffer::traits::GpuAccessResult;
 use buffer::traits::SubmitInfos;
 use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
@@ -330,69 +327,6 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
     #[inline]
     fn inner(&self) -> &UnsafeBuffer {
         &self.inner
-    }
-    
-    #[inline]
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
-        vec![0]
-    }
-
-    #[inline]
-    fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
-    }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
-        Some(true)
-    }
-
-    #[inline]
-    fn host_accesses(&self, _: usize) -> bool {
-        true
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
-                   queue_id, self.queue_families);
-        }
-
-        let is_written = {
-            let mut written = false;
-            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
-            written
-        };
-
-        let dependencies = if is_written {
-            let mut submissions = self.latest_submission.write().unwrap();
-
-            let write_dep = mem::replace(&mut submissions.write_submission,
-                                         Some(Arc::downgrade(submission)));
-
-            let mut read_submissions = submissions.read_submissions.get_mut().unwrap();
-            let read_submissions = mem::replace(&mut *read_submissions, Vec::new());
-            read_submissions.into_iter()
-                            .chain(write_dep.into_iter())
-                            .filter_map(|s| s.upgrade())
-                            .collect::<Vec<_>>()
-
-        } else {
-            let submissions = self.latest_submission.read().unwrap();
-
-            let mut read_submissions = submissions.read_submissions.lock().unwrap();
-            read_submissions.push(Arc::downgrade(submission));
-
-            submissions.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
-        };
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-        }
     }
 }
 
