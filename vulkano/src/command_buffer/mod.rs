@@ -41,29 +41,32 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::inner::Submission;
-pub use self::outer::submit;
-pub use self::outer::PrimaryCommandBufferBuilder;
-pub use self::outer::PrimaryCommandBufferBuilderInlineDraw;
-pub use self::outer::PrimaryCommandBufferBuilderSecondaryDraw;
-pub use self::outer::PrimaryCommandBuffer;
-pub use self::outer::SecondaryGraphicsCommandBufferBuilder;
-pub use self::outer::SecondaryGraphicsCommandBuffer;
-pub use self::outer::SecondaryComputeCommandBufferBuilder;
-pub use self::outer::SecondaryComputeCommandBuffer;
 pub use self::submit::CommandBuffer;
 pub use self::submit::Submit;
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use device::Queue;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
-
-mod inner;
-mod outer;
+use sync::FenceWaitError;
 
 pub mod pool;
 pub mod std;
 pub mod submit;
 pub mod sys;
+
+// TODO: temporary object to make old system compile
+// TODO: remove
+#[derive(Debug)]
+pub struct Submission;
+impl Submission {
+    pub fn destroying_would_block(&self) -> bool { false }
+    pub fn finished(&self) -> bool { true }
+    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> { Ok(()) }
+    pub fn queue(&self) -> &Arc<Queue> { unimplemented!() }
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
