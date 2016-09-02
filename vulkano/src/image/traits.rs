@@ -8,13 +8,11 @@
 // according to those terms.
 
 use std::any::Any;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 
 use buffer::Buffer;
-use command_buffer::Submission;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -31,11 +29,10 @@ use sync::Semaphore;
 use VulkanObject;
 
 /// Trait for types that represent images.
+// TODO: remove 'static + Send + Sync
 pub unsafe trait Image: 'static + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;
-
-    //fn align(&self, subresource_range: ) -> ;
 
     /// Returns the format of this image.
     #[inline]
@@ -54,63 +51,6 @@ pub unsafe trait Image: 'static + Send + Sync {
     fn dimensions(&self) -> Dimensions {
         self.inner().dimensions()
     }
-
-    /// Given a range, returns the list of blocks which each range is contained in.
-    ///
-    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
-    /// mipmap and array layer.
-    /// Calling this function multiple times with the same parameter must always return the same
-    /// value.
-    /// The return value must not be empty.
-    fn blocks(&self, mipmap_levels: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)>;
-
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32>;
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32>;
-
-    /// Called when a command buffer that uses this image is being built. Given a block, this
-    /// function should return the layout that the block will have when the command buffer is
-    /// submitted.
-    ///
-    /// The `first_required_layout` is provided as a hint and corresponds to the first layout
-    /// that the image will be used for. If this function returns a value different from
-    /// `first_required_layout`, then a layout transition will be performed by the command buffer.
-    ///
-    /// The two additional elements are:
-    ///
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
-    ///
-    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> (Layout, bool, bool);
-
-    /// Called when a command buffer that uses this image is being built. Given a block, this
-    /// function should return the layout that the block must have when the command buffer is
-    /// end.
-    ///
-    /// The `last_required_layout` is provided as a hint and corresponds to the last layout
-    /// that the image will be in at the end of the command buffer. If this function returns a
-    /// value different from `last_required_layout`, then a layout transition will be performed
-    /// by the command buffer.
-    ///
-    /// The two additional elements are:
-    ///
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
-    ///
-    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> (Layout, bool, bool);
-
-    /// Returns whether accessing a subresource of that image should signal a fence.
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
-
-    ///
-    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
-    ///                should store the `Submission` in the form of a `Weak<Submission>` and not
-    ///                of an `Arc<Submission>` to avoid cyclic references.
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult;
 
     /// Returns true if the image can be used as a source for blits.
     #[inline]
@@ -303,26 +243,4 @@ pub unsafe trait ImageView: 'static + Send + Sync {
 
 pub unsafe trait AttachmentImageView: ImageView {
     fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
-}
-
-#[derive(Debug, Clone)]
-pub struct AccessRange {
-    pub block: (u32, u32),
-    pub write: bool,
-    pub initial_layout: Layout,
-    pub final_layout: Layout,
-}
-
-pub struct GpuAccessResult {
-    pub dependencies: Vec<Arc<Submission>>,
-    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
-    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
-    pub before_transitions: Vec<Transition>,
-    pub after_transitions: Vec<Transition>,
-}
-
-pub struct Transition {
-    pub block: (u32, u32),
-    pub from: Layout,
-    pub to: Layout,
 }

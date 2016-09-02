@@ -7,9 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
 use std::iter::Empty;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -25,13 +23,10 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::AccessRange;
-use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::Transition;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -204,69 +199,6 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
-    }
-
-    #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
-    }
-
-    #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
-    }
-
-    #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (self.attachment_layout, false, false)
-    }
-
-    #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (self.attachment_layout, false, false)
-    }
-
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let mut guarded = self.guarded.lock().unwrap();
-
-        let dependency = mem::replace(&mut guarded.latest_submission,
-                                      Some(Arc::downgrade(submission)));
-        let dependency = dependency.and_then(|d| d.upgrade());
-
-        let transition = if !guarded.correct_layout {
-            vec![Transition {
-                block: (0, 0),
-                from: Layout::Undefined,
-                to: self.attachment_layout,
-            }]
-        } else {
-            vec![]
-        };
-
-        guarded.correct_layout = true;
-
-        GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-            before_transitions: transition,
-            after_transitions: vec![],
-        }
     }
 }
 
