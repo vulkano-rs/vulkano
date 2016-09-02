@@ -15,12 +15,15 @@ use std::sync::Weak;
 
 use command_buffer::Submission;
 use device::Queue;
+use format::ClearValue;
 use format::Format;
+use format::FormatDesc;
 use image::traits::AccessRange;
 use image::traits::CommandBufferState;
 use image::traits::CommandListState;
 use image::traits::GpuAccessResult;
 use image::traits::Image;
+use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
 use image::traits::PipelineBarrierRequest;
@@ -191,6 +194,14 @@ unsafe impl Image for SwapchainImage {
             }],
             after_transitions: vec![],
         }
+    }
+}
+
+unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage
+{
+    #[inline]
+    fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
+        Some(self.format.decode_clear_value(value))
     }
 }
 
