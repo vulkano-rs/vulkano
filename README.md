@@ -41,7 +41,11 @@ This repository contains four libraries:
 - `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window where to render to.
-- `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`.
+- `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
+  implementation detail that you don't need to use manually if you use vulkano.
+
+Once procedural macros are stabilized in Rust, the `vulkano-shaders` crate will be merged with the
+`vulkano` crate.
 
 ## License
 
