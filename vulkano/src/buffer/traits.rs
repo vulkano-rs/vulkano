@@ -78,6 +78,8 @@ pub trait CommandListState {
     ///
     /// If the transition should result in a pipeline barrier, then it must be returned by this
     /// function.
+    // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
+    // previous transition?
     fn transition(self, num_command: usize, buffer: &UnsafeBuffer, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
                   -> (Self, Option<PipelineBarrierRequest>)
