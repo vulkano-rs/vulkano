@@ -27,6 +27,7 @@ pub use self::sys::DescriptorWrite;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
+pub mod resources_collection;
 
 mod pool;
 mod sys;
