@@ -45,7 +45,17 @@ This repository contains four libraries:
   implementation detail that you don't need to use manually if you use vulkano.
 
 Once procedural macros are stabilized in Rust, the `vulkano-shaders` crate will be merged with the
-`vulkano` crate.
+`vulkano` crate. The `glsl-to-spirv` crate is an implementation detail of vulkano and is not
+supposed to be used directly if you use vulkano. You are, however, free to use it if you want to
+write an alternative to vulkano.
+
+This crate uses the Cargo workspaces feature that is available only in nightly, and whose purpose
+is to make several crates share the same `target/` directory. It is normal to get an error if you
+try to run `cargo build` at the root of the directory.
+
+In order to run tests, go to the `vulkano` subdirectory and run `cargo test`. On nVidia GPUs, you
+will have to set the `RUST_TEST_THREADS` environment variable to `1` because of
+[a bug](https://devtalk.nvidia.com/default/topic/938723/creating-destroying-several-vkdevices-concurrently-sometimes-crashes-or-deadlocks/). 
 
 ## License
 
