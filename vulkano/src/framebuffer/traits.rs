@@ -189,9 +189,23 @@ unsafe impl<T> TrackedFramebufferFinishedState for TrackedFramebufferFinishedArc
 /// - `render_pass` has to return the same `UnsafeRenderPass` every time.
 /// - `num_subpasses` has to return a correct value.
 ///
-pub unsafe trait RenderPass: 'static + Send + Sync {
+pub unsafe trait RenderPass {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &UnsafeRenderPass;
+}
+
+unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
+    #[inline]
+    fn inner(&self) -> &UnsafeRenderPass {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, T> RenderPass for &'a T where T: RenderPass {
+    #[inline]
+    fn inner(&self) -> &UnsafeRenderPass {
+        (**self).inner()
+    }
 }
 
 pub unsafe trait RenderPassDesc {
