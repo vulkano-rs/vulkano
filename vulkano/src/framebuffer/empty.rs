@@ -24,9 +24,6 @@ use framebuffer::traits::RenderPassClearValues;
 use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
-use image::Layout as ImageLayout;
-use image::traits::Image;
-use image::traits::ImageView;
 
 /// Implementation of `RenderPass` with no attachment at all and a single pass.
 ///
@@ -167,13 +164,9 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
 }
 
 unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
-
     #[inline]
-    fn convert_attachments_list(&self, _: ())
-                                -> Result<Self::AttachmentsIter, FramebufferCreationError>
-    {
-        Ok(iter::empty())
+    fn check_attachments_list(&self, _: &()) -> Result<(), FramebufferCreationError> {
+        Ok(())
     }
 }
 

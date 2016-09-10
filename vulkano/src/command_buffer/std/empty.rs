@@ -27,7 +27,8 @@ use command_buffer::sys::Kind;
 use device::Device;
 use device::Queue;
 use framebuffer::EmptySinglePassRenderPass;
-use framebuffer::Framebuffer as OldFramebuffer;
+use framebuffer::StdFramebuffer;
+use framebuffer::framebuffer::EmptyAttachmentsList;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
@@ -98,7 +99,8 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        let kind = Kind::Primary::<EmptySinglePassRenderPass, OldFramebuffer<EmptySinglePassRenderPass>>;
+        let kind = Kind::Primary::<EmptySinglePassRenderPass,
+                                   StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>;
         let mut cb = UnsafeCommandBufferBuilder::new(self.pool, kind,
                                                      self.flags).unwrap();  // TODO: handle error
 

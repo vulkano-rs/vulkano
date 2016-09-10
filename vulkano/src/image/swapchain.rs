@@ -23,6 +23,7 @@ use image::traits::PipelineBarrierRequest;
 use image::traits::PipelineMemoryBarrierRequest;
 use image::traits::SubmitInfos;
 use image::traits::TrackedImage;
+use image::traits::TrackedImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -179,6 +180,15 @@ unsafe impl TrackedImage for SwapchainImage {
             command_num: 0,
             layout: Layout::PresentSrc,
         }
+    }
+}
+
+unsafe impl TrackedImageView for SwapchainImage {
+    type Image = SwapchainImage;
+
+    #[inline]
+    fn image(&self) -> &SwapchainImage {
+        self
     }
 }
 

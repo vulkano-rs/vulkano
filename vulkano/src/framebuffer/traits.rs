@@ -9,17 +9,23 @@
 
 use std::sync::Arc;
 
+use buffer::traits::TrackedBuffer;
+use command_buffer::std::ResourcesStates;
+use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::submit::SubmitInfo;
+use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
-use image::traits::Image;
-use image::traits::ImageView;
+use image::traits::TrackedImage;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
+use sync::Fence;
 use sync::PipelineStages;
+use sync::Semaphore;
 
 use vk;
 
@@ -31,7 +37,8 @@ pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
     // TODO: don't return an Arc
     fn render_pass(&self) -> &Arc<Self::RenderPass>;
 
-    fn dimensions(&self) -> [u32; 2];
+    /// Returns the width, height and number of layers of the framebuffer.
+    fn dimensions(&self) -> [u32; 3];
 }
 
 unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
@@ -43,7 +50,7 @@ unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
     }
 
     #[inline]
-    fn dimensions(&self) -> [u32; 2] {
+    fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
     }
 }
@@ -57,8 +64,120 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
     }
 
     #[inline]
-    fn dimensions(&self) -> [u32; 2] {
+    fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
+    }
+}
+
+// TODO: docs
+// TODO: is it possible to remove that `Sized` requirement?
+pub unsafe trait TrackedFramebuffer: Framebuffer + Sized {
+    type State: TrackedFramebufferState<Framebuffer = Self, Finished = Self::Finished>;
+    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self>;
+
+    /// Extracts the states of the framebuffer's attachments from `states`.
+    ///
+    /// The return values contains:
+    ///
+    /// - A state object that contains the transitionned states of the framebuffer's attachments.
+    /// - The number of command after which the pipeline barrier (the last element of the tuple)
+    ///   must happen.
+    /// - A pipeline barrier that transitions the attachments to the correct state.
+    ///
+    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
+                                        -> (Self::State, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates;
+}
+
+// TODO: docs
+pub unsafe trait TrackedFramebufferState: ResourcesStates {
+    type Framebuffer;
+    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self::Framebuffer>;
+
+    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder);
+}
+
+// TODO: docs
+pub unsafe trait TrackedFramebufferFinishedState {
+    type Framebuffer;
+
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
+
+    unsafe fn on_submit<F>(&self, framebuffer: &Self::Framebuffer, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>;
+}
+
+unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
+    type State = TrackedFramebufferStateArcWrapper<T>;
+    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
+
+    #[inline]
+    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
+                                        -> (Self::State, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates
+    {
+        let (state, cmd, barrier) = (**self).extract_and_transition(num_command, states);
+        let state = TrackedFramebufferStateArcWrapper { state: state };
+        (state, cmd, barrier)
+    }
+}
+
+pub struct TrackedFramebufferStateArcWrapper<T> where T: TrackedFramebuffer {
+    state: T::State,
+}
+
+unsafe impl<T> TrackedFramebufferState for TrackedFramebufferStateArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    type Framebuffer = Arc<T>;
+    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
+
+    #[inline]
+    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder) {
+        let (finished, barrier) = self.state.finish(&**framebuffer);
+        let finished = TrackedFramebufferFinishedArcWrapper { state: finished };
+        (finished, barrier)
+    }
+}
+
+unsafe impl<T> ResourcesStates for TrackedFramebufferStateArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer
+    {
+        self.state.extract_buffer_state(buffer)
+    }
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        self.state.extract_image_state(image)
+    }
+}
+
+pub struct TrackedFramebufferFinishedArcWrapper<T> where T: TrackedFramebuffer {
+    state: T::Finished,
+}
+
+unsafe impl<T> TrackedFramebufferFinishedState for TrackedFramebufferFinishedArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    type Framebuffer = Arc<T>;
+    type SemaphoresWaitIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresSignalIterator;
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, fb: &Self::Framebuffer, q: &Arc<Queue>, f: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>
+    {
+        self.state.on_submit(&**fb, q, f)
     }
 }
 
@@ -71,9 +190,23 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 /// - `render_pass` has to return the same `UnsafeRenderPass` every time.
 /// - `num_subpasses` has to return a correct value.
 ///
-pub unsafe trait RenderPass: 'static + Send + Sync {
+pub unsafe trait RenderPass {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &UnsafeRenderPass;
+}
+
+unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
+    #[inline]
+    fn inner(&self) -> &UnsafeRenderPass {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, T> RenderPass for &'a T where T: RenderPass {
+    #[inline]
+    fn inner(&self) -> &UnsafeRenderPass {
+        (**self).inner()
+    }
 }
 
 pub unsafe trait RenderPassDesc {
@@ -231,15 +364,10 @@ pub unsafe trait RenderPassDesc {
 /// TODO: more stuff with aliasing
 ///
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
-    /// A decoded `A`.
-    // TODO: crappy way to handle this
-    type AttachmentsIter: ExactSizeIterator<Item = (Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
-
     /// Decodes a `A` into a list of attachments.
     ///
     /// Returns an error if one of the attachments is wrong.
-    fn convert_attachments_list(&self, A) -> Result<Self::AttachmentsIter,
-                                                    FramebufferCreationError>;
+    fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
