@@ -37,7 +37,8 @@ pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
     // TODO: don't return an Arc
     fn render_pass(&self) -> &Arc<Self::RenderPass>;
 
-    fn dimensions(&self) -> [u32; 2];
+    /// Returns the width, height and number of layers of the framebuffer.
+    fn dimensions(&self) -> [u32; 3];
 }
 
 unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
@@ -49,7 +50,7 @@ unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
     }
 
     #[inline]
-    fn dimensions(&self) -> [u32; 2] {
+    fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
     }
 }
@@ -63,7 +64,7 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
     }
 
     #[inline]
-    fn dimensions(&self) -> [u32; 2] {
+    fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
     }
 }

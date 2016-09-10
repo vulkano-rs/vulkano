@@ -207,8 +207,8 @@ unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPa
     }
 
     #[inline]
-    fn dimensions(&self) -> [u32; 2] {
-        [self.dimensions[0], self.dimensions[1]]
+    fn dimensions(&self) -> [u32; 3] {
+        self.dimensions
     }
 }
 
