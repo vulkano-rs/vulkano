@@ -62,7 +62,7 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {
         let (state, barrier_pos, barrier) = unsafe {
-            framebuffer.extract_and_transition(&mut previous)
+            framebuffer.extract_and_transition(previous.num_commands() + 1, &mut previous)
         };
 
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)

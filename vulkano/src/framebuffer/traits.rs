@@ -83,7 +83,7 @@ pub unsafe trait TrackedFramebuffer: Framebuffer + Sized {
     ///   must happen.
     /// - A pipeline barrier that transitions the attachments to the correct state.
     ///
-    unsafe fn extract_and_transition<S>(&self, states: &mut S)
+    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates;
 }
@@ -114,11 +114,11 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
     type Finished = TrackedFramebufferFinishedArcWrapper<T>;
 
     #[inline]
-    unsafe fn extract_and_transition<S>(&self, states: &mut S)
+    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates
     {
-        let (state, cmd, barrier) = (**self).extract_and_transition(states);
+        let (state, cmd, barrier) = (**self).extract_and_transition(num_command, states);
         let state = TrackedFramebufferStateArcWrapper { state: state };
         (state, cmd, barrier)
     }
