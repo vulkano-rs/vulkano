@@ -55,7 +55,6 @@ macro_rules! ordered_passes_renderpass {
             ),*
         ]
     ) => {
-        use std::vec::IntoIter as VecIntoIter;
         use std::sync::Arc;
         use $crate::device::Device;
         use $crate::format::ClearValue;
@@ -69,8 +68,8 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::LayoutPassDependencyDescription;
         use $crate::framebuffer::FramebufferCreationError;
         use $crate::framebuffer::RenderPassCreationError;
+        use $crate::framebuffer::framebuffer::IntoAttachmentsList;
         use $crate::image::Layout;
-        use $crate::image::traits::Image;
         use $crate::image::traits::ImageView;
         use $crate::sync::AccessFlagBits;
         use $crate::sync::PipelineStages;
@@ -355,38 +354,34 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[allow(non_camel_case_types)]
-        pub struct AList<'a, $($atch_name: 'a),*> {
+        pub struct AList<$($atch_name),*> {
             $(
-                pub $atch_name: &'a Arc<$atch_name>,
+                pub $atch_name: $atch_name,
             )*
+        }
+
+        impl<$($atch_name: ImageView),*> IntoAttachmentsList for AList<$($atch_name),*> {
+            type List = <($($atch_name,)*) as IntoAttachmentsList>::List;
+
+            fn into_attachments_list(self) -> Self::List {
+                IntoAttachmentsList::into_attachments_list(($(self.$atch_name,)*))
+            }
         }
 
         #[allow(non_camel_case_types)]
         #[allow(unsafe_code)]
-        unsafe impl<'a, $($atch_name: 'static + ImageView),*> RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
-            // TODO: shouldn't build a Vec
-            type AttachmentsIter = VecIntoIter<(Arc<ImageView>, Arc<Image>, Layout, Layout)>;
-
+        unsafe impl<$($atch_name: ImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPass {
             #[inline]
-            fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Result<Self::AttachmentsIter, FramebufferCreationError> {
+            fn check_attachments_list(&self, l: &AList<$($atch_name),*>) -> Result<(), FramebufferCreationError> {
                 #![allow(unused_assignments)]
 
-                let mut result = Vec::new();
-
-                let mut num = 0;
                 $({
                     if !l.$atch_name.identity_swizzle() {
                         return Err(FramebufferCreationError::AttachmentNotIdentitySwizzled);
                     }
-
-                    // FIXME: lots of checks missing (format, samples, layout, etc.)
-
-                    let (initial_layout, final_layout) = attachment_layouts(num);
-                    num += 1;
-                    result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), initial_layout, final_layout));
                 })*
 
-                Ok(result.into_iter())
+                Ok(())
             }
         }
 
