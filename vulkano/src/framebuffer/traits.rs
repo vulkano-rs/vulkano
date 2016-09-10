@@ -67,9 +67,10 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-pub unsafe trait TrackedFramebuffer: Framebuffer {
-    type State: TrackedFramebufferState<Finished = Self::Finished>;
-    type Finished: TrackedFramebufferFinishedState;
+// TODO: is it possible to remove that `Sized` requirement?
+pub unsafe trait TrackedFramebuffer: Framebuffer + Sized {
+    type State: TrackedFramebufferState<Framebuffer = Self, Finished = Self::Finished>;
+    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self>;
 
     /// Extracts the states of the framebuffer's attachments from `states`.
     ///
@@ -87,18 +88,20 @@ pub unsafe trait TrackedFramebuffer: Framebuffer {
 
 // TODO: docs
 pub unsafe trait TrackedFramebufferState: ResourcesStates {
-    type Finished: TrackedFramebufferFinishedState;
+    type Framebuffer;
+    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self::Framebuffer>;
 
-    fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
+    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder);
 }
 
 // TODO: docs
 pub unsafe trait TrackedFramebufferFinishedState {
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    type Framebuffer;
 
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
     type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, framebuffer: &Self::Framebuffer, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;

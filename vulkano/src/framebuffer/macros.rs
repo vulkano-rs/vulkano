@@ -71,6 +71,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::framebuffer::IntoAttachmentsList;
         use $crate::image::Layout;
         use $crate::image::traits::ImageView;
+        use $crate::image::traits::TrackedImageView;
         use $crate::sync::AccessFlagBits;
         use $crate::sync::PipelineStages;
 
@@ -360,7 +361,7 @@ macro_rules! ordered_passes_renderpass {
             )*
         }
 
-        impl<$($atch_name: ImageView),*> IntoAttachmentsList for AList<$($atch_name),*> {
+        impl<$($atch_name: TrackedImageView),*> IntoAttachmentsList for AList<$($atch_name),*> {
             type List = <($($atch_name,)*) as IntoAttachmentsList>::List;
 
             fn into_attachments_list(self) -> Self::List {
@@ -370,7 +371,7 @@ macro_rules! ordered_passes_renderpass {
 
         #[allow(non_camel_case_types)]
         #[allow(unsafe_code)]
-        unsafe impl<$($atch_name: ImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPass {
+        unsafe impl<$($atch_name: TrackedImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPass {
             #[inline]
             fn check_attachments_list(&self, l: &AList<$($atch_name),*>) -> Result<(), FramebufferCreationError> {
                 #![allow(unused_assignments)]
