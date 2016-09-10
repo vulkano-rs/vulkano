@@ -20,8 +20,9 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::Queue;
+use framebuffer::framebuffer::EmptyAttachmentsList;
 use framebuffer::EmptySinglePassRenderPass;
-use framebuffer::Framebuffer as OldFramebuffer;
+use framebuffer::StdFramebuffer;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -292,7 +293,7 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer + 'static, R: Sub
         if !current_infos.pre_pipeline_barrier.is_empty() {
             let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
                                                          Kind::Primary::<EmptySinglePassRenderPass,
-                                                                         OldFramebuffer<EmptySinglePassRenderPass>>,
+                                                                         StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>,
                                                          Flags::OneTimeSubmit).unwrap();
             cb.pipeline_barrier(current_infos.pre_pipeline_barrier);
             new_submit.commandBufferCount += 1;
@@ -305,7 +306,7 @@ unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer + 'static, R: Sub
         if !current_infos.post_pipeline_barrier.is_empty() {
             let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
                                                          Kind::Primary::<EmptySinglePassRenderPass,
-                                                                         OldFramebuffer<EmptySinglePassRenderPass>>,
+                                                                         StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>,
                                                          Flags::OneTimeSubmit).unwrap();
             cb.pipeline_barrier(current_infos.post_pipeline_barrier);
             new_submit.commandBufferCount += 1;
@@ -349,8 +350,9 @@ mod tests {
     use command_buffer::sys::UnsafeCommandBufferBuilder;
     use device::Device;
     use device::Queue;
+    use framebuffer::framebuffer::EmptyAttachmentsList;
     use framebuffer::EmptySinglePassRenderPass;
-    use framebuffer::Framebuffer as OldFramebuffer;
+    use framebuffer::StdFramebuffer;
     use sync::Fence;
     use sync::PipelineStages;
     use sync::Semaphore;
@@ -382,7 +384,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let pool = Device::standard_command_pool(&device, queue.family());
-        let kind = Kind::Primary::<EmptySinglePassRenderPass, OldFramebuffer<EmptySinglePassRenderPass>>;
+        let kind = Kind::Primary::<EmptySinglePassRenderPass, StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>;
 
         let cb = UnsafeCommandBufferBuilder::new(pool, kind, Flags::OneTimeSubmit).unwrap();
         let cb = Basic { inner: cb.build().unwrap() };
