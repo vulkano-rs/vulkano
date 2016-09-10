@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
 use device::Device;
 use framebuffer::RenderPass;
@@ -20,8 +20,6 @@ use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
-use image::Layout as ImageLayout;
-use image::traits::Image;
 use image::traits::ImageView;
 
 use Error;
@@ -39,27 +37,32 @@ use vk;
 /// A framebuffer can be used alongside with any other render pass object as long as it is
 /// compatible with the render pass that his framebuffer was created with. You can determine
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
-pub struct Framebuffer<L> {
+pub struct StdFramebuffer<Rp, A> {
     device: Arc<Device>,
-    render_pass: Arc<L>,
+    render_pass: Arc<Rp>,
     framebuffer: vk::Framebuffer,
     dimensions: [u32; 3],
-    resources: SmallVec<[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout); 8]>,
+    resources: A,
 }
 
-impl<L> Framebuffer<L> {
+impl<Rp, A> StdFramebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPass` implementation is used.
-    pub fn new<A>(render_pass: &Arc<L>, dimensions: [u32; 3],
-                  attachments: A) -> Result<Arc<Framebuffer<L>>, FramebufferCreationError>
-        where L: RenderPass + RenderPassAttachmentsList<A>
+    pub fn new<Ia>(render_pass: &Arc<Rp>, dimensions: [u32; 3],
+                   attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
+        where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
+              Ia: IntoAttachmentsList<List = A>,
+              A: AttachmentsList
     {
         let vk = render_pass.inner().device().pointers();
         let device = render_pass.inner().device().clone();
 
-        let attachments = try!(render_pass.convert_attachments_list(attachments))
-                                .collect::<SmallVec<[_; 8]>>();
+        // This function call is supposed to check whether the attachments are valid.
+        // For more safety, we do some additional `debug_assert`s below.
+        try!(render_pass.check_attachments_list(&attachments));
+
+        let attachments = attachments.into_attachments_list();
 
         // Checking the dimensions against the limits.
         {
@@ -73,7 +76,10 @@ impl<L> Framebuffer<L> {
             }
         }
 
-        let ids = {
+        let ids = attachments.raw_image_view_handles();
+
+        // FIXME: restore dimensions check
+        /*let ids = {
             let mut ids = SmallVec::<[_; 8]>::new();
 
             for &(ref a, _, _, _) in attachments.iter() {
@@ -91,7 +97,7 @@ impl<L> Framebuffer<L> {
             }
 
             ids
-        };
+        };*/
 
         let framebuffer = unsafe {
             let infos = vk::FramebufferCreateInfo {
@@ -112,7 +118,7 @@ impl<L> Framebuffer<L> {
             output
         };
 
-        Ok(Arc::new(Framebuffer {
+        Ok(Arc::new(StdFramebuffer {
             device: device,
             render_pass: render_pass.clone(),
             framebuffer: framebuffer,
@@ -125,7 +131,7 @@ impl<L> Framebuffer<L> {
     #[inline]
     pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
         where R: RenderPass,
-              L: RenderPass + RenderPassCompatible<R>
+              Rp: RenderPass + RenderPassCompatible<R>
     {
         (&*self.render_pass.inner() as *const UnsafeRenderPass as usize ==
          &*render_pass.inner() as *const UnsafeRenderPass as usize) ||
@@ -163,21 +169,15 @@ impl<L> Framebuffer<L> {
     }
 
     /// Returns the renderpass that was used to create this framebuffer.
+    // TODO: don't return Arc
     #[inline]
-    pub fn render_pass(&self) -> &Arc<L> {
+    pub fn render_pass(&self) -> &Arc<Rp> {
         &self.render_pass
-    }
-
-    /// Returns all the resources attached to that framebuffer.
-    // TODO: crappy API
-    #[inline]
-    pub fn attachments(&self) -> &[(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)] {
-        &self.resources
     }
 }
 
-unsafe impl<L> FramebufferTrait for Framebuffer<L> where L: RenderPass {
-    type RenderPass = L;
+unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPass {
+    type RenderPass = Rp;
 
     #[inline]
     fn render_pass(&self) -> &Arc<Self::RenderPass> {
@@ -190,7 +190,7 @@ unsafe impl<L> FramebufferTrait for Framebuffer<L> where L: RenderPass {
     }
 }
 
-unsafe impl<L> VulkanObject for Framebuffer<L> {
+unsafe impl<Rp, A> VulkanObject for StdFramebuffer<Rp, A> {
     type Object = vk::Framebuffer;
 
     #[inline]
@@ -199,7 +199,7 @@ unsafe impl<L> VulkanObject for Framebuffer<L> {
     }
 }
 
-impl<L> Drop for Framebuffer<L> {
+impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -208,6 +208,128 @@ impl<L> Drop for Framebuffer<L> {
         }
     }
 }
+
+pub unsafe trait AttachmentsList {
+    /// Returns the raw handles of the image views of this list.
+    // TODO: better return type
+    fn raw_image_view_handles(&self) -> Vec<vk::ImageView>;
+
+    /// Returns the minimal dimensions of the views. Returns `None` if the list is empty.
+    ///
+    /// Must be done for each component individually.
+    ///
+    /// For example if one view is 256x256x1 and another one is 128x512x2, then this function
+    /// should return 128x256x1.
+    fn min_dimensions(&self) -> Option<[u32; 3]>;
+}
+
+pub struct EmptyAttachmentsList;
+unsafe impl AttachmentsList for EmptyAttachmentsList {
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
+        vec![]
+    }
+
+    #[inline]
+    fn min_dimensions(&self) -> Option<[u32; 3]> {
+        None
+    }
+}
+
+pub struct List<A, R> { pub first: A, pub rest: R }
+unsafe impl<A, R> AttachmentsList for List<A, R>
+    where A: ImageView,
+          R: AttachmentsList
+{
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
+        let mut list = self.rest.raw_image_view_handles();
+        list.insert(0, self.first.inner().internal_object());
+        list
+    }
+
+    #[inline]
+    fn min_dimensions(&self) -> Option<[u32; 3]> {
+        let my_view_dims = self.first.parent().dimensions();
+        debug_assert_eq!(my_view_dims.depth(), 1);
+        let my_view_dims = [my_view_dims.width(), my_view_dims.height(),
+                            my_view_dims.array_layers()];       // FIXME: should be the view's layers, not the image's
+
+        match self.rest.min_dimensions() {
+            Some(r_dims) => {
+                Some([
+                    cmp::min(r_dims[0], my_view_dims[0]),
+                    cmp::min(r_dims[1], my_view_dims[1]),
+                    cmp::min(r_dims[2], my_view_dims[2])
+                ])
+            },
+            None => Some(my_view_dims),
+        }
+    }
+}
+
+/// Trait for types that can be turned into a list of attachments.
+pub trait IntoAttachmentsList {
+    /// The list of attachments.
+    type List: AttachmentsList;
+
+    /// Performs the conversion.
+    fn into_attachments_list(self) -> Self::List;
+}
+
+impl<T> IntoAttachmentsList for T where T: AttachmentsList {
+    type List = T;
+
+    #[inline]
+    fn into_attachments_list(self) -> T {
+        self
+    }
+}
+
+impl IntoAttachmentsList for () {
+    type List = EmptyAttachmentsList;
+
+    #[inline]
+    fn into_attachments_list(self) -> EmptyAttachmentsList {
+        EmptyAttachmentsList
+    }
+}
+
+macro_rules! impl_into_atch_list {
+    ($first:ident, $($rest:ident),+) => (
+        impl<$first, $($rest),+> IntoAttachmentsList for ($first, $($rest),+)
+             where $first: ImageView, $($rest: ImageView),+
+        {
+            type List = List<$first, <($($rest,)+) as IntoAttachmentsList>::List>;
+
+            #[inline]
+            #[allow(non_snake_case)]
+            fn into_attachments_list(self) -> Self::List {
+                let ($first, $($rest),+) = self;
+
+                List {
+                    first: $first,
+                    rest: IntoAttachmentsList::into_attachments_list(($($rest,)+))
+                }
+            }
+        }
+
+        impl_into_atch_list!($($rest),+);
+    );
+
+    ($alone:ident) => (
+        impl<A> IntoAttachmentsList for (A,) where A: ImageView {
+            type List = List<A, EmptyAttachmentsList>;
+
+            #[inline]
+            fn into_attachments_list(self) -> Self::List {
+                List { first: self.0, rest: EmptyAttachmentsList }
+            }
+        }
+    );
+}
+
+impl_into_atch_list!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
 
 /// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -273,7 +395,7 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use format::R8G8B8A8Unorm;
-    use framebuffer::Framebuffer;
+    use framebuffer::StdFramebuffer;
     use framebuffer::FramebufferCreationError;
     use image::attachment::AttachmentImage;
 
@@ -305,8 +427,8 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let _ = Framebuffer::new(&render_pass, [1024, 768, 1], example::AList {
-            color: &image
+        let _ = StdFramebuffer::new(&render_pass, [1024, 768, 1], example::AList {
+            color: image.clone()
         }).unwrap();
     }
 
@@ -320,8 +442,8 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let alist = example::AList { color: &image };
-        match Framebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
+        let alist = example::AList { color: image.clone() };
+        match StdFramebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }
@@ -337,8 +459,8 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
-        let alist = example::AList { color: &image };
-        match Framebuffer::new(&render_pass, [600, 600, 1], alist) {
+        let alist = example::AList { color: image.clone() };
+        match StdFramebuffer::new(&render_pass, [600, 600, 1], alist) {
             Err(FramebufferCreationError::AttachmentTooSmall) => (),
             _ => panic!()
         }

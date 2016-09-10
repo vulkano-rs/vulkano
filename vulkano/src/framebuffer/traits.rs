@@ -9,17 +9,21 @@
 
 use std::sync::Arc;
 
+use command_buffer::std::ResourcesStates;
+use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::submit::SubmitInfo;
+use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
-use image::traits::Image;
-use image::traits::ImageView;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
+use sync::Fence;
 use sync::PipelineStages;
+use sync::Semaphore;
 
 use vk;
 
@@ -60,6 +64,44 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
     fn dimensions(&self) -> [u32; 2] {
         (**self).dimensions()
     }
+}
+
+// TODO: docs
+pub unsafe trait TrackedFramebuffer: Framebuffer {
+    type State: TrackedFramebufferState<Finished = Self::Finished>;
+    type Finished: TrackedFramebufferFinishedState;
+
+    /// Extracts the states of the framebuffer's attachments from `states`.
+    ///
+    /// The return values contains:
+    ///
+    /// - A state object that contains the transitionned states of the framebuffer's attachments.
+    /// - The number of command after which the pipeline barrier (the last element of the tuple)
+    ///   must happen.
+    /// - A pipeline barrier that transitions the attachments to the correct state.
+    ///
+    unsafe fn extract_and_transition<S>(&self, states: &mut S)
+                                        -> (Self::State, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates;
+}
+
+// TODO: docs
+pub unsafe trait TrackedFramebufferState: ResourcesStates {
+    type Finished: TrackedFramebufferFinishedState;
+
+    fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
+}
+
+// TODO: docs
+pub unsafe trait TrackedFramebufferFinishedState {
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
+
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>;
 }
 
 /// Trait for objects that describe a render pass.
@@ -231,15 +273,10 @@ pub unsafe trait RenderPassDesc {
 /// TODO: more stuff with aliasing
 ///
 pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
-    /// A decoded `A`.
-    // TODO: crappy way to handle this
-    type AttachmentsIter: ExactSizeIterator<Item = (Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
-
     /// Decodes a `A` into a list of attachments.
     ///
     /// Returns an error if one of the attachments is wrong.
-    fn convert_attachments_list(&self, A) -> Result<Self::AttachmentsIter,
-                                                    FramebufferCreationError>;
+    fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
 /// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.

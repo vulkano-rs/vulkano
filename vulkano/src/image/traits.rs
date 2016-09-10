@@ -195,6 +195,7 @@ pub unsafe trait ImageContent<P>: Image {
 }
 
 /// Trait for types that represent image views.
+// TODO: remove 'static + Send + Sync
 pub unsafe trait ImageView: 'static + Send + Sync {
     fn parent(&self) -> &Image;
 
@@ -243,6 +244,55 @@ pub unsafe trait ImageView: 'static + Send + Sync {
     fn can_be_sampled(&self, sampler: &Sampler) -> bool { true /* FIXME */ }
 
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
+}
+
+unsafe impl<T> ImageView for Arc<T> where T: ImageView {
+    #[inline]
+    fn parent(&self) -> &Image {
+        (**self).parent()
+    }
+
+    #[inline]
+    fn parent_arc(me: &Arc<Self>) -> Arc<Image> {
+        ImageView::parent_arc(&**me)
+    }
+
+    #[inline]
+    fn inner(&self) -> &UnsafeImageView {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn blocks(&self) -> Vec<(u32, u32)> {
+        (**self).blocks()
+    }
+
+    #[inline]
+    fn descriptor_set_storage_image_layout(&self) -> Layout {
+        (**self).descriptor_set_storage_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
+        (**self).descriptor_set_combined_image_sampler_layout()
+    }
+    #[inline]
+    fn descriptor_set_sampled_image_layout(&self) -> Layout {
+        (**self).descriptor_set_sampled_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_input_attachment_layout(&self) -> Layout {
+        (**self).descriptor_set_input_attachment_layout()
+    }
+
+    #[inline]
+    fn identity_swizzle(&self) -> bool {
+        (**self).identity_swizzle()
+    }
+
+    #[inline]
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        (**self).can_be_sampled(sampler)
+    }
 }
 
 pub unsafe trait AttachmentImageView: ImageView {
