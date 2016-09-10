@@ -301,6 +301,15 @@ pub unsafe trait TrackedImageView: ImageView {
     fn image(&self) -> &Self::Image;
 }
 
+unsafe impl<T> TrackedImageView for Arc<T> where T: TrackedImageView {
+    type Image = T::Image;
+
+    #[inline]
+    fn image(&self) -> &Self::Image {
+        (**self).image()
+    }
+}
+
 pub unsafe trait AttachmentImageView: ImageView {
     fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
 }

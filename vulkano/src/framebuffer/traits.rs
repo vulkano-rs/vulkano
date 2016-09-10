@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use buffer::traits::TrackedBuffer;
 use command_buffer::std::ResourcesStates;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
@@ -19,6 +20,7 @@ use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
+use image::traits::TrackedImage;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
 use sync::Fence;
@@ -105,6 +107,77 @@ pub unsafe trait TrackedFramebufferFinishedState {
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;
+}
+
+unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
+    type State = TrackedFramebufferStateArcWrapper<T>;
+    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
+
+    #[inline]
+    unsafe fn extract_and_transition<S>(&self, states: &mut S)
+                                        -> (Self::State, usize, PipelineBarrierBuilder)
+        where S: ResourcesStates
+    {
+        let (state, cmd, barrier) = (**self).extract_and_transition(states);
+        let state = TrackedFramebufferStateArcWrapper { state: state };
+        (state, cmd, barrier)
+    }
+}
+
+pub struct TrackedFramebufferStateArcWrapper<T> where T: TrackedFramebuffer {
+    state: T::State,
+}
+
+unsafe impl<T> TrackedFramebufferState for TrackedFramebufferStateArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    type Framebuffer = Arc<T>;
+    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
+
+    #[inline]
+    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder) {
+        let (finished, barrier) = self.state.finish(&**framebuffer);
+        let finished = TrackedFramebufferFinishedArcWrapper { state: finished };
+        (finished, barrier)
+    }
+}
+
+unsafe impl<T> ResourcesStates for TrackedFramebufferStateArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer
+    {
+        self.state.extract_buffer_state(buffer)
+    }
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage
+    {
+        self.state.extract_image_state(image)
+    }
+}
+
+pub struct TrackedFramebufferFinishedArcWrapper<T> where T: TrackedFramebuffer {
+    state: T::Finished,
+}
+
+unsafe impl<T> TrackedFramebufferFinishedState for TrackedFramebufferFinishedArcWrapper<T>
+    where T: TrackedFramebuffer
+{
+    type Framebuffer = Arc<T>;
+    type SemaphoresWaitIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresSignalIterator;
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, fb: &Self::Framebuffer, q: &Arc<Queue>, f: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>
+    {
+        self.state.on_submit(&**fb, q, f)
+    }
 }
 
 /// Trait for objects that describe a render pass.
