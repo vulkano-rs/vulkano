@@ -19,6 +19,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use framebuffer::traits::Framebuffer;
+use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
@@ -107,7 +108,7 @@ pub unsafe trait StdCommandsList: ResourcesStates {
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
                                -> render_pass::BeginRenderPassCommand<Self, F::RenderPass, F>
         where Self: Sized + OutsideRenderPass,
-              F: Framebuffer, F::RenderPass: RenderPass + RenderPassClearValues<C>
+              F: TrackedFramebuffer, F::RenderPass: RenderPass + RenderPassClearValues<C>
     {
         render_pass::BeginRenderPassCommand::new(self, framebuffer, secondary, clear_values)
     }
