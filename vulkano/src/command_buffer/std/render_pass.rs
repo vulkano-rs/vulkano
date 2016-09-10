@@ -24,7 +24,6 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use format::ClearValue;
-use framebuffer::traits::Framebuffer;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::traits::TrackedFramebufferState;
 use framebuffer::traits::TrackedFramebufferFinishedState;
