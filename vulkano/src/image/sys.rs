@@ -24,7 +24,9 @@ use smallvec::SmallVec;
 use device::Device;
 use format::Format;
 use format::FormatTy;
+use image::ImageDimensions;
 use image::MipmapsCount;
+use image::ViewType;
 use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
@@ -56,7 +58,7 @@ pub struct UnsafeImage {
     usage: vk::ImageUsageFlagBits,
     format: Format,
 
-    dimensions: Dimensions,
+    dimensions: ImageDimensions,
     samples: u32,
     mipmaps: u32,
 
@@ -78,7 +80,7 @@ impl UnsafeImage {
     ///
     #[inline]
     pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &Usage, format: Format,
-                                 dimensions: Dimensions, num_samples: u32, mipmaps: Mi,
+                                 dimensions: ImageDimensions, num_samples: u32, mipmaps: Mi,
                                  sharing: Sharing<I>, linear_tiling: bool,
                                  preinitialized_layout: bool)
                                  -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
@@ -95,7 +97,7 @@ impl UnsafeImage {
 
     // Non-templated version to avoid inlining and improve compile times.
     unsafe fn new_impl(device: &Arc<Device>, usage: &Usage, format: Format,
-                       dimensions: Dimensions, num_samples: u32, mipmaps: MipmapsCount,
+                       dimensions: ImageDimensions, num_samples: u32, mipmaps: MipmapsCount,
                        (sh_mode, sh_indices): (vk::SharingMode, SmallVec<[u32; 8]>),
                        linear_tiling: bool, preinitialized_layout: bool)
                        -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
@@ -168,11 +170,11 @@ impl UnsafeImage {
         // TODO: only compte if necessary?
         let max_mipmaps = {
             let smallest_dim: u32 = match dimensions {
-                Dimensions::Dim1d { width } | Dimensions::Dim1dArray { width, .. } => width,
-                Dimensions::Dim2d { width, height } | Dimensions::Dim2dArray { width, height, .. } => {
+                ImageDimensions::Dim1d { width, .. } => width,
+                ImageDimensions::Dim2d { width, height, .. } => {
                     if width < height { width } else { height }
                 },
-                Dimensions::Dim3d { width, height, depth } => {
+                ImageDimensions::Dim3d { width, height, depth } => {
                     if width < height {
                         if depth < width { depth } else { width }
                     } else {
@@ -285,41 +287,29 @@ impl UnsafeImage {
         }
 
         // Decoding the dimensions.
-        let (ty, extent, array_layers) = match dimensions {
-            Dimensions::Dim1d { width } => {
-                if width == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
-                }
-                let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
-                (vk::IMAGE_TYPE_1D, extent, 1)
-            },
-            Dimensions::Dim1dArray { width, array_layers } => {
+        let (ty, extent, array_layers, flags) = match dimensions {
+            ImageDimensions::Dim1d { width, array_layers } => {
                 if width == 0 || array_layers == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
                 }
                 let extent = vk::Extent3D { width: width, height: 1, depth: 1 };
-                (vk::IMAGE_TYPE_1D, extent, array_layers)
+                (vk::IMAGE_TYPE_1D, extent, array_layers, 0)
             },
-            Dimensions::Dim2d { width, height } => {
-                if width == 0 || height == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
-                }
-                let extent = vk::Extent3D { width: width, height: height, depth: 1 };
-                (vk::IMAGE_TYPE_2D, extent, 1)
-            },
-            Dimensions::Dim2dArray { width, height, array_layers } => {
+            ImageDimensions::Dim2d { width, height, array_layers, cubemap_compatible } => {
                 if width == 0 || height == 0 || array_layers == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
                 }
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
-                (vk::IMAGE_TYPE_2D, extent, array_layers)
+                let flags = if cubemap_compatible { vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT }
+                            else { 0 };
+                (vk::IMAGE_TYPE_2D, extent, array_layers, flags)
             },
-            Dimensions::Dim3d { width, height, depth } => {
+            ImageDimensions::Dim3d { width, height, depth } => {
                 if width == 0 || height == 0 || depth == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
                 }
                 let extent = vk::Extent3D { width: width, height: height, depth: depth };
-                (vk::IMAGE_TYPE_3D, extent, 1)
+                (vk::IMAGE_TYPE_3D, extent, 1, 0)
             },
         };
 
@@ -388,7 +378,7 @@ impl UnsafeImage {
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,                               // TODO:
+                flags: flags,
                 imageType: ty,
                 format: format as u32,
                 extent: extent,
@@ -443,7 +433,7 @@ impl UnsafeImage {
     ///
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw(device: &Arc<Device>, handle: u64, usage: u32, format: Format,
-                           dimensions: Dimensions, samples: u32, mipmaps: u32)
+                           dimensions: ImageDimensions, samples: u32, mipmaps: u32)
                            -> UnsafeImage
     {
         let vk_i = device.instance().pointers();
@@ -503,7 +493,7 @@ impl UnsafeImage {
     }
 
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
+    pub fn dimensions(&self) -> ImageDimensions {
         self.dimensions
     }
 
@@ -642,7 +632,7 @@ pub enum ImageCreationError {
     /// The requeted number of samples is not supported, or is 0.
     UnsupportedSamplesCount { obtained: u32 },
     /// The dimensions are too large, or one of the dimensions is 0.
-    UnsupportedDimensions { dimensions: Dimensions },
+    UnsupportedDimensions { dimensions: ImageDimensions },
     /// The requested format is not supported by the Vulkan implementation.
     FormatNotSupported,
     /// The format is supported, but at least one of the requested usages is not supported.
@@ -742,8 +732,8 @@ pub struct UnsafeImageView {
 
 impl UnsafeImageView {
     /// See the docs of new().
-    pub unsafe fn raw(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
-                      -> Result<UnsafeImageView, OomError>
+    pub unsafe fn raw(image: &UnsafeImage, ty: ViewType, mipmap_levels: Range<u32>,
+                      array_layers: Range<u32>) -> Result<UnsafeImageView, OomError>
     {
         let vk = image.device.pointers();
 
@@ -761,21 +751,30 @@ impl UnsafeImageView {
             FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
         };
 
+        let view_type = match (image.dimensions(), ty, array_layers.end - array_layers.start) {
+            (ImageDimensions::Dim1d { .. }, ViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
+            (ImageDimensions::Dim1d { .. }, ViewType::Dim1dArray, _) => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
+            (ImageDimensions::Dim2d { .. }, ViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
+            (ImageDimensions::Dim2d { .. }, ViewType::Dim2dArray, _) => vk::IMAGE_VIEW_TYPE_2D,
+            (ImageDimensions::Dim2d { cubemap_compatible, .. }, ViewType::Cubemap, n) if cubemap_compatible => {
+                assert_eq!(n, 6);
+                vk::IMAGE_VIEW_TYPE_CUBE
+            },
+            (ImageDimensions::Dim2d { cubemap_compatible, .. }, ViewType::CubemapArray, n) if cubemap_compatible => {
+                assert_eq!(n % 6, 0);
+                vk::IMAGE_VIEW_TYPE_CUBE_ARRAY
+            },
+            (ImageDimensions::Dim3d { .. }, ViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
+            _ => panic!()
+        };
+
         let view = {
             let infos = vk::ImageViewCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 image: image.internal_object(),
-                viewType: match (image.dimensions(), array_layers.end - array_layers.start) {
-                    (Dimensions::Dim1d { .. }, _) => vk::IMAGE_VIEW_TYPE_1D,
-                    (Dimensions::Dim1dArray { .. }, 1) => vk::IMAGE_VIEW_TYPE_1D,
-                    (Dimensions::Dim1dArray { .. }, _) => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
-                    (Dimensions::Dim2d { .. }, _) => vk::IMAGE_VIEW_TYPE_2D,
-                    (Dimensions::Dim2dArray { .. }, 1) => vk::IMAGE_VIEW_TYPE_2D,
-                    (Dimensions::Dim2dArray { .. }, _) => vk::IMAGE_VIEW_TYPE_2D_ARRAY,
-                    (Dimensions::Dim3d { .. }, _) => vk::IMAGE_VIEW_TYPE_3D,
-                },      // TODO: cube
+                viewType: view_type,      // TODO: cube
                 format: image.format as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
@@ -809,12 +808,19 @@ impl UnsafeImageView {
     ///
     /// # Panic
     ///
+    /// - Panics if `mipmap_levels` or `array_layers` is out of range of the image.
+    /// - Panics if the view types doesn't match the dimensions of the image (for example a 2D
+    ///   view from a 3D image).
+    /// - Panics if trying to create a cubemap with a number of array layers different from 6.
+    /// - Panics if trying to create a cubemap array with a number of array layers not a multiple
+    ///   of 6.
     /// - Panics if the device or host ran out of memory.
+    ///
     #[inline]
-    pub unsafe fn new(image: &UnsafeImage, mipmap_levels: Range<u32>, array_layers: Range<u32>)
-                      -> UnsafeImageView
+    pub unsafe fn new(image: &UnsafeImage, ty: ViewType, mipmap_levels: Range<u32>,
+                      array_layers: Range<u32>) -> UnsafeImageView
     {
-        UnsafeImageView::raw(image, mipmap_levels, array_layers).unwrap()
+        UnsafeImageView::raw(image, ty, mipmap_levels, array_layers).unwrap()
     }
 
     #[inline]
@@ -878,66 +884,6 @@ impl Drop for UnsafeImageView {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyImageView(self.device.internal_object(), self.view, ptr::null());
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Dimensions {
-    Dim1d { width: u32 },
-    Dim1dArray { width: u32, array_layers: u32 },
-    Dim2d { width: u32, height: u32 },
-    Dim2dArray { width: u32, height: u32, array_layers: u32 },
-    Dim3d { width: u32, height: u32, depth: u32 }
-}
-
-impl Dimensions {
-    #[inline]
-    pub fn width(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { width } => width,
-            Dimensions::Dim1dArray { width, .. } => width,
-            Dimensions::Dim2d { width, .. } => width,
-            Dimensions::Dim2dArray { width, .. } => width,
-            Dimensions::Dim3d { width, .. }  => width,
-        }
-    }
-
-    #[inline]
-    pub fn height(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { height, .. } => height,
-            Dimensions::Dim2dArray { height, .. } => height,
-            Dimensions::Dim3d { height, .. }  => height,
-        }
-    }
-
-    #[inline]
-    pub fn width_height(&self) -> [u32; 2] {
-        [self.width(), self.height()]
-    }
-
-    #[inline]
-    pub fn depth(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { .. } => 1,
-            Dimensions::Dim3d { depth, .. }  => depth,
-        }
-    }
-
-    #[inline]
-    pub fn array_layers(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. }  => 1,
         }
     }
 }
@@ -1076,11 +1022,11 @@ mod tests {
     use std::iter::Empty;
     use std::u32;
 
-    use super::Dimensions;
     use super::ImageCreationError;
     use super::UnsafeImage;
     use super::Usage;
 
+    use image::ImageDimensions;
     use format::Format;
     use sync::Sharing;
 
@@ -1095,7 +1041,8 @@ mod tests {
 
         let (_img, _) = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         }.unwrap();
     }
@@ -1112,7 +1059,8 @@ mod tests {
 
         let (_img, _) = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         }.unwrap();
     }
@@ -1128,7 +1076,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 0, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 0, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1149,7 +1098,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 5, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 5, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1170,7 +1120,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 0,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, 0,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1192,7 +1143,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, u32::MAX,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1216,7 +1168,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 2, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 2, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1238,7 +1191,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::ASTC_5x4UnormBlock,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, u32::MAX,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 
@@ -1261,7 +1215,8 @@ mod tests {
 
         let res = unsafe {
             UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
-                             Dimensions::Dim2d { width: 32, height: 32 }, 1, 1,
+                             ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
+                                                      cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
         };
 

@@ -20,7 +20,7 @@ use device::Device;
 use device::Queue;
 use format::Format;
 use format::FormatDesc;
-use image::sys::Dimensions;
+use image::ImageDimensions;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
@@ -214,7 +214,7 @@ impl Swapchain {
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
             let unsafe_image = UnsafeImage::from_raw(device, image, usage, format,
-                                                     Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] }, 1, 1);
+                                                     ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false }, 1, 1);
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 

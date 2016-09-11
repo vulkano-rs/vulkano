@@ -18,6 +18,8 @@ use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
+use image::Dimensions;
+use image::ViewType;
 use image::traits::AccessRange;
 use image::traits::CommandBufferState;
 use image::traits::CommandListState;
@@ -78,7 +80,7 @@ impl SwapchainImage {
     pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
-        let view = try!(UnsafeImageView::raw(&image, 0 .. 1, 0 .. 1));
+        let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1));
 
         Ok(Arc::new(SwapchainImage {
             image: image,
@@ -221,6 +223,12 @@ unsafe impl ImageView for SwapchainImage {
     #[inline]
     fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
         me.clone() as Arc<_>
+    }
+
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        let dims = self.image.dimensions();
+        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
     }
 
     #[inline]
