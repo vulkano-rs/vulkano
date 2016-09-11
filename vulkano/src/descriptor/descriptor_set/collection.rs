@@ -164,8 +164,9 @@ unsafe impl TrackedDescriptorSetsCollectionFinished for EmptyState {
     }
 }
 
+// TODO: remove  + 'static + Send + Sync
 unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc
+    where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
 {
     type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
     type SetsIter = OptionIntoIter<Self::DescIter>;
@@ -182,8 +183,9 @@ unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
     }
 }
 
+// TODO: remove  + 'static + Send + Sync
 unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc
+    where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
 {
     type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
     type SetsIter = OptionIntoIter<Self::DescIter>;

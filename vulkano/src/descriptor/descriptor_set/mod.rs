@@ -9,13 +9,11 @@
 
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use device::Queue;
-use image::traits::TrackedImage;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -30,14 +28,14 @@ pub mod collection;
 pub mod resources_collection;
 
 mod pool;
+mod std;
 mod sys;
 mod unsafe_layout;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-// TODO: remove Send + Sync + 'static
-pub unsafe trait DescriptorSet: 'static + Send + Sync {
+pub unsafe trait DescriptorSet {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 }
@@ -60,7 +58,7 @@ pub unsafe trait TrackedDescriptorSet: DescriptorSet {
 
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
-    unsafe fn extract_states_and_transition<L>(&self, list: &mut L)
+    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
                                                -> (Self::State, usize, PipelineBarrierBuilder)
         where L: ResourcesStates;
 }
@@ -68,30 +66,6 @@ pub unsafe trait TrackedDescriptorSet: DescriptorSet {
 // TODO: re-read docs
 pub unsafe trait TrackedDescriptorSetState: ResourcesStates {
     type Finished: TrackedDescriptorSetFinished;
-
-    /// Extracts the state of a buffer of the descriptor set, or `None` if the buffer isn't in
-    /// the descriptor set.
-    ///
-    /// Whether the buffer passed as parameter is the same as the one in the descriptor set must be
-    /// determined with the `is_same` method of `TrackedBuffer`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that buffer has already been previously extracted.
-    ///
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    /// Returns the state of an image, or `None` if the image isn't in the descriptor set.
-    ///
-    /// See the description of `extract_buffer_state`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that image has already been previously extracted.
-    ///
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
 
     /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
     /// state hasn't been extracted must be have `finished()` called on them as well.

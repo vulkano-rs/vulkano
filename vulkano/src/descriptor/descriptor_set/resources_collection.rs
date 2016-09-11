@@ -35,7 +35,7 @@ pub unsafe trait ResourcesCollection {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     // TODO: must return a Result if multiple elements conflict with one another
-    unsafe fn extract_states_and_transition<L>(&self, list: &mut L, num_command: usize)
+    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
                                                -> (Self::State, usize, PipelineBarrierBuilder)
         where L: ResourcesStates;
 }
@@ -71,7 +71,7 @@ unsafe impl ResourcesCollection for End {
     type Finished = End;
 
     #[inline]
-    unsafe fn extract_states_and_transition<L>(&self, _list: &mut L, _num_command: usize)
+    unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
                                                -> (End, usize, PipelineBarrierBuilder)
         where L: ResourcesStates
     {
@@ -134,12 +134,12 @@ unsafe impl<B, N> ResourcesCollection for Buf<B, N>
     type Finished = BufFinished<B::FinishedState, N::Finished>;
 
     #[inline]
-    unsafe fn extract_states_and_transition<L>(&self, list: &mut L, num_command: usize)
+    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
                                                -> (Self::State, usize, PipelineBarrierBuilder)
         where L: ResourcesStates
     {
         let (mut next_state, next_loc, mut next_builder) = {
-            self.rest.extract_states_and_transition(list, num_command)
+            self.rest.extract_states_and_transition(num_command, list)
         };
 
         let my_buf_state = ResourcesStatesJoin(list, &mut next_state)
