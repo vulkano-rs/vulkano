@@ -299,21 +299,6 @@ impl UnsafeDescriptorSet {
     pub fn layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
         &self.layout
     }
-
-
-    // TODO: hacky
-    #[doc(hidden)]
-    #[inline]
-    pub fn images_list(&self) -> &[(Arc<Image>, (u32, u32), ImageLayout)] {
-        &self.resources_images
-    }
-
-    // TODO: hacky
-    #[doc(hidden)]
-    #[inline]
-    pub fn buffers_list(&self) -> &[Arc<Buffer>] {
-        &self.resources_buffers
-    }
 }
 
 unsafe impl VulkanObject for UnsafeDescriptorSet {
