@@ -24,7 +24,7 @@ layout(set = 0, binding = 0) uniform Data {
 } uniforms;
 
 void main() {
-    mat3 worldview = mat3(uniforms.view * uniforms.world);
-    v_normal = transpose(inverse(worldview)) * normal;
-    gl_Position = uniforms.proj * uniforms.view * uniforms.world * vec4(position, 1.0);
+    mat4 worldview = uniforms.view * uniforms.world;
+    v_normal = transpose(inverse(mat3(worldview))) * normal;
+    gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
 }
