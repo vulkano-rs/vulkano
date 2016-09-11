@@ -10,6 +10,7 @@ vulkano-win = { path = "../vulkano-win" }
 cgmath = "0.7.0"
 image = "0.6.1"
 winit = "0.5.2"
+time = "0.1.35"
 
 [build-dependencies]
 vk-sys = { path = "../vk-sys" }

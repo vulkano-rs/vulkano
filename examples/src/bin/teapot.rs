@@ -10,6 +10,7 @@
 extern crate examples;
 extern crate cgmath;
 extern crate winit;
+extern crate time;
 
 #[macro_use]
 extern crate vulkano;
@@ -65,44 +66,19 @@ fn main() {
     };
 
 
-
     let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                               ::array(&device, examples::VERTICES.len(),
-                                       &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
-                                       .expect("failed to create buffer");
-
-    {
-        let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(examples::VERTICES.iter()) {
-            *o = *i;
-        }
-    }
+                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
+                                .expect("failed to create buffer");
 
     let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::array(&device, examples::NORMALS.len(),
-                                        &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
-                                        .expect("failed to create buffer");
-
-    {
-        let mut mapping = normals_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(examples::NORMALS.iter()) {
-            *o = *i;
-        }
-    }
+                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::NORMALS.iter().cloned())
+                                .expect("failed to create buffer");
 
     let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                              ::array(&device, examples::INDICES.len(),
-                                      &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
-                                      .expect("failed to create buffer");
-
-    {
-        let mut mapping = index_buffer.write(Duration::new(0, 0)).unwrap();
-        for (o, i) in mapping.iter_mut().zip(examples::INDICES.iter()) {
-            *o = *i;
-        }
-    }
+                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::INDICES.iter().cloned())
+                                .expect("failed to create buffer");
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
@@ -111,13 +87,13 @@ fn main() {
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::new(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()))
+                               ::from_data(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), 
+                                vs::ty::Data {
+                                    world : <cgmath::Matrix4<f32> as cgmath::SquareMatrix>::identity().into(),
+                                    view : (view * scale).into(),
+                                    proj : proj.into(),
+                                })
                                .expect("failed to create buffer");
-    {
-        let mut mapping = uniform_buffer.write(Duration::new(0, 0)).unwrap();
-        mapping.worldview = (view * scale).into();
-        mapping.proj = proj.into();
-    }
 
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
@@ -212,8 +188,20 @@ fn main() {
 
     let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();
 
+
     loop {
         submissions.retain(|s| s.destroying_would_block());
+
+        {
+            // aquiring write lock for the uniform buffer
+            let mut buffer_content = uniform_buffer.write(Duration::new(1, 0)).unwrap(); 
+
+            let rotation = cgmath::Matrix3::from_angle_y(cgmath::rad(time::precise_time_ns() as f32 * 0.000000001));
+
+            // since write lock implementd Deref and DerefMut traits, 
+            // we can update content directly 
+            buffer_content.world = cgmath::Matrix4::from(rotation).into();
+        }
 
         let image_num = swapchain.acquire_next_image(Duration::from_millis(1)).unwrap();
         submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
