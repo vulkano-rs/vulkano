@@ -13,7 +13,7 @@ extern crate vulkano;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::image::ImmutableImage;
-use vulkano::image::sys::Dimensions;
+use vulkano::image::Dimensions;
 use vulkano::instance;
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::instance::debug::{DebugCallback, MessageTypes};

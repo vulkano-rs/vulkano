@@ -107,7 +107,7 @@ fn main() {
         color: (vulkano::format::B8G8R8A8Srgb, 1)
     }).unwrap();
 
-    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::sys::Dimensions::Dim2d { width: 93, height: 93 },
+    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
                                                                  vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
 

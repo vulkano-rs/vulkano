@@ -136,3 +136,180 @@ impl Default for ComponentSwizzle {
         ComponentSwizzle::Identity
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Dimensions {
+    Dim1d { width: u32 },
+    Dim1dArray { width: u32, array_layers: u32 },
+    Dim2d { width: u32, height: u32 },
+    Dim2dArray { width: u32, height: u32, array_layers: u32 },
+    Dim3d { width: u32, height: u32, depth: u32 },
+    Cubemap { size: u32 },
+    CubemapArray { size: u32, array_layers: u32 },
+}
+
+impl Dimensions {
+    #[inline]
+    pub fn width(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { width } => width,
+            Dimensions::Dim1dArray { width, .. } => width,
+            Dimensions::Dim2d { width, .. } => width,
+            Dimensions::Dim2dArray { width, .. } => width,
+            Dimensions::Dim3d { width, .. } => width,
+            Dimensions::Cubemap { size } => size,
+            Dimensions::CubemapArray { size, .. } => size,
+        }
+    }
+
+    #[inline]
+    pub fn height(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { .. } => 1,
+            Dimensions::Dim2d { height, .. } => height,
+            Dimensions::Dim2dArray { height, .. } => height,
+            Dimensions::Dim3d { height, .. }  => height,
+            Dimensions::Cubemap { size } => size,
+            Dimensions::CubemapArray { size, .. } => size,
+        }
+    }
+
+    #[inline]
+    pub fn width_height(&self) -> [u32; 2] {
+        [self.width(), self.height()]
+    }
+
+    #[inline]
+    pub fn depth(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { .. } => 1,
+            Dimensions::Dim2d { .. } => 1,
+            Dimensions::Dim2dArray { .. } => 1,
+            Dimensions::Dim3d { depth, .. }  => depth,
+            Dimensions::Cubemap { .. } => 1,
+            Dimensions::CubemapArray { .. } => 1,
+        }
+    }
+
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim2d { .. } => 1,
+            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim3d { .. }  => 1,
+            Dimensions::Cubemap { .. } => 1,
+            Dimensions::CubemapArray { array_layers, .. } => array_layers,
+        }
+    }
+
+    /// Builds the corresponding `ImageDimensions`.
+    #[inline]
+    pub fn to_image_dimensions(&self) -> ImageDimensions {
+        match *self {
+            Dimensions::Dim1d { width } => {
+                ImageDimensions::Dim1d { width: width, array_layers: 1 }
+            },
+            Dimensions::Dim1dArray { width, array_layers } => {
+                ImageDimensions::Dim1d { width: width, array_layers: array_layers }
+            },
+            Dimensions::Dim2d { width, height } => {
+                ImageDimensions::Dim2d { width: width, height: height, array_layers: 1,
+                                         cubemap_compatible: false }
+            },
+            Dimensions::Dim2dArray { width, height, array_layers } => {
+                ImageDimensions::Dim2d { width: width, height: height,
+                                         array_layers: array_layers, cubemap_compatible: false }
+            },
+            Dimensions::Dim3d { width, height, depth } => {
+                ImageDimensions::Dim3d { width: width, height: height, depth: depth }
+            },
+            Dimensions::Cubemap { size } => {
+                ImageDimensions::Dim2d { width: size, height: size, array_layers: 6,
+                                         cubemap_compatible: true }
+            },
+            Dimensions::CubemapArray { size, array_layers } => {
+                ImageDimensions::Dim2d { width: size, height: size, array_layers: array_layers * 6,
+                                         cubemap_compatible: true }
+            },
+        }
+    }
+
+    /// Builds the corresponding `ViewType`.
+    #[inline]
+    pub fn to_view_type(&self) -> ViewType {
+        match *self {
+            Dimensions::Dim1d { .. } => ViewType::Dim1d, 
+            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray, 
+            Dimensions::Dim2d { .. } => ViewType::Dim2d, 
+            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray, 
+            Dimensions::Dim3d { .. } => ViewType::Dim3d, 
+            Dimensions::Cubemap { .. } => ViewType::Cubemap, 
+            Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ViewType {
+    Dim1d,
+    Dim1dArray,
+    Dim2d,
+    Dim2dArray,
+    Dim3d,
+    Cubemap,
+    CubemapArray,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ImageDimensions {
+    Dim1d { width: u32, array_layers: u32 },
+    Dim2d { width: u32, height: u32, array_layers: u32, cubemap_compatible: bool },
+    Dim3d { width: u32, height: u32, depth: u32 }
+}
+
+impl ImageDimensions {
+    #[inline]
+    pub fn width(&self) -> u32 {
+        match *self {
+            ImageDimensions::Dim1d { width, .. } => width,
+            ImageDimensions::Dim2d { width, .. } => width,
+            ImageDimensions::Dim3d { width, .. }  => width,
+        }
+    }
+
+    #[inline]
+    pub fn height(&self) -> u32 {
+        match *self {
+            ImageDimensions::Dim1d { .. } => 1,
+            ImageDimensions::Dim2d { height, .. } => height,
+            ImageDimensions::Dim3d { height, .. }  => height,
+        }
+    }
+
+    #[inline]
+    pub fn width_height(&self) -> [u32; 2] {
+        [self.width(), self.height()]
+    }
+
+    #[inline]
+    pub fn depth(&self) -> u32 {
+        match *self {
+            ImageDimensions::Dim1d { .. } => 1,
+            ImageDimensions::Dim2d { .. } => 1,
+            ImageDimensions::Dim3d { depth, .. }  => depth,
+        }
+    }
+
+    #[inline]
+    pub fn array_layers(&self) -> u32 {
+        match *self {
+            ImageDimensions::Dim1d { array_layers, .. } => array_layers,
+            ImageDimensions::Dim2d { array_layers, .. } => array_layers,
+            ImageDimensions::Dim3d { .. }  => 1,
+        }
+    }
+}

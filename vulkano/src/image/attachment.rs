@@ -19,7 +19,9 @@ use device::Device;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
-use image::sys::Dimensions;
+use image::Dimensions;
+use image::ImageDimensions;
+use image::ViewType;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -154,7 +156,7 @@ impl<F> AttachmentImage<F> {
 
         let (image, mem_reqs) = unsafe {
             try!(UnsafeImage::new(device, &usage, format.format(),
-                                  Dimensions::Dim2d { width: dimensions[0], height: dimensions[1] },
+                                  ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -173,7 +175,7 @@ impl<F> AttachmentImage<F> {
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, 0 .. 1, 0 .. 1))
+            try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1))
         };
 
         Ok(Arc::new(AttachmentImage {
@@ -299,6 +301,12 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
     #[inline]
     fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
         me.clone() as Arc<_>
+    }
+
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        let dims = self.image.dimensions();
+        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
     }
 
     #[inline]

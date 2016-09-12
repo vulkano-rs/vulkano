@@ -20,7 +20,7 @@ use smallvec::SmallVec;
 use command_buffer::Submission;
 use device::Device;
 use format::FormatDesc;
-use image::sys::Dimensions;
+use image::Dimensions;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -45,6 +45,7 @@ use sync::Sharing;
 pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     image: UnsafeImage,
     view: UnsafeImageView,
+    dimensions: Dimensions,
     memory: A::Alloc,
     format: F,
     per_layer: SmallVec<[PerLayer; 1]>,
@@ -79,7 +80,7 @@ impl<F> ImmutableImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions,
+            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -98,7 +99,7 @@ impl<F> ImmutableImage<F> {
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, 0 .. image.mipmap_levels(),
+            try!(UnsafeImageView::raw(&image, dimensions.to_view_type(), 0 .. image.mipmap_levels(),
                                       0 .. image.dimensions().array_layers()))
         };
 
@@ -106,6 +107,7 @@ impl<F> ImmutableImage<F> {
             image: image,
             view: view,
             memory: mem,
+            dimensions: dimensions,
             format: format,
             per_layer: {
                 let mut v = SmallVec::new();
@@ -125,7 +127,7 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
-        self.image.dimensions()
+        self.dimensions
     }
 }
 
@@ -227,6 +229,11 @@ unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
     #[inline]
     fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
         me.clone() as Arc<_>
+    }
+
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        self.dimensions
     }
 
     #[inline]

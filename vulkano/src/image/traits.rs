@@ -18,7 +18,8 @@ use command_buffer::Submission;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
-use image::sys::Dimensions;
+use image::Dimensions;
+use image::ImageDimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -51,7 +52,7 @@ pub unsafe trait Image: 'static + Send + Sync {
 
     /// Returns the dimensions of the image.
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageDimensions {
         self.inner().dimensions()
     }
 
@@ -258,6 +259,9 @@ pub unsafe trait ImageView: 'static + Send + Sync {
     fn parent(&self) -> &Image;
 
     fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
+
+    /// Returns the dimensions of the image view.
+    fn dimensions(&self) -> Dimensions;
 
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;

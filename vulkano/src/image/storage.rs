@@ -20,7 +20,7 @@ use device::Device;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
-use image::sys::Dimensions;
+use image::Dimensions;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -52,6 +52,9 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
     // Memory used to back the image.
     memory: A::Alloc,
+
+    // Dimensions of the image view.
+    dimensions: Dimensions,
 
     // Format.
     format: F,
@@ -111,7 +114,7 @@ impl<F> StorageImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions,
+            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -130,7 +133,7 @@ impl<F> StorageImage<F> {
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, 0 .. image.mipmap_levels(),
+            try!(UnsafeImageView::raw(&image, dimensions.to_view_type(), 0 .. image.mipmap_levels(),
                                       0 .. image.dimensions().array_layers()))
         };
 
@@ -138,6 +141,7 @@ impl<F> StorageImage<F> {
             image: image,
             view: view,
             memory: mem,
+            dimensions: dimensions,
             format: format,
             queue_families: queue_families,
             guarded: Mutex::new(Guarded {
@@ -153,7 +157,7 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
-        self.image.dimensions()
+        self.dimensions
     }
 }
 
@@ -282,6 +286,11 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
+    fn dimensions(&self) -> Dimensions {
+        self.dimensions
+    }
+
+    #[inline]
     fn blocks(&self) -> Vec<(u32, u32)> {
         vec![(0, 0)]
     }
@@ -321,7 +330,7 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
 mod tests {
     use super::StorageImage;
     use format::Format;
-    use image::sys::Dimensions;
+    use image::Dimensions;
 
     #[test]
     fn create() {
