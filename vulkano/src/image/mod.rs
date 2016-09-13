@@ -206,6 +206,19 @@ impl Dimensions {
         }
     }
 
+    #[inline]
+    pub fn array_layers_with_cube(&self) -> u32 {
+        match *self {
+            Dimensions::Dim1d { .. } => 1,
+            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim2d { .. } => 1,
+            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
+            Dimensions::Dim3d { .. }  => 1,
+            Dimensions::Cubemap { .. } => 6,
+            Dimensions::CubemapArray { array_layers, .. } => array_layers * 6,
+        }
+    }
+
     /// Builds the corresponding `ImageDimensions`.
     #[inline]
     pub fn to_image_dimensions(&self) -> ImageDimensions {
