@@ -755,7 +755,7 @@ impl UnsafeImageView {
             (ImageDimensions::Dim1d { .. }, ViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
             (ImageDimensions::Dim1d { .. }, ViewType::Dim1dArray, _) => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
             (ImageDimensions::Dim2d { .. }, ViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
-            (ImageDimensions::Dim2d { .. }, ViewType::Dim2dArray, _) => vk::IMAGE_VIEW_TYPE_2D,
+            (ImageDimensions::Dim2d { .. }, ViewType::Dim2dArray, _) => vk::IMAGE_VIEW_TYPE_2D_ARRAY,
             (ImageDimensions::Dim2d { cubemap_compatible, .. }, ViewType::Cubemap, n) if cubemap_compatible => {
                 assert_eq!(n, 6);
                 vk::IMAGE_VIEW_TYPE_CUBE
@@ -774,7 +774,7 @@ impl UnsafeImageView {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 image: image.internal_object(),
-                viewType: view_type,      // TODO: cube
+                viewType: view_type,
                 format: image.format as u32,
                 components: vk::ComponentMapping { r: 0, g: 0, b: 0, a: 0 },     // FIXME:
                 subresourceRange: vk::ImageSubresourceRange {
