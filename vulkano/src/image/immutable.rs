@@ -111,7 +111,7 @@ impl<F> ImmutableImage<F> {
             format: format,
             per_layer: {
                 let mut v = SmallVec::new();
-                for _ in 0 .. dimensions.array_layers() {
+                for _ in 0 .. dimensions.array_layers_with_cube() {
                     v.push(PerLayer {
                         latest_write_submission: Mutex::new(None),
                         started_reading: AtomicBool::new(false),
