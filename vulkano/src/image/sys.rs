@@ -299,6 +299,9 @@ impl UnsafeImage {
                 if width == 0 || height == 0 || array_layers == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
                 }
+                if cubemap_compatible && width != height {
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions: dimensions });
+                }
                 let extent = vk::Extent3D { width: width, height: height, depth: 1 };
                 let flags = if cubemap_compatible { vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT }
                             else { 0 };
@@ -330,6 +333,15 @@ impl UnsafeImage {
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
                     capabilities_error = Some(err);
+                }
+
+                if (flags & vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT) != 0 {
+                    let limit = device.physical_device().limits().max_image_dimension_cube();
+                    debug_assert_eq!(extent.width, extent.height);      // checked above
+                    if extent.width > limit {
+                        let err = ImageCreationError::UnsupportedDimensions { dimensions: dimensions };
+                        capabilities_error = Some(err);
+                    }
                 }
             },
             vk::IMAGE_TYPE_3D => {
@@ -1222,6 +1234,28 @@ mod tests {
 
         match res {
             Err(ImageCreationError::UnsupportedUsage) => (),
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn cubecompatible_dims_mismatch() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let usage = Usage {
+            sampled: true,
+            .. Usage::none()
+        };
+
+        let res = unsafe {
+            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+                             ImageDimensions::Dim2d { width: 32, height: 64, array_layers: 1,
+                                                      cubemap_compatible: true }, 1, 1,
+                             Sharing::Exclusive::<Empty<_>>, false, false)
+        };
+
+        match res {
+            Err(ImageCreationError::UnsupportedDimensions { .. }) => (),
             _ => panic!()
         };
     }
