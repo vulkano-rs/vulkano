@@ -25,8 +25,6 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use format::ClearValue;
 use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::traits::TrackedFramebufferState;
-use framebuffer::traits::TrackedFramebufferFinishedState;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::traits::TrackedImage;
@@ -132,7 +130,7 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
         let barriers = barriers.map(move |(n, b)| { assert!(n < my_command_num); (n, b) });
 
         let (finished_fb_state, local_final_barrier) = {
-            self.framebuffer_state.finish(&self.framebuffer)
+            self.framebuffer.finish(self.framebuffer_state)
         };
         final_barrier.merge(local_final_barrier);
 
@@ -168,7 +166,7 @@ unsafe impl<L, Rp, F> ResourcesStates for BeginRenderPassCommand<L, Rp, F>
                                                -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
     {
-        if let Some(buf) = self.framebuffer_state.extract_buffer_state(buffer) {
+        if let Some(buf) = self.framebuffer.extract_buffer_state(&mut self.framebuffer_state, buffer) {
             return Some(buf);
         }
 
@@ -179,7 +177,7 @@ unsafe impl<L, Rp, F> ResourcesStates for BeginRenderPassCommand<L, Rp, F>
     unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
-        if let Some(img) = self.framebuffer_state.extract_image_state(image) {
+        if let Some(img) = self.framebuffer.extract_image_state(&mut self.framebuffer_state, image) {
             return Some(img);
         }
 
@@ -245,7 +243,7 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
     {
         // FIXME: merge semaphore iterators
 
-        let framebuffer_submit_reqs = self.state.on_submit(&self.framebuffer, queue, &mut fence);
+        let framebuffer_submit_reqs = self.framebuffer.on_submit(&self.state, queue, &mut fence);
         let parent_reqs = self.previous.on_submit(queue, &mut fence);
 
         assert!(framebuffer_submit_reqs.semaphores_wait.count() == 0);        // not implemented
