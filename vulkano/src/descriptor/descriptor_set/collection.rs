@@ -48,9 +48,15 @@ pub unsafe trait DescriptorSetsCollection {
 /// commands list interface.
 pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
     /// State of the resources inside the collection.
-    type State: TrackedDescriptorSetsCollectionState<Finished = Self::Finished>;
+    type State;
     /// Finished state of the resources inside the collection.
-    type Finished: TrackedDescriptorSetsCollectionFinished;
+    type Finished;
+    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
+    /// submitted.
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    /// Iterator that returns the list of semaphores to signal after the command buffer has
+    /// finished execution.
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
     /// Then transitions them to the right state and returns a pipeline barrier to insert as part
@@ -58,32 +64,25 @@ pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
     unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
                                                -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates;
-}
 
-/// State of the resources inside the collection.
-pub unsafe trait TrackedDescriptorSetsCollectionState: ResourcesStates {
-    /// Finished state of the resources inside the collection.
-    type Finished: TrackedDescriptorSetsCollectionFinished;
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B)
+                                      -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I)
+                                     -> Option<I::CommandListState>
+        where I: TrackedImage;
 
     /// Turns the object into a `TrackedDescriptorSetsCollectionFinished`. All the buffers and
     /// images whose state hasn't been extracted must be have `finished()` called on them as well.
     ///
     /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
-}
-
-/// Finished state of the resources inside the collection.
-pub unsafe trait TrackedDescriptorSetsCollectionFinished {
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
+    unsafe fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
 
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;
@@ -106,51 +105,40 @@ unsafe impl DescriptorSetsCollection for () {
 }
 
 unsafe impl TrackedDescriptorSetsCollection for () {
-    type State = EmptyState;
-    type Finished = EmptyState;
+    type State = ();
+    type Finished = ();
+    type SemaphoresWaitIterator = EmptyIter<(Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator = EmptyIter<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates
     {
-        (EmptyState, 0, PipelineBarrierBuilder::new())
+        ((), 0, PipelineBarrierBuilder::new())
     }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyState;
-
-unsafe impl TrackedDescriptorSetsCollectionState for EmptyState {
-    type Finished = EmptyState;
 
     #[inline]
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
-        (EmptyState, PipelineBarrierBuilder::new())
+    unsafe fn finish(&self, _: ()) -> (Self::Finished, PipelineBarrierBuilder) {
+        ((), PipelineBarrierBuilder::new())
     }
-}
 
-unsafe impl ResourcesStates for EmptyState {
     #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, _: &mut (), buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
         None
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, _: &mut (), image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
         None
     }
-}
 
-unsafe impl TrackedDescriptorSetsCollectionFinished for EmptyState {
-    type SemaphoresWaitIterator = EmptyIter<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = EmptyIter<Arc<Semaphore>>;
-
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    #[inline]
+    unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
