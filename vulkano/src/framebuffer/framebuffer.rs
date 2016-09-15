@@ -13,7 +13,6 @@ use std::fmt;
 use std::iter;
 use std::iter::Chain;
 use std::iter::Empty;
-use std::marker::PhantomData;
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
@@ -31,8 +30,6 @@ use framebuffer::RenderPassCompatible;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::traits::TrackedFramebufferState;
-use framebuffer::traits::TrackedFramebufferFinishedState;
 use image::sys::Layout;
 use image::traits::CommandListState as ImageCommandListState;
 use image::traits::CommandBufferState as ImageCommandBufferState;
@@ -234,84 +231,52 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
 unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
     where Rp: RenderPass, A: AttachmentsList
 {
-    type State = StdFramebufferTrackedState<Rp, A>;
-    type Finished = StdFramebufferTrackedFinishedState<Rp, A>;
+    type State = A::State;
+    type Finished = A::Finished;
+    type SemaphoresWaitIterator = A::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = A::SemaphoresSignalIterator;
 
+    #[inline]
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates
     {
-        let (state, cmd_num, barrier) = self.resources.extract_and_transition(num_command, states);
-        let state = StdFramebufferTrackedState { state: state, marker: PhantomData };
-        (state, cmd_num, barrier)
+        self.resources.extract_and_transition(num_command, states)
     }
-}
-
-pub struct StdFramebufferTrackedState<Rp, A>
-    where A: AttachmentsList
-{
-    state: A::State,
-    marker: PhantomData<Rp>,
-}
-
-unsafe impl<Rp, A> TrackedFramebufferState for StdFramebufferTrackedState<Rp, A>
-    where A: AttachmentsList
-{
-    type Framebuffer = StdFramebuffer<Rp, A>;
-    type Finished = StdFramebufferTrackedFinishedState<Rp, A>;
 
     #[inline]
-    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder) {
-        let (finished, barrier) = self.state.finish(&framebuffer.resources);
-        let finished = StdFramebufferTrackedFinishedState { state: finished, marker: PhantomData };
-        (finished, barrier)
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+        self.resources.finish(state)
     }
-}
 
-unsafe impl<Rp, A> ResourcesStates for StdFramebufferTrackedState<Rp, A>
-    where A: AttachmentsList
-{
     #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
-        self.state.extract_buffer_state(buffer)
+        self.resources.extract_buffer_state(state, buffer)
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
-        self.state.extract_image_state(image)
+        self.resources.extract_image_state(state, image)
     }
-}
-
-pub struct StdFramebufferTrackedFinishedState<Rp, A>
-    where A: AttachmentsList
-{
-    state: A::Finished,
-    marker: PhantomData<Rp>,
-}
-
-unsafe impl<Rp, A> TrackedFramebufferFinishedState for StdFramebufferTrackedFinishedState<Rp, A>
-    where A: AttachmentsList
-{
-    type Framebuffer = StdFramebuffer<Rp, A>;
-    type SemaphoresWaitIterator = <A::Finished as TrackedFramebufferFinishedState>::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = <A::Finished as TrackedFramebufferFinishedState>::SemaphoresSignalIterator;
 
     #[inline]
-    unsafe fn on_submit<F>(&self, fb: &Self::Framebuffer, q: &Arc<Queue>, f: F)
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, q: &Arc<Queue>, f: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
     {
-        self.state.on_submit(&fb.resources, q, f)
+        self.resources.on_submit(state, q, f)
     }
 }
 
 pub unsafe trait AttachmentsList: Sized {
-    type State: TrackedFramebufferState<Framebuffer = Self, Finished = Self::Finished>;
-    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self>;
+    type State;
+    type Finished;
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Returns the raw handles of the image views of this list.
     // TODO: better return type
@@ -328,13 +293,32 @@ pub unsafe trait AttachmentsList: Sized {
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates;
+
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
+
+    #[inline]
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
+        where F: FnMut() -> Arc<Fence>;
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct EmptyAttachmentsList;
 unsafe impl AttachmentsList for EmptyAttachmentsList {
-    type State = EmptyState;
-    type Finished = EmptyState;
+    type State = ();
+    type Finished = ();
+    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
@@ -351,47 +335,32 @@ unsafe impl AttachmentsList for EmptyAttachmentsList {
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates
     {
-        (EmptyState, 0, PipelineBarrierBuilder::new())
+        ((), 0, PipelineBarrierBuilder::new())
     }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyState;
-
-unsafe impl TrackedFramebufferState for EmptyState {
-    type Framebuffer = EmptyAttachmentsList;
-    type Finished = EmptyState;
 
     #[inline]
-    fn finish(self, _: &EmptyAttachmentsList) -> (Self::Finished, PipelineBarrierBuilder) {
-        (EmptyState, PipelineBarrierBuilder::new())
-    }
-}
-
-unsafe impl ResourcesStates for EmptyState {
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
         None
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
         None
     }
-}
-
-unsafe impl TrackedFramebufferFinishedState for EmptyState {
-    type Framebuffer = EmptyAttachmentsList;
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
-    unsafe fn on_submit<F>(&self, _: &EmptyAttachmentsList, _: &Arc<Queue>, _: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+        ((), PipelineBarrierBuilder::new())
+    }
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
     {
         SubmitInfo {
@@ -410,6 +379,8 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 {
     type State = ListTrackedState<A, R>;
     type Finished = ListTrackedFinishedState<A, R>;
+    type SemaphoresWaitIterator = Chain<OptionIntoIter<(Arc<Semaphore>, PipelineStages)>, R::SemaphoresWaitIterator>;
+    type SemaphoresSignalIterator = Chain<OptionIntoIter<Arc<Semaphore>>, R::SemaphoresSignalIterator>;
 
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
@@ -447,7 +418,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 
         // If this assertion fails, there's a duplicate image in the list of attachments.
         // TODO: better error reporting
-        assert!(rest_state.extract_image_state(self.first.image()).is_none());
+        assert!(self.rest.extract_image_state(&mut rest_state, self.first.image()).is_none());
 
         let (layout, stages, access) = {
             // FIXME: depth-stencil and general layouts
@@ -484,33 +455,21 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 
         (state, rest_cmd, rest_barrier)
     }
-}
-
-pub struct ListTrackedState<A, R> where A: TrackedImageView, R: AttachmentsList {
-    first: Option<<A::Image as TrackedImage>::CommandListState>,
-    rest: R::State
-}
-
-unsafe impl<A, R> TrackedFramebufferState for ListTrackedState<A, R>
-    where A: TrackedImageView, R: AttachmentsList
-{
-    type Framebuffer = List<A, R>;
-    type Finished = ListTrackedFinishedState<A, R>;
 
     #[inline]
-    fn finish(self, list: &List<A, R>) -> (Self::Finished, PipelineBarrierBuilder) {
-        let (first_finished, first_barrier) = if let Some(f) = self.first {
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+        let (first_finished, first_barrier) = if let Some(f) = state.first {
             let (s, b) = f.finish();
             (Some(s), b)
         } else {
             (None, None)
         };
 
-        let (rest_finished, mut rest_barrier) = self.rest.finish(&list.rest);
+        let (rest_finished, mut rest_barrier) = self.rest.finish(state.rest);
 
         if let Some(barrier) = first_barrier {
             unsafe {
-                rest_barrier.add_image_barrier_request(list.first.image().inner(), barrier);
+                rest_barrier.add_image_barrier_request(self.first.image().inner(), barrier);
             }
         }
 
@@ -521,44 +480,25 @@ unsafe impl<A, R> TrackedFramebufferState for ListTrackedState<A, R>
 
         (finished, rest_barrier)
     }
-}
 
-unsafe impl<A, R> ResourcesStates for ListTrackedState<A, R>
-    where A: TrackedImageView, R: AttachmentsList
-{
     #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
         // FIXME: look in first
-        self.rest.extract_buffer_state(buffer)
+        self.rest.extract_buffer_state(&mut state.rest, buffer)
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
         // FIXME: look in first
-        self.rest.extract_image_state(image)
+        self.rest.extract_image_state(&mut state.rest, image)
     }
-}
-
-pub struct ListTrackedFinishedState<A, R>
-    where A: TrackedImageView, R: AttachmentsList
-{
-    first: Option<<A::Image as TrackedImage>::FinishedState>,
-    rest: R::Finished
-}
-
-unsafe impl<A, R> TrackedFramebufferFinishedState for ListTrackedFinishedState<A, R>
-    where A: TrackedImageView, R: AttachmentsList
-{
-    type Framebuffer = List<A, R>;
-    type SemaphoresWaitIterator = Chain<OptionIntoIter<(Arc<Semaphore>, PipelineStages)>, <R::Finished as TrackedFramebufferFinishedState>::SemaphoresWaitIterator>;
-    type SemaphoresSignalIterator = Chain<OptionIntoIter<Arc<Semaphore>>, <R::Finished as TrackedFramebufferFinishedState>::SemaphoresSignalIterator>;
 
     #[inline]
-    unsafe fn on_submit<F>(&self, list: &List<A, R>, queue: &Arc<Queue>, mut fence: F)
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, mut fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
@@ -567,8 +507,8 @@ unsafe impl<A, R> TrackedFramebufferFinishedState for ListTrackedFinishedState<A
         let first_pre_barrier;
         let first_post_barrier;
 
-        if let Some(ref first) = self.first {
-            let first_infos = first.on_submit(list.first.image(), queue, &mut fence);
+        if let Some(ref first) = state.first {
+            let first_infos = first.on_submit(self.first.image(), queue, &mut fence);
             first_pre_sem = first_infos.pre_semaphore.map(|(rx, s)| (rx.recv().unwrap(), s));
             assert!(first_infos.post_semaphore.is_none());
 
@@ -581,7 +521,7 @@ unsafe impl<A, R> TrackedFramebufferFinishedState for ListTrackedFinishedState<A
             first_post_barrier = None;
         }
 
-        let rest_infos = self.rest.on_submit(&list.rest, queue, fence);
+        let rest_infos = self.rest.on_submit(&state.rest, queue, fence);
 
         SubmitInfo {
             semaphores_wait: first_pre_sem.into_iter().chain(rest_infos.semaphores_wait),
@@ -589,19 +529,31 @@ unsafe impl<A, R> TrackedFramebufferFinishedState for ListTrackedFinishedState<A
             pre_pipeline_barrier: {
                 let mut b = rest_infos.pre_pipeline_barrier;
                 if let Some(rq) = first_pre_barrier {
-                    b.add_image_barrier_request(list.first.image().inner(), rq);
+                    b.add_image_barrier_request(self.first.image().inner(), rq);
                 }
                 b
             },
             post_pipeline_barrier: {
                 let mut b = rest_infos.post_pipeline_barrier;
                 if let Some(rq) = first_post_barrier {
-                    b.add_image_barrier_request(list.first.image().inner(), rq);
+                    b.add_image_barrier_request(self.first.image().inner(), rq);
                 }
                 b
             },
         }
     }
+}
+
+pub struct ListTrackedState<A, R> where A: TrackedImageView, R: AttachmentsList {
+    first: Option<<A::Image as TrackedImage>::CommandListState>,
+    rest: R::State
+}
+
+pub struct ListTrackedFinishedState<A, R>
+    where A: TrackedImageView, R: AttachmentsList
+{
+    first: Option<<A::Image as TrackedImage>::FinishedState>,
+    rest: R::Finished
 }
 
 /// Trait for types that can be turned into a list of attachments.
