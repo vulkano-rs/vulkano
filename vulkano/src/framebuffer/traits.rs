@@ -70,10 +70,12 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-// TODO: is it possible to remove that `Sized` requirement?
-pub unsafe trait TrackedFramebuffer: Framebuffer + Sized {
-    type State: TrackedFramebufferState<Framebuffer = Self, Finished = Self::Finished>;
-    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self>;
+pub unsafe trait TrackedFramebuffer: Framebuffer {
+    type State;
+    type Finished;
+
+    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Extracts the states of the framebuffer's attachments from `states`.
     ///
@@ -87,97 +89,62 @@ pub unsafe trait TrackedFramebuffer: Framebuffer + Sized {
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates;
-}
 
-// TODO: docs
-pub unsafe trait TrackedFramebufferState: ResourcesStates {
-    type Framebuffer;
-    type Finished: TrackedFramebufferFinishedState<Framebuffer = Self::Framebuffer>;
+    unsafe fn extract_buffer_state<B>(&self, &mut Self::State, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
 
-    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder);
-}
+    unsafe fn extract_image_state<I>(&self, &mut Self::State, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
 
-// TODO: docs
-pub unsafe trait TrackedFramebufferFinishedState {
-    type Framebuffer;
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
 
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
-
-    unsafe fn on_submit<F>(&self, framebuffer: &Self::Framebuffer, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;
 }
 
 unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
-    type State = TrackedFramebufferStateArcWrapper<T>;
-    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
+    type State = T::State;
+    type Finished = T::Finished;
+
+    type SemaphoresWaitIterator = T::SemaphoresWaitIterator;
+    type SemaphoresSignalIterator = T::SemaphoresSignalIterator;
 
     #[inline]
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
                                         -> (Self::State, usize, PipelineBarrierBuilder)
         where S: ResourcesStates
     {
-        let (state, cmd, barrier) = (**self).extract_and_transition(num_command, states);
-        let state = TrackedFramebufferStateArcWrapper { state: state };
-        (state, cmd, barrier)
+        (**self).extract_and_transition(num_command, states)
     }
-}
-
-pub struct TrackedFramebufferStateArcWrapper<T> where T: TrackedFramebuffer {
-    state: T::State,
-}
-
-unsafe impl<T> TrackedFramebufferState for TrackedFramebufferStateArcWrapper<T>
-    where T: TrackedFramebuffer
-{
-    type Framebuffer = Arc<T>;
-    type Finished = TrackedFramebufferFinishedArcWrapper<T>;
 
     #[inline]
-    fn finish(self, framebuffer: &Self::Framebuffer) -> (Self::Finished, PipelineBarrierBuilder) {
-        let (finished, barrier) = self.state.finish(&**framebuffer);
-        let finished = TrackedFramebufferFinishedArcWrapper { state: finished };
-        (finished, barrier)
-    }
-}
-
-unsafe impl<T> ResourcesStates for TrackedFramebufferStateArcWrapper<T>
-    where T: TrackedFramebuffer
-{
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
-        self.state.extract_buffer_state(buffer)
+        (**self).extract_buffer_state(state, buffer)
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
-        self.state.extract_image_state(image)
+        (**self).extract_image_state(state, image)
     }
-}
-
-pub struct TrackedFramebufferFinishedArcWrapper<T> where T: TrackedFramebuffer {
-    state: T::Finished,
-}
-
-unsafe impl<T> TrackedFramebufferFinishedState for TrackedFramebufferFinishedArcWrapper<T>
-    where T: TrackedFramebuffer
-{
-    type Framebuffer = Arc<T>;
-    type SemaphoresWaitIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = <T::Finished as TrackedFramebufferFinishedState>::SemaphoresSignalIterator;
 
     #[inline]
-    unsafe fn on_submit<F>(&self, fb: &Self::Framebuffer, q: &Arc<Queue>, f: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
+    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+        (**self).finish(state)
+    }
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
+                           -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                         Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
     {
-        self.state.on_submit(&**fb, q, f)
+        (**self).on_submit(state, queue, fence)
     }
 }
 
