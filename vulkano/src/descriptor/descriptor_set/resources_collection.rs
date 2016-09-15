@@ -10,11 +10,9 @@
 //! Provides an utility trait. It's a helper for descriptor sets and framebuffer.
 // TODO: better documentation
 
-use std::cmp;
 use std::iter::Empty;
 use std::sync::Arc;
 
-use buffer::traits::CommandListState as BufferCommandListState;
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
@@ -29,26 +27,9 @@ use sync::Semaphore;
 // TODO: re-read docs
 /// Collection of tracked resources. Makes it possible to treat multiple buffers and images as one.
 pub unsafe trait ResourcesCollection {
-    type State: ResourcesCollectionState<Finished = Self::Finished>;
-    type Finished: ResourcesCollectionFinished;
+    type State;
+    type Finished;
 
-    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
-    /// Then transitions them to the right state.
-    // TODO: must return a Result if multiple elements conflict with one another
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates;
-}
-
-// TODO: re-read docs
-pub unsafe trait ResourcesCollectionState: ResourcesStates {
-    type Finished: ResourcesCollectionFinished;
-
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
-}
-
-// TODO: re-read docs
-pub unsafe trait ResourcesCollectionFinished {
     /// Iterator that returns the list of semaphores to wait upon before the command buffer is
     /// submitted.
     type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
@@ -57,8 +38,25 @@ pub unsafe trait ResourcesCollectionFinished {
     /// finished execution.
     type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
+    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
+    /// Then transitions them to the right state.
+    // TODO: must return a Result if multiple elements conflict with one another
+    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
+                                               -> (Self::State, usize, PipelineBarrierBuilder)
+        where L: ResourcesStates;
+        
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
+
+    unsafe fn finish(&self, Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;
@@ -67,48 +65,39 @@ pub unsafe trait ResourcesCollectionFinished {
 pub struct End;
 
 unsafe impl ResourcesCollection for End {
-    type State = End;
-    type Finished = End;
+    type State = ();
+    type Finished = ();
+    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
-                                               -> (End, usize, PipelineBarrierBuilder)
+                                               -> ((), usize, PipelineBarrierBuilder)
         where L: ResourcesStates
     {
-        (End, 0, PipelineBarrierBuilder::new())
+        ((), 0, PipelineBarrierBuilder::new())
     }
-}
 
-unsafe impl ResourcesStates for End {
     #[inline]    
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
+    unsafe fn extract_buffer_state<B>(&self, _: &mut (), buffer: &B) -> Option<B::CommandListState>
         where B: TrackedBuffer
     {
         None
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, _: &mut (), image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
         None
     }
-}
-
-unsafe impl ResourcesCollectionState for End {
-    type Finished = End;
 
     #[inline]
-    unsafe fn finish(self) -> (End, PipelineBarrierBuilder) {
-        (End, PipelineBarrierBuilder::new())
+    unsafe fn finish(&self, _: ()) -> ((), PipelineBarrierBuilder) {
+        ((), PipelineBarrierBuilder::new())
     }
-}
 
-unsafe impl ResourcesCollectionFinished for End {
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
-
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
@@ -132,13 +121,15 @@ unsafe impl<B, N> ResourcesCollection for Buf<B, N>
 {
     type State = BufState<B::CommandListState, N::State>;
     type Finished = BufFinished<B::FinishedState, N::Finished>;
+    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
+    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
                                                -> (Self::State, usize, PipelineBarrierBuilder)
         where L: ResourcesStates
     {
-        let (mut next_state, next_loc, mut next_builder) = {
+        /*let (mut next_state, next_loc, mut next_builder) = {
             self.rest.extract_states_and_transition(num_command, list)
         };
 
@@ -159,27 +150,12 @@ unsafe impl<B, N> ResourcesCollection for Buf<B, N>
             next_builder.add_buffer_barrier_request(self.buffer.inner(), my_builder);
         }
 
-        (BufState(Some(my_buf_state), next_state), command_num, next_builder)
-    }
-}
-
-pub struct BufState<B, N>(pub Option<B>, pub N);
-
-unsafe impl<B, N> ResourcesCollectionState for BufState<B, N>
-    where B: BufferCommandListState, N: ResourcesCollectionState
-{
-    type Finished = BufFinished<B::FinishedState, N::Finished>;
-
-    #[inline]
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
-        // TODO:
+        (BufState(Some(my_buf_state), next_state), command_num, next_builder)*/
         unimplemented!()
     }
-}
 
-unsafe impl<B, N> ResourcesStates for BufState<B, N> {
     #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob) -> Option<Ob::CommandListState>
+    unsafe fn extract_buffer_state<Ob>(&self, _: &mut Self::State, buffer: &Ob) -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
     {
         // TODO:
@@ -187,21 +163,20 @@ unsafe impl<B, N> ResourcesStates for BufState<B, N> {
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
+    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
         // TODO:
         unimplemented!()
     }
-}
 
-pub struct BufFinished<B, N>(pub Option<B>, pub N);
+    #[inline]
+    unsafe fn finish(&self, _: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+        // TODO:
+        unimplemented!()
+    }
 
-unsafe impl<B, N> ResourcesCollectionFinished for BufFinished<B, N> {
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
-
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>
@@ -210,31 +185,6 @@ unsafe impl<B, N> ResourcesCollectionFinished for BufFinished<B, N> {
     }
 }
 
-/// Joins two resource states together.
-pub struct ResourcesStatesJoin<'a, 'b, A: 'a , B: 'b>(pub &'a mut A, pub &'b mut B);
+pub struct BufState<B, N>(pub Option<B>, pub N);
 
-unsafe impl<'a, 'b, A: 'a , B: 'b> ResourcesStates for ResourcesStatesJoin<'a, 'b, A, B>
-    where A: ResourcesStates, B: ResourcesStates
-{
-    #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob) -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if let Some(s) = self.1.extract_buffer_state(buffer) {
-            return Some(s);
-        }
-
-        self.0.extract_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if let Some(s) = self.1.extract_image_state(image) {
-            return Some(s);
-        }
-
-        self.0.extract_image_state(image)
-    }
-}
+pub struct BufFinished<B, N>(pub Option<B>, pub N);
