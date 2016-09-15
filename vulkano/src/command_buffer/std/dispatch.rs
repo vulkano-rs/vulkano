@@ -24,8 +24,6 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
-use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollectionState;
-use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollectionFinished;
 use device::Queue;
 use image::traits::TrackedImage;
 use instance::QueueFamily;
@@ -123,7 +121,7 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         let my_command_num = self.num_commands();
 
         // Computing the finished state of the sets.
-        let (finished_state, fb) = self.sets_state.finish();
+        let (finished_state, fb) = self.sets.finish(self.sets_state);
         final_barrier.merge(fb);
 
         // We split the barriers in two: those to apply after our command, and those to
@@ -184,7 +182,7 @@ unsafe impl<'a, L, Pl, S, Pc> ResourcesStates for DispatchCommand<'a, L, Pl, S, 
                                                -> Option<Ob::CommandListState>
         where Ob: TrackedBuffer
     {
-        if let Some(s) = self.sets_state.extract_buffer_state(buffer) {
+        if let Some(s) = self.sets.extract_buffer_state(&mut self.sets_state, buffer) {
             return Some(s);
         }
 
@@ -194,7 +192,7 @@ unsafe impl<'a, L, Pl, S, Pc> ResourcesStates for DispatchCommand<'a, L, Pl, S, 
     unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
         where I: TrackedImage
     {
-        if let Some(s) = self.sets_state.extract_image_state(image) {
+        if let Some(s) = self.sets.extract_image_state(&mut self.sets_state, image) {
             return Some(s);
         }
 
@@ -226,11 +224,9 @@ unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
 {
     type Pool = L::Pool;
     type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
-                                        <S::Finished as TrackedDescriptorSetsCollectionFinished>::
-                                            SemaphoresWaitIterator>;
+                                        S::SemaphoresWaitIterator>;
     type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
-                                          <S::Finished as TrackedDescriptorSetsCollectionFinished>::
-                                            SemaphoresSignalIterator>;
+                                          S::SemaphoresSignalIterator>;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -246,7 +242,7 @@ unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
         let parent = self.previous.on_submit(queue, &mut fence);
 
         // We query our sets.
-        let my_infos = self.sets_state.on_submit(queue, fence);
+        let my_infos = self.sets.on_submit(&self.sets_state, queue, fence);
 
         // We merge the two.
         SubmitInfo {
