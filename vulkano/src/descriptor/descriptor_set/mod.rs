@@ -9,11 +9,13 @@
 
 use std::sync::Arc;
 
+use buffer::traits::TrackedBuffer;
 use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use device::Queue;
+use image::traits::TrackedImage;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -53,29 +55,9 @@ pub unsafe trait DescriptorSetDesc {
 /// Extension trait for descriptor sets so that it can be used with the standard commands list
 /// interface.
 pub unsafe trait TrackedDescriptorSet: DescriptorSet {
-    type State: TrackedDescriptorSetState<Finished = Self::Finished>;
-    type Finished: TrackedDescriptorSetFinished;
+    type State;
+    type Finished;
 
-    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
-    /// Then transitions them to the right state.
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates;
-}
-
-// TODO: re-read docs
-pub unsafe trait TrackedDescriptorSetState: ResourcesStates {
-    type Finished: TrackedDescriptorSetFinished;
-
-    /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
-    /// state hasn't been extracted must be have `finished()` called on them as well.
-    ///
-    /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
-}
-
-// TODO: re-read docs
-pub unsafe trait TrackedDescriptorSetFinished {
     /// Iterator that returns the list of semaphores to wait upon before the command buffer is
     /// submitted.
     type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
@@ -84,8 +66,28 @@ pub unsafe trait TrackedDescriptorSetFinished {
     /// finished execution.
     type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
+    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
+    /// Then transitions them to the right state.
+    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
+                                               -> (Self::State, usize, PipelineBarrierBuilder)
+        where L: ResourcesStates;
+
+    #[inline]
+    unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
+        where B: TrackedBuffer;
+
+    #[inline]
+    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
+        where I: TrackedImage;
+
+    /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
+    /// state hasn't been extracted must be have `finished()` called on them as well.
+    ///
+    /// The function returns a pipeline barrier to append at the end of the command buffer.
+    unsafe fn finish(&self, Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
+    unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
                            -> SubmitInfo<Self::SemaphoresWaitIterator,
                                          Self::SemaphoresSignalIterator>
         where F: FnMut() -> Arc<Fence>;
