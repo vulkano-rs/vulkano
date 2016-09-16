@@ -277,7 +277,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> InsideRenderPass for DrawCommand<'a, L, P
     }
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         self.previous.render_pass()
     }
 

@@ -34,8 +34,8 @@ use VulkanObject;
 pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
     type RenderPass: RenderPass;
 
-    // TODO: don't return an Arc
-    fn render_pass(&self) -> &Arc<Self::RenderPass>;
+    /// Returns the render pass this framebuffer belongs to.
+    fn render_pass(&self) -> &Self::RenderPass;
 
     /// Returns the width, height and number of layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
@@ -45,7 +45,7 @@ unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
     type RenderPass = F::RenderPass;
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         (**self).render_pass()
     }
 
@@ -59,7 +59,7 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
     type RenderPass = F::RenderPass;
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         (**self).render_pass()
     }
 
@@ -337,6 +337,24 @@ pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
     fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
+unsafe impl<A, Rp> RenderPassAttachmentsList<A> for Arc<Rp>
+    where Rp: RenderPassAttachmentsList<A>
+{
+    #[inline]
+    fn check_attachments_list(&self, atch: &A) -> Result<(), FramebufferCreationError> {
+        (**self).check_attachments_list(atch)
+    }
+}
+
+unsafe impl<'a, A, Rp> RenderPassAttachmentsList<A> for &'a Rp
+    where Rp: RenderPassAttachmentsList<A>
+{
+    #[inline]
+    fn check_attachments_list(&self, atch: &A) -> Result<(), FramebufferCreationError> {
+        (**self).check_attachments_list(atch)
+    }
+}
+
 /// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
 ///
 /// # Safety
@@ -355,6 +373,24 @@ pub unsafe trait RenderPassClearValues<C>: RenderPass {
     /// The format of the clear value **must** match the format of the attachment. Attachments
     /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
+}
+
+unsafe impl<C, Rp> RenderPassClearValues<C> for Arc<Rp> where Rp: RenderPassClearValues<C> {
+    type ClearValuesIter = Rp::ClearValuesIter;
+
+    #[inline]
+    fn convert_clear_values(&self, values: C) -> Self::ClearValuesIter {
+        (**self).convert_clear_values(values)
+    }
+}
+
+unsafe impl<'a, C, Rp> RenderPassClearValues<C> for &'a Rp where Rp: RenderPassClearValues<C> {
+    type ClearValuesIter = Rp::ClearValuesIter;
+
+    #[inline]
+    fn convert_clear_values(&self, values: C) -> Self::ClearValuesIter {
+        (**self).convert_clear_values(values)
+    }
 }
 
 /// Extension trait for `RenderPass` that checks whether a subpass of this render pass accepts
