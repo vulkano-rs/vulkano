@@ -58,7 +58,7 @@ use vk;
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
 pub struct StdFramebuffer<Rp, A> {
     device: Arc<Device>,
-    render_pass: Arc<Rp>,
+    render_pass: Rp,
     framebuffer: vk::Framebuffer,
     dimensions: [u32; 3],
     resources: A,
@@ -68,13 +68,12 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPass` implementation is used.
-    pub fn new<Ia>(render_pass: &Arc<Rp>, dimensions: [u32; 3],
+    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
                    attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
     {
-        let vk = render_pass.inner().device().pointers();
         let device = render_pass.inner().device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
@@ -119,6 +118,8 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         };*/
 
         let framebuffer = unsafe {
+            let vk = render_pass.inner().device().pointers();
+
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
@@ -139,7 +140,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
 
         Ok(Arc::new(StdFramebuffer {
             device: device,
-            render_pass: render_pass.clone(),
+            render_pass: render_pass,
             framebuffer: framebuffer,
             dimensions: dimensions,
             resources: attachments,
@@ -188,9 +189,8 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 
     /// Returns the renderpass that was used to create this framebuffer.
-    // TODO: don't return Arc
     #[inline]
-    pub fn render_pass(&self) -> &Arc<Rp> {
+    pub fn render_pass(&self) -> &Rp {
         &self.render_pass
     }
 }
@@ -199,7 +199,7 @@ unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPa
     type RenderPass = Rp;
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         &self.render_pass
     }
 

@@ -43,7 +43,9 @@ pub struct BeginRenderPassCommand<L, Rp, F>
     secondary: bool,
     rect: [Range<u32>; 2],
     clear_values: SmallVec<[ClearValue; 6]>,
-    render_pass: Arc<Rp>,
+    // If `None`, then the render pass used in the command is the framebuffer's. If `Some`, then it
+    // is a different (but compatible) render pass.
+    render_pass: Option<Rp>,
     framebuffer: F,
     framebuffer_state: F::State,
     barrier_position: usize,
@@ -67,14 +69,13 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
                                       .collect();
 
         let rect = [0 .. framebuffer.dimensions()[0], 0 .. framebuffer.dimensions()[1]];
-        let render_pass = framebuffer.render_pass().clone();
 
         BeginRenderPassCommand {
             previous: previous,
             secondary: secondary,
             rect: rect,
             clear_values: clear_values,
-            render_pass: render_pass,
+            render_pass: None,
             framebuffer: framebuffer,
             framebuffer_state: state,
             barrier_position: barrier_pos,
@@ -144,8 +145,10 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
                                                                              .chain(barriers);
 
         let parent = self.previous.raw_build(|cb| {
-            cb.begin_render_pass(my_render_pass.inner(), &my_framebuffer,
-                                 my_clear_values.into_iter(), my_rect, my_secondary);
+            cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.inner())
+                                               .unwrap_or(my_framebuffer.render_pass().inner()),
+                                 &my_framebuffer, my_clear_values.into_iter(),
+                                 my_rect, my_secondary);
             additional_elements(cb);
         }, barriers_for_parent, final_barrier);
 
@@ -202,8 +205,13 @@ unsafe impl<L, Rp, F> InsideRenderPass for BeginRenderPassCommand<L, Rp, F>
     }
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
-        &self.render_pass
+    fn render_pass(&self) -> &Self::RenderPass {
+        if let Some(ref rp) = self.render_pass {
+            rp
+        } else {
+            panic!()        // TODO:
+            //self.framebuffer.render_pass()
+        }
     }
 
     #[inline]
@@ -218,7 +226,7 @@ pub struct BeginRenderPassCommandCb<L, Rp, F>
 {
     // The previous commands.
     previous: L,
-    render_pass: Arc<Rp>,
+    render_pass: Option<Rp>,
     framebuffer: F,
     state: F::Finished,
 }
@@ -380,7 +388,7 @@ unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
     }
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         self.previous.render_pass()
     }
 
