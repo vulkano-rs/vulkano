@@ -211,8 +211,7 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     /// inline draw commands can be added.
     fn secondary_subpass(&self) -> bool;
 
-    // TODO: don't use Arc
-    fn render_pass(&self) -> &Arc<Self::RenderPass>;
+    fn render_pass(&self) -> &Self::RenderPass;
 
     fn framebuffer(&self) -> &Self::Framebuffer;
 }

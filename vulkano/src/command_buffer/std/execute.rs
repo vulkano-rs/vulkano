@@ -167,7 +167,7 @@ unsafe impl<Cb, L> InsideRenderPass for ExecuteCommand<Cb, L>
     }
 
     #[inline]
-    fn render_pass(&self) -> &Arc<Self::RenderPass> {
+    fn render_pass(&self) -> &Self::RenderPass {
         self.previous.render_pass()
     }
 
