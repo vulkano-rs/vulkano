@@ -8,15 +8,16 @@
 // according to those terms.
 
 //! Debug callback called by validation layers.
-//! 
+//!
 //! When working on an application, it is recommended to register a debug callback. This callback
 //! will be called by validation layers whenever necessary to warn you about invalid API usages
 //! or performance problems.
 //!
 //! Note that the vulkano library can also emit messages to warn you about performance issues.
-//! 
+//! TODO: ^ that's not the case yet, need to choose whether we keep this idea
+//!
 //! # Example
-//! 
+//!
 //! ```no_run
 //! # use vulkano::instance::Instance;
 //! # use std::sync::Arc;
@@ -27,6 +28,11 @@
 //!     println!("Debug callback: {:?}", msg.description);
 //! }).ok();
 //! ```
+//!
+//! Note that you must keep the `_callback` object alive for as long as you want your callback to
+//! be callable. If you don't store the return value of `DebugCallback`'s constructor in a
+//! variable, it will be immediately destroyed and your callback will not work. 
+//!
 
 use std::error;
 use std::ffi::CStr;
@@ -48,6 +54,8 @@ use vk;
 /// Registration of a callback called by validation layers.
 ///
 /// The callback can be called as long as this object is alive.
+#[must_use = "The DebugCallback object must be kept alive for as long as you want your callback \
+              to be called"]
 pub struct DebugCallback {
     instance: Arc<Instance>,
     debug_report_callback: vk::DebugReportCallbackEXT,

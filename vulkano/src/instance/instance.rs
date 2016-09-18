@@ -326,6 +326,7 @@ pub enum InstanceCreationError {
     /// One of the requested extensions is missing.
     ExtensionNotPresent,
     /// The version requested is not supported by the implementation.
+    // TODO: more info about this once the question of the version has been resolved
     IncompatibleDriver,
 }
 
@@ -397,6 +398,9 @@ struct PhysicalDeviceInfos {
 }
 
 /// Represents one of the available devices on this machine.
+///
+/// This struct simply contains a pointer to an instance and a number representing the physical
+/// device. You are therefore encouraged to pass this around by value instead of by reference.
 #[derive(Debug, Copy, Clone)]
 pub struct PhysicalDevice<'a> {
     instance: &'a Arc<Instance>,
@@ -414,6 +418,8 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns a physical device from its index. Returns `None` if out of range.
+    ///
+    /// Indices range from 0 to the number of devices.
     #[inline]
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
@@ -556,6 +562,9 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns an opaque number representing the version of the driver of this device.
+    ///
+    /// The meaning of this number is implementation-specific. It can be used in bug reports, for
+    /// example.
     #[inline]
     pub fn driver_version(&self) -> u32 {
         self.infos().properties.driverVersion
@@ -574,12 +583,15 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns a unique identifier for the device.
+    ///
+    /// Can be stored in a configuration file, so that you can retrieve the device again the next
+    /// time the program is run.
     #[inline]
     pub fn uuid(&self) -> &[u8; 16] {   // must be equal to vk::UUID_SIZE
         &self.infos().properties.pipelineCacheUUID
     }
 
-    /// Internal function to make it easier to get the infos of this device.
+    // Internal function to make it easier to get the infos of this device.
     #[inline]
     fn infos(&self) -> &'a PhysicalDeviceInfos {
         &self.instance.physical_devices[self.device]
@@ -619,6 +631,15 @@ impl<'a> Iterator for PhysicalDevicesIter<'a> {
         self.current_id += 1;
         Some(dev)
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.instance.physical_devices.len() - self.current_id;
+        (len, Some(len))
+    }
+}
+
+impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {
 }
 
 /// Type of a physical device.
@@ -914,6 +935,8 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
     }
 }
 
+impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
+
 /// Limits of a physical device.
 pub struct Limits<'a> {
     device: PhysicalDevice<'a>,
@@ -1040,8 +1063,6 @@ limits_impl!{
     optimal_buffer_copy_row_pitch_alignment: u64 => optimalBufferCopyRowPitchAlignment,
     non_coherent_atom_size: u64 => nonCoherentAtomSize,
 }
-
-impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
 
 #[cfg(test)]
 mod tests {
