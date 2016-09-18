@@ -519,7 +519,6 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    #[ignore]   // FIXME: failing, fix me
     fn one_ref() {
         let (mut device, _) = gfx_dev_and_queue!();
         assert!(Arc::get_mut(&mut device).is_some());
