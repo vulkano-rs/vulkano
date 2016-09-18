@@ -263,6 +263,11 @@ unsafe impl<T> ImageView for Arc<T> where T: ImageView {
     }
 
     #[inline]
+    fn dimensions(&self) -> Dimensions {
+        (**self).dimensions()
+    }
+
+    #[inline]
     fn blocks(&self) -> Vec<(u32, u32)> {
         (**self).blocks()
     }
