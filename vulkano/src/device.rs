@@ -12,6 +12,83 @@
 //! The `Device` is one of the most important objects of Vulkan. Creating a `Device` is required
 //! before you can create buffers, textures, shaders, etc.
 //!
+//! Basic example:
+//!
+//! ```no_run
+//! use vulkano::device::Device;
+//! use vulkano::instance::DeviceExtensions;
+//! use vulkano::instance::Features;
+//! use vulkano::instance::Instance;
+//! use vulkano::instance::InstanceExtensions;
+//! use vulkano::instance::PhysicalDevice;
+//!
+//! // Creating the instance. See the documentation of the `instance` module. 
+//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//!     Ok(i) => i,
+//!     Err(err) => panic!("Couldn't build instance: {:?}", err)
+//! };
+//!
+//! // We just choose the first physical device. In a real application you would choose depending
+//! // on the capabilities of the physical device and the user's preferences.
+//! let physical_device = PhysicalDevice::enumerate(&instance).next().expect("No physical device");
+//!
+//! // Here is the device-creating code.
+//! let device = {
+//!     let queue_family = physical_device.queue_families().next().unwrap();
+//!     let features = Features::none();
+//!     let ext = DeviceExtensions::none();
+//!
+//!     match Device::new(&physical_device, &features, &ext, Some((queue_family, 1.0))) {
+//!         Ok(d) => d,
+//!         Err(err) => panic!("Couldn't build device: {:?}", err)
+//!     }
+//! };
+//! ```
+//!
+//! # Features and extensions
+//!
+//! Two of the parameters that you pass to `Device::new` are the list of the features and the list
+//! of extensions to enable on the newly-created device.
+//! 
+//! > **Note**: Device extensions are the same as instance extensions, except for the device.
+//! > Features are similar to extensions, except that they are part of the core Vulkan
+//! > specifications instead of being separate documents.
+//! 
+//! Some Vulkan capabilities, such as swapchains (that allow you to render on the screen) or
+//! geometry shaders for example, require that you enable a certain feature or extension when you
+//! create the device. Contrary to OpenGL, you can't use the functions provided by a feature or an
+//! extension if you didn't explicitly enable it when creating the device.
+//! 
+//! Not all physical devices support all possible features and extensions. For example mobile
+//! devices tend to not support geometry shaders, because their hardware is not capable of it. You
+//! can query what is supported with respectively `PhysicalDevice::supported_features` and
+//! TODO: oops, there's no method for querying supported extensions in vulkan yet.
+//!
+//! > **Note**: The fact that you need to manually enable features at initialization also means
+//! > that you don't need to worry about a capability not being supported later on in your code.  
+//!
+//! # Queues
+//!
+//! Each physical device proposes one or more *queues* that are divided in *queue families*. A
+//! queue is a thread of execution to which you can submit commands that the GPU will execute.
+//!
+//! > **Note**: You can think of a queue like a CPU thread. Each queue executes its commands one
+//! > after the other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
+//! > technology, in the sense that queues will only run partially in parallel. 
+//!
+//! The Vulkan API requires that you specify the list of queues that you are going to use at the
+//! same time as when you create the device. This is done in vulkano by passing an iterator where
+//! each element is a tuple containing a queue family and a number between 0.0 and 1.0 indicating
+//! the priority of execution of the queue relative to the others.
+//!
+//! TODO: write better doc here
+//!
+//! The `Device::new` function returns the newly-created device, but also the list of queues.
+//!
+//! # Extended example
+//!
+//! TODO: write
+
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
@@ -84,6 +161,7 @@ impl Device {
     /// - Panics if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
+    // TODO: should take the PhysicalDevice by value
     pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features,
                       extensions: &DeviceExtensions, queue_families: I)
                       -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
