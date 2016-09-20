@@ -73,7 +73,10 @@
 //!
 //! # fn build_window() -> *const u32 { ptr::null() }
 //! let window = build_window();
-//! let _surface = unsafe { Surface::from_hwnd(&instance, ptr::null(), window).unwrap() };
+//! let _surface = unsafe {
+//!     let hinstance: *const () = ptr::null();     // Windows-specific object
+//!     Surface::from_hwnd(&instance, hinstance, window).unwrap()
+//! };
 //! ```
 //! 
 //! ## Creating a surface from a monitor
