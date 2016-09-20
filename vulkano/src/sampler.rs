@@ -51,7 +51,11 @@
 //! However this comes with restrictions. When using a floating-point border color, the sampler can
 //! only be used with floating-point or depth image views. When using an integer border color, the
 //! sampler can only be used with integer or stencil image views. In addition to this, you can't
-//! use a black border color with an image view that uses components swizzling.
+//! use an opaque black border color with an image view that uses components swizzling.
+//!
+//! > **Note**: The reason for this restriction about opaque black borders is that the value of the
+//! > alpha is 1.0 while the value of the color components is 0.0. In the other border colors, the
+//! > value of all the components is the same.
 //!
 //! Samplers that don't use `ClampToBorder` are not concerned by these restrictions.
 //!
