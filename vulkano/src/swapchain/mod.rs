@@ -150,7 +150,41 @@
 //! rendering, you will need to *recreate* the swapchain by creating a new swapchain and passing
 //! as last parameter the old swapchain.
 //!
-//! TODO: add example here
+//! TODO: suboptimal stuff
+//!
+//! ```no_run
+//! # use std::time::Duration;
+//! use vulkano::swapchain::AcquireError;
+//! use vulkano::swapchain::PresentError;
+//!
+//! // let mut swapchain = Swapchain::new(...);
+//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = unsafe { ::std::mem::uninitialized() };
+//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = unsafe { ::std::mem::uninitialized() };
+//! let mut recreate_swapchain = false;
+//!
+//! loop {
+//!     if recreate_swapchain {
+//!         swapchain = swapchain.0.recreate_with_dimension([1024, 768]).unwrap();
+//!         recreate_swapchain = false;
+//!     }
+//!
+//!     let (ref swapchain, ref _images) = swapchain;
+//!
+//!     let index = match swapchain.acquire_next_image(Duration::from_millis(500)) {
+//!         Ok(img) => img,
+//!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
+//!         Err(err) => panic!("{:?}", err)
+//!     };
+//!
+//!     // ...
+//!
+//!     match swapchain.present(&queue, index) {
+//!         Ok(()) => (),
+//!         Err(PresentError::OutOfDate) => { recreate_swapchain = true; },
+//!         Err(err) => panic!("{:?}", err),
+//!     }
+//! }
+//! ```
 //!
 
 use std::sync::atomic::AtomicBool;
