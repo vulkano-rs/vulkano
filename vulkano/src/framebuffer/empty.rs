@@ -9,7 +9,6 @@
 
 use std::iter;
 use std::iter::Empty as EmptyIter;
-use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 
 use device::Device;
@@ -73,34 +72,44 @@ unsafe impl RenderPass for EmptySinglePassRenderPass {
 }
 
 unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<LayoutAttachmentDescription>;
-    type PassesIter = OptionIntoIter<LayoutPassDescription>;
-    type DependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
-
     #[inline]
-    fn attachments(&self) -> Self::AttachmentsIter {
-        iter::empty()
+    fn num_attachments(&self) -> usize {
+        0
     }
 
     #[inline]
-    fn passes(&self) -> Self::PassesIter {
-        Some(LayoutPassDescription {
-            color_attachments: vec![],
-            depth_stencil: None,
-            input_attachments: vec![],
-            resolve_attachments: vec![],
-            preserve_attachments: vec![],
-        }).into_iter()
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        None
     }
 
     #[inline]
-    fn dependencies(&self) -> Self::DependenciesIter {
-        iter::empty()
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> u32 {
+    fn num_subpasses(&self) -> usize {
         1
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        if num == 0 {
+            Some(LayoutPassDescription {
+                color_attachments: vec![],
+                depth_stencil: None,
+                input_attachments: vec![],
+                resolve_attachments: vec![],
+                preserve_attachments: vec![],
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        None
     }
 
     #[inline]
