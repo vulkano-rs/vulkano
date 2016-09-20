@@ -94,8 +94,13 @@ macro_rules! ordered_passes_renderpass {
                 #![allow(unsafe_code)]
 
                 let rp = try!(unsafe {
-                    UnsafeRenderPass::new(device, AttachmentsIter(formats.clone(), 0),
-                                          PassesIter(0), DependenciesIter(0, 0))
+                    let atch = (0 .. num_attachments()).map(|p| attachment(formats, p).unwrap());
+                    let subpasses = (0 .. num_subpasses()).map(|p| subpass(p).unwrap());
+                    let deps = (0 .. num_dependencies()).map(|p| dependency(p).unwrap());
+                    // TODO: shouldn't collect
+                    UnsafeRenderPass::new(device, atch.collect::<Vec<_>>().into_iter(),
+                                          subpasses.collect::<Vec<_>>().into_iter(),
+                                          deps.collect::<Vec<_>>().into_iter())
                 });
 
                 Ok(CustomRenderPass {
@@ -122,182 +127,155 @@ macro_rules! ordered_passes_renderpass {
 
         #[allow(unsafe_code)]
         unsafe impl RenderPassDesc for CustomRenderPass {
-            type AttachmentsIter = AttachmentsIter;
-            type PassesIter = PassesIter;
-            type DependenciesIter = DependenciesIter;
-
             #[inline]
-            fn attachments(&self) -> Self::AttachmentsIter {
-                AttachmentsIter(self.formats.clone(), 0)
+            fn num_attachments(&self) -> usize {
+                num_attachments()
             }
 
             #[inline]
-            fn passes(&self) -> Self::PassesIter {
-                PassesIter(0)
+            fn attachment(&self, id: usize) -> Option<LayoutAttachmentDescription> {
+                attachment(&self.formats, id)
             }
 
             #[inline]
-            fn dependencies(&self) -> Self::DependenciesIter {
-                DependenciesIter(0, 0)
-            }
-        }
-
-        #[derive(Debug, Clone)]
-        pub struct AttachmentsIter(Formats, usize);
-        impl ExactSizeIterator for AttachmentsIter {}
-        impl Iterator for AttachmentsIter {
-            type Item = LayoutAttachmentDescription;
-
-            #[inline]
-            fn next(&mut self) -> Option<LayoutAttachmentDescription> {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-
-                let mut num = 0;
-
-                $({
-                    if self.1 == num {
-                        self.1 += 1;
-
-                        let (initial_layout, final_layout) = attachment_layouts(num);
-
-                        return Some($crate::framebuffer::LayoutAttachmentDescription {
-                            format: $crate::format::FormatDesc::format(&(self.0).$atch_name.0),
-                            samples: (self.0).$atch_name.1,
-                            load: $crate::framebuffer::LoadOp::$load,
-                            store: $crate::framebuffer::StoreOp::$store,
-                            initial_layout: initial_layout,
-                            final_layout: final_layout,
-                        });
-                    }
-
-                    num += 1;
-                })*
-
-                None
+            fn num_subpasses(&self) -> usize {
+                num_subpasses()
             }
 
             #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-                let mut num = 0;
-                $(let $atch_name = num; num += 1;)*
-                num -= self.1;
-                (num, Some(num))
+            fn subpass(&self, id: usize) -> Option<LayoutPassDescription> {
+                subpass(id)
+            }
+
+            #[inline]
+            fn num_dependencies(&self) -> usize {
+                num_dependencies()
+            }
+
+            #[inline]
+            fn dependency(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
+                dependency(id)
             }
         }
 
-        #[derive(Debug, Clone)]
-        pub struct PassesIter(usize);
-        impl ExactSizeIterator for PassesIter {}
-        impl Iterator for PassesIter {
-            type Item = LayoutPassDescription;
-
-            #[inline]
-            fn next(&mut self) -> Option<LayoutPassDescription> {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-
-                let mut attachment_num = 0;
-                $(
-                    let $atch_name = attachment_num;
-                    attachment_num += 1;
-                )*
-
-                let mut cur_pass_num = 0;
-
-                $({
-                    if self.0 == cur_pass_num {
-                        self.0 += 1;
-
-                        let mut depth = None;
-                        $(
-                            depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
-                        )*
-
-                        return Some(LayoutPassDescription {
-                            color_attachments: vec![
-                                $(
-                                    ($color_atch, Layout::ColorAttachmentOptimal)
-                                ),*
-                            ],
-                            depth_stencil: depth,
-                            input_attachments: vec![
-                                $(
-                                    ($input_atch, Layout::ShaderReadOnlyOptimal)
-                                ),*
-                            ],
-                            resolve_attachments: vec![],
-                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                                $(if a == $color_atch { return false; })*
-                                $(if a == $depth_atch { return false; })*
-                                $(if a == $input_atch { return false; })*
-                                true
-                            }).collect()
-                        });
-                    }
-
-                    cur_pass_num += 1;
-                })*
-
-                None
-            }
-
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-                let mut num = 0;
-                $($(let $color_atch = num;)* num += 1;)*
-                num -= self.0;
-                (num, Some(num))
-            }
+        #[inline]
+        fn num_attachments() -> usize {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+            #![allow(unused_variables)]
+            let mut num = 0;
+            $(let $atch_name = num; num += 1;)*
+            num
         }
 
-        #[derive(Debug, Clone)]
-        pub struct DependenciesIter(usize, usize);
-        impl ExactSizeIterator for DependenciesIter {}
-        impl Iterator for DependenciesIter {
-            type Item = LayoutPassDependencyDescription;
+        #[inline]
+        fn attachment(formats: &Formats, id: usize) -> Option<LayoutAttachmentDescription> {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
 
-            #[inline]
-            fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
-                let num_passes = PassesIter(0).len();
+            let mut num = 0;
 
-                self.1 += 1;
-                if self.1 >= num_passes {
-                    self.0 += 1;
-                    self.1 = self.0 + 1;
+            $({
+                if id == num {
+                    let (initial_layout, final_layout) = attachment_layouts(num);
+
+                    return Some($crate::framebuffer::LayoutAttachmentDescription {
+                        format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
+                        samples: formats.$atch_name.1,
+                        load: $crate::framebuffer::LoadOp::$load,
+                        store: $crate::framebuffer::StoreOp::$store,
+                        initial_layout: initial_layout,
+                        final_layout: final_layout,
+                    });
                 }
 
-                if self.0 >= num_passes || self.1 >= num_passes {
-                    return None;
+                num += 1;
+            })*
+
+            None
+        }
+
+        #[inline]
+        fn num_subpasses() -> usize {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+            #![allow(unused_variables)]
+            let mut num = 0;
+            $($(let $color_atch = num;)* num += 1;)*
+            num
+        }
+
+        #[inline]
+        fn subpass(id: usize) -> Option<LayoutPassDescription> {
+            #![allow(unused_assignments)]
+            #![allow(unused_mut)]
+            #![allow(unused_variables)]
+
+            let mut attachment_num = 0;
+            $(
+                let $atch_name = attachment_num;
+                attachment_num += 1;
+            )*
+
+            let mut cur_pass_num = 0;
+
+            $({
+                if id == cur_pass_num {
+                    let mut depth = None;
+                    $(
+                        depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
+                    )*
+
+                    return Some(LayoutPassDescription {
+                        color_attachments: vec![
+                            $(
+                                ($color_atch, Layout::ColorAttachmentOptimal)
+                            ),*
+                        ],
+                        depth_stencil: depth,
+                        input_attachments: vec![
+                            $(
+                                ($input_atch, Layout::ShaderReadOnlyOptimal)
+                            ),*
+                        ],
+                        resolve_attachments: vec![],
+                        preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                            $(if a == $color_atch { return false; })*
+                            $(if a == $depth_atch { return false; })*
+                            $(if a == $input_atch { return false; })*
+                            true
+                        }).collect()
+                    });
                 }
 
-                Some(LayoutPassDependencyDescription {
-                    source_subpass: self.0,
-                    destination_subpass: self.1,
-                    src_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    dst_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    src_access: AccessFlagBits::all(),         // TODO: correct values
-                    dst_access: AccessFlagBits::all(),         // TODO: correct values
-                    by_region: true,            // TODO: correct values
-                })
+                cur_pass_num += 1;
+            })*
+
+            None
+        }
+
+        #[inline]
+        fn num_dependencies() -> usize {
+            num_subpasses().saturating_sub(1)
+        }
+
+        #[inline]
+        fn dependency(id: usize) -> Option<LayoutPassDependencyDescription> {
+            let num_passes = num_subpasses();
+
+            if id + 1 >= num_passes {
+                return None;
             }
 
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                let num_passes = PassesIter(0).len();
-
-                let out = (num_passes - self.1 - 1) +
-                          ((self.0 + 1) .. num_passes).map(|p| p * (num_passes - p - 1))
-                                                      .fold(0, |a, b| a + b);
-                (out, Some(out))
-            }
+            Some(LayoutPassDependencyDescription {
+                source_subpass: id,
+                destination_subpass: id + 1,
+                src_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                dst_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                src_access: AccessFlagBits::all(),         // TODO: correct values
+                dst_access: AccessFlagBits::all(),         // TODO: correct values
+                by_region: true,            // TODO: correct values
+            })
         }
 
         /// Returns the initial and final layout of an attachment, given its num.
