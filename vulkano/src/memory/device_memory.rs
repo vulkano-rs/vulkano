@@ -324,16 +324,18 @@ mod tests {
     }
 
     #[test]
-    #[ignore]       // TODO: fails on AMD + Windows
     fn oom_multi() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
                            .next().unwrap();
         let heap_size = mem_ty.heap().size();
+
+        let mut allocs = Vec::new();
     
         for _ in 0 .. 4 {
             match DeviceMemory::alloc(&device, &mem_ty, heap_size / 3) {
                 Err(OomError::OutOfDeviceMemory) => return,     // test succeeded
+                Ok(a) => allocs.push(a),
                 _ => ()
             }
         }
