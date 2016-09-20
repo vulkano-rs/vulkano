@@ -63,6 +63,18 @@ pub struct Swapchain {
     // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
     // we acquire the image.
     stale: Mutex<bool>,
+
+    // Parameters passed to the constructor.
+    num_images: u32,
+    format: Format,
+    dimensions: [u32; 2],
+    layers: u32,
+    usage: ImageUsage,
+    sharing: SharingMode,
+    transform: SurfaceTransform,
+    alpha: CompositeAlpha,
+    mode: PresentMode,
+    clipped: bool,
 }
 
 impl Swapchain {
@@ -86,6 +98,7 @@ impl Swapchain {
     /// - Panics if the device and the surface don't belong to the same instance.
     /// - Panics if `color_attachment` is false in `usage`.
     ///
+    // TODO: remove `old_swapchain` parameter and add another function `with_old_swapchain`.
     #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
@@ -95,18 +108,25 @@ impl Swapchain {
         where F: FormatDesc, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format.format(), dimensions, layers,
-                             usage, sharing.into(), transform, alpha, mode, clipped, old_swapchain)
+                             usage, sharing.into(), transform, alpha, mode, clipped,
+                             old_swapchain.map(|s| &**s))
     }
 
-    // TODO:
-    //pub fn recreate() { ... }
+     /// Recreates the swapchain with new dimensions.
+    pub fn recreate_with_dimension(&self, dimensions: [u32; 2])
+                                   -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+    {
+        Swapchain::new_inner(&self.device, &self.surface, self.num_images, self.format,
+                             dimensions, self.layers, &self.usage, self.sharing.clone(),
+                             self.transform, self.alpha, self.mode, self.clipped, Some(self))
+    }
 
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
     fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
                  dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: SharingMode,
                  transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                 clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
+                 clipped: bool, old_swapchain: Option<&Swapchain>)
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         // Checking that the requested parameters match the capabilities.
@@ -143,9 +163,6 @@ impl Swapchain {
         assert!(device.loaded_extensions().khr_swapchain);     // TODO: return error instead
 
         assert!(usage.color_attachment);
-        let usage = usage.to_usage_bits();
-
-        let sharing = sharing.into();
 
         if let Some(ref old_swapchain) = old_swapchain {
             *old_swapchain.stale.lock().unwrap() = false;
@@ -168,7 +185,7 @@ impl Swapchain {
                 imageColorSpace: vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,     // only available value
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
-                imageUsage: usage,
+                imageUsage: usage.to_usage_bits(),
                 imageSharingMode: sh_mode,
                 queueFamilyIndexCount: sh_count,
                 pQueueFamilyIndices: sh_indices,
@@ -196,6 +213,16 @@ impl Swapchain {
             semaphores_pool: Mutex::new(Vec::new()),
             images_semaphores: Mutex::new(Vec::new()),
             stale: Mutex::new(false),
+            num_images: num_images,
+            format: format,
+            dimensions: dimensions,
+            layers: layers,
+            usage: usage.clone(),
+            sharing: sharing,
+            transform: transform,
+            alpha: alpha,
+            mode: mode,
+            clipped: clipped,
         });
 
         let images = unsafe {
@@ -213,7 +240,7 @@ impl Swapchain {
         };
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
-            let unsafe_image = UnsafeImage::from_raw(device, image, usage, format,
+            let unsafe_image = UnsafeImage::from_raw(device, image, usage.to_usage_bits(), format,
                                                      ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false }, 1, 1);
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
@@ -317,6 +344,70 @@ impl Swapchain {
 
         self.semaphores_pool.lock().unwrap().push(wait_semaphore);
         Ok(())
+    }
+
+    /// Returns the number of images of the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn num_images(&self) -> u32 {
+        self.num_images
+    }
+
+    /// Returns the format of the images of the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
+    /// Returns the dimensions of the images of the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn dimensions(&self) -> [u32; 2] {
+        self.dimensions
+    }
+
+    /// Returns the number of layers of the images of the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn layers(&self) -> u32 {
+        self.layers
+    }
+
+    /// Returns the transform that was passed when creating the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn transform(&self) -> SurfaceTransform {
+        self.transform
+    }
+
+    /// Returns the alpha mode that was passed when creating the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn composite_alpha(&self) -> CompositeAlpha {
+        self.alpha
+    }
+
+    /// Returns the present mode that was passed when creating the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn present_mode(&self) -> PresentMode {
+        self.mode
+    }
+
+    /// Returns the value of `clipped` that was passed when creating the swapchain.
+    ///
+    /// See the documentation of `Swapchain::new`. 
+    #[inline]
+    pub fn clipped(&self) -> bool {
+        self.clipped
     }
 
     /*/// Returns the semaphore that is going to be signalled when the image is going to be ready
