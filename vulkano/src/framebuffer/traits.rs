@@ -160,6 +160,11 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
 pub unsafe trait RenderPass {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &UnsafeRenderPass;
+
+    #[inline]
+    fn subpass(&self, index: u32) -> Option<Subpass<&Self>> where Self: RenderPassDesc {
+        Subpass::from(self, index)
+    }
 }
 
 unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
@@ -169,7 +174,7 @@ unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
     }
 }
 
-unsafe impl<'a, T> RenderPass for &'a T where T: RenderPass {
+unsafe impl<'a, T: ?Sized> RenderPass for &'a T where T: RenderPass {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         (**self).inner()
@@ -310,6 +315,70 @@ pub unsafe trait RenderPassDesc {
     }
 }
 
+unsafe impl<T> RenderPassDesc for Arc<T> where T: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        (**self).num_attachments()
+    }
+
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        (**self).attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        (**self).num_subpasses()
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        (**self).subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        (**self).num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        (**self).dependency(num)
+    }
+}
+
+unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        (**self).num_attachments()
+    }
+
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        (**self).attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        (**self).num_subpasses()
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        (**self).subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        (**self).num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        (**self).dependency(num)
+    }
+}
+
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
 ///
 /// # Safety
@@ -404,7 +473,7 @@ unsafe impl<A, B> RenderPassSubpassInterface<B> for A
     where A: RenderPass + RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match (0 .. self.num_subpasses()).map(|p| self.subpass(p).unwrap()).skip(subpass as usize).next() {
+        let pass_descr = match (0 .. self.num_subpasses()).map(|p| RenderPassDesc::subpass(self, p).unwrap()).skip(subpass as usize).next() {
             Some(s) => s,
             None => return false,
         };
@@ -623,18 +692,16 @@ pub enum LoadOp {
 /// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
 /// subpass is checked when the object is created. When you have a `Subpass` you are guaranteed
 /// that the given subpass does exist.
-///
-pub struct Subpass<'a, L: 'a> {
-    render_pass: &'a Arc<L>,
+#[derive(Debug, Copy, Clone)]
+pub struct Subpass<L> {
+    render_pass: L,
     subpass_id: u32,
 }
 
-impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
+impl<L> Subpass<L> where L: RenderPass + RenderPassDesc {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
-        where L: RenderPass
-    {
+    pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
         if (id as usize) < render_pass.num_subpasses() {
             Some(Subpass {
                 render_pass: render_pass,
@@ -693,11 +760,11 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
     }
 }
 
-impl<'a, L: 'a> Subpass<'a, L> {
+impl<L> Subpass<L> {
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &'a Arc<L> {
-        self.render_pass
+    pub fn render_pass(&self) -> &L {
+        &self.render_pass
     }
 
     /// Returns the index of this subpass within the renderpass.
@@ -707,12 +774,9 @@ impl<'a, L: 'a> Subpass<'a, L> {
     }
 }
 
-// We need manual implementations, otherwise Copy/Clone are only implemented if `L` implements
-// Copy/Clone.
-impl<'a, L: 'a> Copy for Subpass<'a, L> {}
-impl<'a, L: 'a> Clone for Subpass<'a, L> {
+impl<L> Into<(L, u32)> for Subpass<L> {
     #[inline]
-    fn clone(&self) -> Subpass<'a, L> {
-        Subpass { render_pass: self.render_pass, subpass_id: self.subpass_id }
+    fn into(self) -> (L, u32) {
+        (self.render_pass, self.subpass_id)
     }
 }
