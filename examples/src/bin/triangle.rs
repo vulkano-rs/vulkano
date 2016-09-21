@@ -335,7 +335,7 @@ fn main() {
 
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
-        render_pass: Subpass::from(&render_pass, 0).unwrap(),
+        render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
     }).unwrap();
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
