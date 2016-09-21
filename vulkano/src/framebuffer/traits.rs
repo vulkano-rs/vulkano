@@ -160,6 +160,11 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
 pub unsafe trait RenderPass {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &UnsafeRenderPass;
+
+    #[inline]
+    fn subpass(&self, index: u32) -> Option<Subpass<&Self>> where Self: RenderPassDesc {
+        Subpass::from(self, index)
+    }
 }
 
 unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
@@ -169,7 +174,7 @@ unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
     }
 }
 
-unsafe impl<'a, T> RenderPass for &'a T where T: RenderPass {
+unsafe impl<'a, T: ?Sized> RenderPass for &'a T where T: RenderPass {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         (**self).inner()
@@ -342,7 +347,7 @@ unsafe impl<T> RenderPassDesc for Arc<T> where T: RenderPassDesc {
     }
 }
 
-unsafe impl<'a, T> RenderPassDesc for &'a T where T: RenderPassDesc {
+unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
     #[inline]
     fn num_attachments(&self) -> usize {
         (**self).num_attachments()
@@ -468,7 +473,7 @@ unsafe impl<A, B> RenderPassSubpassInterface<B> for A
     where A: RenderPass + RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match (0 .. self.num_subpasses()).map(|p| self.subpass(p).unwrap()).skip(subpass as usize).next() {
+        let pass_descr = match (0 .. self.num_subpasses()).map(|p| RenderPassDesc::subpass(self, p).unwrap()).skip(subpass as usize).next() {
             Some(s) => s,
             None => return false,
         };
