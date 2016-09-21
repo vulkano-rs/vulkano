@@ -62,9 +62,7 @@ pub unsafe trait ResourcesCollection {
         where F: FnMut() -> Arc<Fence>;
 }
 
-pub struct End;
-
-unsafe impl ResourcesCollection for End {
+unsafe impl ResourcesCollection for () {
     type State = ();
     type Finished = ();
     type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
@@ -106,21 +104,20 @@ unsafe impl ResourcesCollection for End {
     }
 }
 
-pub struct Buf<B, N> {
+pub struct Buf<B> {
     pub buffer: B,
     pub offset: usize,
     pub size: usize,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
-    pub rest: N,
 }
 
-unsafe impl<B, N> ResourcesCollection for Buf<B, N>
-    where B: TrackedBuffer, N: ResourcesCollection
+unsafe impl<B> ResourcesCollection for Buf<B>
+    where B: TrackedBuffer
 {
-    type State = BufState<B::CommandListState, N::State>;
-    type Finished = BufFinished<B::FinishedState, N::Finished>;
+    type State = B::CommandListState;
+    type Finished = B::FinishedState;
     type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
     type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
@@ -185,6 +182,58 @@ unsafe impl<B, N> ResourcesCollection for Buf<B, N>
     }
 }
 
-pub struct BufState<B, N>(pub Option<B>, pub N);
+macro_rules! tuple_impl {
+    ($first:ident, $($rest:ident),+) => (
+        unsafe impl<$first, $($rest),+> ResourcesCollection for ($first $(, $rest)+)
+            where $first: ResourcesCollection, $($rest: ResourcesCollection),+
+        {
+            type State = (<$first as ResourcesCollection>::State,
+                          <($($rest),+) as ResourcesCollection>::State);
+            type Finished = (<$first as ResourcesCollection>::Finished,
+                             <($($rest),+) as ResourcesCollection>::Finished);
+            type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
+            type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
-pub struct BufFinished<B, N>(pub Option<B>, pub N);
+            #[inline]
+            unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
+                                                    -> (Self::State, usize, PipelineBarrierBuilder)
+                where L: ResourcesStates
+            {
+                unimplemented!()
+            }
+
+            #[inline]    
+            unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
+                where B: TrackedBuffer
+            {
+                unimplemented!()
+            }
+
+            #[inline]
+            unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
+                where I: TrackedImage
+            {
+                unimplemented!()
+            }
+
+            #[inline]
+            unsafe fn finish(&self, _: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
+                unimplemented!()
+            }
+
+            unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
+                                -> SubmitInfo<Self::SemaphoresWaitIterator,
+                                                Self::SemaphoresSignalIterator>
+                where F: FnMut() -> Arc<Fence>
+            {
+                unimplemented!()
+            }
+        }
+
+        tuple_impl!($($rest),+);
+    );
+
+    ($first:ident) => ();
+}
+
+tuple_impl!(A, C, D, E, G, H, J, K, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
