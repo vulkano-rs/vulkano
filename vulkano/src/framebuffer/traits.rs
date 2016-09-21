@@ -310,6 +310,70 @@ pub unsafe trait RenderPassDesc {
     }
 }
 
+unsafe impl<T> RenderPassDesc for Arc<T> where T: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        (**self).num_attachments()
+    }
+
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        (**self).attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        (**self).num_subpasses()
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        (**self).subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        (**self).num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        (**self).dependency(num)
+    }
+}
+
+unsafe impl<'a, T> RenderPassDesc for &'a T where T: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        (**self).num_attachments()
+    }
+
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        (**self).attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        (**self).num_subpasses()
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        (**self).subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        (**self).num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        (**self).dependency(num)
+    }
+}
+
 /// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
 ///
 /// # Safety
