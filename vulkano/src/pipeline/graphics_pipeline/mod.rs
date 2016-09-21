@@ -59,7 +59,7 @@ mod tests;
 /// Description of a `GraphicsPipeline`.
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>
-    where L: 'a, Rp: 'a
+    where L: 'a
 {
     /// Describes the layout of the vertex input.
     ///
@@ -111,7 +111,7 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl,
 
     /// Which subpass of which render pass this pipeline will run on. It is an error to run a
     /// graphics pipeline on a different subpass.
-    pub render_pass: Subpass<'a, Rp>,
+    pub render_pass: Subpass<Rp>,
 }
 
 /// Additional parameters if you use tessellation.
@@ -131,7 +131,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     device: Arc<Device>,
     layout: Arc<Layout>,
 
-    render_pass: Arc<RenderP>,
+    render_pass: RenderP,
     render_pass_subpass: u32,
 
     vertex_definition: VertexDefinition,
@@ -864,6 +864,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             output
         };
 
+        let (render_pass, render_pass_subpass) = params.render_pass.into();
+
         Ok(Arc::new(GraphicsPipeline {
             device: device.clone(),
             pipeline: pipeline,
@@ -871,8 +873,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
             vertex_definition: params.vertex_input,
 
-            render_pass: params.render_pass.render_pass().clone(),
-            render_pass_subpass: params.render_pass.index(),
+            render_pass: render_pass,
+            render_pass_subpass: render_pass_subpass,
 
             dynamic_line_width: params.raster.line_width.is_none(),
             dynamic_viewport: params.viewport.dynamic_viewports(),
@@ -912,13 +914,13 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 {
     /// Returns the render pass used in the constructor.
     #[inline]
-    pub fn render_pass(&self) -> &Arc<Rp> {
+    pub fn render_pass(&self) -> &Rp {
         &self.render_pass
     }
 
     /// Returns the pass used in the constructor.
     #[inline]
-    pub fn subpass(&self) -> Subpass<Rp> {
+    pub fn subpass(&self) -> Subpass<&Rp> {
         Subpass::from(&self.render_pass, self.render_pass_subpass).unwrap()
     }
 }
