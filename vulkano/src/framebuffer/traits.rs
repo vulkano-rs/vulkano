@@ -687,18 +687,16 @@ pub enum LoadOp {
 /// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
 /// subpass is checked when the object is created. When you have a `Subpass` you are guaranteed
 /// that the given subpass does exist.
-///
-pub struct Subpass<'a, L: 'a> {
-    render_pass: &'a Arc<L>,
+#[derive(Debug, Copy, Clone)]
+pub struct Subpass<L> {
+    render_pass: L,
     subpass_id: u32,
 }
 
-impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
+impl<L> Subpass<L> where L: RenderPass + RenderPassDesc {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: &Arc<L>, id: u32) -> Option<Subpass<L>>
-        where L: RenderPass
-    {
+    pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
         if (id as usize) < render_pass.num_subpasses() {
             Some(Subpass {
                 render_pass: render_pass,
@@ -757,11 +755,11 @@ impl<'a, L: 'a> Subpass<'a, L> where L: RenderPass + RenderPassDesc {
     }
 }
 
-impl<'a, L: 'a> Subpass<'a, L> {
+impl<L> Subpass<L> {
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &'a Arc<L> {
-        self.render_pass
+    pub fn render_pass(&self) -> &L {
+        &self.render_pass
     }
 
     /// Returns the index of this subpass within the renderpass.
@@ -771,12 +769,9 @@ impl<'a, L: 'a> Subpass<'a, L> {
     }
 }
 
-// We need manual implementations, otherwise Copy/Clone are only implemented if `L` implements
-// Copy/Clone.
-impl<'a, L: 'a> Copy for Subpass<'a, L> {}
-impl<'a, L: 'a> Clone for Subpass<'a, L> {
+impl<L> Into<(L, u32)> for Subpass<L> {
     #[inline]
-    fn clone(&self) -> Subpass<'a, L> {
-        Subpass { render_pass: self.render_pass, subpass_id: self.subpass_id }
+    fn into(self) -> (L, u32) {
+        (self.render_pass, self.subpass_id)
     }
 }

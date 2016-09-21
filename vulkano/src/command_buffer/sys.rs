@@ -140,13 +140,13 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             a | b
         };
 
-        let (rp, sp) = if let Kind::SecondaryRenderPass { subpass, .. } = kind {
+        let (rp, sp) = if let Kind::SecondaryRenderPass { ref subpass, .. } = kind {
             (subpass.render_pass().inner().internal_object(), subpass.index())
         } else {
             (0, 0)
         };
 
-        let framebuffer = if let Kind::SecondaryRenderPass { subpass, framebuffer: Some(ref framebuffer) } = kind {
+        let framebuffer = if let Kind::SecondaryRenderPass { ref subpass, framebuffer: Some(ref framebuffer) } = kind {
             // TODO: restore check
             //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
             framebuffer.internal_object()
@@ -1046,8 +1046,8 @@ impl<P> Drop for UnsafeCommandBufferBuilder<P> where P: CommandPool {
 }
 
 /// Determines the kind of command buffer that we want to create.
-#[derive(Clone)]        // TODO: Debug
-pub enum Kind<'a, R: 'a, F: 'a> {
+#[derive(Debug, Clone)]
+pub enum Kind<'a, R, F: 'a> {
     /// A primary command buffer can execute all commands and can call secondary command buffers.
     Primary,
 
@@ -1059,7 +1059,7 @@ pub enum Kind<'a, R: 'a, F: 'a> {
     /// be executed from within a specific subpass.
     SecondaryRenderPass {
         /// Which subpass this secondary command buffer can be called from.
-        subpass: Subpass<'a, R>,
+        subpass: Subpass<R>,
         /// The framebuffer object that will be used when calling the command buffer.
         /// This parameter is optional and is an optimization hint for the implementation.
         framebuffer: Option<&'a F>,
