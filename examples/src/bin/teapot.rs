@@ -17,6 +17,7 @@ extern crate vulkano;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
+use vulkano::command_buffer::std::StdCommandsList;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -166,27 +167,27 @@ fn main() {
 
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {
-            color: &image,
-            depth: &depth_buffer,
+            color: image.clone(),
+            depth: depth_buffer.clone(),
         };
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, [image.dimensions()[0], image.dimensions()[1], 1], attachments).unwrap()
+        vulkano::framebuffer::StdFramebuffer::new(&renderpass, [image.dimensions()[0], image.dimensions()[1], 1], attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&device, queue.family())
-            .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
+        vulkano::command_buffer::std::PrimaryCbBuilder::new(&device, queue.family())
+            .begin_render_pass(framebuffer.clone(), false, renderpass::ClearValues {
                  color: [0.0, 0.0, 1.0, 1.0],
                  depth: 1.0,
              })
             .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
                           &vulkano::command_buffer::DynamicState::none(), &set, &())
-            .draw_end()
+            .end_render_pass()
             .build()
     }).collect::<Vec<_>>();
 
-    let mut submissions: Vec<Arc<vulkano::command_buffer::Submission>> = Vec::new();
+    let mut submissions: Vec<vulkano::command_buffer::Submission> = Vec::new();
 
 
     loop {
@@ -204,7 +205,7 @@ fn main() {
         }
 
         let image_num = swapchain.acquire_next_image(Duration::from_millis(1)).unwrap();
-        submissions.push(vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap());
+        submissions.push(&command_buffers[image_num].submit(&queue).unwrap());
         swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.window().poll_events() {
