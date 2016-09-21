@@ -19,8 +19,12 @@ use descriptor::descriptor::DescriptorImageDesc;
 use descriptor::descriptor::DescriptorImageDescDimensions;
 use descriptor::descriptor::DescriptorImageDescArray;
 use descriptor::descriptor_set::DescriptorWrite;
+use descriptor::descriptor_set::resources_collection::Buf;
+use descriptor::descriptor_set::resources_collection::ResourcesCollection;
 use image::ImageView;
 use sampler::Sampler;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 /// Call this macro with the layout of a pipeline to generate some helper structs that wrap around
 /// vulkano's unsafe APIs.
@@ -152,15 +156,12 @@ macro_rules! pipeline_layout {
 
             #[allow(non_camel_case_types)]
             #[allow(unused_assignments)]
+            #[inline]
             impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
-                pub fn writes(&self) -> Vec<DescriptorWrite> {
-                    let mut writes = Vec::new();
-                    let mut binding = 0;
-                    $(
-                        writes.push(self.$field.write(binding));
-                        binding += 1;
-                    )*
-                    writes
+                pub fn res(&self) -> ($(<$field as ValidParameter<$ty>>::Resource),*) {
+                    (
+                        ValidParameter<$ty>::build(&self.$field)
+                    )
                 }
             }
 
@@ -254,7 +255,8 @@ macro_rules! pipeline_layout {
 }
 
 pub unsafe trait ValidParameter<Target> {
-    fn write(&self, binding: u32) -> DescriptorWrite;
+    type Resource;
+    fn build(self) -> Self::Resource;
 }
 
 pub unsafe trait DescriptorMarker {
@@ -272,12 +274,27 @@ unsafe impl<T: ?Sized> DescriptorMarker for UniformBuffer<T> {
     }
 }
 
-unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for &'a Arc<B>
+unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
+    type Resource = Buf<B>;
+
     #[inline]
-    fn write(&self, binding: u32) -> DescriptorWrite {
-        DescriptorWrite::uniform_buffer(binding, *self)
+    fn build(self) -> Self::Resource {
+        let size = self.size();
+
+        Buf {
+            buffer: self,
+            offset: 0,
+            size: size,
+            write: false,
+            stage: PipelineStages {       // FIXME:
+                all_graphics: true,
+                all_commands: true,
+                .. PipelineStages::none()
+            },
+            access: AccessFlagBits::all(),      // FIXME:
+        }
     }
 }
 
@@ -292,15 +309,30 @@ unsafe impl<T: ?Sized> DescriptorMarker for StorageBuffer<T> {
     }
 }
 
-unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for &'a Arc<B>
+unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
+    type Resource = Buf<B>;
+
     #[inline]
-    fn write(&self, binding: u32) -> DescriptorWrite {
-        DescriptorWrite::storage_buffer(binding, *self)
+    fn build(self) -> Self::Resource {
+        let size = self.size();
+
+        Buf {
+            buffer: self,
+            offset: 0,
+            size: size,
+            write: false,
+            stage: PipelineStages {       // FIXME:
+                all_graphics: true,
+                all_commands: true,
+                .. PipelineStages::none()
+            },
+            access: AccessFlagBits::all(),      // FIXME:
+        }
     }
 }
-
+/*
 pub struct UniformTexelBuffer;
 unsafe impl DescriptorMarker for UniformTexelBuffer {
     #[inline]
@@ -315,9 +347,21 @@ unsafe impl DescriptorMarker for UniformTexelBuffer {
 unsafe impl<'a, B, F> ValidParameter<UniformTexelBuffer> for &'a Arc<BufferView<F, B>>   // TODO: format not checked
     where B: Buffer, F: 'static + Send + Sync
 {
+    type Resource = Buf<B>;
+
     #[inline]
-    fn write(&self, binding: u32) -> DescriptorWrite {
-        DescriptorWrite::uniform_texel_buffer(binding, *self)
+    fn build(self) -> Self::Resource {
+        let buffer = self.buffer();
+        let size = self.size();
+
+        Buf {
+            buffer: self,
+            offset: 0,
+            size: size,
+            write: false,
+            stage: PipelineStages::all(),       // FIXME:
+            access: AccessFlagBits::all(),      // FIXME:
+        }
     }
 }
 
@@ -429,7 +473,7 @@ unsafe impl<'a, I> ValidParameter<InputAttachment> for &'a Arc<I>
     fn write(&self, binding: u32) -> DescriptorWrite {
         DescriptorWrite::input_attachment(binding, self)
     }
-}
+}*/
 
 #[cfg(test)]
 mod tests {
