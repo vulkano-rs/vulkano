@@ -8,21 +8,11 @@
 // according to those terms.
 
 use std::marker::PhantomData;
-use std::sync::Arc;
 
-use buffer::Buffer;
-use buffer::BufferView;
 use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::DescriptorBufferDesc;
-use descriptor::descriptor::DescriptorImageDesc;
-use descriptor::descriptor::DescriptorImageDescDimensions;
-use descriptor::descriptor::DescriptorImageDescArray;
-use descriptor::descriptor_set::DescriptorWrite;
 use descriptor::descriptor_set::resources_collection::Buf;
-use descriptor::descriptor_set::resources_collection::ResourcesCollection;
-use image::ImageView;
-use sampler::Sampler;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 

@@ -8,8 +8,6 @@
 // according to those terms.
 
 use std::any::Any;
-use std::iter::Chain;
-use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -33,7 +31,6 @@ use pipeline::GraphicsPipeline;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 /// Wraps around a commands list and adds a fill buffer command at the end of it.
 pub struct FillCommand<L, B>
@@ -234,54 +231,36 @@ unsafe impl<L, B> CommandBuffer for FillCommandCb<L, B>
     where B: TrackedBuffer, L: CommandBuffer
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
-                                        OptionIntoIter<(Arc<Semaphore>, PipelineStages)>>;
-    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
-                                          OptionIntoIter<Arc<Semaphore>>>;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(queue, &mut fence);
 
         // Then build our own output that modifies the parent's.
 
         if let Some(ref buffer_state) = self.buffer_state {
             let submit_infos = buffer_state.on_submit(&self.buffer, queue, fence);
 
-            let mut out = SubmitInfo {
-                semaphores_wait: parent.semaphores_wait.chain(submit_infos.pre_semaphore.into_iter()),
-                semaphores_signal: parent.semaphores_signal.chain(submit_infos.post_semaphore.into_iter()),
-                pre_pipeline_barrier: parent.pre_pipeline_barrier,
-                post_pipeline_barrier: parent.post_pipeline_barrier,
-            };
+            parent.semaphores_wait.extend(submit_infos.pre_semaphore.into_iter());
+            parent.semaphores_signal.extend(submit_infos.post_semaphore.into_iter());
 
             if let Some(pre) = submit_infos.pre_barrier {
-                out.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
+                parent.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
             }
 
             if let Some(post) = submit_infos.post_barrier {
-                out.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
-            }
-
-            out
-
-        } else {
-            SubmitInfo {
-                semaphores_wait: parent.semaphores_wait.chain(None.into_iter()),
-                semaphores_signal: parent.semaphores_signal.chain(None.into_iter()),
-                pre_pipeline_barrier: parent.pre_pipeline_barrier,
-                post_pipeline_barrier: parent.post_pipeline_barrier,
+                parent.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
             }
         }
+
+        parent
     }
 }
 

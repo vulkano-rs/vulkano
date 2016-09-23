@@ -25,7 +25,6 @@ use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 use vk;
 
@@ -74,9 +73,6 @@ pub unsafe trait TrackedFramebuffer: Framebuffer {
     type State;
     type Finished;
 
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
-
     /// Extracts the states of the framebuffer's attachments from `states`.
     ///
     /// The return values contains:
@@ -99,17 +95,13 @@ pub unsafe trait TrackedFramebuffer: Framebuffer {
     fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
 
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
 unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
     type State = T::State;
     type Finished = T::Finished;
-
-    type SemaphoresWaitIterator = T::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = T::SemaphoresSignalIterator;
 
     #[inline]
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
@@ -140,8 +132,7 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
 
     #[inline]
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         (**self).on_submit(state, queue, fence)

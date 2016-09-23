@@ -235,8 +235,6 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
     where L: CommandBuffer, Rp: RenderPass, Fb: TrackedFramebuffer
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -245,8 +243,7 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
 
     #[inline]
     unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // FIXME: merge semaphore iterators
@@ -254,8 +251,8 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
         let framebuffer_submit_reqs = self.framebuffer.on_submit(&self.state, queue, &mut fence);
         let parent_reqs = self.previous.on_submit(queue, &mut fence);
 
-        assert!(framebuffer_submit_reqs.semaphores_wait.count() == 0);        // not implemented
-        assert!(framebuffer_submit_reqs.semaphores_signal.count() == 0);      // not implemented
+        assert!(framebuffer_submit_reqs.semaphores_wait.len() == 0);        // not implemented
+        assert!(framebuffer_submit_reqs.semaphores_signal.len() == 0);      // not implemented
 
         SubmitInfo {
             semaphores_wait: parent_reqs.semaphores_wait,
@@ -406,8 +403,6 @@ pub struct NextSubpassCommandCb<L> where L: CommandBuffer {
 
 unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: CommandBuffer {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -415,9 +410,7 @@ unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: CommandBuffer 
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.previous.on_submit(queue, &mut fence)
@@ -532,8 +525,6 @@ pub struct EndRenderPassCommandCb<L> where L: CommandBuffer {
 
 unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: CommandBuffer {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -541,9 +532,7 @@ unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: CommandBuffe
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.previous.on_submit(queue, &mut fence)
