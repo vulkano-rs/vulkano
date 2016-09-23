@@ -8,8 +8,6 @@
 // according to those terms.
 
 use std::any::Any;
-use std::iter::Chain;
-use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -33,7 +31,6 @@ use pipeline::GraphicsPipeline;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct UpdateCommand<'a, L, B, D: ?Sized>
@@ -238,23 +235,17 @@ unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
     where B: TrackedBuffer, L: CommandBuffer
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
-                                        OptionIntoIter<(Arc<Semaphore>, PipelineStages)>>;
-    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
-                                          OptionIntoIter<Arc<Semaphore>>>;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(queue, &mut fence);
 
         // Then build our own output that modifies the parent's.
 
@@ -262,8 +253,18 @@ unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
             let submit_infos = buffer_state.on_submit(&self.buffer, queue, fence);
 
             let mut out = SubmitInfo {
-                semaphores_wait: parent.semaphores_wait.chain(submit_infos.pre_semaphore.into_iter()),
-                semaphores_signal: parent.semaphores_signal.chain(submit_infos.post_semaphore.into_iter()),
+                semaphores_wait: {
+                    if let Some(s) = submit_infos.pre_semaphore {
+                        parent.semaphores_wait.push(s);
+                    }
+                    parent.semaphores_wait
+                },
+                semaphores_signal: {
+                    if let Some(s) = submit_infos.post_semaphore {
+                        parent.semaphores_signal.push(s);
+                    }
+                    parent.semaphores_signal
+                },
                 pre_pipeline_barrier: parent.pre_pipeline_barrier,
                 post_pipeline_barrier: parent.post_pipeline_barrier,
             };
@@ -280,8 +281,8 @@ unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
 
         } else {
             SubmitInfo {
-                semaphores_wait: parent.semaphores_wait.chain(None.into_iter()),
-                semaphores_signal: parent.semaphores_signal.chain(None.into_iter()),
+                semaphores_wait: parent.semaphores_wait,
+                semaphores_signal: parent.semaphores_signal,
                 pre_pipeline_barrier: parent.pre_pipeline_barrier,
                 post_pipeline_barrier: parent.post_pipeline_barrier,
             }

@@ -17,8 +17,6 @@ use descriptor::descriptor::DescriptorDesc;
 use device::Queue;
 use image::traits::TrackedImage;
 use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
@@ -58,14 +56,6 @@ pub unsafe trait TrackedDescriptorSet: DescriptorSet {
     type State;
     type Finished;
 
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
-
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
@@ -88,7 +78,6 @@ pub unsafe trait TrackedDescriptorSet: DescriptorSet {
 
     // TODO: write docs
     unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }

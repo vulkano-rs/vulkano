@@ -10,7 +10,6 @@
 //! Provides an utility trait. It's a helper for descriptor sets and framebuffer.
 // TODO: better documentation
 
-use std::iter::Empty;
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
@@ -22,21 +21,12 @@ use image::traits::TrackedImage;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 // TODO: re-read docs
 /// Collection of tracked resources. Makes it possible to treat multiple buffers and images as one.
 pub unsafe trait ResourcesCollection {
     type State;
     type Finished;
-
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
@@ -57,16 +47,13 @@ pub unsafe trait ResourcesCollection {
 
     // TODO: write docs
     unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
 unsafe impl ResourcesCollection for () {
     type State = ();
     type Finished = ();
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
@@ -96,8 +83,7 @@ unsafe impl ResourcesCollection for () {
     }
 
     unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         unimplemented!()        // FIXME:
@@ -118,8 +104,6 @@ unsafe impl<B> ResourcesCollection for Buf<B>
 {
     type State = B::CommandListState;
     type Finished = B::FinishedState;
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
@@ -174,8 +158,7 @@ unsafe impl<B> ResourcesCollection for Buf<B>
     }
 
     unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         unimplemented!()        // FIXME:
@@ -191,8 +174,6 @@ macro_rules! tuple_impl {
                           <($($rest),+) as ResourcesCollection>::State);
             type Finished = (<$first as ResourcesCollection>::Finished,
                              <($($rest),+) as ResourcesCollection>::Finished);
-            type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-            type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
             #[inline]
             unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
@@ -222,8 +203,7 @@ macro_rules! tuple_impl {
             }
 
             unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                                -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                                Self::SemaphoresSignalIterator>
+                                -> SubmitInfo
                 where F: FnMut() -> Arc<Fence>
             {
                 unimplemented!()

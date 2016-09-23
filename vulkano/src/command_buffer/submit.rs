@@ -50,14 +50,6 @@ pub unsafe trait CommandBuffer {
     /// Type of the pool that was used to allocate the command buffer.
     type Pool: CommandPool;
 
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
-
     /// Returns the inner object.
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
 
@@ -84,17 +76,16 @@ pub unsafe trait CommandBuffer {
     /// fence is signaled, or before a fence of a later submission to the same queue is signaled.
     ///
     unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
 /// Information about how the submitting function should synchronize the submission.
-pub struct SubmitInfo<Swi, Ssi> {
+pub struct SubmitInfo {
     /// List of semaphores to wait upon before the command buffer starts execution.
-    pub semaphores_wait: Swi,
+    pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
     /// List of semaphores to signal after the command buffer has finished.
-    pub semaphores_signal: Ssi,
+    pub semaphores_signal: Vec<Arc<Semaphore>>,
     /// Pipeline barrier to execute on the queue and immediately before the command buffer.
     /// Ignored if empty.
     pub pre_pipeline_barrier: PipelineBarrierBuilder,
@@ -362,8 +353,6 @@ mod tests {
         struct Basic { inner: UnsafeCommandBuffer<Arc<StandardCommandPool>> }
         unsafe impl CommandBuffer for Basic {
             type Pool = Arc<StandardCommandPool>;
-            type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-            type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
             fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> { &self.inner }
 
@@ -373,8 +362,8 @@ mod tests {
                 where F: FnOnce() -> Arc<Fence>
             {
                 SubmitInfo {
-                    semaphores_wait: iter::empty(),
-                    semaphores_signal: iter::empty(),
+                    semaphores_wait: vec![],
+                    semaphores_signal: vec![],
                     pre_pipeline_barrier: PipelineBarrierBuilder::new(),
                     post_pipeline_barrier: PipelineBarrierBuilder::new(),
                 }

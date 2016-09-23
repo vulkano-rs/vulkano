@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::mem;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
@@ -27,9 +26,7 @@ use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use device::Device;
-use image::Image;
 use image::ImageView;
-use image::Layout as ImageLayout;
 use sampler::Sampler;
 
 /// Low-level descriptor set.

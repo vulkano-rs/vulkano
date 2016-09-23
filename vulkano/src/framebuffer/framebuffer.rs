@@ -10,11 +10,7 @@
 use std::cmp;
 use std::error;
 use std::fmt;
-use std::iter;
-use std::iter::Chain;
-use std::iter::Empty;
 use std::mem;
-use std::option::IntoIter as OptionIntoIter;
 use std::ptr;
 use std::sync::Arc;
 
@@ -39,7 +35,6 @@ use image::traits::TrackedImageView;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use sync::Semaphore;
 
 use Error;
 use OomError;
@@ -233,8 +228,6 @@ unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
 {
     type State = A::State;
     type Finished = A::Finished;
-    type SemaphoresWaitIterator = A::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = A::SemaphoresSignalIterator;
 
     #[inline]
     unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
@@ -264,8 +257,7 @@ unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, state: &Self::Finished, q: &Arc<Queue>, f: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, state: &Self::Finished, q: &Arc<Queue>, f: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.resources.on_submit(state, q, f)
@@ -275,8 +267,6 @@ unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
 pub unsafe trait AttachmentsList: Sized {
     type State;
     type Finished;
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Returns the raw handles of the image views of this list.
     // TODO: better return type
@@ -307,8 +297,7 @@ pub unsafe trait AttachmentsList: Sized {
 
     #[inline]
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
@@ -317,8 +306,6 @@ pub struct EmptyAttachmentsList;
 unsafe impl AttachmentsList for EmptyAttachmentsList {
     type State = ();
     type Finished = ();
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
@@ -359,13 +346,12 @@ unsafe impl AttachmentsList for EmptyAttachmentsList {
 
     #[inline]
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         SubmitInfo {
-            semaphores_wait: iter::empty(),
-            semaphores_signal: iter::empty(),
+            semaphores_wait: vec![],
+            semaphores_signal: vec![],
             pre_pipeline_barrier: PipelineBarrierBuilder::new(),
             post_pipeline_barrier: PipelineBarrierBuilder::new(),
         }
@@ -379,8 +365,6 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 {
     type State = ListTrackedState<A, R>;
     type Finished = ListTrackedFinishedState<A, R>;
-    type SemaphoresWaitIterator = Chain<OptionIntoIter<(Arc<Semaphore>, PipelineStages)>, R::SemaphoresWaitIterator>;
-    type SemaphoresSignalIterator = Chain<OptionIntoIter<Arc<Semaphore>>, R::SemaphoresSignalIterator>;
 
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
@@ -499,8 +483,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 
     #[inline]
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         let first_pre_sem;
@@ -521,11 +504,14 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
             first_post_barrier = None;
         }
 
-        let rest_infos = self.rest.on_submit(&state.rest, queue, fence);
+        let mut rest_infos = self.rest.on_submit(&state.rest, queue, fence);
 
         SubmitInfo {
-            semaphores_wait: first_pre_sem.into_iter().chain(rest_infos.semaphores_wait),
-            semaphores_signal: None /* TODO */.into_iter().chain(rest_infos.semaphores_signal),
+            semaphores_wait: {
+                if let Some(s) = first_pre_sem { rest_infos.semaphores_wait.push(s); }
+                rest_infos.semaphores_wait
+            },
+            semaphores_signal: rest_infos.semaphores_signal,        // TODO:
             pre_pipeline_barrier: {
                 let mut b = rest_infos.pre_pipeline_barrier;
                 if let Some(rq) = first_pre_barrier {
