@@ -11,8 +11,6 @@ use std::any::Any;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::traits::CommandBufferState;
-use buffer::traits::CommandListState;
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
 use command_buffer::std::OutsideRenderPass;
@@ -60,10 +58,10 @@ impl<L, B> FillCommand<L, B>
             let stage = PipelineStages { transfer: true, .. PipelineStages::none() };
             let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
 
-            previous.extract_buffer_state(&buffer)
-                    .unwrap_or(buffer.initial_state())
-                    .transition(previous.num_commands() + 1, buffer.inner(),
-                                0, buffer.size(), true, stage, access)
+            let prev = previous.extract_buffer_state(&buffer)
+                               .unwrap_or(buffer.initial_state());
+            buffer.transition(prev, previous.num_commands() + 1, 0, buffer.size(), true,
+                              stage, access)
         };
 
         // Minor safety check.
@@ -123,7 +121,7 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
         // Computing the finished state, or `None` if we don't have to manage it.
-        let finished_state = match self.buffer_state.take().map(|s| s.finish()) {
+        let finished_state = match self.buffer_state.take().map(|s| self.buffer.finish(s)) {
             Some((s, t)) => {
                 if let Some(t) = t {
                     final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
@@ -246,7 +244,7 @@ unsafe impl<L, B> CommandBuffer for FillCommandCb<L, B>
         // Then build our own output that modifies the parent's.
 
         if let Some(ref buffer_state) = self.buffer_state {
-            let submit_infos = buffer_state.on_submit(&self.buffer, queue, fence);
+            let submit_infos = self.buffer.on_submit(buffer_state, queue, fence);
 
             parent.semaphores_wait.extend(submit_infos.pre_semaphore.into_iter());
             parent.semaphores_signal.extend(submit_infos.post_semaphore.into_iter());
