@@ -43,9 +43,9 @@ pub unsafe trait TrackedBuffer: Buffer {
     ///
     /// The `Any` bound is here for stupid reasons, sorry.
     // TODO: remove Any bound
-    type CommandListState: Any + CommandListState<FinishedState = Self::FinishedState>;
+    type CommandListState: Any;
     /// State of the buffer in a finished list of commands.
-    type FinishedState: CommandBufferState;
+    type FinishedState;
 
     /// Returns true if TODO.
     ///
@@ -67,11 +67,6 @@ pub unsafe trait TrackedBuffer: Buffer {
 
     /// Returns the state of the buffer when it has not yet been used.
     fn initial_state(&self) -> Self::CommandListState;
-}
-
-/// Trait for objects that represent the state of a slice of the buffer in a list of commands.
-pub trait CommandListState {
-    type FinishedState: CommandBufferState;
 
     /// Returns a new state that corresponds to the moment after a slice of the buffer has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
@@ -80,16 +75,20 @@ pub trait CommandListState {
     /// function.
     // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
     // previous transition?
-    fn transition(self, num_command: usize, buffer: &UnsafeBuffer, offset: usize, size: usize,
+    fn transition(&self, _: Self::CommandListState, num_command: usize, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-        where Self: Sized;
+                  -> (Self::CommandListState, Option<PipelineBarrierRequest>);
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    fn finish(&self, _: Self::CommandListState) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+
+    /// Called right before the command buffer is submitted.
+    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
+    fn on_submit<F>(&self, state: &Self::FinishedState, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>;
 }
 
 /// Requests that a pipeline barrier is created.
@@ -132,14 +131,6 @@ pub struct PipelineMemoryBarrierRequest {
     pub destination_access: AccessFlagBits,
 }
 
-/// Trait for objects that represent the state of the buffer in a command buffer.
-pub trait CommandBufferState {
-    /// Called right before the command buffer is submitted.
-    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<B, F>(&self, buffer: &B, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where B: Buffer, F: FnOnce() -> Arc<Fence>;
-}
-
 pub struct SubmitInfos {
     pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
     pub post_semaphore: Option<Arc<Semaphore>>,
@@ -176,6 +167,28 @@ unsafe impl<B> TrackedBuffer for Arc<B> where B: TrackedBuffer, Arc<B>: Buffer {
     #[inline]
     fn initial_state(&self) -> Self::CommandListState {
         (**self).initial_state()
+    }
+
+    #[inline]
+    fn transition(&self, state: Self::CommandListState, num_command: usize, offset: usize,
+                  size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
+                  -> (Self::CommandListState, Option<PipelineBarrierRequest>)
+    {
+        (**self).transition(state, num_command, offset, size, write, stage, access)
+    }
+
+    #[inline]
+    fn finish(&self, state: Self::CommandListState)
+              -> (Self::FinishedState, Option<PipelineBarrierRequest>)
+    {
+        (**self).finish(state)
+    }
+
+    #[inline]
+    fn on_submit<F>(&self, state: &Self::FinishedState, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        (**self).on_submit(state, queue, fence)
     }
 }
 
