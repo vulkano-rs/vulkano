@@ -76,9 +76,9 @@ pub unsafe trait TrackedImage: Image {
     ///
     /// The `Any` bound is here for stupid reasons, sorry.
     // TODO: remove Any bound
-    type CommandListState: Any + CommandListState<FinishedState = Self::FinishedState>;
+    type CommandListState: Any;
     /// State of the buffer in a finished list of commands.
-    type FinishedState: CommandBufferState;
+    type FinishedState;
 
     /// Returns true if TODO.
     ///
@@ -100,11 +100,6 @@ pub unsafe trait TrackedImage: Image {
 
     /// Returns the state of the image when it has not yet been used.
     fn initial_state(&self) -> Self::CommandListState;
-}
-
-/// Trait for objects that represent the state of a slice of the image in a list of commands.
-pub trait CommandListState {
-    type FinishedState: CommandBufferState;
 
     /// Returns a new state that corresponds to the moment after a slice of the image has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
@@ -113,17 +108,23 @@ pub trait CommandListState {
     /// function.
     // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
     // previous transition?
-    fn transition(self, num_command: usize, image: &UnsafeImage, first_mipmap: u32,
+    fn transition(&self, state: Self::CommandListState, num_command: usize, first_mipmap: u32,
                   num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
                   stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-        where Self: Sized;
+                  -> (Self::CommandListState, Option<PipelineBarrierRequest>);
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    fn finish(&self, state: Self::CommandListState)
+              -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+
+    /// Called right before the command buffer is submitted.
+    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
+    fn on_submit<F>(&self, finished: &Self::FinishedState,
+                    queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>;
 }
 
 /// Requests that a pipeline barrier is created.
@@ -167,14 +168,6 @@ pub struct PipelineMemoryBarrierRequest {
     pub source_access: AccessFlagBits,
     /// Destination accesses.
     pub destination_access: AccessFlagBits,
-}
-
-/// Trait for objects that represent the state of the image in a command buffer.
-pub trait CommandBufferState {
-    /// Called right before the command buffer is submitted.
-    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where I: Image, F: FnOnce() -> Arc<Fence>;
 }
 
 pub struct SubmitInfos {
