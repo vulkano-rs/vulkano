@@ -35,8 +35,6 @@ use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
-use buffer::traits::CommandBufferState;
-use buffer::traits::CommandListState;
 use buffer::traits::SubmitInfos;
 use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
@@ -356,6 +354,130 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
             needs_flush_at_the_end: false,
         }
     }
+
+    fn transition(&self, state: CpuAccessibleBufferClState, num_command: usize, _: usize, _: usize,
+                  write: bool, stage: PipelineStages, access: AccessFlagBits)
+                  -> (CpuAccessibleBufferClState, Option<PipelineBarrierRequest>)
+    {
+        debug_assert!(!stage.host);
+        debug_assert!(!access.host_read);
+        debug_assert!(!access.host_write);
+
+        if write {
+            // Write after read or write after write.
+            let new_state = CpuAccessibleBufferClState {
+                size: state.size,
+                stages: stage,
+                access: access,
+                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+                write: true,
+                earliest_previous_transition: num_command,
+                needs_flush_at_the_end: true,
+            };
+
+            let barrier = PipelineBarrierRequest {
+                after_command_num: state.earliest_previous_transition,
+                source_stage: state.stages,
+                destination_stages: stage,
+                by_region: true,
+                memory_barrier: if state.write {
+                    Some(PipelineMemoryBarrierRequest {
+                        offset: 0,
+                        size: state.size,
+                        source_access: state.access,
+                        destination_access: access,
+                    })
+                } else {
+                    None
+                },
+            };
+
+            (new_state, Some(barrier))
+
+        } else if state.write {
+            // Read after write.
+            let new_state = CpuAccessibleBufferClState {
+                size: state.size,
+                stages: stage,
+                access: access,
+                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+                write: false,
+                earliest_previous_transition: num_command,
+                needs_flush_at_the_end: state.needs_flush_at_the_end,
+            };
+
+            let barrier = PipelineBarrierRequest {
+                after_command_num: state.earliest_previous_transition,
+                source_stage: state.stages,
+                destination_stages: stage,
+                by_region: true,
+                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                    offset: 0,
+                    size: state.size,
+                    source_access: state.access,
+                    destination_access: access,
+                }),
+            };
+
+            (new_state, Some(barrier))
+
+        } else {
+            // Read after read.
+            let new_state = CpuAccessibleBufferClState {
+                size: state.size,
+                stages: state.stages | stage,
+                access: state.access | access,
+                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+                write: false,
+                earliest_previous_transition: state.earliest_previous_transition,
+                needs_flush_at_the_end: state.needs_flush_at_the_end,
+            };
+
+            (new_state, None)
+        }
+    }
+
+    fn finish(&self, state: Self::CommandListState) -> (Self::FinishedState, Option<PipelineBarrierRequest>) {
+        let barrier = if state.needs_flush_at_the_end {
+            let barrier = PipelineBarrierRequest {
+                after_command_num: state.earliest_previous_transition,
+                source_stage: state.stages,
+                destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
+                by_region: true,
+                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                    offset: 0,
+                    size: state.size,
+                    source_access: state.access,
+                    destination_access: AccessFlagBits { host_read: true,
+                                                         .. AccessFlagBits::none() },
+                }),
+            };
+
+            Some(barrier)
+        } else {
+            None
+        };
+
+        let finished = CpuAccessibleBufferFinished {
+            first_stages: state.first_stages.unwrap_or(PipelineStages::none()),
+            write: state.needs_flush_at_the_end,
+        };
+
+        (finished, barrier)
+    }
+
+    fn on_submit<F>(&self, state: &CpuAccessibleBufferFinished, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        // FIXME: implement correctly
+
+        SubmitInfos {
+            pre_semaphore: None,
+            post_semaphore: None,
+            pre_barrier: None,
+            post_barrier: None,
+        }
+    }
 }
 
 pub struct CpuAccessibleBufferClState {
@@ -368,139 +490,9 @@ pub struct CpuAccessibleBufferClState {
     needs_flush_at_the_end: bool,
 }
 
-impl CommandListState for CpuAccessibleBufferClState {
-    type FinishedState = CpuAccessibleBufferFinished;
-
-    fn transition(self, num_command: usize, _: &UnsafeBuffer, _: usize, _: usize, write: bool,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-    {
-        debug_assert!(!stage.host);
-        debug_assert!(!access.host_read);
-        debug_assert!(!access.host_write);
-
-        if write {
-            // Write after read or write after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: true,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: true,
-            };
-
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: if self.write {
-                    Some(PipelineMemoryBarrierRequest {
-                        offset: 0,
-                        size: self.size,
-                        source_access: self.access,
-                        destination_access: access,
-                    })
-                } else {
-                    None
-                },
-            };
-
-            (new_state, Some(barrier))
-
-        } else if self.write {
-            // Read after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: self.needs_flush_at_the_end,
-            };
-
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: self.size,
-                    source_access: self.access,
-                    destination_access: access,
-                }),
-            };
-
-            (new_state, Some(barrier))
-
-        } else {
-            // Read after read.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: self.stages | stage,
-                access: self.access | access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: self.earliest_previous_transition,
-                needs_flush_at_the_end: self.needs_flush_at_the_end,
-            };
-
-            (new_state, None)
-        }
-    }
-
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>) {
-        let barrier = if self.needs_flush_at_the_end {
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
-                by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: self.size,
-                    source_access: self.access,
-                    destination_access: AccessFlagBits { host_read: true,
-                                                         .. AccessFlagBits::none() },
-                }),
-            };
-
-            Some(barrier)
-        } else {
-            None
-        };
-
-        let finished = CpuAccessibleBufferFinished {
-            first_stages: self.first_stages.unwrap_or(PipelineStages::none()),
-            write: self.needs_flush_at_the_end,
-        };
-
-        (finished, barrier)
-    }
-}
-
 pub struct CpuAccessibleBufferFinished {
     first_stages: PipelineStages,
     write: bool,
-}
-
-impl CommandBufferState for CpuAccessibleBufferFinished {
-    fn on_submit<B, F>(&self, buffer: &B, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where B: Buffer, F: FnOnce() -> Arc<Fence>
-    {
-        // FIXME: implement correctly
-
-        SubmitInfos {
-            pre_semaphore: None,
-            post_semaphore: None,
-            pre_barrier: None,
-            post_barrier: None,
-        }
-    }
 }
 
 /// Object that can be used to read or write the content of a `CpuAccessBuffer`.
