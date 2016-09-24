@@ -24,66 +24,33 @@ use sync::PipelineStages;
 
 // TODO: re-read docs
 /// Collection of tracked resources. Makes it possible to treat multiple buffers and images as one.
-pub unsafe trait ResourcesCollection {
-    type State;
-    type Finished;
-
+pub unsafe trait ResourcesCollection<States> {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     // TODO: must return a Result if multiple elements conflict with one another
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates;
-        
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
+    unsafe fn transition(&self, states: &mut States, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder);
 
-    #[inline]
-    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
-
-    unsafe fn finish(&self, Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+    unsafe fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
-unsafe impl ResourcesCollection for () {
-    type State = ();
-    type Finished = ();
-
+unsafe impl<S> ResourcesCollection<S> for () {
     #[inline]
-    unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
-                                               -> ((), usize, PipelineBarrierBuilder)
-        where L: ResourcesStates
-    {
-        ((), 0, PipelineBarrierBuilder::new())
-    }
-
-    #[inline]    
-    unsafe fn extract_buffer_state<B>(&self, _: &mut (), buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
-        None
+    unsafe fn transition(&self, _: &mut S, _: usize) -> (usize, PipelineBarrierBuilder) {
+        (0, PipelineBarrierBuilder::new())
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&self, _: &mut (), image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        None
+    unsafe fn finish(&self, _: &mut S, _: &mut S) -> PipelineBarrierBuilder {
+        PipelineBarrierBuilder::new()
     }
 
     #[inline]
-    unsafe fn finish(&self, _: ()) -> ((), PipelineBarrierBuilder) {
-        ((), PipelineBarrierBuilder::new())
-    }
-
-    unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, _: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         unimplemented!()        // FIXME:
@@ -99,66 +66,23 @@ pub struct Buf<B> {
     pub access: AccessFlagBits,
 }
 
-unsafe impl<B> ResourcesCollection for Buf<B>
-    where B: TrackedBuffer
+unsafe impl<B, S> ResourcesCollection<S> for Buf<B>
+    where B: TrackedBuffer<S>
 {
-    type State = B::CommandListState;
-    type Finished = B::FinishedState;
-
     #[inline]
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder)
     {
-        /*let (mut next_state, next_loc, mut next_builder) = {
-            self.rest.extract_states_and_transition(num_command, list)
-        };
-
-        let my_buf_state = ResourcesStatesJoin(list, &mut next_state)
-                                .extract_buffer_state(&self.buffer)
-                                .unwrap_or(self.buffer.initial_state());
-        
-        let (my_buf_state, my_builder) = {
-            my_buf_state.transition(num_command, self.buffer.inner(), self.offset, self.size,
-                                    self.write, self.stage, self.access)
-        };
-
-        // TODO: return Err instead
-        assert!(my_builder.as_ref().map(|b| b.after_command_num).unwrap_or(0) <= num_command);
-        let command_num = cmp::max(my_builder.as_ref().map(|b| b.after_command_num).unwrap_or(0), next_loc);
-
-        if let Some(my_builder) = my_builder {
-            next_builder.add_buffer_barrier_request(self.buffer.inner(), my_builder);
-        }
-
-        (BufState(Some(my_buf_state), next_state), command_num, next_builder)*/
         unimplemented!()
     }
 
     #[inline]
-    unsafe fn extract_buffer_state<Ob>(&self, _: &mut Self::State, buffer: &Ob) -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
+    unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
         // TODO:
         unimplemented!()
     }
 
-    #[inline]
-    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        // TODO:
-        unimplemented!()
-    }
-
-    #[inline]
-    unsafe fn finish(&self, _: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
-        // TODO:
-        unimplemented!()
-    }
-
-    unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         unimplemented!()        // FIXME:
@@ -167,42 +91,22 @@ unsafe impl<B> ResourcesCollection for Buf<B>
 
 macro_rules! tuple_impl {
     ($first:ident, $($rest:ident),+) => (
-        unsafe impl<$first, $($rest),+> ResourcesCollection for ($first $(, $rest)+)
-            where $first: ResourcesCollection, $($rest: ResourcesCollection),+
+        unsafe impl<S, $first, $($rest),+> ResourcesCollection<S> for ($first $(, $rest)+)
+            where $first: ResourcesCollection<S>, $($rest: ResourcesCollection<S>),+
         {
-            type State = (<$first as ResourcesCollection>::State,
-                          <($($rest),+) as ResourcesCollection>::State);
-            type Finished = (<$first as ResourcesCollection>::Finished,
-                             <($($rest),+) as ResourcesCollection>::Finished);
-
             #[inline]
-            unsafe fn extract_states_and_transition<L>(&self, _num_command: usize, _list: &mut L)
-                                                    -> (Self::State, usize, PipelineBarrierBuilder)
-                where L: ResourcesStates
-            {
-                unimplemented!()
-            }
-
-            #[inline]    
-            unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-                where B: TrackedBuffer
+            unsafe fn transition(&self, states: &mut S, _num_command: usize)
+                                 -> (usize, PipelineBarrierBuilder)
             {
                 unimplemented!()
             }
 
             #[inline]
-            unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
-                where I: TrackedImage
-            {
+            unsafe fn finish(&self, _: &mut S, _: &mut S) -> PipelineBarrierBuilder {
                 unimplemented!()
             }
 
-            #[inline]
-            unsafe fn finish(&self, _: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
-                unimplemented!()
-            }
-
-            unsafe fn on_submit<F>(&self, _: &Self::Finished, queue: &Arc<Queue>, fence: F)
+            unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F)
                                 -> SubmitInfo
                 where F: FnMut() -> Arc<Fence>
             {
@@ -216,4 +120,4 @@ macro_rules! tuple_impl {
     ($first:ident) => ();
 }
 
-tuple_impl!(A, C, D, E, G, H, J, K, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+tuple_impl!(A, C, D, E, G, H, J, K, M, N, O, P, Q, R, T, U, V, W, X, Y, Z);

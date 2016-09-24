@@ -38,36 +38,7 @@ pub unsafe trait Buffer: 'static + Send + Sync {
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedBuffer: Buffer {
-    /// State of the buffer in a list of commands.
-    ///
-    /// The `Any` bound is here for stupid reasons, sorry.
-    // TODO: remove Any bound
-    type CommandListState: Any;
-    /// State of the buffer in a finished list of commands.
-    type FinishedState;
-
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other buffer. Otherwise a panic will occur.
-    #[inline]
-    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
-        self.inner().internal_object() == other.inner().internal_object()
-    }
-
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other image. Otherwise a panic will occur.
-    #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        false
-    }
-
-    /// Returns the state of the buffer when it has not yet been used.
-    fn initial_state(&self) -> Self::CommandListState;
-
+pub unsafe trait TrackedBuffer<States>: Buffer {
     /// Returns a new state that corresponds to the moment after a slice of the buffer has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
     ///
@@ -75,19 +46,19 @@ pub unsafe trait TrackedBuffer: Buffer {
     /// function.
     // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
     // previous transition?
-    fn transition(&self, _: Self::CommandListState, num_command: usize, offset: usize, size: usize,
+    fn transition(&self, states: &mut States, num_command: usize, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self::CommandListState, Option<PipelineBarrierRequest>);
+                  -> Option<PipelineBarrierRequest>;
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(&self, _: Self::CommandListState) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    fn finish(&self, in_s: &mut States, out: &mut States) -> Option<PipelineBarrierRequest>;
 
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, state: &Self::FinishedState, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfos
         where F: FnOnce() -> Arc<Fence>;
 }
 

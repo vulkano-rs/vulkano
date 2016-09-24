@@ -52,32 +52,19 @@ pub unsafe trait DescriptorSetDesc {
 // TODO: re-read docs
 /// Extension trait for descriptor sets so that it can be used with the standard commands list
 /// interface.
-pub unsafe trait TrackedDescriptorSet: DescriptorSet {
-    type State;
-    type Finished;
-
+pub unsafe trait TrackedDescriptorSet<States>: DescriptorSet {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates;
-
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&self, _: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&self, _: &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
+    unsafe fn transition(&self, states: &mut States, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder);
 
     /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
     /// state hasn't been extracted must be have `finished()` called on them as well.
     ///
     /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(&self, Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+    unsafe fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }

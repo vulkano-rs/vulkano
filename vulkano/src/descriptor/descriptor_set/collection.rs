@@ -44,38 +44,20 @@ pub unsafe trait DescriptorSetsCollection {
 
 /// Extension trait for a descriptor sets collection so that it can be used with the standard
 /// commands list interface.
-pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
-    /// State of the resources inside the collection.
-    type State;
-    /// Finished state of the resources inside the collection.
-    type Finished;
-
+pub unsafe trait TrackedDescriptorSetsCollection<States>: DescriptorSetsCollection {
     /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
     /// Then transitions them to the right state and returns a pipeline barrier to insert as part
     /// of the transition. The `usize` is the location of the barrier.
-    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates;
-
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B)
-                                      -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I)
-                                     -> Option<I::CommandListState>
-        where I: TrackedImage;
+    unsafe fn transition(&self, states: &mut States) -> (usize, PipelineBarrierBuilder);
 
     /// Turns the object into a `TrackedDescriptorSetsCollectionFinished`. All the buffers and
     /// images whose state hasn't been extracted must be have `finished()` called on them as well.
     ///
     /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
+    unsafe fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
     // TODO: write docs
-    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, state: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
@@ -95,40 +77,19 @@ unsafe impl DescriptorSetsCollection for () {
     }
 }
 
-unsafe impl TrackedDescriptorSetsCollection for () {
-    type State = ();
-    type Finished = ();
-
+unsafe impl<S> TrackedDescriptorSetsCollection<S> for () {
     #[inline]
-    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
-        -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates
-    {
-        ((), 0, PipelineBarrierBuilder::new())
+    unsafe fn transition(&self, _: &mut S) -> (usize, PipelineBarrierBuilder) {
+        (0, PipelineBarrierBuilder::new())
     }
 
     #[inline]
-    unsafe fn finish(&self, _: ()) -> (Self::Finished, PipelineBarrierBuilder) {
-        ((), PipelineBarrierBuilder::new())
+    unsafe fn finish(&self, _: &mut S, _: &mut S) -> PipelineBarrierBuilder {
+        PipelineBarrierBuilder::new()
     }
 
     #[inline]
-    unsafe fn extract_buffer_state<B>(&self, _: &mut (), buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
-        None
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&self, _: &mut (), image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        None
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         SubmitInfo {
