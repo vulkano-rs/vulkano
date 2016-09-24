@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::iter;
-use std::iter::Chain;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -223,31 +222,31 @@ unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
     where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = Chain<L::SemaphoresWaitIterator,
-                                        S::SemaphoresWaitIterator>;
-    type SemaphoresSignalIterator = Chain<L::SemaphoresSignalIterator,
-                                          S::SemaphoresSignalIterator>;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(queue, &mut fence);
 
         // We query our sets.
         let my_infos = self.sets.on_submit(&self.sets_state, queue, fence);
 
         // We merge the two.
         SubmitInfo {
-            semaphores_wait: parent.semaphores_wait.chain(my_infos.semaphores_wait),
-            semaphores_signal: parent.semaphores_signal.chain(my_infos.semaphores_signal),
+            semaphores_wait: {
+                parent.semaphores_wait.extend(my_infos.semaphores_wait.into_iter());
+                parent.semaphores_wait
+            },
+            semaphores_signal: {
+                parent.semaphores_signal.extend(my_infos.semaphores_signal.into_iter());
+                parent.semaphores_signal
+            },
             pre_pipeline_barrier: {
                 let mut b = parent.pre_pipeline_barrier;
                 b.merge(my_infos.pre_pipeline_barrier);

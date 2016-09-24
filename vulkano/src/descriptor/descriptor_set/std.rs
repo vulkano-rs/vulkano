@@ -59,8 +59,6 @@ unsafe impl<R> TrackedDescriptorSet for StdDescriptorSet<R>
 {
     type State = R::State;
     type Finished = R::Finished;
-    type SemaphoresWaitIterator = R::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = R::SemaphoresSignalIterator;
 
     #[inline]
     unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
@@ -91,8 +89,7 @@ unsafe impl<R> TrackedDescriptorSet for StdDescriptorSet<R>
 
     #[inline]
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.resources.on_submit(state, queue, fence)

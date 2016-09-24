@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::iter::Empty;
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
@@ -34,8 +32,6 @@ use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
 
 pub struct PrimaryCbBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
     pool: P,
@@ -146,17 +142,13 @@ pub struct PrimaryCb<P = Arc<StandardCommandPool>> where P: CommandPool {
 
 unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
     type Pool = P;
-    type SemaphoresWaitIterator = Empty<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = Empty<Arc<Semaphore>>;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         &self.cb
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // TODO: Must handle non-SimultaneousUse and Once flags ; for now the `SimultaneousUse`
@@ -164,8 +156,8 @@ unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
         //       before allowing other flags to be used.
 
         SubmitInfo {
-            semaphores_wait: iter::empty(),
-            semaphores_signal: iter::empty(),
+            semaphores_wait: vec![],
+            semaphores_signal: vec![],
             pre_pipeline_barrier: PipelineBarrierBuilder::new(),
             post_pipeline_barrier: PipelineBarrierBuilder::new(),
         }

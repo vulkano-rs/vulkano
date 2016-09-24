@@ -23,8 +23,6 @@ use descriptor::descriptor_set::DescriptorSetDesc;
 use device::Queue;
 use image::traits::TrackedImage;
 use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -51,12 +49,6 @@ pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
     type State;
     /// Finished state of the resources inside the collection.
     type Finished;
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
 
     /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
     /// Then transitions them to the right state and returns a pipeline barrier to insert as part
@@ -83,8 +75,7 @@ pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
 
     // TODO: write docs
     unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
@@ -107,8 +98,6 @@ unsafe impl DescriptorSetsCollection for () {
 unsafe impl TrackedDescriptorSetsCollection for () {
     type State = ();
     type Finished = ();
-    type SemaphoresWaitIterator = EmptyIter<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = EmptyIter<Arc<Semaphore>>;
 
     #[inline]
     unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
@@ -139,13 +128,12 @@ unsafe impl TrackedDescriptorSetsCollection for () {
 
     #[inline]
     unsafe fn on_submit<F>(&self, _: &(), queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+                           -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         SubmitInfo {
-            semaphores_wait: iter::empty(),
-            semaphores_signal: iter::empty(),
+            semaphores_wait: vec![],
+            semaphores_signal: vec![],
             pre_pipeline_barrier: PipelineBarrierBuilder::new(),
             post_pipeline_barrier: PipelineBarrierBuilder::new(),
         }

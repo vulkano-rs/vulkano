@@ -194,8 +194,6 @@ unsafe impl<Cb, L> CommandBuffer for ExecuteCommandCb<Cb, L>
     where Cb: CommandBuffer, L: CommandBuffer
 {
     type Pool = L::Pool;
-    type SemaphoresWaitIterator = L::SemaphoresWaitIterator;
-    type SemaphoresSignalIterator = L::SemaphoresSignalIterator;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -203,9 +201,7 @@ unsafe impl<Cb, L> CommandBuffer for ExecuteCommandCb<Cb, L>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.previous.on_submit(queue, &mut fence)
