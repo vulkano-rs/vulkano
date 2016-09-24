@@ -27,8 +27,6 @@ use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
-use image::traits::CommandListState as ImageCommandListState;
-use image::traits::CommandBufferState as ImageCommandBufferState;
 use image::traits::Image;
 use image::traits::TrackedImage;
 use image::traits::TrackedImageView;
@@ -423,10 +421,10 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 
         let first_state = states.extract_image_state(self.first.image())
                                 .unwrap_or(self.first.image().initial_state());
-        let (first_state, first_barrier) = first_state.transition(num_command, self.first.image().inner(),
-                                                                  0, 1,
-                                                                  0, 1 /* FIXME: */, true,
-                                                                  layout, stages, access);
+        let (first_state, first_barrier) = self.first.image().transition(first_state, num_command,
+                                                                         0, 1,
+                                                                         0, 1 /* FIXME: */, true,
+                                                                         layout, stages, access);
 
         if let Some(first_barrier) = first_barrier {
             rest_barrier.add_image_barrier_request(self.first.image().inner(), first_barrier);
@@ -443,7 +441,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
     #[inline]
     fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
         let (first_finished, first_barrier) = if let Some(f) = state.first {
-            let (s, b) = f.finish();
+            let (s, b) = self.first.image().finish(f);
             (Some(s), b)
         } else {
             (None, None)
@@ -491,7 +489,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
         let first_post_barrier;
 
         if let Some(ref first) = state.first {
-            let first_infos = first.on_submit(self.first.image(), queue, &mut fence);
+            let first_infos = self.first.image().on_submit(first, queue, &mut fence);
             first_pre_sem = first_infos.pre_semaphore.map(|(rx, s)| (rx.recv().unwrap(), s));
             assert!(first_infos.post_semaphore.is_none());
 
