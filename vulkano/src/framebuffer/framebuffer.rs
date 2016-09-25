@@ -15,6 +15,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::ResourcesStates;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
@@ -65,7 +66,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
                    attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
-              A: AttachmentsList        // TODO: use another trait in order to be generic over the states
+              A: AttachmentsList<StatesManager>        // TODO: use another trait in order to be generic over the states
     {
         let device = render_pass.inner().device().clone();
 

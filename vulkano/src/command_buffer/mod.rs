@@ -53,6 +53,7 @@ use pipeline::viewport::Scissor;
 use sync::FenceWaitError;
 
 pub mod pool;
+pub mod states_manager;
 pub mod std;
 pub mod submit;
 pub mod sys;

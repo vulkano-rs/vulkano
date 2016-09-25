@@ -11,6 +11,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use buffer::sys::UnsafeBuffer;
+use command_buffer::states_manager::StatesManager;
 use device::Queue;
 use image::Image;
 use memory::Content;
@@ -38,7 +39,7 @@ pub unsafe trait Buffer: 'static + Send + Sync {
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedBuffer<States>: Buffer {
+pub unsafe trait TrackedBuffer<States = StatesManager>: Buffer {
     /// Returns a new state that corresponds to the moment after a slice of the buffer has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
     ///
@@ -121,45 +122,28 @@ unsafe impl<B> Buffer for Arc<B> where B: Buffer {
     }
 }
 
-unsafe impl<B> TrackedBuffer for Arc<B> where B: TrackedBuffer, Arc<B>: Buffer {
+unsafe impl<B, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S>, Arc<B>: Buffer {
     type CommandListState = B::CommandListState;
     type FinishedState = B::FinishedState;
 
     #[inline]
-    fn is_same_buffer<Bo>(&self, other: &Bo) -> bool where Bo: Buffer {
-        (**self).is_same_buffer(other)
-    }
-
-    #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        (**self).is_same_image(other)
-    }
-
-    #[inline]
-    fn initial_state(&self) -> Self::CommandListState {
-        (**self).initial_state()
-    }
-
-    #[inline]
-    fn transition(&self, state: Self::CommandListState, num_command: usize, offset: usize,
+    fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
                   -> (Self::CommandListState, Option<PipelineBarrierRequest>)
     {
-        (**self).transition(state, num_command, offset, size, write, stage, access)
+        (**self).transition(states, num_command, offset, size, write, stage, access)
     }
 
     #[inline]
-    fn finish(&self, state: Self::CommandListState)
-              -> (Self::FinishedState, Option<PipelineBarrierRequest>)
-    {
-        (**self).finish(state)
+    fn finish(&self, i: &mut S, o: &mut S) -> Option<PipelineBarrierRequest> {
+        (**self).finish(i, o)
     }
 
     #[inline]
-    fn on_submit<F>(&self, state: &Self::FinishedState, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
-        (**self).on_submit(state, queue, fence)
+        (**self).on_submit(states, queue, fence)
     }
 }
 

@@ -13,6 +13,7 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 
 use buffer::Buffer;
+use command_buffer::states_manager::StatesManager;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -71,7 +72,7 @@ pub unsafe trait Image: 'static + Send + Sync {
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedImage<States>: Image {
+pub unsafe trait TrackedImage<States = StatesManager>: Image {
     /// Returns a new state that corresponds to the moment after a slice of the image has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
     ///

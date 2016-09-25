@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::ResourcesStates;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
@@ -69,7 +70,7 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-pub unsafe trait TrackedFramebuffer<States>: Framebuffer {
+pub unsafe trait TrackedFramebuffer<States = StatesManager>: Framebuffer {
     /// Extracts the states of the framebuffer's attachments from `states`.
     ///
     /// The return values contains:
