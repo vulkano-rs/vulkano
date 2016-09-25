@@ -102,6 +102,14 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             output.bufferFeatures
         };
 
+        {
+            let nb = buffer.size() / format.size().expect("Can't use a compressed format for buffer views");
+            let l = buffer.buffer().inner().device().physical_device().limits().max_texel_buffer_elements();
+            if nb > l as usize {
+                return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+            }
+        }
+
         if buffer.buffer().inner().usage_uniform_texel_buffer() {
             if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
                 return Err(BufferViewCreationError::UnsupportedFormat);
@@ -198,6 +206,9 @@ pub enum BufferViewCreationError {
 
     /// The requested format is not supported for this usage.
     UnsupportedFormat,
+
+    /// The maximum number of elements in the buffer view has been exceeded.
+    MaxTexelBufferElementsExceeded,
 }
 
 impl error::Error for BufferViewCreationError {
@@ -209,6 +220,9 @@ impl error::Error for BufferViewCreationError {
                                                           flags",
             BufferViewCreationError::UnsupportedFormat => "the requested format is not supported \
                                                            for this usage",
+            BufferViewCreationError::MaxTexelBufferElementsExceeded => {
+                "the maximum number of texel elements is exceeded"
+            },
         }
     }
 
