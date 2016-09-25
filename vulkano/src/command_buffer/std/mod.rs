@@ -150,12 +150,14 @@ pub unsafe trait StdCommandsList {
     fn buildable_state(&self) -> bool;
 
     /// Turns the commands list into a command buffer that can be submitted.
+    // This function isn't inline because `raw_build` implementations usually are inline.
     fn build(self) -> Self::Output where Self: Sized {
         assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
                                          render pass");
 
         unsafe {
-            self.raw_build(|_| {}, iter::empty(), PipelineBarrierBuilder::new())
+            self.raw_build(StatesManager::new(), StatesManager::new(),
+                           |_| {}, iter::empty(), PipelineBarrierBuilder::new())
         }
     }
 
@@ -193,7 +195,8 @@ pub unsafe trait StdCommandsList {
     ///   command buffer builder.
     ///
     /// This function doesn't check that `buildable_state` returns true.
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>;

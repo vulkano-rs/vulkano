@@ -121,21 +121,15 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
-    unsafe fn raw_build<I, F>(mut self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(mut self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        // Computing the finished state, or `None` if we don't have to manage it.
-        let finished_state = match self.buffer_state.take().map(|s| self.buffer.finish(s)) {
-            Some((s, t)) => {
-                if let Some(t) = t {
-                    final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
-                }
-                Some(s)
-            },
-            None => None,
-        };
+        if let Some(t) = self.buffer.finish(in_s, out) {
+            final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
+        }
 
         // We split the barriers in two: those to apply after our command, and those to
         // transfer to the parent so that they are applied before our command.
@@ -177,7 +171,6 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         UpdateCommandCb {
             previous: parent,
             buffer: my_buffer,
-            buffer_state: finished_state,
         }
     }
 }
