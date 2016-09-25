@@ -209,7 +209,6 @@ pub struct BeginRenderPassCommandCb<L, Rp, F>
     previous: L,
     render_pass: Option<Rp>,
     framebuffer: F,
-    state: F::Finished,
 }
 
 unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>

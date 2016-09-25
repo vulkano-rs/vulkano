@@ -228,7 +228,7 @@ unsafe impl<Rp, A, S> TrackedFramebuffer<S> for StdFramebuffer<Rp, A>
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
-        self.resources.extract_and_transition(states, num_command)
+        self.resources.transition(states, num_command)
     }
 
     #[inline]
@@ -338,7 +338,7 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
     unsafe fn transition(&self, states: &mut States, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
-        let (rest_cmd, mut rest_barrier) = self.rest.and_transition(states, num_command);
+        let (rest_cmd, mut rest_barrier) = self.rest.transition(states, num_command);
         debug_assert!(rest_cmd <= num_command);
 
         let (layout, stages, access) = {
@@ -371,7 +371,7 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
     #[inline]
     fn finish(&self, in_states: &mut States, out_states: &mut States) -> PipelineBarrierBuilder {
         let first_barrier = self.first.image().finish(in_states, out_states);
-        let mut rest_barrier = self.rest.finish(state.rest);
+        let mut rest_barrier = self.rest.finish(in_states, out_states);
 
         if let Some(barrier) = first_barrier {
             unsafe {
@@ -391,19 +391,12 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
         let first_pre_barrier;
         let first_post_barrier;
 
-        if let Some(ref first) = state.first {
-            let first_infos = self.first.image().on_submit(states, queue, &mut fence);
-            first_pre_sem = first_infos.pre_semaphore.map(|(rx, s)| (rx.recv().unwrap(), s));
-            assert!(first_infos.post_semaphore.is_none());
+        let first_infos = self.first.image().on_submit(states, queue, &mut fence);
+        first_pre_sem = first_infos.pre_semaphore.map(|(rx, s)| (rx.recv().unwrap(), s));
+        assert!(first_infos.post_semaphore.is_none());
 
-            first_pre_barrier = first_infos.pre_barrier;
-            first_post_barrier = first_infos.post_barrier;
-
-        } else {
-            first_pre_sem = None;
-            first_pre_barrier = None;
-            first_post_barrier = None;
-        }
+        first_pre_barrier = first_infos.pre_barrier;
+        first_post_barrier = first_infos.post_barrier;
 
         let mut rest_infos = self.rest.on_submit(states, queue, fence);
 

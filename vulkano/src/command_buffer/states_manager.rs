@@ -31,25 +31,37 @@ impl StatesManager {
         }
     }
 
-    pub fn buffer_or<T, F>(&mut self, buffer: &UnsafeBuffer, subkey: u32, default: F)
+    pub fn remove_buffer<T>(&mut self, buffer: &UnsafeBuffer, subkey: u32) -> Option<T>
+        where T: Any
+    {
+        match self.buffers.remove(&(buffer.internal_object(), subkey)) {
+            Some(s) => Some(*s.downcast().expect("Wrong buffer state")),
+            None => None
+        }
+    }
+
+    pub fn buffer_or<T, F>(&mut self, buffer: &UnsafeBuffer, subkey: u32, default: F) -> &mut T
         where T: Any, F: FnOnce() -> T
     {
         self.buffers.entry((buffer.internal_object(), subkey))
-                    .or_insert_with(default)
+                    .or_insert_with(|| Box::new(default()) as Box<_>)
                     .downcast_mut().expect("Wrong buffer state")
     }
 
     pub fn remove_image<T>(&mut self, image: &UnsafeImage, subkey: u32) -> Option<T>
         where T: Any
     {
-        self.images.remove(&(image.internal_object(), subkey))
+        match self.images.remove(&(image.internal_object(), subkey)) {
+            Some(s) => Some(*s.downcast().expect("Wrong image state")),
+            None => None
+        }
     }
 
-    pub fn image_or<T, F>(&mut self, image: &UnsafeImage, subkey: u32, default: F)
+    pub fn image_or<T, F>(&mut self, image: &UnsafeImage, subkey: u32, default: F) -> &mut T
         where T: Any, F: FnOnce() -> T
     {
         self.images.entry((image.internal_object(), subkey))
-                   .or_insert_with(default)
+                   .or_insert_with(|| Box::new(default()) as Box<_>)
                    .downcast_mut().expect("Wrong image state")
     }
 }

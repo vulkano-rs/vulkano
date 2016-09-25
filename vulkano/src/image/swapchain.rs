@@ -206,7 +206,7 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
             layout: layout,
         };
 
-        let state = states.image_or(self.inner(), 0, || default);
+        let mut state = states.image_or(&self.image, 0, || default);
 
         let transition = PipelineBarrierRequest {
             after_command_num: state.command_num,
@@ -227,13 +227,15 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
             })
         };
 
+        *state = new_state;
+
         Some(transition)
     }
 
     fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
               -> Option<PipelineBarrierRequest>
     {
-        let state = in_s.remove_image((self.inner(), 0));
+        let state: SwapchainImageCbState = in_s.remove_image(&self.image, 0).unwrap();
 
         let transition = PipelineBarrierRequest {
             after_command_num: state.command_num,

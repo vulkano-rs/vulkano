@@ -195,9 +195,6 @@ pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: CommandBuffer {
     previous: L,
     // The buffer to update.
     buffer: B,
-    // The state of the buffer to update, or `None` if we don't manage it. Will be used to
-    // determine which semaphores or barriers to add when submitting.
-    buffer_state: Option<B::FinishedState>,
 }
 
 unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>

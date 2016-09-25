@@ -123,13 +123,10 @@ unsafe impl<B> Buffer for Arc<B> where B: Buffer {
 }
 
 unsafe impl<B, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S>, Arc<B>: Buffer {
-    type CommandListState = B::CommandListState;
-    type FinishedState = B::FinishedState;
-
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self::CommandListState, Option<PipelineBarrierRequest>)
+                  -> Option<PipelineBarrierRequest>
     {
         (**self).transition(states, num_command, offset, size, write, stage, access)
     }
