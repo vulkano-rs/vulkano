@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
@@ -52,7 +52,7 @@ pub unsafe trait DescriptorSetDesc {
 // TODO: re-read docs
 /// Extension trait for descriptor sets so that it can be used with the standard commands list
 /// interface.
-pub unsafe trait TrackedDescriptorSet<States>: DescriptorSet {
+pub unsafe trait TrackedDescriptorSet<States = StatesManager>: DescriptorSet {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     unsafe fn transition(&self, states: &mut States, num_command: usize)

@@ -13,8 +13,8 @@ use smallvec::SmallVec;
 
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -38,12 +38,12 @@ pub struct FillCommand<L, B>
     previous: L,
     // The buffer to fill.
     buffer: B,
-    // Current state of the buffer to fill, or `None` if it has been extracted.
-    buffer_state: Option<B::CommandListState>,
     // The data to fill the buffer with.
     data: u32,
     // Pipeline barrier to perform before this command.
     barrier: Option<PipelineBarrierRequest>,
+    // States of the resources, or `None` if it has been extracted.
+    resources_states: Option<StatesManager>,
 }
 
 impl<L, B> FillCommand<L, B>
@@ -52,15 +52,15 @@ impl<L, B> FillCommand<L, B>
 {
     /// See the documentation of the `fill_buffer` method.
     pub fn new(mut previous: L, buffer: B, data: u32) -> FillCommand<L, B> {
+        let mut states = previous.extract_states();
+
         // Determining the new state of the buffer, and the optional pipeline barrier to add
         // before our command in the final output.
-        let (state, barrier) = unsafe {
+        let barrier = unsafe {
             let stage = PipelineStages { transfer: true, .. PipelineStages::none() };
             let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
 
-            let prev = previous.extract_buffer_state(&buffer)
-                               .unwrap_or(buffer.initial_state());
-            buffer.transition(prev, previous.num_commands() + 1, 0, buffer.size(), true,
+            buffer.transition(&mut states, previous.num_commands() + 1, 0, buffer.size(), true,
                               stage, access)
         };
 
@@ -72,9 +72,9 @@ impl<L, B> FillCommand<L, B>
         FillCommand {
             previous: previous,
             buffer: buffer,
-            buffer_state: Some(state),
             data: data,
             barrier: barrier,
+            resources_states: Some(states),
         }
     }
 }
@@ -100,6 +100,11 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
     #[inline]
     fn buildable_state(&self) -> bool {
         true
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.resources_states.take().unwrap()
     }
 
     #[inline]
@@ -172,38 +177,6 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
             previous: parent,
             buffer: my_buffer,
             buffer_state: finished_state,
-        }
-    }
-}
-
-unsafe impl<L, B> ResourcesStates for FillCommand<L, B>
-    where B: TrackedBuffer,
-          L: StdCommandsList,
-{
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if self.buffer.is_same_buffer(buffer) {
-            let s: &mut Option<Ob::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_buffer_state(buffer)
-        }
-    }
-
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if self.buffer.is_same_image(image) {
-            let s: &mut Option<I::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_image_state(image)
         }
     }
 }

@@ -11,9 +11,9 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::InsideRenderPass;
 use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -43,6 +43,7 @@ impl<Cb, L> ExecuteCommand<Cb, L>
     #[inline]
     pub fn new(previous: L, command_buffer: Cb) -> ExecuteCommand<Cb, L> {
         // FIXME: check that the number of subpasses is correct
+        let states = previous.extract_states();
 
         ExecuteCommand {
             previous: previous,
@@ -72,6 +73,11 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
     #[inline]
     fn buildable_state(&self) -> bool {
         self.previous.buildable_state()
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.previous.extract_states()
     }
 
     #[inline]
@@ -125,27 +131,6 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
             previous: parent,
             command_buffer: self.command_buffer,
         }
-    }
-}
-
-unsafe impl<Cb, L> ResourcesStates for ExecuteCommand<Cb, L>
-    where Cb: CommandBuffer, L: StdCommandsList
-{
-    #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        // FIXME:
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        // FIXME:
-        self.previous.extract_image_state(image)
     }
 }
 

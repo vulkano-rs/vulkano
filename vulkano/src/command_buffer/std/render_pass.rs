@@ -13,9 +13,9 @@ use std::ops::Range;
 use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::InsideRenderPass;
 use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -47,7 +47,8 @@ pub struct BeginRenderPassCommand<L, Rp, F>
     // is a different (but compatible) render pass.
     render_pass: Option<Rp>,
     framebuffer: F,
-    framebuffer_state: F::State,
+    // States of the resources, or `None` if it has been extracted.
+    resources_states: Option<StatesManager>,
     barrier_position: usize,
     barrier: PipelineBarrierBuilder,
 }
@@ -61,8 +62,10 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
                   -> BeginRenderPassCommand<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {
-        let (state, barrier_pos, barrier) = unsafe {
-            framebuffer.extract_and_transition(previous.num_commands() + 1, &mut previous)
+        let states = previous.extract_states();
+
+        let (barrier_pos, barrier) = unsafe {
+            framebuffer.transition(&mut states, previous.num_commands() + 1)
         };
 
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
@@ -77,9 +80,9 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
             clear_values: clear_values,
             render_pass: None,
             framebuffer: framebuffer,
-            framebuffer_state: state,
             barrier_position: barrier_pos,
             barrier: barrier,
+            resources_states: Some(states),
         }
     }
 }
@@ -108,6 +111,11 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
     fn buildable_state(&self) -> bool {
         // We are no longer in a buildable state after entering a render pass.
         false
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.resources_states.take().unwrap()
     }
 
     #[inline]
@@ -158,33 +166,6 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
             framebuffer: my_framebuffer,
             state: finished_fb_state,
         }
-    }
-}
-
-unsafe impl<L, Rp, F> ResourcesStates for BeginRenderPassCommand<L, Rp, F>
-    where L: StdCommandsList, Rp: RenderPass, F: TrackedFramebuffer
-{
-    #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if let Some(buf) = self.framebuffer.extract_buffer_state(&mut self.framebuffer_state, buffer) {
-            return Some(buf);
-        }
-
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if let Some(img) = self.framebuffer.extract_image_state(&mut self.framebuffer_state, image) {
-            return Some(img);
-        }
-
-        self.previous.extract_image_state(image)
     }
 }
 
@@ -314,6 +295,11 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
     }
 
     #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.previous.extract_states()
+    }
+
+    #[inline]
     fn buildable_state(&self) -> bool {
         false
     }
@@ -346,25 +332,6 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
         NextSubpassCommandCb {
             previous: parent,
         }
-    }
-}
-
-unsafe impl<L> ResourcesStates for NextSubpassCommand<L>
-    where L: StdCommandsList + InsideRenderPass
-{
-    #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        self.previous.extract_image_state(image)
     }
 }
 
@@ -459,6 +426,11 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
     }
 
     #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.previous.extract_states()
+    }
+
+    #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
         self.previous.is_compute_pipeline_bound(pipeline)
@@ -494,23 +466,6 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
         EndRenderPassCommandCb {
             previous: parent,
         }
-    }
-}
-
-unsafe impl<L> ResourcesStates for EndRenderPassCommand<L> where L: StdCommandsList {
-    #[inline]
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        self.previous.extract_image_state(image)
     }
 }
 

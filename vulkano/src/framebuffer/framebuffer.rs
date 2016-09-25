@@ -16,7 +16,6 @@ use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::ResourcesStates;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
 use device::Device;
@@ -222,23 +221,23 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> TrackedFramebuffer<States> for StdFramebuffer<Rp, A>
-    where Rp: RenderPass, A: AttachmentsList<States>
+unsafe impl<Rp, A, S> TrackedFramebuffer<S> for StdFramebuffer<Rp, A>
+    where Rp: RenderPass, A: AttachmentsList<S>
 {
     #[inline]
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
         self.resources.extract_and_transition(states, num_command)
     }
 
     #[inline]
-    fn finish(&self, in_s: &mut State, out: &mut States) -> PipelineBarrierBuilder {
+    fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
         self.resources.finish(in_s, out)
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &S, q: &Arc<Queue>, f: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         self.resources.on_submit(states, q, f)

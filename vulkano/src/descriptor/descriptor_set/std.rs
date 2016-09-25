@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor_set::DescriptorSet;

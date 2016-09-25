@@ -10,7 +10,11 @@
 use std::any::Any;
 use std::collections::HashMap;
 
+use buffer::sys::UnsafeBuffer;
+use image::sys::UnsafeImage;
+
 use VulkanObject;
+use vk;
 
 // TODO: rework this
 
@@ -20,6 +24,13 @@ pub struct StatesManager {
 }
 
 impl StatesManager {
+    pub fn new() -> StatesManager {
+        StatesManager {
+            buffers: HashMap::new(),
+            images: HashMap::new(),
+        }
+    }
+
     pub fn buffer_or<T, F>(&mut self, buffer: &UnsafeBuffer, subkey: u32, default: F)
         where T: Any, F: FnOnce() -> T
     {

@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::ResourcesStates;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
 use device::Queue;
@@ -83,7 +82,7 @@ pub unsafe trait TrackedFramebuffer<States = StatesManager>: Framebuffer {
     unsafe fn transition(&self, states: &mut States, num_command: usize)
                          -> (usize, PipelineBarrierBuilder);
 
-    fn finish(&self, in_s: &mut State, out: &mut States) -> PipelineBarrierBuilder;
+    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
     unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
@@ -98,7 +97,7 @@ unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFra
     }
 
     #[inline]
-    fn finish(&self, in_s: &mut State, out: &mut States) -> PipelineBarrierBuilder {
+    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder {
         (**self).finish(in_s, out)
     }
 

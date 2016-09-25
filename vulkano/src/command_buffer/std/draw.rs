@@ -14,8 +14,8 @@ use smallvec::SmallVec;
 use buffer::traits::Buffer;
 use buffer::traits::TrackedBuffer;
 use command_buffer::DynamicState;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::InsideRenderPass;
-use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -44,14 +44,14 @@ pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
     pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
     // The descriptor sets to bind.
     sets: S,
-    // The state of the descriptor sets.
-    sets_state: S::State,
     // Pipeline barrier to inject in the final command buffer.
     pipeline_barrier: (usize, PipelineBarrierBuilder),
     // The push constants.   TODO: use Cow
     push_constants: &'a Pc,
     // FIXME: strong typing and state transitions
     vertex_buffers: SmallVec<[Arc<Buffer>; 4]>,
+    // States of the resources, or `None` if it has been extracted.
+    resources_states: Option<StatesManager>,
     // Actual type of draw.
     inner: DrawInner,
 }
@@ -85,8 +85,10 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
                       -> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
-        let (sets_state, barrier_loc, barrier) = unsafe {
-            sets.extract_states_and_transition(&mut previous)
+        let mut states = previous.extract_states();
+
+        let (barrier_loc, barrier) = unsafe {
+            sets.transition(&mut states)
         };
 
         // FIXME: lot of stuff missing here
@@ -98,10 +100,10 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
             previous: previous,
             pipeline: pipeline,
             sets: sets,
-            sets_state: sets_state,
             pipeline_barrier: (barrier_loc, barrier),
             push_constants: push_constants,
             vertex_buffers: buffers,
+            resources_states: Some(states),
             inner: DrawInner::Regular {
                 vertex_count: num_vertices as u32,
                 instance_count: num_instances as u32,
@@ -143,6 +145,11 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
                                                    -> bool
     {
         pipeline.internal_object() == self.pipeline.internal_object()
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.resources_states.take().unwrap()
     }
 
     #[inline]
@@ -230,32 +237,6 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> ResourcesStates for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout,
-          S: TrackedDescriptorSetsCollection, Pc: 'a
-{
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if let Some(s) = self.sets.extract_buffer_state(&mut self.sets_state, buffer) {
-            return Some(s);
-        }
-
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if let Some(s) = self.sets.extract_image_state(&mut self.sets_state, image) {
-            return Some(s);
-        }
-
-        self.previous.extract_image_state(image)
-    }
-}
-
 unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> InsideRenderPass for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
     where L: StdCommandsList + InsideRenderPass, Pl: PipelineLayout,
           S: TrackedDescriptorSetsCollection, Pc: 'a
@@ -294,8 +275,6 @@ pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
     pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
     // The descriptor sets. Stored here to keep them alive.
     sets: S,
-    // State of the descriptor sets.
-    sets_state: S::Finished,
     // FIXME: strong typing and state transitions
     vertex_buffers: SmallVec<[Arc<Buffer>; 4]>,
 }

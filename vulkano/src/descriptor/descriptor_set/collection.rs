@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
@@ -44,7 +44,7 @@ pub unsafe trait DescriptorSetsCollection {
 
 /// Extension trait for a descriptor sets collection so that it can be used with the standard
 /// commands list interface.
-pub unsafe trait TrackedDescriptorSetsCollection<States>: DescriptorSetsCollection {
+pub unsafe trait TrackedDescriptorSetsCollection<States = StatesManager>: DescriptorSetsCollection {
     /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
     /// Then transitions them to the right state and returns a pipeline barrier to insert as part
     /// of the transition. The `usize` is the location of the barrier.

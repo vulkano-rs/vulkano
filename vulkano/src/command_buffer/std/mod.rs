@@ -13,6 +13,7 @@ use std::sync::Arc;
 use buffer::traits::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
@@ -40,7 +41,7 @@ pub mod render_pass;
 pub mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
-pub unsafe trait StdCommandsList: ResourcesStates {
+pub unsafe trait StdCommandsList {
     /// The type of the pool that will be used to create the command buffer.
     type Pool: CommandPool;
     /// The type of the command buffer that will be generated.
@@ -167,6 +168,11 @@ pub unsafe trait StdCommandsList: ResourcesStates {
     // TODO: error type?
     fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()>;
 
+    /// Extracts the object that contains the states of all the resources of the commands list.
+    ///
+    /// Panics if the states were already extracted.
+    fn extract_states(&mut self) -> StatesManager;
+
     /// Returns true if the given compute pipeline is currently binded in the commands list.
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
 
@@ -214,34 +220,4 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     fn render_pass(&self) -> &Self::RenderPass;
 
     fn framebuffer(&self) -> &Self::Framebuffer;
-}
-
-/// Trait for objects that hold states of buffers and images.
-pub unsafe trait ResourcesStates {
-    /// Returns the state of a buffer, or `None` if the buffer hasn't been used yet.
-    ///
-    /// Whether the buffer passed as parameter is the same as the one in the commands list must be
-    /// determined with the `is_same` method of `TrackedBuffer`.
-    ///
-    /// Calling this function extracts the state from the list, meaning that the state will be
-    /// managed by the code that called this function instead of being managed by the object
-    /// itself. Hence why the function is unsafe.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that buffer has already been previously extracted.
-    ///
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    /// Returns the state of an image, or `None` if the image hasn't been used yet.
-    ///
-    /// See the description of `extract_buffer_state`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that image has already been previously extracted.
-    ///
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
 }

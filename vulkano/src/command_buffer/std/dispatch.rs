@@ -12,8 +12,8 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
 use command_buffer::std::StdCommandsList;
 use command_buffer::submit::CommandBuffer;
 use command_buffer::submit::SubmitInfo;
@@ -41,14 +41,14 @@ pub struct DispatchCommand<'a, L, Pl, S, Pc>
     pipeline: Arc<ComputePipeline<Pl>>,
     // The descriptor sets to bind.
     sets: S,
-    // The state of the descriptor sets.
-    sets_state: S::State,
     // Pipeline barrier to inject in the final command buffer.
     pipeline_barrier: (usize, PipelineBarrierBuilder),
     // The push constants.   TODO: use Cow
     push_constants: &'a Pc,
     // Dispatch dimensions.
     dimensions: [u32; 3],
+    // States of the resources, or `None` if it has been extracted.
+    resources_states: Option<StatesManager>,
 }
 
 impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
@@ -59,18 +59,20 @@ impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
     pub fn new(mut previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, dimensions: [u32; 3],
                push_constants: &'a Pc) -> DispatchCommand<'a, L, Pl, S, Pc>
     {
-        let (sets_state, barrier_loc, barrier) = unsafe {
-            sets.extract_states_and_transition(&mut previous)
+        let mut states = previous.extract_states();
+
+        let (barrier_loc, barrier) = unsafe {
+            sets.transition(&mut states)
         };
 
         DispatchCommand {
             previous: previous,
             pipeline: pipeline,
             sets: sets,
-            sets_state: sets_state,
             pipeline_barrier: (barrier_loc, barrier),
             push_constants: push_constants,
             dimensions: dimensions,
+            resources_states: Some(states),
         }
     }
 }
@@ -105,6 +107,11 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
                                                  -> bool
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.resources_states.take().unwrap()
     }
 
     #[inline]
@@ -174,31 +181,6 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
     }
 }
 
-unsafe impl<'a, L, Pl, S, Pc> ResourcesStates for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
-{
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if let Some(s) = self.sets.extract_buffer_state(&mut self.sets_state, buffer) {
-            return Some(s);
-        }
-
-        self.previous.extract_buffer_state(buffer)
-    }
-
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if let Some(s) = self.sets.extract_image_state(&mut self.sets_state, image) {
-            return Some(s);
-        }
-
-        self.previous.extract_image_state(image)
-    }
-}
-
 unsafe impl<'a, L, Pl, S, Pc> OutsideRenderPass for DispatchCommand<'a, L, Pl, S, Pc>
     where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
@@ -214,8 +196,6 @@ pub struct DispatchCommandCb<L, Pl, S>
     pipeline: Arc<ComputePipeline<Pl>>,
     // The descriptor sets. Stored here to keep them alive.
     sets: S,
-    // State of the descriptor sets.
-    sets_state: S::Finished,
 }
 
 unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>

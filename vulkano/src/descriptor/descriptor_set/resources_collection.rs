@@ -13,7 +13,6 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use device::Queue;
@@ -50,7 +49,7 @@ unsafe impl<S> ResourcesCollection<S> for () {
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, _: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         unimplemented!()        // FIXME:
