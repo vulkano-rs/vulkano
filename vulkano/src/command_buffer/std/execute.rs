@@ -94,7 +94,8 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
         false
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
@@ -120,7 +121,7 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
         // Passing to the parent.
         let parent = {
             let local_cb_to_exec = self.command_buffer.inner();
-            self.previous.raw_build(|cb| {
+            self.previous.raw_build(in_s, out, |cb| {
                 cb.execute_commands(Some(local_cb_to_exec));
                 cb.pipeline_barrier(transitions_to_apply);
                 additional_elements(cb);

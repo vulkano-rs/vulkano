@@ -130,7 +130,8 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
@@ -138,10 +139,7 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
         let my_command_num = self.num_commands();
         let barriers = barriers.map(move |(n, b)| { assert!(n < my_command_num); (n, b) });
 
-        let (finished_fb_state, local_final_barrier) = {
-            self.framebuffer.finish(self.framebuffer_state)
-        };
-        final_barrier.merge(local_final_barrier);
+        final_barrier.merge(self.framebuffer.finish(in_s, out));
 
         let my_render_pass = self.render_pass;
         let my_framebuffer = self.framebuffer;
@@ -152,7 +150,7 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
         let barriers_for_parent = Some((self.barrier_position, self.barrier)).into_iter()
                                                                              .chain(barriers);
 
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.inner())
                                                .unwrap_or(my_framebuffer.render_pass().inner()),
                                  &my_framebuffer, my_clear_values.into_iter(),
@@ -164,7 +162,6 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
             previous: parent,
             render_pass: my_render_pass,
             framebuffer: my_framebuffer,
-            state: finished_fb_state,
         }
     }
 }
@@ -316,14 +313,15 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
         let secondary = self.secondary;
 
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.next_subpass(secondary);
             additional_elements(cb);
         }, barriers, final_barrier);
@@ -442,7 +440,8 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
@@ -456,7 +455,7 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
             pipeline_barrier.merge(barrier);
         }
 
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.end_render_pass();
             cb.pipeline_barrier(pipeline_barrier);
             additional_elements(cb);

@@ -151,13 +151,16 @@ pub unsafe trait StdCommandsList {
 
     /// Turns the commands list into a command buffer that can be submitted.
     // This function isn't inline because `raw_build` implementations usually are inline.
-    fn build(self) -> Self::Output where Self: Sized {
+    fn build(mut self) -> Self::Output where Self: Sized {
         assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
                                          render pass");
 
+        let mut states_in = self.extract_states();
+        let mut states_out = StatesManager::new(); 
+
         unsafe {
-            self.raw_build(StatesManager::new(), StatesManager::new(),
-                           |_| {}, iter::empty(), PipelineBarrierBuilder::new())
+            self.raw_build(&mut states_in, &mut states_out, |_| {},
+                           iter::empty(), PipelineBarrierBuilder::new())
         }
     }
 

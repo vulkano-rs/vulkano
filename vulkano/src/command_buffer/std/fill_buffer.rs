@@ -120,21 +120,15 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 
-    unsafe fn raw_build<I, F>(mut self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(mut self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        // Computing the finished state, or `None` if we don't have to manage it.
-        let finished_state = match self.buffer_state.take().map(|s| self.buffer.finish(s)) {
-            Some((s, t)) => {
-                if let Some(t) = t {
-                    final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
-                }
-                Some(s)
-            },
-            None => None,
-        };
+        if let Some(t) = self.buffer.finish(in_s, out) {
+            final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
+        }
 
         // We split the barriers in two: those to apply after our command, and those to
         // transfer to the parent so that they are applied before our command.
@@ -167,7 +161,7 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
         // Passing to the parent.
         let my_buffer = self.buffer;
         let my_data = self.data;
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.fill_buffer(my_buffer.inner(), 0, my_buffer.size(), my_data);
             cb.pipeline_barrier(transitions_to_apply);
             additional_elements(cb);
@@ -176,7 +170,6 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
         FillCommandCb {
             previous: parent,
             buffer: my_buffer,
-            buffer_state: finished_state,
         }
     }
 }

@@ -162,7 +162,7 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
         // Passing to the parent.
         let my_buffer = self.buffer;
         let my_data = self.data;
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.update_buffer(my_buffer.inner(), 0, my_buffer.size(), my_data);
             cb.pipeline_barrier(transitions_to_apply);
             additional_elements(cb);

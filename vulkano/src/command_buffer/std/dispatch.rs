@@ -119,7 +119,8 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         true
     }
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
@@ -127,8 +128,7 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         let my_command_num = self.num_commands();
 
         // Computing the finished state of the sets.
-        let (finished_state, fb) = self.sets.finish(self.sets_state);
-        final_barrier.merge(fb);
+        final_barrier.merge(self.sets.finish(in_s, out));
 
         // We split the barriers in two: those to apply after our command, and those to
         // transfer to the parent so that they are applied before our command.
@@ -156,7 +156,7 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
         let bind_pipeline = !self.previous.is_compute_pipeline_bound(&my_pipeline);
 
         // Passing to the parent.
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             // TODO: is the pipeline layout always the same as in the compute pipeline? 
             if bind_pipeline {
                 cb.bind_pipeline_compute(&my_pipeline);
@@ -176,7 +176,6 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
             previous: parent,
             pipeline: my_pipeline,
             sets: my_sets,
-            sets_state: finished_state,
         }
     }
 }
