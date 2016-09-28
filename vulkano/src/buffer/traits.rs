@@ -133,7 +133,29 @@ pub struct SubmitInfos {
     pub post_barrier: Option<PipelineBarrierRequest>,
 }
 
-unsafe impl<B, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S>, Arc<B>: Buffer {
+unsafe impl<B:? Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> {
+    #[inline]
+    fn transition(&self, states: &mut S, num_command: usize, offset: usize,
+                  size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
+                  -> Option<PipelineBarrierRequest>
+    {
+        (**self).transition(states, num_command, offset, size, write, stage, access)
+    }
+
+    #[inline]
+    fn finish(&self, i: &mut S, o: &mut S) -> Option<PipelineBarrierRequest> {
+        (**self).finish(i, o)
+    }
+
+    #[inline]
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        (**self).on_submit(states, queue, fence)
+    }
+}
+
+unsafe impl<'a, B: ?Sized, S> TrackedBuffer<S> for &'a B where B: TrackedBuffer<S> + 'a {
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
