@@ -19,19 +19,26 @@ use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
 
+/// Trait for objects that represent either a buffer or a slice of a buffer.
 pub unsafe trait Buffer {
-    /// Returns the inner buffer.
-    fn inner(&self) -> &UnsafeBuffer;
+    /// Returns the inner information about this buffer.
+    fn inner(&self) -> BufferInner;
 
     #[inline]
     fn size(&self) -> usize {
-        self.inner().size()
+        self.inner().buffer.size()
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BufferInner<'a> {
+    pub buffer: &'a UnsafeBuffer,
+    pub offset: usize
 }
 
 unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
+    fn inner(&self) -> BufferInner {
         (**self).inner()
     }
 
@@ -43,7 +50,7 @@ unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
 
 unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
+    fn inner(&self) -> BufferInner {
         (**self).inner()
     }
 

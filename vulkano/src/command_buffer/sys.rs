@@ -37,7 +37,7 @@ use std::u32;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
-use buffer::BufferSlice;
+use buffer::BufferInner;
 use buffer::sys::UnsafeBuffer;
 use buffer::traits::PipelineBarrierRequest as BufferPipelineBarrierRequest;
 use command_buffer::pool::AllocatedCommandBuffer;
@@ -529,13 +529,15 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The buffer must have been created with the "transfer_dest" usage.
     /// - Must be called outside of a render pass.
     ///
-    pub unsafe fn fill_buffer(&mut self, buffer: &UnsafeBuffer, offset: usize, size: usize,
-                              data: u32)
+    pub unsafe fn fill_buffer<B>(&mut self, buffer: &B, data: u32)
+        where B: Buffer
     {
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
+
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         debug_assert_eq!(offset % 4, 0);
-        debug_assert!(offset + size <= buffer.size());
 
         let size = if offset + size == buffer.size() {
             vk::WHOLE_SIZE
@@ -569,10 +571,12 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The buffer must have been created with the "transfer_dest" usage.
     /// - Must be called outside of a render pass.
     ///
-    pub unsafe fn update_buffer<D: ?Sized>(&mut self, buffer: &UnsafeBuffer, offset: usize,
-                                           size: usize, data: &D)
-        where D: Copy + 'static
+    pub unsafe fn update_buffer<B, D: ?Sized>(&mut self, buffer: &B, data: &D)
+        where B: Buffer, D: Copy + 'static
     {
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
+
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let size = cmp::min(size, mem::size_of_val(data));
@@ -608,24 +612,31 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Must be called outside of a render pass.
     /// - The offsets and size of the regions must be in range.
     ///
-    pub unsafe fn copy_buffer<I>(&mut self, src: &UnsafeBuffer, dest: &UnsafeBuffer, regions: I)
-        where I: IntoIterator<Item = BufferCopyRegion>
+    pub unsafe fn copy_buffer<S, D, I>(&mut self, src: &S, dest: &D, regions: I)
+        where S: Buffer,
+              D: Buffer,
+              I: IntoIterator<Item = BufferCopyRegion>
     {
-        assert_eq!(src.device().internal_object(), self.device.internal_object());
-        assert_eq!(src.device().internal_object(), dest.device().internal_object());
+        let src_size = src.size();
+        let BufferInner { buffer: src_buffer, offset: src_offset } = src.inner();
+        let dest_size = dest.size();
+        let BufferInner { buffer: dest_buffer, offset: dest_offset } = dest.inner();
+
+        assert_eq!(src_buffer.device().internal_object(), self.device.internal_object());
+        assert_eq!(src_buffer.device().internal_object(), dest_buffer.device().internal_object());
 
         let regions: SmallVec<[_; 4]> = {
             let mut res = SmallVec::new();
             for region in regions.into_iter() {
                 if region.size == 0 { continue; }
-                debug_assert!(region.source_offset < src.size());
-                debug_assert!(region.source_offset + region.size <= src.size());
-                debug_assert!(region.destination_offset < dest.size());
-                debug_assert!(region.destination_offset + region.size <= dest.size());
+                debug_assert!(region.source_offset < src_size);
+                debug_assert!(region.source_offset + region.size <= src_size);
+                debug_assert!(region.destination_offset < dest_size);
+                debug_assert!(region.destination_offset + region.size <= dest_size);
 
                 res.push(vk::BufferCopy {
-                    srcOffset: region.source_offset as vk::DeviceSize,
-                    dstOffset: region.destination_offset as vk::DeviceSize,
+                    srcOffset: (region.source_offset + src_offset) as vk::DeviceSize,
+                    dstOffset: (region.destination_offset + dest_offset) as vk::DeviceSize,
                     size: region.size as vk::DeviceSize,
                 });
             }
@@ -640,8 +651,8 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdCopyBuffer(cmd, src.internal_object(), dest.internal_object(), regions.len() as u32,
-                         regions.as_ptr());
+        vk.CmdCopyBuffer(cmd, src_buffer.internal_object(), dest_buffer.internal_object(),
+                         regions.len() as u32, regions.as_ptr());
     }
 
     /// Executes secondary command buffers..
@@ -865,6 +876,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
+    // TODO: don't request UnsafeBuffer
     #[inline]
     pub unsafe fn draw_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize, draw_count: u32,
                                 stride: u32)
@@ -883,6 +895,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
+    // TODO: don't request UnsafeBuffer
     #[inline]
     pub unsafe fn draw_indexed_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize,
                                         draw_count: u32, stride: u32)
@@ -909,6 +922,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
+    // TODO: don't request UnsafeBuffer
     #[inline]
     pub unsafe fn dispatch_indirect(&mut self, buffer: &UnsafeBuffer, offset: usize) {
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
@@ -926,6 +940,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// - Panics if one of the buffers was not created with the same device as this command buffer.
     ///
+    // TODO: don't request UnsafeBuffer
     #[inline]
     pub unsafe fn bind_vertex_buffers<'a, I>(&mut self, first_binding: u32, buffers: I)
         where I: IntoIterator<Item = (&'a UnsafeBuffer, usize)>
@@ -952,9 +967,11 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - Panics if the buffer was not created with the same device as this command buffer.
     ///
     #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: &UnsafeBuffer, offset: usize,
-                                    index_ty: IndexType)
+    pub unsafe fn bind_index_buffer<B>(&mut self, buffer: &B, index_ty: IndexType)
+        where B: Buffer
     {
+        let BufferInner { buffer, offset } = buffer.inner();
+
         assert_eq!(buffer.device().internal_object(), self.device.internal_object());
 
         let vk = self.device.pointers();
@@ -1194,8 +1211,9 @@ impl PipelineBarrierBuilder {
         });
     }
 
-    pub unsafe fn add_buffer_barrier_request(&mut self, buffer: &UnsafeBuffer,
-                                             request: BufferPipelineBarrierRequest)
+    pub unsafe fn add_buffer_barrier_request<B>(&mut self, buffer: &B,
+                                                request: BufferPipelineBarrierRequest)
+        where B: Buffer
     {
         if !request.by_region {
             self.dependency_flags = 0;
@@ -1213,7 +1231,8 @@ impl PipelineBarrierBuilder {
             
             // TODO: add more debug asserts
 
-            debug_assert!(memory_barrier.offset + memory_barrier.size <= buffer.size());
+            let size = buffer.size();
+            let BufferInner { buffer, offset } = buffer.inner();
 
             self.buffer_barriers.push(vk::BufferMemoryBarrier {
                 sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -1223,8 +1242,8 @@ impl PipelineBarrierBuilder {
                 srcQueueFamilyIndex: src_queue,
                 dstQueueFamilyIndex: dest_queue,
                 buffer: buffer.internal_object(),
-                offset: memory_barrier.offset as vk::DeviceSize,
-                size: memory_barrier.size as vk::DeviceSize,
+                offset: (memory_barrier.offset + offset) as vk::DeviceSize,
+                size: (memory_barrier.size + size) as vk::DeviceSize,
             });
         }
     }
@@ -1291,8 +1310,8 @@ impl PipelineBarrierBuilder {
     ///   is added.
     /// - Queue ownership transfers must be correct.
     ///
-    pub unsafe fn add_buffer_memory_barrier<'a, T: ?Sized, B>
-                  (&mut self, buffer: BufferSlice<'a, T, B>, source_stage: PipelineStages,
+    pub unsafe fn add_buffer_memory_barrier<B>
+                  (&mut self, buffer: B, source_stage: PipelineStages,
                    source_access: AccessFlagBits, dest_stage: PipelineStages,
                    dest_access: AccessFlagBits, by_region: bool,
                    queue_transfer: Option<(u32, u32)>)
@@ -1300,7 +1319,8 @@ impl PipelineBarrierBuilder {
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
-        debug_assert!(buffer.size() + buffer.offset() <= buffer.buffer().size());
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
 
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
@@ -1315,9 +1335,9 @@ impl PipelineBarrierBuilder {
             dstAccessMask: dest_access.into(),
             srcQueueFamilyIndex: src_queue,
             dstQueueFamilyIndex: dest_queue,
-            buffer: buffer.buffer().inner().internal_object(),
-            offset: buffer.offset() as vk::DeviceSize,
-            size: buffer.size() as vk::DeviceSize,
+            buffer: buffer.internal_object(),
+            offset: offset as vk::DeviceSize,
+            size: size as vk::DeviceSize,
         });
     }
 

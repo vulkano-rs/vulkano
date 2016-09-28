@@ -20,7 +20,7 @@ use VulkanPointers;
 use vk;
 
 use buffer::Buffer;
-use buffer::BufferSlice;
+use buffer::BufferInner;
 use buffer::BufferView;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
@@ -363,108 +363,59 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
-    {
-        let buffer = buffer.into();
-
-        DescriptorWrite {
-            binding: binding,
-            first_array_element: 0,
-            inner: DescriptorWriteInner::UniformBuffer(buffer.buffer().inner().internal_object(),
-                                                       buffer.offset(), buffer.size()),
-        }
-    }
-
-    #[inline]
-    pub unsafe fn unchecked_uniform_buffer<B>(binding: u32, buffer: &B, offset: usize, size: usize)
-                                              -> DescriptorWrite
-        where B: Buffer + 'static
-    {
-        DescriptorWrite {
-            binding: binding,
-            first_array_element: 0,
-            inner: DescriptorWriteInner::UniformBuffer(buffer.inner().internal_object(), offset, size),
-        }
-    }
-
-    #[inline]
-    pub fn storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
-    {
-        let buffer = buffer.into();
-
-        DescriptorWrite {
-            binding: binding,
-            first_array_element: 0,
-            inner: DescriptorWriteInner::StorageBuffer(buffer.buffer().inner().internal_object(),
-                                                       buffer.offset(), buffer.size()),
-        }
-    }
-
-    #[inline]
-    pub unsafe fn unchecked_storage_buffer<B>(binding: u32, buffer: &B, offset: usize, size: usize)
-                                              -> DescriptorWrite
+    pub unsafe fn uniform_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
-        DescriptorWrite {
-            binding: binding,
-            first_array_element: 0,
-            inner: DescriptorWriteInner::StorageBuffer(buffer.inner().internal_object(), offset, size),
-        }
-    }
-
-    #[inline]
-    pub fn dynamic_uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
-    {
-        let buffer = buffer.into();
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
 
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicUniformBuffer(buffer.buffer().inner().internal_object(),
-                                                              buffer.offset(), buffer.size()),
+            inner: DescriptorWriteInner::UniformBuffer(buffer.internal_object(), offset, size),
         }
     }
 
     #[inline]
-    pub unsafe fn unchecked_dynamic_uniform_buffer<B>(binding: u32, buffer: &B, offset: usize,
-                                                      size: usize) -> DescriptorWrite
+    pub unsafe fn storage_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
+
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicUniformBuffer(buffer.inner().internal_object(),
+            inner: DescriptorWriteInner::StorageBuffer(buffer.internal_object(), offset, size),
+        }
+    }
+
+    #[inline]
+    pub unsafe fn dynamic_uniform_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
+        where B: Buffer
+    {
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
+
+        DescriptorWrite {
+            binding: binding,
+            first_array_element: 0,
+            inner: DescriptorWriteInner::DynamicUniformBuffer(buffer.internal_object(),
                                                               offset, size),
         }
     }
 
     #[inline]
-    pub fn dynamic_storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
-    {
-        let buffer = buffer.into();
-
-        DescriptorWrite {
-            binding: binding,
-            first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicStorageBuffer(buffer.buffer().inner().internal_object(),
-                                                              buffer.offset(), buffer.size()),
-        }
-    }
-
-    #[inline]
-    pub unsafe fn unchecked_dynamic_storage_buffer<B>(binding: u32, buffer: &B,
-                                                      offset: usize, size: usize)
-                                                      -> DescriptorWrite
+    pub unsafe fn dynamic_storage_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
+        let size = buffer.size();
+        let BufferInner { buffer, offset } = buffer.inner();
+
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicStorageBuffer(buffer.inner().internal_object(),
+            inner: DescriptorWriteInner::DynamicStorageBuffer(buffer.internal_object(),
                                                               offset, size),
         }
     }

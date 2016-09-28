@@ -44,7 +44,8 @@ use std::ptr;
 use std::sync::Arc;
 
 use buffer::Buffer;
-use buffer::BufferSlice;
+use buffer::BufferInner;
+use buffer::TypedBuffer;
 use format::FormatDesc;
 use format::StrongStorage;
 
@@ -59,7 +60,7 @@ use vk;
 /// `view` module.
 pub struct BufferView<F, B> where B: Buffer {
     view: vk::BufferView,
-    buffer: Arc<B>,
+    buffer: B,
     marker: PhantomData<F>,
     atomic_accesses: bool,
 }
@@ -67,9 +68,8 @@ pub struct BufferView<F, B> where B: Buffer {
 impl<F, B> BufferView<F, B> where B: Buffer {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<'a, S>(buffer: S, format: F)
-                      -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where S: Into<BufferSlice<'a, [F::Pixel], B>>, B: 'static, F: StrongStorage + 'static
+    pub fn new(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where B: TypedBuffer<Content = [F::Pixel]>, F: StrongStorage + 'static
     {
         unsafe {
             BufferView::unchecked(buffer, format)
@@ -77,72 +77,71 @@ impl<F, B> BufferView<F, B> where B: Buffer {
     }
 
     /// Builds a new buffer view without checking that the format is correct.
-    pub unsafe fn unchecked<'a, S, T: ?Sized>(buffer: S, format: F)
-                                              -> Result<Arc<BufferView<F, B>>,
-                                                        BufferViewCreationError>
-        where S: Into<BufferSlice<'a, T, B>>, B: 'static, T: 'static, F: FormatDesc + 'static
+    pub unsafe fn unchecked(org_buffer: B, format: F)
+                            -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where B: Buffer, F: FormatDesc + 'static
     {
-        let buffer = buffer.into();
-        let device = buffer.resource.inner().device();
-        let format = format.format();
+        let (view, format_props) = {
+            let size = org_buffer.size();
+            let BufferInner { buffer, offset } = org_buffer.inner();
 
-        // TODO: check minTexelBufferOffsetAlignment
+            let device = buffer.device();
+            let format = format.format();
 
-        if !buffer.buffer().inner().usage_uniform_texel_buffer() &&
-           !buffer.buffer().inner().usage_storage_texel_buffer()
-        {
-            return Err(BufferViewCreationError::WrongBufferUsage);
-        }
+            // TODO: check minTexelBufferOffsetAlignment
 
-        let format_props = {
-            let vk_i = device.instance().pointers();
-            let mut output = mem::uninitialized();
-            vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
-                                                   format as u32, &mut output);
-            output.bufferFeatures
-        };
-
-        {
-            let nb = buffer.size() / format.size().expect("Can't use a compressed format for buffer views");
-            let l = buffer.buffer().inner().device().physical_device().limits().max_texel_buffer_elements();
-            if nb > l as usize {
-                return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+            if !buffer.usage_uniform_texel_buffer() && !buffer.usage_storage_texel_buffer() {
+                return Err(BufferViewCreationError::WrongBufferUsage);
             }
-        }
 
-        if buffer.buffer().inner().usage_uniform_texel_buffer() {
-            if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
-                return Err(BufferViewCreationError::UnsupportedFormat);
+            {
+                let nb = size / format.size().expect("Can't use a compressed format for buffer views");
+                let l = device.physical_device().limits().max_texel_buffer_elements();
+                if nb > l as usize {
+                    return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+                }
             }
-        }
 
-        if buffer.buffer().inner().usage_storage_texel_buffer() {
-            if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
-                return Err(BufferViewCreationError::UnsupportedFormat);
+            let format_props = {
+                let vk_i = device.instance().pointers();
+                let mut output = mem::uninitialized();
+                vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
+                                                    format as u32, &mut output);
+                output.bufferFeatures
+            };
+
+            if buffer.usage_uniform_texel_buffer() {
+                if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
+                    return Err(BufferViewCreationError::UnsupportedFormat);
+                }
             }
-        }
 
-        let infos = vk::BufferViewCreateInfo {
-            sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0,   // reserved,
-            buffer: buffer.resource.inner().internal_object(),
-            format: format as u32,
-            offset: buffer.offset as u64,
-            range: buffer.size as u64,
-        };
+            if buffer.usage_storage_texel_buffer() {
+                if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
+                    return Err(BufferViewCreationError::UnsupportedFormat);
+                }
+            }
 
-        let view = {
+            let infos = vk::BufferViewCreateInfo {
+                sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0,   // reserved,
+                buffer: buffer.internal_object(),
+                format: format as u32,
+                offset: offset as u64,
+                range: size as u64,
+            };
+
             let vk = device.pointers();
             let mut output = mem::uninitialized();
             try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
                                                   ptr::null(), &mut output)));
-            output
+            (output, format_props)
         };
 
         Ok(Arc::new(BufferView {
             view: view,
-            buffer: buffer.resource.clone(),
+            buffer: org_buffer,
             marker: PhantomData,
             atomic_accesses: (format_props &
                               vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
@@ -151,20 +150,20 @@ impl<F, B> BufferView<F, B> where B: Buffer {
 
     /// Returns the buffer associated to this view.
     #[inline]
-    pub fn buffer(&self) -> &Arc<B> {
+    pub fn buffer(&self) -> &B {
         &self.buffer
     }
 
     /// Returns true if the buffer view can be used as a uniform texel buffer.
     #[inline]
     pub fn uniform_texel_buffer(&self) -> bool {
-        self.buffer.inner().usage_uniform_texel_buffer()
+        self.buffer.inner().buffer.usage_uniform_texel_buffer()
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer.
     #[inline]
     pub fn storage_texel_buffer(&self) -> bool {
-        self.buffer.inner().usage_storage_texel_buffer()
+        self.buffer.inner().buffer.usage_storage_texel_buffer()
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer with atomic accesses.
@@ -187,8 +186,8 @@ impl<F, B> Drop for BufferView<F, B> where B: Buffer {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.buffer.inner().device().pointers();
-            vk.DestroyBufferView(self.buffer.inner().device().internal_object(), self.view,
+            let vk = self.buffer.inner().buffer.device().pointers();
+            vk.DestroyBufferView(self.buffer.inner().buffer.device().internal_object(), self.view,
                                  ptr::null());
         }
     }

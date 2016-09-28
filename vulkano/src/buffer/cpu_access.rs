@@ -35,6 +35,7 @@ use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
+use buffer::traits::BufferInner;
 use buffer::traits::SubmitInfos;
 use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
@@ -324,8 +325,11 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        &self.inner
+    fn inner(&self) -> BufferInner {
+        BufferInner {
+            buffer: &self.inner,
+            offset: 0,
+        }
     }
 }
 
@@ -348,7 +352,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
 
         // We don't know when the user is going to write to the buffer from the CPU, so we just
         // assume that it's happened all the time.
-        let mut state = states.buffer_or(self.inner(), 0, || CpuAccessibleBufferClState {
+        let mut state = states.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferClState {
             size: self.size(),
             stages: PipelineStages { host: true, .. PipelineStages::none() },
             access: AccessFlagBits { host_write: true, .. AccessFlagBits::none() },
@@ -437,7 +441,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
     fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
               -> Option<PipelineBarrierRequest>
     {
-        let state: CpuAccessibleBufferClState = in_s.remove_buffer(self.inner(), 0).unwrap();
+        let state: CpuAccessibleBufferClState = in_s.remove_buffer(self.inner().buffer, 0).unwrap();
 
         let barrier = if state.needs_flush_at_the_end {
             let barrier = PipelineBarrierRequest {
@@ -459,7 +463,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
             None
         };
 
-        out.buffer_or(self.inner(), 0, || CpuAccessibleBufferFinished {
+        out.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferFinished {
             first_stages: state.first_stages.unwrap_or(PipelineStages::none()),
             write: state.needs_flush_at_the_end,
         });

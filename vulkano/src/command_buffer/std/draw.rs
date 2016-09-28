@@ -211,7 +211,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, Pv, P
             cb.push_constants(&**my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
                               &my_push_constants);
 
-            cb.bind_vertex_buffers(0, my_vertex_buffers.iter().map(|buf| (buf.inner(), 0)));
+            cb.bind_vertex_buffers(0, my_vertex_buffers.iter().map(|buf| (buf.inner().buffer, 0)));
 
             match my_inner {
                 DrawInner::Regular { vertex_count, instance_count,

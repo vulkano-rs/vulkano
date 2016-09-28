@@ -25,6 +25,7 @@ use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
+use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
@@ -166,8 +167,11 @@ unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        &self.inner
+    fn inner(&self) -> BufferInner {
+        BufferInner {
+            buffer: &self.inner,
+            offset: 0,
+        }
     }
 }
 

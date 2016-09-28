@@ -133,7 +133,7 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
         if let Some(t) = self.buffer.finish(in_s, out) {
-            final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
+            final_barrier.add_buffer_barrier_request(&self.buffer, t);
         }
 
         // We split the barriers in two: those to apply after our command, and those to
@@ -158,7 +158,7 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
         let my_barrier = if let Some(my_barrier) = self.barrier.take() {
             let mut t = PipelineBarrierBuilder::new();
             let c_num = my_barrier.after_command_num;
-            t.add_buffer_barrier_request(self.buffer.inner(), my_barrier);
+            t.add_buffer_barrier_request(&self.buffer, my_barrier);
             Some((c_num, t))
         } else {
             None
@@ -168,7 +168,7 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
         let my_buffer = self.buffer;
         let my_data = self.data;
         let parent = self.previous.raw_build(in_s, out, |cb| {
-            cb.update_buffer(my_buffer.inner(), 0, my_buffer.size(), my_data);
+            cb.update_buffer(&my_buffer, my_data);
             cb.pipeline_barrier(transitions_to_apply);
             additional_elements(cb);
         }, my_barrier.into_iter().chain(barriers.into_iter()), final_barrier);
@@ -232,11 +232,11 @@ unsafe impl<L, B> CommandsListOutput for UpdateCommandCb<L, B>
         };
 
         if let Some(pre) = submit_infos.pre_barrier {
-            out.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
+            out.pre_pipeline_barrier.add_buffer_barrier_request(&self.buffer, pre);
         }
 
         if let Some(post) = submit_infos.post_barrier {
-            out.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
+            out.post_pipeline_barrier.add_buffer_barrier_request(&self.buffer, post);
         }
 
         out
