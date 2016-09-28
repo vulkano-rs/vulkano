@@ -31,6 +31,11 @@ pub unsafe trait Buffer {
     }
 
     #[inline]
+    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
+        self.size() / <Self::Content as Content>::indiv_size()
+    }
+
+    #[inline]
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self> where Self: Sized + TypedBuffer {
         BufferSlice::from(self)
     }
@@ -193,11 +198,6 @@ unsafe impl<'a, B: ?Sized, S> TrackedBuffer<S> for &'a B where B: TrackedBuffer<
 
 pub unsafe trait TypedBuffer: Buffer {
     type Content: ?Sized + 'static;
-
-    #[inline]
-    fn len(&self) -> usize where Self::Content: Content {
-        self.size() / <Self::Content as Content>::indiv_size()
-    }
 }
 
 unsafe impl<B: ?Sized> TypedBuffer for Arc<B> where B: TypedBuffer {
