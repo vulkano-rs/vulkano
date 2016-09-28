@@ -228,7 +228,6 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
         };
 
         *state = new_state;
-
         Some(transition)
     }
 

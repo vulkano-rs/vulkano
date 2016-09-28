@@ -346,8 +346,8 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
         debug_assert!(!access.host_read);
         debug_assert!(!access.host_write);
 
-        // We don't know when the user is going to write to the buffer, so we just assume that it's
-        // all the time.
+        // We don't know when the user is going to write to the buffer from the CPU, so we just
+        // assume that it's happened all the time.
         let mut state = states.buffer_or(self.inner(), 0, || CpuAccessibleBufferClState {
             size: self.size(),
             stages: PipelineStages { host: true, .. PipelineStages::none() },
@@ -360,7 +360,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
 
         if write {
             // Write after read or write after write.
-            *state = CpuAccessibleBufferClState {
+            let new_state = CpuAccessibleBufferClState {
                 size: state.size,
                 stages: stage,
                 access: access,
@@ -387,11 +387,12 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
                 },
             };
 
+            *state = new_state;
             Some(barrier)
 
         } else if state.write {
             // Read after write.
-            *state = CpuAccessibleBufferClState {
+            let new_state = CpuAccessibleBufferClState {
                 size: state.size,
                 stages: stage,
                 access: access,
@@ -414,6 +415,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
                 }),
             };
 
+            *state = new_state;
             Some(barrier)
 
         } else {
