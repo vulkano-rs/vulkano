@@ -31,8 +31,7 @@ use sync::Semaphore;
 use VulkanObject;
 
 /// Trait for types that represent images.
-// TODO: remove 'static + Send + Sync
-pub unsafe trait Image: 'static + Send + Sync {
+pub unsafe trait Image {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;
 
@@ -159,8 +158,7 @@ pub unsafe trait ImageContent<P>: Image {
 }
 
 /// Trait for types that represent image views.
-// TODO: remove 'static + Send + Sync
-pub unsafe trait ImageView: 'static + Send + Sync {
+pub unsafe trait ImageView {
     fn parent(&self) -> &Image;
 
     fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
