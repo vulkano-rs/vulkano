@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use buffer::BufferSlice;
@@ -38,6 +39,16 @@ pub unsafe trait Buffer {
     #[inline]
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self> where Self: Sized + TypedBuffer {
         BufferSlice::from(self)
+    }
+
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
+        where Self: Sized + TypedBuffer<Content = [T]>,
+              T: 'static
+    {
+        BufferSlice::slice(self.as_buffer_slice(), range)
     }
 
     #[inline]
