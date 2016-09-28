@@ -190,11 +190,6 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
-    }
-
-    #[inline]
     fn dimensions(&self) -> Dimensions {
         self.dimensions
     }

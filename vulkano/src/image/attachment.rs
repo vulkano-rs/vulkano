@@ -231,11 +231,6 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
     }
 
     #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
-    }
-
-    #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.image.dimensions();
         Dimensions::Dim2d { width: dims.width(), height: dims.height() }

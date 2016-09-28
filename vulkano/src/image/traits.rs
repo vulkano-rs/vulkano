@@ -161,8 +161,6 @@ pub unsafe trait ImageContent<P>: Image {
 pub unsafe trait ImageView {
     fn parent(&self) -> &Image;
 
-    fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
-
     /// Returns the dimensions of the image view.
     fn dimensions(&self) -> Dimensions;
 
@@ -212,11 +210,6 @@ unsafe impl<T> ImageView for Arc<T> where T: ImageView {
     #[inline]
     fn parent(&self) -> &Image {
         (**self).parent()
-    }
-
-    #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> {
-        ImageView::parent_arc(&**me)
     }
 
     #[inline]
