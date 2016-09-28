@@ -22,7 +22,6 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Queue;
-use framebuffer::traits::Framebuffer;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
@@ -241,23 +240,25 @@ pub unsafe trait CommandsListPossibleOutsideRenderPass {
 ///
 /// In other words, if this trait is *not* implemented then we're guaranteed *not* to be inside
 /// a render pass. If it is implemented, then we maybe are but that's not sure.
+// TODO: make all return values optional, since we're possibly not in a render pass
 pub unsafe trait CommandsListPossibleInsideRenderPass {
     type RenderPass: RenderPass;
-    type Framebuffer: Framebuffer;
 
     /// Returns the number of the subpass we're in. The value is 0-indexed, so immediately after
     /// calling `begin_render_pass` the value will be `0`.
     ///
     /// The value should always be strictly inferior to the number of subpasses in the render pass.
-    fn current_subpass(&self) -> u32;
+    fn current_subpass_num(&self) -> u32;
 
     /// If true, only secondary command buffers can be added inside the subpass. If false, only
     /// inline draw commands can be added.
     fn secondary_subpass(&self) -> bool;
 
+    /// Returns the description of the render pass we're in.
+    // TODO: return a trait object instead?
     fn render_pass(&self) -> &Self::RenderPass;
 
-    fn framebuffer(&self) -> &Self::Framebuffer;
+    //fn current_subpass(&self) -> Subpass<&Self::RenderPass>;
 }
 
 pub unsafe trait CommandsListOutput<S = StatesManager> {

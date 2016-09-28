@@ -173,10 +173,9 @@ unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCo
     where L: CommandsListBase, Rp: RenderPass, F: TrackedFramebuffer
 {
     type RenderPass = Rp;
-    type Framebuffer = F;
 
     #[inline]
-    fn current_subpass(&self) -> u32 {
+    fn current_subpass_num(&self) -> u32 {
         0
     }
 
@@ -193,11 +192,6 @@ unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCo
             panic!()        // TODO:
             //self.framebuffer.render_pass()
         }
-    }
-
-    #[inline]
-    fn framebuffer(&self) -> &Self::Framebuffer {
-        &self.framebuffer
     }
 }
 
@@ -342,11 +336,10 @@ unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
     where L: CommandsListBase + CommandsListPossibleInsideRenderPass
 {
     type RenderPass = L::RenderPass;
-    type Framebuffer = L::Framebuffer;
 
     #[inline]
-    fn current_subpass(&self) -> u32 {
-        self.previous.current_subpass() + 1
+    fn current_subpass_num(&self) -> u32 {
+        self.previous.current_subpass_num() + 1
     }
 
     #[inline]
@@ -357,11 +350,6 @@ unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
     #[inline]
     fn render_pass(&self) -> &Self::RenderPass {
         self.previous.render_pass()
-    }
-
-    #[inline]
-    fn framebuffer(&self) -> &Self::Framebuffer {
-        self.previous.framebuffer()
     }
 }
 

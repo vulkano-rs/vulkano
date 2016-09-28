@@ -245,11 +245,10 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for 
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type RenderPass = L::RenderPass;
-    type Framebuffer = L::Framebuffer;
 
     #[inline]
-    fn current_subpass(&self) -> u32 {
-        self.previous.current_subpass()
+    fn current_subpass_num(&self) -> u32 {
+        self.previous.current_subpass_num()
     }
 
     #[inline]
@@ -260,11 +259,6 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for 
     #[inline]
     fn render_pass(&self) -> &Self::RenderPass {
         self.previous.render_pass()
-    }
-
-    #[inline]
-    fn framebuffer(&self) -> &Self::Framebuffer {
-        self.previous.framebuffer()
     }
 }
 
