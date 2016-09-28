@@ -16,7 +16,6 @@ use buffer::traits::TrackedBuffer;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use device::Queue;
-use image::traits::TrackedImage;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;

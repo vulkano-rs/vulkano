@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use command_buffer::states_manager::StatesManager;
@@ -28,7 +27,6 @@ use device::Queue;
 use framebuffer::EmptySinglePassRenderPass;
 use framebuffer::StdFramebuffer;
 use framebuffer::framebuffer::EmptyAttachmentsList;
-use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;

@@ -14,7 +14,6 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;

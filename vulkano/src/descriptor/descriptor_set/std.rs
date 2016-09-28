@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor_set::DescriptorSet;
@@ -19,7 +18,6 @@ use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::resources_collection::ResourcesCollection;
 use descriptor::descriptor_set::sys::UnsafeDescriptorSet;
 use device::Queue;
-use image::traits::TrackedImage;
 use sync::Fence;
 
 pub struct StdDescriptorSet<R> {

@@ -26,7 +26,6 @@ use framebuffer::traits::Framebuffer;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
-use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;

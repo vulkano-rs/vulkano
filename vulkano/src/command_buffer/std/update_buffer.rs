@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::any::Any;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
@@ -23,7 +22,6 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
-use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -58,7 +56,7 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
 
         // Determining the new state of the buffer, and the optional pipeline barrier to add
         // before our command in the final output.
-        let barrier = unsafe {
+        let barrier = {
             let stage = PipelineStages { transfer: true, .. PipelineStages::none() };
             let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
             buffer.transition(&mut states, previous.num_commands() + 1, 0, buffer.size(), true,

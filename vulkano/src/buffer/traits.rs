@@ -7,21 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::any::Any;
 use std::sync::Arc;
 
 use buffer::sys::UnsafeBuffer;
 use command_buffer::states_manager::StatesManager;
 use device::Queue;
-use image::Image;
 use memory::Content;
 
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
-
-use VulkanObject;
 
 pub unsafe trait Buffer {
     /// Returns the inner buffer.

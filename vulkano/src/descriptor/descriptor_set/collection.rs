@@ -13,7 +13,6 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -21,7 +20,6 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
 use device::Queue;
-use image::traits::TrackedImage;
 use sync::Fence;
 
 /// A collection of descriptor set objects.

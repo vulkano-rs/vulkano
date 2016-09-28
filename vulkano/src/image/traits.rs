@@ -7,12 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::any::Any;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 
-use buffer::Buffer;
 use command_buffer::states_manager::StatesManager;
 use device::Queue;
 use format::ClearValue;
@@ -27,8 +25,6 @@ use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::Fence;
 use sync::Semaphore;
-
-use VulkanObject;
 
 /// Trait for types that represent images.
 pub unsafe trait Image {

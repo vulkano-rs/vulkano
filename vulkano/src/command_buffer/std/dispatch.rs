@@ -11,7 +11,6 @@ use std::iter;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
 use command_buffer::std::CommandsListBase;
@@ -25,7 +24,6 @@ use descriptor::PipelineLayout;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Queue;
-use image::traits::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;

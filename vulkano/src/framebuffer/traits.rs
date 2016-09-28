@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
@@ -20,7 +19,6 @@ use format::FormatTy;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
-use image::traits::TrackedImage;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
 use sync::Fence;
