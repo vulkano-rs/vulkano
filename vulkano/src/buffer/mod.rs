@@ -63,6 +63,15 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
+use buffer::traits::TrackedBuffer;
+use buffer::traits::SubmitInfos;
+use buffer::traits::PipelineBarrierRequest;
+use device::Queue;
+
+use sync::AccessFlagBits;
+use sync::Fence;
+use sync::PipelineStages;
+
 pub use self::cpu_access::CpuAccessibleBuffer;
 pub use self::device_local::DeviceLocalBuffer;
 pub use self::immutable::ImmutableBuffer;
@@ -105,16 +114,16 @@ pub mod view;
 /// ```
 ///
 #[derive(Clone)]
-pub struct BufferSlice<'a, T: ?Sized, B: 'a> {
+pub struct BufferSlice<T: ?Sized, B> {
     marker: PhantomData<T>,
-    resource: &'a Arc<B>,
+    resource: B,
     offset: usize,
     size: usize,
 }
 
-impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
+impl<T: ?Sized, B> BufferSlice<T, B> {
     /// Returns the buffer that this slice belongs to.
-    pub fn buffer(&self) -> &'a Arc<B> {
+    pub fn buffer(&self) -> &B {
         &self.resource
     }
 
@@ -147,7 +156,7 @@ impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
     /// You **must** return a reference to an element from the parameter. The closure **must not**
     /// panic.
     #[inline]
-    pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<'a, R, B>
+    pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
         where F: for<'r> FnOnce(&'r T) -> &'r R
         // TODO: bounds on R
     {
@@ -168,10 +177,11 @@ impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
     }
 }
 
-impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
+impl<T, B> BufferSlice<[T], B> {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> usize {
+        debug_assert_eq!(self.size() % mem::size_of::<T>(), 0);
         self.size() / mem::size_of::<T>()
     }
 
@@ -179,7 +189,7 @@ impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
     ///
     /// Returns `None` if out of range.
     #[inline]
-    pub fn index(self, index: usize) -> Option<BufferSlice<'a, T, B>> {
+    pub fn index(self, index: usize) -> Option<BufferSlice<T, B>> {
         if index >= self.len() { return None; }
 
         Some(BufferSlice {
@@ -194,7 +204,7 @@ impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
     ///
     /// Returns `None` if out of range.
     #[inline]
-    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<'a, [T], B>> {
+    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<[T], B>> {
         if range.end > self.len() { return None; }
 
         Some(BufferSlice {
@@ -206,25 +216,85 @@ impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
     }
 }
 
-impl<'a, T: ?Sized, B: 'a> From<&'a Arc<B>> for BufferSlice<'a, T, B>
+unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        let inner = self.resource.inner();
+        BufferInner {
+            buffer: inner.buffer,
+            offset: inner.offset + self.offset,
+        }
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.size
+    }
+}
+
+unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
+    type Content = T;
+}
+
+unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: TrackedBuffer<S> {
+    #[inline]
+    fn transition(&self, states: &mut S, num_command: usize, offset: usize, size: usize,
+                  write: bool, stage: PipelineStages, access: AccessFlagBits)
+                  -> Option<PipelineBarrierRequest>
+    {
+        debug_assert!(size < self.size);
+        let mut rq = self.resource.transition(states, num_command, offset + self.offset,
+                                              size, write, stage, access);
+
+        if let Some(ref mut rq) = rq {
+            if let Some(ref mut mb) = rq.memory_barrier {
+                mb.offset -= self.offset as isize;
+            }
+        }
+
+        rq
+    }
+
+    #[inline]
+    fn finish(&self, in_s: &mut S, out: &mut S) -> Option<PipelineBarrierRequest> {
+        let mut rq = self.resource.finish(in_s, out);
+
+        if let Some(ref mut rq) = rq {
+            if let Some(ref mut mb) = rq.memory_barrier {
+                mb.offset -= self.offset as isize;
+            }
+        }
+
+        rq
+    }
+
+    #[inline]
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        self.resource.on_submit(states, queue, fence)
+    }
+}
+
+impl<T: ?Sized, B> From<B> for BufferSlice<T, B>
     where B: TypedBuffer<Content = T>, T: 'static
 {
     #[inline]
-    fn from(r: &'a Arc<B>) -> BufferSlice<'a, T, B> {
+    fn from(r: B) -> BufferSlice<T, B> {
+        let size = r.size();
+
         BufferSlice {
             marker: PhantomData,
             resource: r,
             offset: 0,
-            size: r.size(),
+            size: size,
         }
     }
 }
 
-impl<'a, T, B: 'a> From<BufferSlice<'a, T, B>> for BufferSlice<'a, [T], B>
-    where T: 'static
-{
+impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
     #[inline]
-    fn from(r: BufferSlice<'a, T, B>) -> BufferSlice<'a, [T], B> {
+    fn from(r: BufferSlice<T, B>) -> BufferSlice<[T], B> {
         BufferSlice {
             marker: PhantomData,
             resource: r.resource,

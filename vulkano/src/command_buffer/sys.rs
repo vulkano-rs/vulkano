@@ -1229,10 +1229,11 @@ impl PipelineBarrierBuilder {
                 (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
             /*}*/;
             
-            // TODO: add more debug asserts
+            // TODO: add more debug asserts?
 
             let size = buffer.size();
             let BufferInner { buffer, offset } = buffer.inner();
+            debug_assert!(memory_barrier.offset + offset as isize >= 0);
 
             self.buffer_barriers.push(vk::BufferMemoryBarrier {
                 sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -1242,7 +1243,7 @@ impl PipelineBarrierBuilder {
                 srcQueueFamilyIndex: src_queue,
                 dstQueueFamilyIndex: dest_queue,
                 buffer: buffer.internal_object(),
-                offset: (memory_barrier.offset + offset) as vk::DeviceSize,
+                offset: (memory_barrier.offset + offset as isize) as vk::DeviceSize,
                 size: (memory_barrier.size + size) as vk::DeviceSize,
             });
         }

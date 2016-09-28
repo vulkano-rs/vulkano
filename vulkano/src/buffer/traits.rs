@@ -120,7 +120,7 @@ pub struct PipelineBarrierRequest {
 /// a memory barrier that concerns another resource.
 pub struct PipelineMemoryBarrierRequest {
     /// Offset of start of the range to flush.
-    pub offset: usize,
+    pub offset: isize,
     /// Size of the range to flush.
     pub size: usize,
     /// Source accesses.
