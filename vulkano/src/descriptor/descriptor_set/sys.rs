@@ -336,7 +336,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_texel_buffer<'a, F, B>(binding: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
-        where B: Buffer + 'static,
+        where B: Buffer,
               F: 'static + Send + Sync,
     {
         assert!(view.uniform_texel_buffer());
@@ -364,7 +364,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
     {
         let buffer = buffer.into();
 
@@ -390,7 +390,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
     {
         let buffer = buffer.into();
 
@@ -405,7 +405,7 @@ impl DescriptorWrite {
     #[inline]
     pub unsafe fn unchecked_storage_buffer<B>(binding: u32, buffer: &B, offset: usize, size: usize)
                                               -> DescriptorWrite
-        where B: Buffer + 'static
+        where B: Buffer
     {
         DescriptorWrite {
             binding: binding,
@@ -416,7 +416,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn dynamic_uniform_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
     {
         let buffer = buffer.into();
 
@@ -443,7 +443,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn dynamic_storage_buffer<'a, S, T: ?Sized, B>(binding: u32, buffer: S) -> DescriptorWrite
-        where S: Into<BufferSlice<'a, T, B>>, B: Buffer
+        where S: Into<BufferSlice<'a, T, B>>, B: Buffer + 'a
     {
         let buffer = buffer.into();
 

@@ -23,8 +23,7 @@ use sync::Semaphore;
 
 use VulkanObject;
 
-// TODO: remove 'static + Send + Sync
-pub unsafe trait Buffer: 'static + Send + Sync {
+pub unsafe trait Buffer {
     /// Returns the inner buffer.
     fn inner(&self) -> &UnsafeBuffer;
 
