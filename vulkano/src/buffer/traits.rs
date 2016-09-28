@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::states_manager::StatesManager;
 use device::Queue;
@@ -27,6 +28,16 @@ pub unsafe trait Buffer {
     #[inline]
     fn size(&self) -> usize {
         self.inner().buffer.size()
+    }
+
+    #[inline]
+    fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self> where Self: Sized + TypedBuffer {
+        BufferSlice::from(self)
+    }
+
+    #[inline]
+    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self> where Self: Sized + TypedBuffer {
+        BufferSlice::from(self)
     }
 }
 
@@ -187,4 +198,12 @@ pub unsafe trait TypedBuffer: Buffer {
     fn len(&self) -> usize where Self::Content: Content {
         self.size() / <Self::Content as Content>::indiv_size()
     }
+}
+
+unsafe impl<B: ?Sized> TypedBuffer for Arc<B> where B: TypedBuffer {
+    type Content = B::Content;
+}
+
+unsafe impl<'a, B: ?Sized + 'a> TypedBuffer for &'a B where B: TypedBuffer {
+    type Content = B::Content;
 }
