@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
+use command_buffer::states_manager::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::submit::SubmitInfo;
 use device::Queue;
@@ -69,10 +69,7 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-pub unsafe trait TrackedFramebuffer: Framebuffer {
-    type State;
-    type Finished;
-
+pub unsafe trait TrackedFramebuffer<States = StatesManager>: Framebuffer {
     /// Extracts the states of the framebuffer's attachments from `states`.
     ///
     /// The return values contains:
@@ -82,60 +79,33 @@ pub unsafe trait TrackedFramebuffer: Framebuffer {
     ///   must happen.
     /// - A pipeline barrier that transitions the attachments to the correct state.
     ///
-    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
-                                        -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates;
+    unsafe fn transition(&self, states: &mut States, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder);
 
-    unsafe fn extract_buffer_state<B>(&self, &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
+    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
-    unsafe fn extract_image_state<I>(&self, &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
-
-    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder);
-
-    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
-unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
-    type State = T::State;
-    type Finished = T::Finished;
-
+unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFramebuffer<States> {
     #[inline]
-    unsafe fn extract_and_transition<S>(&self, num_command: usize, states: &mut S)
-                                        -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates
+    unsafe fn transition(&self, states: &mut States, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder)
     {
-        (**self).extract_and_transition(num_command, states)
+        (**self).transition(states, num_command)
     }
 
     #[inline]
-    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
-        (**self).extract_buffer_state(state, buffer)
+    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder {
+        (**self).finish(in_s, out)
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        (**self).extract_image_state(state, image)
-    }
-
-    #[inline]
-    fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
-        (**self).finish(state)
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        (**self).on_submit(state, queue, fence)
+        (**self).on_submit(states, q, f)
     }
 }
 

@@ -13,6 +13,7 @@ use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 
 use buffer::Buffer;
+use command_buffer::states_manager::StatesManager;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -71,36 +72,7 @@ pub unsafe trait Image: 'static + Send + Sync {
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedImage: Image {
-    /// State of the image in a list of commands.
-    ///
-    /// The `Any` bound is here for stupid reasons, sorry.
-    // TODO: remove Any bound
-    type CommandListState: Any;
-    /// State of the buffer in a finished list of commands.
-    type FinishedState;
-
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other buffer. Otherwise a panic will occur.
-    #[inline]
-    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
-        false
-    }
-
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other image. Otherwise a panic will occur.
-    #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        self.inner().internal_object() == other.inner().internal_object()
-    }
-
-    /// Returns the state of the image when it has not yet been used.
-    fn initial_state(&self) -> Self::CommandListState;
-
+pub unsafe trait TrackedImage<States = StatesManager>: Image {
     /// Returns a new state that corresponds to the moment after a slice of the image has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
     ///
@@ -108,22 +80,19 @@ pub unsafe trait TrackedImage: Image {
     /// function.
     // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
     // previous transition?
-    fn transition(&self, state: Self::CommandListState, num_command: usize, first_mipmap: u32,
+    fn transition(&self, states: &mut States, num_command: usize, first_mipmap: u32,
                   num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self::CommandListState, Option<PipelineBarrierRequest>);
+                  stage: PipelineStages, access: AccessFlagBits) -> Option<PipelineBarrierRequest>;
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(&self, state: Self::CommandListState)
-              -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    fn finish(&self, in_s: &mut States, out: &mut States) -> Option<PipelineBarrierRequest>;
 
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, finished: &Self::FinishedState,
-                    queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfos
         where F: FnOnce() -> Arc<Fence>;
 }
 
@@ -295,13 +264,13 @@ unsafe impl<T> ImageView for Arc<T> where T: ImageView {
     }
 }
 
-pub unsafe trait TrackedImageView: ImageView {
-    type Image: TrackedImage;
+pub unsafe trait TrackedImageView<States>: ImageView {
+    type Image: TrackedImage<States>;
 
     fn image(&self) -> &Self::Image;
 }
 
-unsafe impl<T> TrackedImageView for Arc<T> where T: TrackedImageView {
+unsafe impl<States, T> TrackedImageView<States> for Arc<T> where T: TrackedImageView<States> {
     type Image = T::Image;
 
     #[inline]

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 
+use command_buffer::states_manager::StatesManager;
 use command_buffer::Submission;
 use device::Queue;
 use format::ClearValue;
@@ -186,30 +187,26 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-unsafe impl TrackedImage for SwapchainImage {
-    type CommandListState = SwapchainImageCbState;
-    type FinishedState = ();
-
-    fn initial_state(&self) -> SwapchainImageCbState {
-        SwapchainImageCbState {
+unsafe impl TrackedImage<StatesManager> for SwapchainImage {
+    fn transition(&self, states: &mut StatesManager, num_command: usize, _: u32, _: u32,
+                  _: u32, _: u32, _: bool, layout: Layout, stage: PipelineStages,
+                  access: AccessFlagBits) -> Option<PipelineBarrierRequest>
+    {
+        let default = SwapchainImageCbState {
             stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
             access: AccessFlagBits { memory_read: true, .. AccessFlagBits::none() },
             command_num: 0,
             layout: Layout::PresentSrc,
-        }
-    }
+        };
 
-    fn transition(&self, state: Self::CommandListState, num_command: usize, _: u32, _: u32,
-                  _: u32, _: u32, _: bool, layout: Layout, stage: PipelineStages,
-                  access: AccessFlagBits)
-                  -> (Self::CommandListState, Option<PipelineBarrierRequest>)
-    {
         let new_state = SwapchainImageCbState {
             stages: stage,
             access: access,
             command_num: num_command,
             layout: layout,
         };
+
+        let mut state = states.image_or(&self.image, 0, || default);
 
         let transition = PipelineBarrierRequest {
             after_command_num: state.command_num,
@@ -230,10 +227,16 @@ unsafe impl TrackedImage for SwapchainImage {
             })
         };
 
-        (new_state, Some(transition))
+        *state = new_state;
+
+        Some(transition)
     }
 
-    fn finish(&self, state: Self::CommandListState) -> ((), Option<PipelineBarrierRequest>) {
+    fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
+              -> Option<PipelineBarrierRequest>
+    {
+        let state: SwapchainImageCbState = in_s.remove_image(&self.image, 0).unwrap();
+
         let transition = PipelineBarrierRequest {
             after_command_num: state.command_num,
             source_stage: state.stages,
@@ -259,10 +262,10 @@ unsafe impl TrackedImage for SwapchainImage {
             })
         };
 
-        ((), Some(transition))
+        Some(transition)
     }
 
-    fn on_submit<F>(&self, _: &Self::FinishedState, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, _: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
         SubmitInfos {
@@ -274,7 +277,7 @@ unsafe impl TrackedImage for SwapchainImage {
     }
 }
 
-unsafe impl TrackedImageView for SwapchainImage {
+unsafe impl TrackedImageView<StatesManager> for SwapchainImage {
     type Image = SwapchainImage;
 
     #[inline]

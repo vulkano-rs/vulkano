@@ -41,7 +41,6 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::submit::CommandBuffer;
 pub use self::submit::Submit;
 
 use std::sync::Arc;
@@ -53,6 +52,7 @@ use pipeline::viewport::Scissor;
 use sync::FenceWaitError;
 
 pub mod pool;
+pub mod states_manager;
 pub mod std;
 pub mod submit;
 pub mod sys;

@@ -33,8 +33,8 @@ use VulkanObject;
 use VulkanPointers;
 use SynchronizedVulkanObject;
 
-/// Trait for objects that represent commands ready to be executed by the GPU.
-pub unsafe trait CommandBuffer {
+/// Trait for objects that can be submitted to the GPU.
+pub unsafe trait Submit {
     /// Submits the command buffer.
     ///
     /// Note that since submitting has a fixed overhead, you should try, if possible, to submit
@@ -44,7 +44,7 @@ pub unsafe trait CommandBuffer {
     // TODO: remove 'static
     #[inline]
     fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized + 'static {
-        Submit::new().add(self).submit(queue)
+        SubmitList::new().add(self).submit(queue)
     }
 
     /// Type of the pool that was used to allocate the command buffer.
@@ -75,8 +75,7 @@ pub unsafe trait CommandBuffer {
     /// The implementation must ensure that the command buffer doesn't get destroyed before the
     /// fence is signaled, or before a fence of a later submission to the same queue is signaled.
     ///
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }
 
@@ -139,19 +138,19 @@ trait KeepAlive {}
 impl<T> KeepAlive for T {}
 
 #[derive(Debug, Copy, Clone)]
-pub struct Submit<L> {
+pub struct SubmitList<L> {
     list: L,
 }
 
-impl Submit<()> {
+impl SubmitList<()> {
     /// Builds an empty submission list.
     #[inline]
-    pub fn new() -> Submit<()> {
-        Submit { list: () }
+    pub fn new() -> SubmitList<()> {
+        SubmitList { list: () }
     }
 }
 
-impl<L> Submit<L> where L: SubmitList {
+impl<L> SubmitList<L> where L: SubmitListTrait {
     /// Adds a command buffer to submit to the list.
     ///
     /// In the Vulkan API, a submission is divided into batches that each contain one or more
@@ -159,8 +158,8 @@ impl<L> Submit<L> where L: SubmitList {
     /// into the same batch.
     // TODO: remove 'static
     #[inline]
-    pub fn add<C>(self, command_buffer: C) -> Submit<(C, L)> where C: CommandBuffer + 'static {
-        Submit { list: (command_buffer, self.list) }
+    pub fn add<C>(self, command_buffer: C) -> SubmitList<(C, L)> where C: Submit + 'static {
+        SubmitList { list: (command_buffer, self.list) }
     }
 
     /// Submits the list of command buffers.
@@ -232,11 +231,11 @@ pub struct SubmitListOpaque {
     keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
 }
 
-pub unsafe trait SubmitList {
+pub unsafe trait SubmitListTrait {
     fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque;
 }
 
-unsafe impl SubmitList for () {
+unsafe impl SubmitListTrait for () {
     fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
         SubmitListOpaque {
             fence: None,
@@ -251,7 +250,7 @@ unsafe impl SubmitList for () {
 }
 
 // TODO: remove 'static
-unsafe impl<C, R> SubmitList for (C, R) where C: CommandBuffer + 'static, R: SubmitList {
+unsafe impl<C, R> SubmitListTrait for (C, R) where C: Submit + 'static, R: SubmitListTrait {
     fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
         // TODO: attempt to group multiple submits into one when possible
 

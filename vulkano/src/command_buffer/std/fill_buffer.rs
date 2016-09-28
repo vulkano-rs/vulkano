@@ -13,10 +13,11 @@ use smallvec::SmallVec;
 
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::states_manager::StatesManager;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -32,35 +33,35 @@ use sync::PipelineStages;
 
 /// Wraps around a commands list and adds a fill buffer command at the end of it.
 pub struct FillCommand<L, B>
-    where B: TrackedBuffer, L: StdCommandsList
+    where B: TrackedBuffer, L: CommandsListBase
 {
     // Parent commands list.
     previous: L,
     // The buffer to fill.
     buffer: B,
-    // Current state of the buffer to fill, or `None` if it has been extracted.
-    buffer_state: Option<B::CommandListState>,
     // The data to fill the buffer with.
     data: u32,
     // Pipeline barrier to perform before this command.
     barrier: Option<PipelineBarrierRequest>,
+    // States of the resources, or `None` if it has been extracted.
+    resources_states: Option<StatesManager>,
 }
 
 impl<L, B> FillCommand<L, B>
     where B: TrackedBuffer,
-          L: StdCommandsList + OutsideRenderPass,
+          L: CommandsListBase + CommandsListPossibleOutsideRenderPass,
 {
     /// See the documentation of the `fill_buffer` method.
     pub fn new(mut previous: L, buffer: B, data: u32) -> FillCommand<L, B> {
+        let mut states = previous.extract_states();
+
         // Determining the new state of the buffer, and the optional pipeline barrier to add
         // before our command in the final output.
-        let (state, barrier) = unsafe {
+        let barrier = unsafe {
             let stage = PipelineStages { transfer: true, .. PipelineStages::none() };
             let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
 
-            let prev = previous.extract_buffer_state(&buffer)
-                               .unwrap_or(buffer.initial_state());
-            buffer.transition(prev, previous.num_commands() + 1, 0, buffer.size(), true,
+            buffer.transition(&mut states, previous.num_commands() + 1, 0, buffer.size(), true,
                               stage, access)
         };
 
@@ -72,20 +73,17 @@ impl<L, B> FillCommand<L, B>
         FillCommand {
             previous: previous,
             buffer: buffer,
-            buffer_state: Some(state),
             data: data,
             barrier: barrier,
+            resources_states: Some(states),
         }
     }
 }
 
-unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
+unsafe impl<L, B> CommandsListBase for FillCommand<L, B>
     where B: TrackedBuffer,
-          L: StdCommandsList,
+          L: CommandsListBase,
 {
-    type Pool = L::Pool;
-    type Output = FillCommandCb<L::Output, B>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -103,6 +101,11 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
     }
 
     #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        self.resources_states.take().unwrap()
+    }
+
+    #[inline]
     fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
 
         self.previous.is_compute_pipeline_bound(pipeline)
@@ -114,22 +117,24 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
+}
 
-    unsafe fn raw_build<I, F>(mut self, additional_elements: F, barriers: I,
+unsafe impl<L, B> CommandsList for FillCommand<L, B>
+    where B: TrackedBuffer,
+          L: CommandsList,
+{
+    type Pool = L::Pool;
+    type Output = FillCommandCb<L::Output, B>;
+
+    unsafe fn raw_build<I, F>(mut self, in_s: &mut StatesManager, out: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               mut final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
     {
-        // Computing the finished state, or `None` if we don't have to manage it.
-        let finished_state = match self.buffer_state.take().map(|s| self.buffer.finish(s)) {
-            Some((s, t)) => {
-                if let Some(t) = t {
-                    final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
-                }
-                Some(s)
-            },
-            None => None,
-        };
+        if let Some(t) = self.buffer.finish(in_s, out) {
+            final_barrier.add_buffer_barrier_request(self.buffer.inner(), t);
+        }
 
         // We split the barriers in two: those to apply after our command, and those to
         // transfer to the parent so that they are applied before our command.
@@ -162,7 +167,7 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
         // Passing to the parent.
         let my_buffer = self.buffer;
         let my_data = self.data;
-        let parent = self.previous.raw_build(|cb| {
+        let parent = self.previous.raw_build(in_s, out, |cb| {
             cb.fill_buffer(my_buffer.inner(), 0, my_buffer.size(), my_data);
             cb.pipeline_barrier(transitions_to_apply);
             additional_elements(cb);
@@ -171,62 +176,26 @@ unsafe impl<L, B> StdCommandsList for FillCommand<L, B>
         FillCommandCb {
             previous: parent,
             buffer: my_buffer,
-            buffer_state: finished_state,
         }
     }
 }
 
-unsafe impl<L, B> ResourcesStates for FillCommand<L, B>
+unsafe impl<L, B> CommandsListPossibleOutsideRenderPass for FillCommand<L, B>
     where B: TrackedBuffer,
-          L: StdCommandsList,
-{
-    unsafe fn extract_buffer_state<Ob>(&mut self, buffer: &Ob)
-                                               -> Option<Ob::CommandListState>
-        where Ob: TrackedBuffer
-    {
-        if self.buffer.is_same_buffer(buffer) {
-            let s: &mut Option<Ob::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_buffer_state(buffer)
-        }
-    }
-
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        if self.buffer.is_same_image(image) {
-            let s: &mut Option<I::CommandListState> = (&mut self.buffer_state as &mut Any)
-                                                                        .downcast_mut().unwrap();
-            Some(s.take().unwrap())
-
-        } else {
-            self.previous.extract_image_state(image)
-        }
-    }
-}
-
-unsafe impl<L, B> OutsideRenderPass for FillCommand<L, B>
-    where B: TrackedBuffer,
-          L: StdCommandsList,
+          L: CommandsListBase,
 {
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
-pub struct FillCommandCb<L, B> where B: TrackedBuffer, L: CommandBuffer {
+pub struct FillCommandCb<L, B> where B: TrackedBuffer, L: CommandsListOutput {
     // The previous commands.
     previous: L,
     // The buffer to update.
     buffer: B,
-    // The state of the buffer to update, or `None` if we don't manage it. Will be used to
-    // determine which semaphores or barriers to add when submitting.
-    buffer_state: Option<B::FinishedState>,
 }
 
-unsafe impl<L, B> CommandBuffer for FillCommandCb<L, B>
-    where B: TrackedBuffer, L: CommandBuffer
+unsafe impl<L, B> CommandsListOutput for FillCommandCb<L, B>
+    where B: TrackedBuffer, L: CommandsListOutput
 {
     type Pool = L::Pool;
 
@@ -235,27 +204,24 @@ unsafe impl<L, B> CommandBuffer for FillCommandCb<L, B>
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let mut parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(states, queue, &mut fence);
 
         // Then build our own output that modifies the parent's.
+        let submit_infos = self.buffer.on_submit(states, queue, fence);
 
-        if let Some(ref buffer_state) = self.buffer_state {
-            let submit_infos = self.buffer.on_submit(buffer_state, queue, fence);
+        parent.semaphores_wait.extend(submit_infos.pre_semaphore.into_iter());
+        parent.semaphores_signal.extend(submit_infos.post_semaphore.into_iter());
 
-            parent.semaphores_wait.extend(submit_infos.pre_semaphore.into_iter());
-            parent.semaphores_signal.extend(submit_infos.post_semaphore.into_iter());
+        if let Some(pre) = submit_infos.pre_barrier {
+            parent.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
+        }
 
-            if let Some(pre) = submit_infos.pre_barrier {
-                parent.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
-            }
-
-            if let Some(post) = submit_infos.post_barrier {
-                parent.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
-            }
+        if let Some(post) = submit_infos.post_barrier {
+            parent.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
         }
 
         parent
@@ -268,7 +234,7 @@ mod tests {
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::StdCommandsList;
+    use command_buffer::std::CommandsListBase;
     use command_buffer::submit::CommandBuffer;
 
     #[test]

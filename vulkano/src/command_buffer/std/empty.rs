@@ -12,10 +12,11 @@ use std::sync::Arc;
 use buffer::traits::TrackedBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::ResourcesStates;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::states_manager::StatesManager;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -58,10 +59,7 @@ impl<P> PrimaryCbBuilder<P> where P: CommandPool {
     }
 }
 
-unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
-    type Pool = P;
-    type Output = PrimaryCb<P>;
-
+unsafe impl<P> CommandsListBase for PrimaryCbBuilder<P> where P: CommandPool {
     #[inline]
     fn num_commands(&self) -> usize {
         0
@@ -86,11 +84,22 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     }
 
     #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        StatesManager::new()
+    }
+
+    #[inline]
     fn buildable_state(&self) -> bool {
         true
     }
+}
 
-    unsafe fn raw_build<I, F>(self, additional_elements: F, barriers: I,
+unsafe impl<P> CommandsList for PrimaryCbBuilder<P> where P: CommandPool {
+    type Pool = P;
+    type Output = PrimaryCb<P>;
+
+    unsafe fn raw_build<I, F>(self, _: &mut StatesManager, _: &mut StatesManager,
+                              additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>
@@ -118,29 +127,13 @@ unsafe impl<P> StdCommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     }
 }
 
-unsafe impl<P> ResourcesStates for PrimaryCbBuilder<P> where P: CommandPool {
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
-        None
-    }
-
-    #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        None
-    }
-}
-
-unsafe impl<P> OutsideRenderPass for PrimaryCbBuilder<P> where P: CommandPool {}
+unsafe impl<P> CommandsListPossibleOutsideRenderPass for PrimaryCbBuilder<P> where P: CommandPool {}
 
 pub struct PrimaryCb<P = Arc<StandardCommandPool>> where P: CommandPool {
     cb: UnsafeCommandBuffer<P>,
 }
 
-unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
+unsafe impl<P> CommandsListOutput for PrimaryCb<P> where P: CommandPool {
     type Pool = P;
 
     #[inline]
@@ -148,7 +141,7 @@ unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
         &self.cb
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // TODO: Must handle non-SimultaneousUse and Once flags ; for now the `SimultaneousUse`
@@ -167,7 +160,7 @@ unsafe impl<P> CommandBuffer for PrimaryCb<P> where P: CommandPool {
 #[cfg(test)]
 mod tests {
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::StdCommandsList;
+    use command_buffer::std::CommandsListBase;
     use command_buffer::submit::CommandBuffer;
 
     #[test]

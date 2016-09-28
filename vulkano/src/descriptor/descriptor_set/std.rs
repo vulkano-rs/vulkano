@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor_set::DescriptorSet;
@@ -54,44 +53,25 @@ unsafe impl<R> DescriptorSet for StdDescriptorSet<R> {
     }
 }
 
-unsafe impl<R> TrackedDescriptorSet for StdDescriptorSet<R>
-    where R: ResourcesCollection
+unsafe impl<R, S> TrackedDescriptorSet<S> for StdDescriptorSet<R>
+    where R: ResourcesCollection<S>
 {
-    type State = R::State;
-    type Finished = R::Finished;
-
     #[inline]
-    unsafe fn extract_states_and_transition<L>(&self, num_command: usize, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder)
     {
-        self.resources.extract_states_and_transition(num_command, list)
+        self.resources.transition(states, num_command)
     }
 
     #[inline]
-    unsafe fn extract_buffer_state<B>(&self, state: &mut Self::State, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
-        self.resources.extract_buffer_state(state, buffer)
+    unsafe fn finish(&self, i: &mut S, o: &mut S) -> PipelineBarrierBuilder {
+        self.resources.finish(i, o)
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&self, state: &mut Self::State, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
-        self.resources.extract_image_state(state, image)
-    }
-
-    #[inline]
-    unsafe fn finish(&self, state: Self::State) -> (Self::Finished, PipelineBarrierBuilder) {
-        self.resources.finish(state)
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, state: &Self::Finished, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        self.resources.on_submit(state, queue, fence)
+        self.resources.on_submit(states, queue, fence)
     }
 }
