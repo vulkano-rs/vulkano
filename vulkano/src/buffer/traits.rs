@@ -33,6 +33,30 @@ pub unsafe trait Buffer {
     }
 }
 
+unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
+    #[inline]
+    fn inner(&self) -> &UnsafeBuffer {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+}
+
+unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
+    #[inline]
+    fn inner(&self) -> &UnsafeBuffer {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+}
+
 /// Extension trait for `Buffer`. Types that implement this can be used in a `StdCommandBuffer`.
 ///
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
@@ -107,18 +131,6 @@ pub struct SubmitInfos {
     pub post_semaphore: Option<Arc<Semaphore>>,
     pub pre_barrier: Option<PipelineBarrierRequest>,
     pub post_barrier: Option<PipelineBarrierRequest>,
-}
-
-unsafe impl<B> Buffer for Arc<B> where B: Buffer {
-    #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        (**self).size()
-    }
 }
 
 unsafe impl<B, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S>, Arc<B>: Buffer {
