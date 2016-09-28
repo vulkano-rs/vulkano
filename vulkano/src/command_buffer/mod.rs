@@ -41,7 +41,6 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::submit::CommandBuffer;
 pub use self::submit::Submit;
 
 use std::sync::Arc;

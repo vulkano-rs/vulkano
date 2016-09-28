@@ -14,10 +14,11 @@ use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::InsideRenderPass;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::std::CommandsListPossibleInsideRenderPass;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -35,7 +36,7 @@ use sync::Fence;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommand<L, Rp, F>
-    where L: StdCommandsList, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsListBase, Rp: RenderPass, F: TrackedFramebuffer
 {
     // Parent commands list.
     previous: L,
@@ -54,7 +55,7 @@ pub struct BeginRenderPassCommand<L, Rp, F>
 }
 
 impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
-    where L: StdCommandsList + OutsideRenderPass, F: TrackedFramebuffer
+    where L: CommandsListBase + CommandsListPossibleOutsideRenderPass, F: TrackedFramebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
@@ -62,7 +63,7 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
                   -> BeginRenderPassCommand<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {
-        let states = previous.extract_states();
+        let mut states = previous.extract_states();
 
         let (barrier_pos, barrier) = unsafe {
             framebuffer.transition(&mut states, previous.num_commands() + 1)
@@ -87,12 +88,9 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
     }
 }
 
-unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
-    where L: StdCommandsList, Rp: RenderPass, Fb: TrackedFramebuffer
+unsafe impl<L, Rp, Fb> CommandsListBase for BeginRenderPassCommand<L, Rp, Fb>
+    where L: CommandsListBase, Rp: RenderPass, Fb: TrackedFramebuffer
 {
-    type Pool = L::Pool;
-    type Output = BeginRenderPassCommandCb<L::Output, Rp, Fb>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -129,6 +127,13 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
+}
+
+unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
+    where L: CommandsList, Rp: RenderPass, Fb: TrackedFramebuffer
+{
+    type Pool = L::Pool;
+    type Output = BeginRenderPassCommandCb<L::Output, Rp, Fb>;
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -166,8 +171,8 @@ unsafe impl<L, Rp, Fb> StdCommandsList for BeginRenderPassCommand<L, Rp, Fb>
     }
 }
 
-unsafe impl<L, Rp, F> InsideRenderPass for BeginRenderPassCommand<L, Rp, F>
-    where L: StdCommandsList, Rp: RenderPass, F: TrackedFramebuffer
+unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCommand<L, Rp, F>
+    where L: CommandsListBase, Rp: RenderPass, F: TrackedFramebuffer
 {
     type RenderPass = Rp;
     type Framebuffer = F;
@@ -200,7 +205,7 @@ unsafe impl<L, Rp, F> InsideRenderPass for BeginRenderPassCommand<L, Rp, F>
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommandCb<L, Rp, F>
-    where L: CommandBuffer, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsListOutput, Rp: RenderPass, F: TrackedFramebuffer
 {
     // The previous commands.
     previous: L,
@@ -208,8 +213,8 @@ pub struct BeginRenderPassCommandCb<L, Rp, F>
     framebuffer: F,
 }
 
-unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
-    where L: CommandBuffer, Rp: RenderPass, Fb: TrackedFramebuffer
+unsafe impl<L, Rp, Fb> CommandsListOutput for BeginRenderPassCommandCb<L, Rp, Fb>
+    where L: CommandsListOutput, Rp: RenderPass, Fb: TrackedFramebuffer
 {
     type Pool = L::Pool;
 
@@ -219,14 +224,13 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // FIXME: merge semaphore iterators
 
-        let framebuffer_submit_reqs = self.framebuffer.on_submit(&self.state, queue, &mut fence);
-        let parent_reqs = self.previous.on_submit(queue, &mut fence);
+        let framebuffer_submit_reqs = self.framebuffer.on_submit(states, queue, &mut fence);
+        let parent_reqs = self.previous.on_submit(states, queue, &mut fence);
 
         assert!(framebuffer_submit_reqs.semaphores_wait.len() == 0);        // not implemented
         assert!(framebuffer_submit_reqs.semaphores_signal.len() == 0);      // not implemented
@@ -249,14 +253,14 @@ unsafe impl<L, Rp, Fb> CommandBuffer for BeginRenderPassCommandCb<L, Rp, Fb>
 }
 
 /// Wraps around a commands list and adds a command at the end of it that jumps to the next subpass.
-pub struct NextSubpassCommand<L> where L: StdCommandsList {
+pub struct NextSubpassCommand<L> where L: CommandsListBase {
     // Parent commands list.
     previous: L,
     // True if only secondary command buffers can be added.
     secondary: bool,
 }
 
-impl<L> NextSubpassCommand<L> where L: StdCommandsList + InsideRenderPass {
+impl<L> NextSubpassCommand<L> where L: CommandsListBase + CommandsListPossibleInsideRenderPass {
     /// See the documentation of the `next_subpass` method.
     #[inline]
     pub fn new(previous: L, secondary: bool) -> NextSubpassCommand<L> {
@@ -270,12 +274,9 @@ impl<L> NextSubpassCommand<L> where L: StdCommandsList + InsideRenderPass {
     }
 }
 
-unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
-    where L: StdCommandsList + InsideRenderPass
+unsafe impl<L> CommandsListBase for NextSubpassCommand<L>
+    where L: CommandsListBase + CommandsListPossibleInsideRenderPass
 {
-    type Pool = L::Pool;
-    type Output = NextSubpassCommandCb<L::Output>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -312,6 +313,13 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
+}
+
+unsafe impl<L> CommandsList for NextSubpassCommand<L>
+    where L: CommandsList + CommandsListPossibleInsideRenderPass
+{
+    type Pool = L::Pool;
+    type Output = NextSubpassCommandCb<L::Output>;
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -332,8 +340,8 @@ unsafe impl<L> StdCommandsList for NextSubpassCommand<L>
     }
 }
 
-unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
-    where L: StdCommandsList + InsideRenderPass
+unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
+    where L: CommandsListBase + CommandsListPossibleInsideRenderPass
 {
     type RenderPass = L::RenderPass;
     type Framebuffer = L::Framebuffer;
@@ -360,12 +368,12 @@ unsafe impl<L> InsideRenderPass for NextSubpassCommand<L>
 }
 
 /// Wraps around a command buffer and adds an end render pass command at the end of it.
-pub struct NextSubpassCommandCb<L> where L: CommandBuffer {
+pub struct NextSubpassCommandCb<L> where L: CommandsListOutput {
     // The previous commands.
     previous: L,
 }
 
-unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: CommandBuffer {
+unsafe impl<L> CommandsListOutput for NextSubpassCommandCb<L> where L: CommandsListOutput {
     type Pool = L::Pool;
 
     #[inline]
@@ -374,20 +382,20 @@ unsafe impl<L> CommandBuffer for NextSubpassCommandCb<L> where L: CommandBuffer 
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        self.previous.on_submit(queue, &mut fence)
+        self.previous.on_submit(states, queue, &mut fence)
     }
 }
 
 /// Wraps around a commands list and adds an end render pass command at the end of it.
-pub struct EndRenderPassCommand<L> where L: StdCommandsList {
+pub struct EndRenderPassCommand<L> where L: CommandsListBase {
     // Parent commands list.
     previous: L,
 }
 
-impl<L> EndRenderPassCommand<L> where L: StdCommandsList + InsideRenderPass {
+impl<L> EndRenderPassCommand<L> where L: CommandsListBase + CommandsListPossibleInsideRenderPass {
     /// See the documentation of the `end_render_pass` method.
     #[inline]
     pub fn new(previous: L) -> EndRenderPassCommand<L> {
@@ -399,10 +407,7 @@ impl<L> EndRenderPassCommand<L> where L: StdCommandsList + InsideRenderPass {
     }
 }
 
-unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsList {
-    type Pool = L::Pool;
-    type Output = EndRenderPassCommandCb<L::Output>;
-
+unsafe impl<L> CommandsListBase for EndRenderPassCommand<L> where L: CommandsListBase {
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -439,6 +444,11 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
+}
+
+unsafe impl<L> CommandsList for EndRenderPassCommand<L> where L: CommandsList {
+    type Pool = L::Pool;
+    type Output = EndRenderPassCommandCb<L::Output>;
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -467,16 +477,16 @@ unsafe impl<L> StdCommandsList for EndRenderPassCommand<L> where L: StdCommandsL
     }
 }
 
-unsafe impl<L> OutsideRenderPass for EndRenderPassCommand<L> where L: StdCommandsList {
+unsafe impl<L> CommandsListPossibleOutsideRenderPass for EndRenderPassCommand<L> where L: CommandsListBase {
 }
 
 /// Wraps around a command buffer and adds an end render pass command at the end of it.
-pub struct EndRenderPassCommandCb<L> where L: CommandBuffer {
+pub struct EndRenderPassCommandCb<L> where L: CommandsListOutput {
     // The previous commands.
     previous: L,
 }
 
-unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: CommandBuffer {
+unsafe impl<L> CommandsListOutput for EndRenderPassCommandCb<L> where L: CommandsListOutput {
     type Pool = L::Pool;
 
     #[inline]
@@ -485,9 +495,9 @@ unsafe impl<L> CommandBuffer for EndRenderPassCommandCb<L> where L: CommandBuffe
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        self.previous.on_submit(queue, &mut fence)
+        self.previous.on_submit(states, queue, &mut fence)
     }
 }

@@ -15,9 +15,10 @@ use buffer::traits::Buffer;
 use buffer::traits::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::InsideRenderPass;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::std::CommandsListPossibleInsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -36,7 +37,7 @@ use VulkanObject;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
 pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     // Parent commands list.
     previous: L,
@@ -76,7 +77,7 @@ enum DrawInner {
 }
 
 impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
-    where L: StdCommandsList + InsideRenderPass, Pl: PipelineLayout,
+    where L: CommandsListBase + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     /// See the documentation of the `draw` method.
@@ -114,12 +115,9 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListBase for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
-    type Pool = L::Pool;
-    type Output = DrawCommandCb<L::Output, Pv, Pl, Prp, S>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -156,6 +154,14 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     fn buildable_state(&self) -> bool {
         self.previous.buildable_state()
     }
+}
+
+unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+{
+    type Pool = L::Pool;
+    type Output = DrawCommandCb<L::Output, Pv, Pl, Prp, S>;
+
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -236,8 +242,8 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> StdCommandsList for DrawCommand<'a, L, Pv
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> InsideRenderPass for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
-    where L: StdCommandsList + InsideRenderPass, Pl: PipelineLayout,
+unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+    where L: CommandsListBase + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type RenderPass = L::RenderPass;
@@ -266,7 +272,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> InsideRenderPass for DrawCommand<'a, L, P
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
-    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandsListOutput, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     // The previous commands.
     previous: L,
@@ -278,8 +284,8 @@ pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
     vertex_buffers: SmallVec<[Arc<Buffer>; 4]>,
 }
 
-unsafe impl<L, Pv, Pl, Prp, S> CommandBuffer for DrawCommandCb<L, Pv, Pl, Prp, S>
-    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+unsafe impl<L, Pv, Pl, Prp, S> CommandsListOutput for DrawCommandCb<L, Pv, Pl, Prp, S>
+    where L: CommandsListOutput, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     type Pool = L::Pool;
 
@@ -288,14 +294,14 @@ unsafe impl<L, Pv, Pl, Prp, S> CommandBuffer for DrawCommandCb<L, Pv, Pl, Prp, S
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let mut parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(states, queue, &mut fence);
 
         // We query our sets.
-        let my_infos = self.sets.on_submit(&self.sets_state, queue, fence);
+        let my_infos = self.sets.on_submit(states, queue, fence);
 
         // We merge the two.
         SubmitInfo {

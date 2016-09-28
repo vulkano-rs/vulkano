@@ -14,11 +14,14 @@ use buffer::traits::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::submit::Submit;
+use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
+use device::Queue;
 use framebuffer::traits::Framebuffer;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
@@ -28,6 +31,7 @@ use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
+use sync::Fence;
 
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
@@ -41,19 +45,14 @@ pub mod render_pass;
 pub mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
-pub unsafe trait StdCommandsList {
-    /// The type of the pool that will be used to create the command buffer.
-    type Pool: CommandPool;
-    /// The type of the command buffer that will be generated.
-    type Output: CommandBuffer<Pool = Self::Pool>;
-
+pub unsafe trait CommandsListBase {
     /// Adds a command that writes the content of a buffer.
     ///
     /// After this command is executed, the content of `buffer` will become `data`.
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
                                        -> update_buffer::UpdateCommand<'a, Self, B, D>
-        where Self: Sized + OutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
+        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
         update_buffer::UpdateCommand::new(self, buffer, data)
     }
@@ -61,7 +60,7 @@ pub unsafe trait StdCommandsList {
     /// Adds a command that writes the content of a buffer.
     #[inline]
     fn fill_buffer<B>(self, buffer: B, data: u32) -> fill_buffer::FillCommand<Self, B>
-        where Self: Sized + OutsideRenderPass, B: TrackedBuffer
+        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer
     {
         fill_buffer::FillCommand::new(self, buffer, data)
     }
@@ -76,7 +75,7 @@ pub unsafe trait StdCommandsList {
     /// you can use `execute` is to make a primary command buffer call a secondary command buffer.
     #[inline]
     fn execute<Cb>(self, command_buffer: Cb) -> execute::ExecuteCommand<Cb, Self>
-        where Self: Sized, Cb: CommandBuffer
+        where Self: Sized, Cb: CommandsListOutput       /* FIXME: */
     {
         execute::ExecuteCommand::new(self, command_buffer)
     }
@@ -92,7 +91,7 @@ pub unsafe trait StdCommandsList {
     fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
                                dimensions: [u32; 3], push_constants: &'a Pc)
                                -> dispatch::DispatchCommand<'a, Self, Pl, S, Pc>
-        where Self: Sized + StdCommandsList + OutsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsListBase + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
               S: TrackedDescriptorSetsCollection, Pc: 'a
     {
         dispatch::DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
@@ -108,7 +107,7 @@ pub unsafe trait StdCommandsList {
     #[inline]
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
                                -> render_pass::BeginRenderPassCommand<Self, F::RenderPass, F>
-        where Self: Sized + OutsideRenderPass,
+        where Self: Sized + CommandsListPossibleOutsideRenderPass,
               F: TrackedFramebuffer, F::RenderPass: RenderPass + RenderPassClearValues<C>
     {
         render_pass::BeginRenderPassCommand::new(self, framebuffer, secondary, clear_values)
@@ -116,7 +115,7 @@ pub unsafe trait StdCommandsList {
 
     /// Adds a command that jumps to the next subpass of the current render pass.
     fn next_subpass(self, secondary: bool) -> render_pass::NextSubpassCommand<Self>
-        where Self: Sized + InsideRenderPass
+        where Self: Sized + CommandsListPossibleInsideRenderPass
     {
         render_pass::NextSubpassCommand::new(self, secondary)
     }
@@ -126,7 +125,7 @@ pub unsafe trait StdCommandsList {
     /// This must be called after you went through all the subpasses and before you can build
     /// the command buffer or add further commands.
     fn end_render_pass(self) -> render_pass::EndRenderPassCommand<Self>
-        where Self: Sized + InsideRenderPass
+        where Self: Sized + CommandsListPossibleInsideRenderPass
     {
         render_pass::EndRenderPassCommand::new(self)
     }
@@ -139,7 +138,7 @@ pub unsafe trait StdCommandsList {
                                        dynamic: &DynamicState, vertices: V, sets: S,
                                        push_constants: &'a Pc)
                                        -> draw::DrawCommand<'a, Self, Pv, Pl, Prp, S, Pc>
-        where Self: Sized + StdCommandsList + InsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsListBase + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
               S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
     {
         draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)
@@ -148,21 +147,6 @@ pub unsafe trait StdCommandsList {
     /// Returns true if the command buffer can be built. This function should always return true,
     /// except when we're building a primary command buffer that is inside a render pass.
     fn buildable_state(&self) -> bool;
-
-    /// Turns the commands list into a command buffer that can be submitted.
-    // This function isn't inline because `raw_build` implementations usually are inline.
-    fn build(mut self) -> Self::Output where Self: Sized {
-        assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
-                                         render pass");
-
-        let mut states_in = self.extract_states();
-        let mut states_out = StatesManager::new(); 
-
-        unsafe {
-            self.raw_build(&mut states_in, &mut states_out, |_| {},
-                           iter::empty(), PipelineBarrierBuilder::new())
-        }
-    }
 
     /// Returns the number of commands in the commands list.
     ///
@@ -184,6 +168,12 @@ pub unsafe trait StdCommandsList {
     /// Returns true if the given graphics pipeline is currently binded in the commands list.
     fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
                                                 -> bool;
+}
+
+pub unsafe trait CommandsList: CommandsListBase {
+    type Pool: CommandPool;
+    /// The type of the command buffer that will be generated.
+    type Output: CommandsListOutput;
 
     /// Turns the commands list into a command buffer.
     ///
@@ -203,13 +193,49 @@ pub unsafe trait StdCommandsList {
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
         where F: FnOnce(&mut UnsafeCommandBufferBuilder<Self::Pool>),
               I: Iterator<Item = (usize, PipelineBarrierBuilder)>;
+
+    /// Turns the commands list into a command buffer that can be submitted.
+    // This function isn't inline because `raw_build` implementations usually are inline.
+    fn build(mut self) -> CommandBuffer<Self::Output> where Self: Sized {
+        assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
+                                         render pass");
+
+        let mut states_in = self.extract_states();
+        let mut states_out = StatesManager::new(); 
+
+        let output = unsafe {
+            self.raw_build(&mut states_in, &mut states_out, |_| {},
+                           iter::empty(), PipelineBarrierBuilder::new())
+        };
+
+        CommandBuffer {
+            states: states_out,
+            commands: output,
+        }
+    }
 }
 
-/// Extension trait for `StdCommandsList` that indicates that we're outside a render pass.
-pub unsafe trait OutsideRenderPass: StdCommandsList {}
+/*pub unsafe trait AbstractCommandsList: CommandsListBase {
+    /// Turns the commands list into a command buffer that can be submitted.
+    fn abstract_build(self) -> CommandBuffer where Self: Sized;
+}
 
-/// Extension trait for `StdCommandsList` that indicates that we're inside a render pass.
-pub unsafe trait InsideRenderPass: StdCommandsList {
+unsafe impl<C> AbstractCommandsList for C where C: CommandsList {
+    #[inline]
+    fn abstract_build(self) -> CommandBuffer {
+        Box::new(self.build())
+    }
+}*/
+
+/// Extension trait for `CommandsListBase` that indicates that we're possibly outside a render pass.
+pub unsafe trait CommandsListPossibleOutsideRenderPass: CommandsListBase {
+    /*/// Returns `true` if we're outside a render pass.
+    fn is_outside_render_pass(&self) -> bool;*/
+}
+
+/// Extension trait for `StdCommandsCommandsListBaseList` that indicates that we're possibly inside
+/// a render pass.
+pub unsafe trait CommandsListPossibleInsideRenderPass: CommandsListBase {
     type RenderPass: RenderPass;
     type Framebuffer: Framebuffer;
 
@@ -226,4 +252,36 @@ pub unsafe trait InsideRenderPass: StdCommandsList {
     fn render_pass(&self) -> &Self::RenderPass;
 
     fn framebuffer(&self) -> &Self::Framebuffer;
+}
+
+pub unsafe trait CommandsListOutput<S = StatesManager> {
+    /// Type of the pool that was used to allocate the command buffer.
+    type Pool: CommandPool;
+
+    /// Returns the inner object.
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+
+    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+        where F: FnMut() -> Arc<Fence>;
+}
+
+pub struct CommandBuffer<C /* = Box<CommandsListOutput>*/> {
+    states: StatesManager,
+    commands: C,
+}
+
+unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
+    type Pool = C::Pool;
+
+    #[inline]
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
+        self.commands.inner()
+    }
+
+    #[inline]
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+        where F: FnMut() -> Arc<Fence>
+    {
+        self.commands.on_submit(&self.states, queue, fence)
+    }
 }

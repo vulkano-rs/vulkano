@@ -14,9 +14,10 @@ use smallvec::SmallVec;
 use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -32,7 +33,7 @@ use sync::PipelineStages;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct UpdateCommand<'a, L, B, D: ?Sized>
-    where B: TrackedBuffer, L: StdCommandsList, D: 'static
+    where B: TrackedBuffer, L: CommandsListBase, D: 'static
 {
     // Parent commands list.
     previous: L,
@@ -48,7 +49,7 @@ pub struct UpdateCommand<'a, L, B, D: ?Sized>
 
 impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: StdCommandsList + OutsideRenderPass,
+          L: CommandsListBase + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
 {
     /// See the documentation of the `update_buffer` method.
@@ -79,14 +80,11 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
+unsafe impl<'a, L, B, D: ?Sized> CommandsListBase for UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: StdCommandsList,
+          L: CommandsListBase,
           D: Copy + 'static,
 {
-    type Pool = L::Pool;
-    type Output = UpdateCommandCb<L::Output, B>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -120,6 +118,15 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
     {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
+}
+
+unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
+    where B: TrackedBuffer,
+          L: CommandsList,
+          D: Copy + 'static,
+{
+    type Pool = L::Pool;
+    type Output = UpdateCommandCb<L::Output, B>;
 
     unsafe fn raw_build<I, F>(mut self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -175,23 +182,23 @@ unsafe impl<'a, L, B, D: ?Sized> StdCommandsList for UpdateCommand<'a, L, B, D>
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> OutsideRenderPass for UpdateCommand<'a, L, B, D>
+unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass for UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: StdCommandsList,
+          L: CommandsListBase,
           D: Copy + 'static,
 {
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
-pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: CommandBuffer {
+pub struct UpdateCommandCb<L, B> where B: TrackedBuffer, L: CommandsListOutput {
     // The previous commands.
     previous: L,
     // The buffer to update.
     buffer: B,
 }
 
-unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
-    where B: TrackedBuffer, L: CommandBuffer
+unsafe impl<L, B> CommandsListOutput for UpdateCommandCb<L, B>
+    where B: TrackedBuffer, L: CommandsListOutput
 {
     type Pool = L::Pool;
 
@@ -200,52 +207,41 @@ unsafe impl<L, B> CommandBuffer for UpdateCommandCb<L, B>
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let mut parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(states, queue, &mut fence);
 
         // Then build our own output that modifies the parent's.
+        let submit_infos = self.buffer.on_submit(states, queue, fence);
 
-        if let Some(ref buffer_state) = self.buffer_state {
-            let submit_infos = self.buffer.on_submit(buffer_state, queue, fence);
+        let mut out = SubmitInfo {
+            semaphores_wait: {
+                if let Some(s) = submit_infos.pre_semaphore {
+                    parent.semaphores_wait.push(s);
+                }
+                parent.semaphores_wait
+            },
+            semaphores_signal: {
+                if let Some(s) = submit_infos.post_semaphore {
+                    parent.semaphores_signal.push(s);
+                }
+                parent.semaphores_signal
+            },
+            pre_pipeline_barrier: parent.pre_pipeline_barrier,
+            post_pipeline_barrier: parent.post_pipeline_barrier,
+        };
 
-            let mut out = SubmitInfo {
-                semaphores_wait: {
-                    if let Some(s) = submit_infos.pre_semaphore {
-                        parent.semaphores_wait.push(s);
-                    }
-                    parent.semaphores_wait
-                },
-                semaphores_signal: {
-                    if let Some(s) = submit_infos.post_semaphore {
-                        parent.semaphores_signal.push(s);
-                    }
-                    parent.semaphores_signal
-                },
-                pre_pipeline_barrier: parent.pre_pipeline_barrier,
-                post_pipeline_barrier: parent.post_pipeline_barrier,
-            };
-
-            if let Some(pre) = submit_infos.pre_barrier {
-                out.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
-            }
-
-            if let Some(post) = submit_infos.post_barrier {
-                out.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
-            }
-
-            out
-
-        } else {
-            SubmitInfo {
-                semaphores_wait: parent.semaphores_wait,
-                semaphores_signal: parent.semaphores_signal,
-                pre_pipeline_barrier: parent.pre_pipeline_barrier,
-                post_pipeline_barrier: parent.post_pipeline_barrier,
-            }
+        if let Some(pre) = submit_infos.pre_barrier {
+            out.pre_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), pre);
         }
+
+        if let Some(post) = submit_infos.post_barrier {
+            out.post_pipeline_barrier.add_buffer_barrier_request(self.buffer.inner(), post);
+        }
+
+        out
     }
 }
 
@@ -255,7 +251,7 @@ mod tests {
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::StdCommandsList;
+    use command_buffer::std::CommandsListBase;
     use command_buffer::submit::CommandBuffer;
 
     #[test]

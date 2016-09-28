@@ -13,9 +13,10 @@ use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -33,7 +34,7 @@ use VulkanObject;
 
 /// Wraps around a commands list and adds a dispatch command at the end of it.
 pub struct DispatchCommand<'a, L, Pl, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     // Parent commands list.
     previous: L,
@@ -52,7 +53,7 @@ pub struct DispatchCommand<'a, L, Pl, S, Pc>
 }
 
 impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
-    where L: StdCommandsList + OutsideRenderPass, Pl: PipelineLayout,
+    where L: CommandsListBase + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     /// See the documentation of the `dispatch` method.
@@ -77,12 +78,9 @@ impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
     }
 }
 
-unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+unsafe impl<'a, L, Pl, S, Pc> CommandsListBase for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
-    type Pool = L::Pool;
-    type Output = DispatchCommandCb<L::Output, Pl, S>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -118,6 +116,13 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
     fn buildable_state(&self) -> bool {
         true
     }
+}
+
+unsafe impl<'a, L, Pl, S, Pc> CommandsList for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+{
+    type Pool = L::Pool;
+    type Output = DispatchCommandCb<L::Output, Pl, S>;
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -180,14 +185,14 @@ unsafe impl<'a, L, Pl, S, Pc> StdCommandsList for DispatchCommand<'a, L, Pl, S, 
     }
 }
 
-unsafe impl<'a, L, Pl, S, Pc> OutsideRenderPass for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: StdCommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+unsafe impl<'a, L, Pl, S, Pc> CommandsListPossibleOutsideRenderPass for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct DispatchCommandCb<L, Pl, S>
-    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+    where L: CommandsListOutput, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     // The previous commands.
     previous: L,
@@ -197,8 +202,8 @@ pub struct DispatchCommandCb<L, Pl, S>
     sets: S,
 }
 
-unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
-    where L: CommandBuffer, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
+unsafe impl<L, Pl, S> CommandsListOutput for DispatchCommandCb<L, Pl, S>
+    where L: CommandsListOutput, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection
 {
     type Pool = L::Pool;
 
@@ -207,14 +212,14 @@ unsafe impl<L, Pl, S> CommandBuffer for DispatchCommandCb<L, Pl, S>
         self.previous.inner()
     }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
         // We query the parent.
-        let mut parent = self.previous.on_submit(queue, &mut fence);
+        let mut parent = self.previous.on_submit(states, queue, &mut fence);
 
         // We query our sets.
-        let my_infos = self.sets.on_submit(&self.sets_state, queue, fence);
+        let my_infos = self.sets.on_submit(states, queue, fence);
 
         // We merge the two.
         SubmitInfo {

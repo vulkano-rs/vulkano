@@ -288,6 +288,7 @@ unsafe impl<States> AttachmentsList<States> for EmptyAttachmentsList {
 
     #[inline]
     fn finish(&self, _: &mut States, _: &mut States) -> PipelineBarrierBuilder {
+        PipelineBarrierBuilder::new()
     }
 
     #[inline]

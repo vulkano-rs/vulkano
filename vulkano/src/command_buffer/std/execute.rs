@@ -12,10 +12,11 @@ use smallvec::SmallVec;
 
 use buffer::traits::TrackedBuffer;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::std::InsideRenderPass;
-use command_buffer::std::OutsideRenderPass;
-use command_buffer::std::StdCommandsList;
-use command_buffer::submit::CommandBuffer;
+use command_buffer::std::CommandsListPossibleInsideRenderPass;
+use command_buffer::std::CommandsListPossibleOutsideRenderPass;
+use command_buffer::std::CommandsListBase;
+use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
@@ -29,7 +30,7 @@ use sync::Fence;
 
 /// Wraps around a commands list and adds a command at the end of it that executes a secondary
 /// command buffer.
-pub struct ExecuteCommand<Cb, L> where Cb: CommandBuffer, L: StdCommandsList {
+pub struct ExecuteCommand<Cb, L> where Cb: CommandsListOutput, L: CommandsListBase {
     // Parent commands list.
     previous: L,
     // Command buffer to execute.
@@ -37,13 +38,12 @@ pub struct ExecuteCommand<Cb, L> where Cb: CommandBuffer, L: StdCommandsList {
 }
 
 impl<Cb, L> ExecuteCommand<Cb, L>
-    where Cb: CommandBuffer, L: StdCommandsList
+    where Cb: CommandsListOutput, L: CommandsListBase
 {
     /// See the documentation of the `execute` method.
     #[inline]
     pub fn new(previous: L, command_buffer: Cb) -> ExecuteCommand<Cb, L> {
         // FIXME: check that the number of subpasses is correct
-        let states = previous.extract_states();
 
         ExecuteCommand {
             previous: previous,
@@ -53,12 +53,9 @@ impl<Cb, L> ExecuteCommand<Cb, L>
 }
 
 // TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
-unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
-    where Cb: CommandBuffer, L: StdCommandsList
+unsafe impl<Cb, L> CommandsListBase for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsListBase
 {
-    type Pool = L::Pool;
-    type Output = ExecuteCommandCb<Cb, L::Output>;
-
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -93,6 +90,14 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
         // Bindings are always invalidated after a execute command ends.
         false
     }
+}
+
+// TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
+unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsList
+{
+    type Pool = L::Pool;
+    type Output = ExecuteCommandCb<Cb, L::Output>;
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
@@ -135,8 +140,8 @@ unsafe impl<Cb, L> StdCommandsList for ExecuteCommand<Cb, L>
     }
 }
 
-unsafe impl<Cb, L> InsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandBuffer, L: InsideRenderPass
+unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass
 {
     type RenderPass = L::RenderPass;
     type Framebuffer = L::Framebuffer;
@@ -163,21 +168,21 @@ unsafe impl<Cb, L> InsideRenderPass for ExecuteCommand<Cb, L>
     }
 }
 
-unsafe impl<Cb, L> OutsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandBuffer, L: OutsideRenderPass
+unsafe impl<Cb, L> CommandsListPossibleOutsideRenderPass for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass
 {
 }
 
 /// Wraps around a command buffer and adds an execute command at the end of it.
-pub struct ExecuteCommandCb<Cb, L> where Cb: CommandBuffer, L: CommandBuffer {
+pub struct ExecuteCommandCb<Cb, L> where Cb: CommandsListOutput, L: CommandsListOutput {
     // The previous commands.
     previous: L,
     // The secondary command buffer to execute.
     command_buffer: Cb,
 }
 
-unsafe impl<Cb, L> CommandBuffer for ExecuteCommandCb<Cb, L>
-    where Cb: CommandBuffer, L: CommandBuffer
+unsafe impl<Cb, L> CommandsListOutput for ExecuteCommandCb<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsListOutput
 {
     type Pool = L::Pool;
 
@@ -187,9 +192,9 @@ unsafe impl<Cb, L> CommandBuffer for ExecuteCommandCb<Cb, L>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        self.previous.on_submit(queue, &mut fence)
+        self.previous.on_submit(states, queue, &mut fence)
     }
 }
