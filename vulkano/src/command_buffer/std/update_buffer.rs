@@ -245,6 +245,11 @@ unsafe impl<L, B> CommandsListOutput for UpdateCommandCb<L, B>
     }
 }
 
+unsafe impl<L, B> CommandsListPossibleOutsideRenderPass for UpdateCommandCb<L, B>
+    where B: TrackedBuffer, L: CommandsListOutput
+{
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

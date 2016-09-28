@@ -141,7 +141,7 @@ unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
 }
 
 unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass
+    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass + CommandsListBase
 {
     type RenderPass = L::RenderPass;
     type Framebuffer = L::Framebuffer;
@@ -169,7 +169,7 @@ unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L
 }
 
 unsafe impl<Cb, L> CommandsListPossibleOutsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass
+    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass + CommandsListBase
 {
 }
 
