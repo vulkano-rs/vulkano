@@ -9,7 +9,10 @@
 
 //! Location in memory that contains data.
 //!
-//! All buffers are guaranteed to be accessible from the GPU.
+//! A Vulkan buffer is very similar to a buffer that you would use in programming languages in
+//! general, in the sense that it is a location in memory that contains data. The difference
+//! between a Vulkan buffer and a regular buffer is that the content of a Vulkan buffer is
+//! accessible from the GPU.
 //!
 //! # High-level wrappers
 //!
