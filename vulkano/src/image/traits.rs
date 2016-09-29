@@ -8,8 +8,6 @@
 // according to those terms.
 
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::Receiver;
 
 use command_buffer::states_manager::StatesManager;
 use device::Queue;
@@ -138,8 +136,8 @@ pub struct TrackedImagePipelineMemoryBarrierRequest {
 }
 
 pub struct TrackedImageSubmitInfos {
-    pub pre_semaphore: Option<(Receiver<Arc<Semaphore>>, PipelineStages)>,
-    pub post_semaphore: Option<Sender<Arc<Semaphore>>>,
+    pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
+    pub post_semaphore: Option<Arc<Semaphore>>,
     pub pre_barrier: Option<TrackedImagePipelineBarrierRequest>,
     pub post_barrier: Option<TrackedImagePipelineBarrierRequest>,
 }

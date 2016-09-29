@@ -387,40 +387,19 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
                            -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        let first_pre_sem;
-        let first_pre_barrier;
-        let first_post_barrier;
+        let mut rest_infos = self.rest.on_submit(states, queue, &mut fence);
 
-        let first_infos = self.first.image().on_submit(states, queue, &mut fence);
-        first_pre_sem = first_infos.pre_semaphore.map(|(rx, s)| (rx.recv().unwrap(), s));
-        assert!(first_infos.post_semaphore.is_none());
-
-        first_pre_barrier = first_infos.pre_barrier;
-        first_post_barrier = first_infos.post_barrier;
-
-        let mut rest_infos = self.rest.on_submit(states, queue, fence);
-
-        SubmitInfo {
-            semaphores_wait: {
-                if let Some(s) = first_pre_sem { rest_infos.semaphores_wait.push(s); }
-                rest_infos.semaphores_wait
-            },
-            semaphores_signal: rest_infos.semaphores_signal,        // TODO:
-            pre_pipeline_barrier: {
-                let mut b = rest_infos.pre_pipeline_barrier;
-                if let Some(rq) = first_pre_barrier {
-                    b.add_image_barrier_request(self.first.image().inner(), rq);
-                }
-                b
-            },
-            post_pipeline_barrier: {
-                let mut b = rest_infos.post_pipeline_barrier;
-                if let Some(rq) = first_post_barrier {
-                    b.add_image_barrier_request(self.first.image().inner(), rq);
-                }
-                b
-            },
+        let first_infos = self.first.image().on_submit(states, queue, fence);
+        if let Some(s) = first_infos.pre_semaphore { rest_infos.semaphores_wait.push(s); }
+        if let Some(s) = first_infos.post_semaphore { rest_infos.semaphores_signal.push(s); }
+        if let Some(rq) = first_infos.pre_barrier {
+            rest_infos.pre_pipeline_barrier.add_image_barrier_request(self.first.image().inner(), rq);
         }
+        if let Some(rq) = first_infos.post_barrier {
+            rest_infos.post_pipeline_barrier.add_image_barrier_request(self.first.image().inner(), rq);
+        }
+
+        rest_infos
     }
 }
 
