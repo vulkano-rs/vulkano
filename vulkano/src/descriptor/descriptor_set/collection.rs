@@ -90,12 +90,7 @@ unsafe impl<S> TrackedDescriptorSetsCollection<S> for () {
     unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        SubmitInfo {
-            semaphores_wait: vec![],
-            semaphores_signal: vec![],
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
-        }
+        SubmitInfo::empty()
     }
 }
 

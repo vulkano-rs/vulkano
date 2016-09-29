@@ -146,12 +146,7 @@ unsafe impl<P> CommandsListOutput for PrimaryCb<P> where P: CommandPool {
         //       flag is mandatory, so there's no safety issue. However it will need to be handled
         //       before allowing other flags to be used.
 
-        SubmitInfo {
-            semaphores_wait: vec![],
-            semaphores_signal: vec![],
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
-        }
+        SubmitInfo::empty()
     }
 }
 

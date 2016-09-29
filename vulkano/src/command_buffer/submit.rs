@@ -93,6 +93,18 @@ pub struct SubmitInfo {
     pub post_pipeline_barrier: PipelineBarrierBuilder,
 }
 
+impl SubmitInfo {
+    #[inline]
+    pub fn empty() -> SubmitInfo {
+        SubmitInfo {
+            semaphores_wait: Vec::new(),
+            semaphores_signal: Vec::new(),
+            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
+            post_pipeline_barrier: PipelineBarrierBuilder::new(),
+        }
+    }
+}
+
 /// Returned when you submit one or multiple command buffers.
 ///
 /// This object holds the resources that are used by the GPU and that must be kept alive for at
@@ -360,12 +372,7 @@ mod tests {
                                                  Self::SemaphoresSignalIterator>
                 where F: FnOnce() -> Arc<Fence>
             {
-                SubmitInfo {
-                    semaphores_wait: vec![],
-                    semaphores_signal: vec![],
-                    pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-                    post_pipeline_barrier: PipelineBarrierBuilder::new(),
-                }
+                SubmitInfo::empty()
             }
         }
 

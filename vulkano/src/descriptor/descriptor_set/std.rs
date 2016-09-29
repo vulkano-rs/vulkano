@@ -107,7 +107,7 @@ unsafe impl<S> StdDescriptorSetResourcesCollection<S> for () {
     unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        unimplemented!()        // FIXME:
+        SubmitInfo::empty()
     }
 }
 
