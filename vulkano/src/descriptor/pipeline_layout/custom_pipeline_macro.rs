@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::DescriptorBufferDesc;
-use descriptor::descriptor_set::resources_collection::Buf;
+use descriptor::descriptor_set::StdDescriptorSetBuf;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -267,13 +267,13 @@ unsafe impl<T: ?Sized> DescriptorMarker for UniformBuffer<T> {
 unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
-    type Resource = Buf<B>;
+    type Resource = StdDescriptorSetBuf<B>;
 
     #[inline]
     fn build(self) -> Self::Resource {
         let size = self.size();
 
-        Buf {
+        StdDescriptorSetBuf {
             buffer: self,
             offset: 0,
             size: size,
@@ -302,13 +302,13 @@ unsafe impl<T: ?Sized> DescriptorMarker for StorageBuffer<T> {
 unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
-    type Resource = Buf<B>;
+    type Resource = StdDescriptorSetBuf<B>;
 
     #[inline]
     fn build(self) -> Self::Resource {
         let size = self.size();
 
-        Buf {
+        StdDescriptorSetBuf {
             buffer: self,
             offset: 0,
             size: size,
