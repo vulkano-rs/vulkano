@@ -56,7 +56,7 @@ use framebuffer::traits::Framebuffer;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
-use image::traits::PipelineBarrierRequest as ImagePipelineBarrierRequest;
+use image::traits::TrackedImagePipelineBarrierRequest;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::IndexType;
@@ -1250,7 +1250,7 @@ impl PipelineBarrierBuilder {
     }
 
     pub unsafe fn add_image_barrier_request(&mut self, image: &UnsafeImage,
-                                            request: ImagePipelineBarrierRequest)
+                                            request: TrackedImagePipelineBarrierRequest)
     {
         if !request.by_region {
             self.dependency_flags = 0;

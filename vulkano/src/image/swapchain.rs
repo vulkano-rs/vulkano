@@ -23,9 +23,9 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::PipelineBarrierRequest;
-use image::traits::PipelineMemoryBarrierRequest;
-use image::traits::SubmitInfos;
+use image::traits::TrackedImagePipelineBarrierRequest;
+use image::traits::TrackedImagePipelineMemoryBarrierRequest;
+use image::traits::TrackedImageSubmitInfos;
 use image::traits::TrackedImage;
 use image::traits::TrackedImageView;
 use image::sys::Layout;
@@ -185,7 +185,7 @@ unsafe impl ImageView for SwapchainImage {
 unsafe impl TrackedImage<StatesManager> for SwapchainImage {
     fn transition(&self, states: &mut StatesManager, num_command: usize, _: u32, _: u32,
                   _: u32, _: u32, _: bool, layout: Layout, stage: PipelineStages,
-                  access: AccessFlagBits) -> Option<PipelineBarrierRequest>
+                  access: AccessFlagBits) -> Option<TrackedImagePipelineBarrierRequest>
     {
         let default = SwapchainImageCbState {
             stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
@@ -203,12 +203,12 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
 
         let mut state = states.image_or(&self.image, 0, || default);
 
-        let transition = PipelineBarrierRequest {
+        let transition = TrackedImagePipelineBarrierRequest {
             after_command_num: state.command_num,
             source_stage: state.stages,
             destination_stages: stage,
             by_region: true,
-            memory_barrier: Some(PipelineMemoryBarrierRequest {
+            memory_barrier: Some(TrackedImagePipelineMemoryBarrierRequest {
                 first_mipmap: 0,
                 num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
                 first_layer: 0,
@@ -227,11 +227,11 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
     }
 
     fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
-              -> Option<PipelineBarrierRequest>
+              -> Option<TrackedImagePipelineBarrierRequest>
     {
         let state: SwapchainImageCbState = in_s.remove_image(&self.image, 0).unwrap();
 
-        let transition = PipelineBarrierRequest {
+        let transition = TrackedImagePipelineBarrierRequest {
             after_command_num: state.command_num,
             source_stage: state.stages,
             destination_stages: PipelineStages {
@@ -239,7 +239,7 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
                 .. PipelineStages::none()
             },
             by_region: true,
-            memory_barrier: Some(PipelineMemoryBarrierRequest {
+            memory_barrier: Some(TrackedImagePipelineMemoryBarrierRequest {
                 first_mipmap: 0,
                 num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
                 first_layer: 0,
@@ -259,10 +259,10 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
         Some(transition)
     }
 
-    fn on_submit<F>(&self, _: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, _: &StatesManager, queue: &Arc<Queue>, fence: F) -> TrackedImageSubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
-        SubmitInfos {
+        TrackedImageSubmitInfos {
             pre_semaphore: None,        // FIXME:
             post_semaphore: None,       // FIXME:
             pre_barrier: None,          // FIXME: transition from undefined at first usage

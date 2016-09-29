@@ -77,22 +77,25 @@ pub unsafe trait TrackedImage<States = StatesManager>: Image {
     // previous transition?
     fn transition(&self, states: &mut States, num_command: usize, first_mipmap: u32,
                   num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits) -> Option<PipelineBarrierRequest>;
+                  stage: PipelineStages, access: AccessFlagBits)
+                  -> Option<TrackedImagePipelineBarrierRequest>;
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(&self, in_s: &mut States, out: &mut States) -> Option<PipelineBarrierRequest>;
+    fn finish(&self, in_s: &mut States, out: &mut States)
+              -> Option<TrackedImagePipelineBarrierRequest>;
 
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F)
+                    -> TrackedImageSubmitInfos
         where F: FnOnce() -> Arc<Fence>;
 }
 
 /// Requests that a pipeline barrier is created.
-pub struct PipelineBarrierRequest {
+pub struct TrackedImagePipelineBarrierRequest {
     /// The number of the command after which the barrier should be placed. Must usually match
     /// the number that was passed to the previous call to `transition`, or 0 if the image hasn't
     /// been used yet.
@@ -107,8 +110,8 @@ pub struct PipelineBarrierRequest {
     /// If true, the pipeliner barrier is by region.
     pub by_region: bool,
 
-    /// An optional memory barrier. See the docs of `PipelineMemoryBarrierRequest`.
-    pub memory_barrier: Option<PipelineMemoryBarrierRequest>,
+    /// An optional memory barrier. See the docs of `TrackedImagePipelineMemoryBarrierRequest`.
+    pub memory_barrier: Option<TrackedImagePipelineMemoryBarrierRequest>,
 }
 
 /// Requests that a memory barrier is created as part of the pipeline barrier.
@@ -119,7 +122,7 @@ pub struct PipelineBarrierRequest {
 ///
 /// The memory barrier always concerns the image that is currently being processed. You can't add
 /// a memory barrier that concerns another resource.
-pub struct PipelineMemoryBarrierRequest {
+pub struct TrackedImagePipelineMemoryBarrierRequest {
     pub first_mipmap: u32,
     pub num_mipmaps: u32,
     pub first_layer: u32,
@@ -134,11 +137,11 @@ pub struct PipelineMemoryBarrierRequest {
     pub destination_access: AccessFlagBits,
 }
 
-pub struct SubmitInfos {
+pub struct TrackedImageSubmitInfos {
     pub pre_semaphore: Option<(Receiver<Arc<Semaphore>>, PipelineStages)>,
     pub post_semaphore: Option<Sender<Arc<Semaphore>>>,
-    pub pre_barrier: Option<PipelineBarrierRequest>,
-    pub post_barrier: Option<PipelineBarrierRequest>,
+    pub pre_barrier: Option<TrackedImagePipelineBarrierRequest>,
+    pub post_barrier: Option<TrackedImagePipelineBarrierRequest>,
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
