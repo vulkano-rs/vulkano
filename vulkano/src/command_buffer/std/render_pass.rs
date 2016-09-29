@@ -61,6 +61,8 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
                   -> BeginRenderPassCommand<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {
+        assert!(previous.is_outside_render_pass());
+
         let mut states = previous.extract_states();
 
         let (barrier_pos, barrier) = unsafe {
@@ -463,7 +465,13 @@ unsafe impl<L> CommandsList for EndRenderPassCommand<L> where L: CommandsList {
     }
 }
 
-unsafe impl<L> CommandsListPossibleOutsideRenderPass for EndRenderPassCommand<L> where L: CommandsListBase {
+unsafe impl<L> CommandsListPossibleOutsideRenderPass for EndRenderPassCommand<L>
+    where L: CommandsListBase
+{
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
 }
 
 /// Wraps around a command buffer and adds an end render pass command at the end of it.

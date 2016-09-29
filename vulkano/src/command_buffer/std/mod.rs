@@ -231,8 +231,8 @@ unsafe impl<C> AbstractCommandsList for C where C: CommandsList {
 /// In other words, if this trait is *not* implemented then we're guaranteed *not* to be outside
 /// of a render pass. If it is implemented, then we maybe are but that's not sure.
 pub unsafe trait CommandsListPossibleOutsideRenderPass {
-    /*/// Returns `true` if we're outside a render pass.
-    fn is_outside_render_pass(&self) -> bool;*/
+    /// Returns `true` if we're outside a render pass.
+    fn is_outside_render_pass(&self) -> bool;
 }
 
 /// Extension trait for both `CommandsListBase` and `CommandsListOutput` that indicates that we're

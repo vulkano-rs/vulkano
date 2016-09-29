@@ -51,6 +51,8 @@ impl<L, B> FillCommand<L, B>
 {
     /// See the documentation of the `fill_buffer` method.
     pub fn new(mut previous: L, buffer: B, data: u32) -> FillCommand<L, B> {
+        assert!(previous.is_outside_render_pass());
+
         let mut states = previous.extract_states();
 
         // Determining the new state of the buffer, and the optional pipeline barrier to add
@@ -182,6 +184,10 @@ unsafe impl<L, B> CommandsListPossibleOutsideRenderPass for FillCommand<L, B>
     where B: TrackedBuffer,
           L: CommandsListBase,
 {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.

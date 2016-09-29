@@ -125,7 +125,12 @@ unsafe impl<P> CommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     }
 }
 
-unsafe impl<P> CommandsListPossibleOutsideRenderPass for PrimaryCbBuilder<P> where P: CommandPool {}
+unsafe impl<P> CommandsListPossibleOutsideRenderPass for PrimaryCbBuilder<P> where P: CommandPool {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
+}
 
 pub struct PrimaryCb<P = Arc<StandardCommandPool>> where P: CommandPool {
     cb: UnsafeCommandBuffer<P>,

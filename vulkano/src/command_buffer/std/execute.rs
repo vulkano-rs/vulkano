@@ -163,6 +163,10 @@ unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L
 unsafe impl<Cb, L> CommandsListPossibleOutsideRenderPass for ExecuteCommand<Cb, L>
     where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass + CommandsListBase
 {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        self.previous.is_outside_render_pass()
+    }
 }
 
 /// Wraps around a command buffer and adds an execute command at the end of it.

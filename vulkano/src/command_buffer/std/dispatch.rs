@@ -58,6 +58,8 @@ impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
     pub fn new(mut previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, dimensions: [u32; 3],
                push_constants: &'a Pc) -> DispatchCommand<'a, L, Pl, S, Pc>
     {
+        assert!(previous.is_outside_render_pass());
+
         let mut states = previous.extract_states();
 
         let (barrier_loc, barrier) = unsafe {
@@ -186,6 +188,10 @@ unsafe impl<'a, L, Pl, S, Pc> CommandsList for DispatchCommand<'a, L, Pl, S, Pc>
 unsafe impl<'a, L, Pl, S, Pc> CommandsListPossibleOutsideRenderPass for DispatchCommand<'a, L, Pl, S, Pc>
     where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.

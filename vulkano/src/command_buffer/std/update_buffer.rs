@@ -52,6 +52,8 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
 {
     /// See the documentation of the `update_buffer` method.
     pub fn new(mut previous: L, buffer: B, data: &'a D) -> UpdateCommand<'a, L, B, D> {
+        assert!(previous.is_outside_render_pass());
+
         let mut states = previous.extract_states();
 
         // Determining the new state of the buffer, and the optional pipeline barrier to add
@@ -185,6 +187,10 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass for Updat
           L: CommandsListBase,
           D: Copy + 'static,
 {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
@@ -246,6 +252,10 @@ unsafe impl<L, B> CommandsListOutput for UpdateCommandCb<L, B>
 unsafe impl<L, B> CommandsListPossibleOutsideRenderPass for UpdateCommandCb<L, B>
     where B: TrackedBuffer, L: CommandsListOutput
 {
+    #[inline]
+    fn is_outside_render_pass(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
