@@ -333,16 +333,19 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
     unsafe fn transition(&self, states: &mut States, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
-        let (rest_cmd, mut rest_barrier) = self.rest.transition(states, num_command);
+        let (mut rest_cmd, mut rest_barrier) = self.rest.transition(states, num_command);
         debug_assert!(rest_cmd <= num_command);
 
-        let (layout, stages, access) = {
+        let barrier = { 
             // FIXME: depth-stencil and general layouts
             let layout = Layout::ColorAttachmentOptimal;
+
             let stages = PipelineStages {
                 color_attachment_output: true,
+                late_fragment_tests: true,
                 ..PipelineStages::none()
             };
+
             let access = AccessFlagBits {
                 color_attachment_read: true,
                 color_attachment_write: true,
@@ -350,14 +353,16 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
                 depth_stencil_attachment_write: true,
                 .. AccessFlagBits::none()
             };
-            (layout, stages, access)
+
+            self.first.image().transition(states, num_command, 0, 1,
+                                          0, 1 /* FIXME: */, true, layout, stages, access)
         };
 
-        let barrier = self.first.image().transition(states, num_command, 0, 1,
-                                                    0, 1 /* FIXME: */, true, layout, stages, access);
-
         if let Some(barrier) = barrier {
-            rest_barrier.add_image_barrier_request(self.first.image().inner(), barrier);
+            debug_assert!(barrier.after_command_num <= num_command);
+            rest_cmd = cmp::max(rest_cmd, barrier.after_command_num);
+
+            rest_barrier.add_image_barrier_request(self.first.image().inner(), barrier); 
         }
 
         (rest_cmd, rest_barrier)
