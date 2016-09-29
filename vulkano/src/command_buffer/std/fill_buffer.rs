@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::traits::TrackedBuffer;
-use buffer::traits::TrackedBufferPipelineBarrierRequest;
+use buffer::TrackedBuffer;
+use buffer::TrackedBufferPipelineBarrierRequest;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
 use command_buffer::std::CommandsListBase;

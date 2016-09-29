@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
+use buffer::TrackedBuffer;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use device::Queue;

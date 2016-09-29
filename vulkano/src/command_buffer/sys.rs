@@ -38,8 +38,8 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferInner;
+use buffer::TrackedBufferPipelineBarrierRequest;
 use buffer::sys::UnsafeBuffer;
-use buffer::traits::TrackedBufferPipelineBarrierRequest;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolFinished;

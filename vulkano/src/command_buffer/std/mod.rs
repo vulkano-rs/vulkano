@@ -10,7 +10,7 @@
 use std::iter;
 use std::sync::Arc;
 
-use buffer::traits::TrackedBuffer;
+use buffer::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::states_manager::StatesManager;

@@ -11,7 +11,7 @@ use std::iter;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::traits::Buffer;
+use buffer::Buffer;
 use command_buffer::DynamicState;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleInsideRenderPass;

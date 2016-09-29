@@ -68,6 +68,10 @@ pub use self::sys::Usage as BufferUsage;
 pub use self::traits::Buffer;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBuffer;
+pub use self::traits::TrackedBuffer;
+pub use self::traits::TrackedBufferPipelineBarrierRequest;
+pub use self::traits::TrackedBufferPipelineMemoryBarrierRequest;
+pub use self::traits::TrackedBufferSubmitInfos;
 pub use self::view::BufferView;
 
 pub mod cpu_access;
@@ -75,5 +79,5 @@ pub mod device_local;
 pub mod immutable;
 mod slice;
 pub mod sys;
-pub mod traits;
+mod traits;
 pub mod view;
