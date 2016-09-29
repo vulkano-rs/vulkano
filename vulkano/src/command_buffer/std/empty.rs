@@ -28,9 +28,8 @@ use framebuffer::EmptySinglePassRenderPass;
 use framebuffer::StdFramebuffer;
 use framebuffer::framebuffer::EmptyAttachmentsList;
 use instance::QueueFamily;
-use pipeline::ComputePipeline;
-use pipeline::GraphicsPipeline;
 use sync::Fence;
+use vk;
 
 pub struct PrimaryCbBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
     pool: P,
@@ -69,15 +68,12 @@ unsafe impl<P> CommandsListBase for PrimaryCbBuilder<P> where P: CommandPool {
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
-
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         false
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         false
     }
 

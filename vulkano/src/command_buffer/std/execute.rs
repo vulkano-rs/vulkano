@@ -22,9 +22,8 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use instance::QueueFamily;
-use pipeline::ComputePipeline;
-use pipeline::GraphicsPipeline;
 use sync::Fence;
+use vk;
 
 /// Wraps around a commands list and adds a command at the end of it that executes a secondary
 /// command buffer.
@@ -76,15 +75,13 @@ unsafe impl<Cb, L> CommandsListBase for ExecuteCommand<Cb, L>
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         // Bindings are always invalidated after a execute command ends.
         false
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         // Bindings are always invalidated after a execute command ends.
         false
     }

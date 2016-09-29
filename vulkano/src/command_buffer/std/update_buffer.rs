@@ -23,11 +23,10 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Queue;
 use instance::QueueFamily;
-use pipeline::ComputePipeline;
-use pipeline::GraphicsPipeline;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
+use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct UpdateCommand<'a, L, B, D: ?Sized>
@@ -107,15 +106,12 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsListBase for UpdateCommand<'a, L, B, D>
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
-
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 }

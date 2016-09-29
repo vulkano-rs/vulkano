@@ -27,11 +27,11 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Queue;
 use instance::QueueFamily;
-use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 use sync::Fence;
 use VulkanObject;
+use vk;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
 pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
@@ -131,16 +131,13 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListBase for DrawCommand<'a, L, P
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<OPl>(&self, pipeline: &Arc<ComputePipeline<OPl>>) -> bool {
-
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<OPv, OPl, OPrp>(&self, pipeline: &Arc<GraphicsPipeline<OPv, OPl, OPrp>>)
-                                                   -> bool
-    {
-        pipeline.internal_object() == self.pipeline.internal_object()
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
+        self.pipeline.internal_object() == pipeline
     }
 
     #[inline]
@@ -192,7 +189,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, Pv, P
         // while it's partially moved out.
         let my_barrier = self.pipeline_barrier;
         let my_pipeline = self.pipeline;
-        let bind_pipeline = !self.previous.is_graphics_pipeline_bound(&my_pipeline);
+        let bind_pipeline = !self.previous.is_graphics_pipeline_bound(my_pipeline.internal_object());
         let my_sets = self.sets;
         let my_push_constants = self.push_constants;
         let my_vertex_buffers = self.vertex_buffers;

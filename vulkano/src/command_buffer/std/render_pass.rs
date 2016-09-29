@@ -28,9 +28,8 @@ use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use instance::QueueFamily;
-use pipeline::ComputePipeline;
-use pipeline::GraphicsPipeline;
 use sync::Fence;
+use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommand<L, Rp, F>
@@ -117,14 +116,12 @@ unsafe impl<L, Rp, Fb> CommandsListBase for BeginRenderPassCommand<L, Rp, Fb>
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 }
@@ -296,15 +293,12 @@ unsafe impl<L> CommandsListBase for NextSubpassCommand<L>
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
-
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 }
@@ -421,15 +415,12 @@ unsafe impl<L> CommandsListBase for EndRenderPassCommand<L> where L: CommandsLis
     }
 
     #[inline]
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool {
-
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_compute_pipeline_bound(pipeline)
     }
 
     #[inline]
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool
-    {
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         self.previous.is_graphics_pipeline_bound(pipeline)
     }
 }

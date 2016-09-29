@@ -30,6 +30,7 @@ use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 use sync::Fence;
+use vk;
 
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
@@ -163,11 +164,12 @@ pub unsafe trait CommandsListBase {
     fn extract_states(&mut self) -> StatesManager;
 
     /// Returns true if the given compute pipeline is currently binded in the commands list.
-    fn is_compute_pipeline_bound<Pl>(&self, pipeline: &Arc<ComputePipeline<Pl>>) -> bool;
+    // TODO: better API?
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
 
     /// Returns true if the given graphics pipeline is currently binded in the commands list.
-    fn is_graphics_pipeline_bound<Pv, Pl, Prp>(&self, pipeline: &Arc<GraphicsPipeline<Pv, Pl, Prp>>)
-                                                -> bool;
+    // TODO: better API?
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
 }
 
 pub unsafe trait CommandsList: CommandsListBase {
