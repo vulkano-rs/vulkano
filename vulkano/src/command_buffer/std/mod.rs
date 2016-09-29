@@ -112,6 +112,7 @@ pub unsafe trait CommandsListBase {
     }
 
     /// Adds a command that jumps to the next subpass of the current render pass.
+    #[inline]
     fn next_subpass(self, secondary: bool) -> render_pass::NextSubpassCommand<Self>
         where Self: Sized + CommandsListPossibleInsideRenderPass
     {
@@ -122,6 +123,7 @@ pub unsafe trait CommandsListBase {
     ///
     /// This must be called after you went through all the subpasses and before you can build
     /// the command buffer or add further commands.
+    #[inline]
     fn end_render_pass(self) -> render_pass::EndRenderPassCommand<Self>
         where Self: Sized + CommandsListPossibleInsideRenderPass
     {
