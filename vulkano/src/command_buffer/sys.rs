@@ -39,7 +39,7 @@ use smallvec::SmallVec;
 use buffer::Buffer;
 use buffer::BufferInner;
 use buffer::sys::UnsafeBuffer;
-use buffer::traits::PipelineBarrierRequest as BufferPipelineBarrierRequest;
+use buffer::traits::TrackedBufferPipelineBarrierRequest;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolFinished;
@@ -1212,7 +1212,7 @@ impl PipelineBarrierBuilder {
     }
 
     pub unsafe fn add_buffer_barrier_request<B>(&mut self, buffer: &B,
-                                                request: BufferPipelineBarrierRequest)
+                                                request: TrackedBufferPipelineBarrierRequest)
         where B: Buffer
     {
         if !request.by_region {

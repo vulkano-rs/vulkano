@@ -16,8 +16,8 @@ use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use buffer::traits::TrackedBuffer;
-use buffer::traits::SubmitInfos;
-use buffer::traits::PipelineBarrierRequest;
+use buffer::traits::TrackedBufferPipelineBarrierRequest;
+use buffer::traits::TrackedBufferSubmitInfos;
 use device::Queue;
 
 use sync::AccessFlagBits;
@@ -175,7 +175,7 @@ unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: Tra
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<PipelineBarrierRequest>
+                  -> Option<TrackedBufferPipelineBarrierRequest>
     {
         debug_assert!(size < self.size);
         let mut rq = self.resource.transition(states, num_command, offset + self.offset,
@@ -191,7 +191,7 @@ unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: Tra
     }
 
     #[inline]
-    fn finish(&self, in_s: &mut S, out: &mut S) -> Option<PipelineBarrierRequest> {
+    fn finish(&self, in_s: &mut S, out: &mut S) -> Option<TrackedBufferPipelineBarrierRequest> {
         let mut rq = self.resource.finish(in_s, out);
 
         if let Some(ref mut rq) = rq {
@@ -204,7 +204,7 @@ unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: Tra
     }
 
     #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> TrackedBufferSubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
         self.resource.on_submit(states, queue, fence)

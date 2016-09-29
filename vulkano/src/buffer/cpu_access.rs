@@ -36,11 +36,11 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
-use buffer::traits::SubmitInfos;
-use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
-use buffer::traits::PipelineBarrierRequest;
-use buffer::traits::PipelineMemoryBarrierRequest;
+use buffer::traits::TrackedBuffer;
+use buffer::traits::TrackedBufferSubmitInfos;
+use buffer::traits::TrackedBufferPipelineBarrierRequest;
+use buffer::traits::TrackedBufferPipelineMemoryBarrierRequest;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::Submission;
 use device::Device;
@@ -344,7 +344,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
 {
     fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<PipelineBarrierRequest>
+                  -> Option<TrackedBufferPipelineBarrierRequest>
     {
         debug_assert!(!stage.host);
         debug_assert!(!access.host_read);
@@ -374,13 +374,13 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
                 needs_flush_at_the_end: true,
             };
 
-            let barrier = PipelineBarrierRequest {
+            let barrier = TrackedBufferPipelineBarrierRequest {
                 after_command_num: state.earliest_previous_transition,
                 source_stage: state.stages,
                 destination_stages: stage,
                 by_region: true,
                 memory_barrier: if state.write {
-                    Some(PipelineMemoryBarrierRequest {
+                    Some(TrackedBufferPipelineMemoryBarrierRequest {
                         offset: 0,
                         size: state.size,
                         source_access: state.access,
@@ -406,12 +406,12 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
                 needs_flush_at_the_end: state.needs_flush_at_the_end,
             };
 
-            let barrier = PipelineBarrierRequest {
+            let barrier = TrackedBufferPipelineBarrierRequest {
                 after_command_num: state.earliest_previous_transition,
                 source_stage: state.stages,
                 destination_stages: stage,
                 by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
                     offset: 0,
                     size: state.size,
                     source_access: state.access,
@@ -439,17 +439,17 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
     }
 
     fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
-              -> Option<PipelineBarrierRequest>
+              -> Option<TrackedBufferPipelineBarrierRequest>
     {
         let state: CpuAccessibleBufferClState = in_s.remove_buffer(self.inner().buffer, 0).unwrap();
 
         let barrier = if state.needs_flush_at_the_end {
-            let barrier = PipelineBarrierRequest {
+            let barrier = TrackedBufferPipelineBarrierRequest {
                 after_command_num: state.earliest_previous_transition,
                 source_stage: state.stages,
                 destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
                 by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
+                memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
                     offset: 0,
                     size: state.size,
                     source_access: state.access,
@@ -471,12 +471,13 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
         barrier
     }
 
-    fn on_submit<F>(&self, state: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, state: &StatesManager, queue: &Arc<Queue>, fence: F)
+                    -> TrackedBufferSubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
         // FIXME: implement correctly
 
-        SubmitInfos {
+        TrackedBufferSubmitInfos {
             pre_semaphore: None,
             post_semaphore: None,
             pre_barrier: None,

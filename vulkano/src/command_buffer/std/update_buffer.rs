@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::traits::PipelineBarrierRequest;
 use buffer::traits::TrackedBuffer;
+use buffer::traits::TrackedBufferPipelineBarrierRequest;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
 use command_buffer::std::CommandsListBase;
@@ -40,7 +40,7 @@ pub struct UpdateCommand<'a, L, B, D: ?Sized>
     // The data to write to the buffer.
     data: &'a D,
     // Pipeline barrier to perform before this command.
-    barrier: Option<PipelineBarrierRequest>,
+    barrier: Option<TrackedBufferPipelineBarrierRequest>,
     // States of the resources, or `None` if it has been extracted.
     resources_states: Option<StatesManager>,
 }

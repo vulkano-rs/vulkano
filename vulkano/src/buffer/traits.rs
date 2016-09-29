@@ -102,22 +102,22 @@ pub unsafe trait TrackedBuffer<States = StatesManager>: Buffer {
     // previous transition?
     fn transition(&self, states: &mut States, num_command: usize, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<PipelineBarrierRequest>;
+                  -> Option<TrackedBufferPipelineBarrierRequest>;
 
     /// Function called when the command buffer builder is turned into a real command buffer.
     ///
     /// This function can return an additional pipeline barrier that will be applied at the end
     /// of the command buffer.
-    fn finish(&self, in_s: &mut States, out: &mut States) -> Option<PipelineBarrierRequest>;
+    fn finish(&self, in_s: &mut States, out: &mut States) -> Option<TrackedBufferPipelineBarrierRequest>;
 
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> TrackedBufferSubmitInfos
         where F: FnOnce() -> Arc<Fence>;
 }
 
 /// Requests that a pipeline barrier is created.
-pub struct PipelineBarrierRequest {
+pub struct TrackedBufferPipelineBarrierRequest {
     /// The number of the command after which the barrier should be placed. Must usually match
     /// the number that was passed to the previous call to `transition`, or 0 if the buffer hasn't
     /// been used yet.
@@ -133,8 +133,8 @@ pub struct PipelineBarrierRequest {
     /// here, but it is included just in case.
     pub by_region: bool,
 
-    /// An optional memory barrier. See the docs of `PipelineMemoryBarrierRequest`.
-    pub memory_barrier: Option<PipelineMemoryBarrierRequest>,
+    /// An optional memory barrier. See the docs of `TrackedBufferPipelineMemoryBarrierRequest`.
+    pub memory_barrier: Option<TrackedBufferPipelineMemoryBarrierRequest>,
 }
 
 /// Requests that a memory barrier is created as part of the pipeline barrier.
@@ -145,7 +145,7 @@ pub struct PipelineBarrierRequest {
 ///
 /// The memory barrier always concerns the buffer that is currently being processed. You can't add
 /// a memory barrier that concerns another resource.
-pub struct PipelineMemoryBarrierRequest {
+pub struct TrackedBufferPipelineMemoryBarrierRequest {
     /// Offset of start of the range to flush.
     pub offset: isize,
     /// Size of the range to flush.
@@ -156,29 +156,29 @@ pub struct PipelineMemoryBarrierRequest {
     pub destination_access: AccessFlagBits,
 }
 
-pub struct SubmitInfos {
+pub struct TrackedBufferSubmitInfos {
     pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
     pub post_semaphore: Option<Arc<Semaphore>>,
-    pub pre_barrier: Option<PipelineBarrierRequest>,
-    pub post_barrier: Option<PipelineBarrierRequest>,
+    pub pre_barrier: Option<TrackedBufferPipelineBarrierRequest>,
+    pub post_barrier: Option<TrackedBufferPipelineBarrierRequest>,
 }
 
 unsafe impl<B:? Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> {
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<PipelineBarrierRequest>
+                  -> Option<TrackedBufferPipelineBarrierRequest>
     {
         (**self).transition(states, num_command, offset, size, write, stage, access)
     }
 
     #[inline]
-    fn finish(&self, i: &mut S, o: &mut S) -> Option<PipelineBarrierRequest> {
+    fn finish(&self, i: &mut S, o: &mut S) -> Option<TrackedBufferPipelineBarrierRequest> {
         (**self).finish(i, o)
     }
 
     #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> TrackedBufferSubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
         (**self).on_submit(states, queue, fence)
@@ -189,18 +189,18 @@ unsafe impl<'a, B: ?Sized, S> TrackedBuffer<S> for &'a B where B: TrackedBuffer<
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<PipelineBarrierRequest>
+                  -> Option<TrackedBufferPipelineBarrierRequest>
     {
         (**self).transition(states, num_command, offset, size, write, stage, access)
     }
 
     #[inline]
-    fn finish(&self, i: &mut S, o: &mut S) -> Option<PipelineBarrierRequest> {
+    fn finish(&self, i: &mut S, o: &mut S) -> Option<TrackedBufferPipelineBarrierRequest> {
         (**self).finish(i, o)
     }
 
     #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> TrackedBufferSubmitInfos
         where F: FnOnce() -> Arc<Fence>
     {
         (**self).on_submit(states, queue, fence)
