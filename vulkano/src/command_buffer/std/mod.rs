@@ -217,17 +217,24 @@ pub unsafe trait CommandsList: CommandsListBase {
     }
 }
 
-/*pub unsafe trait AbstractCommandsList: CommandsListBase {
+pub unsafe trait AbstractCommandsList: CommandsListBase {
     /// Turns the commands list into a command buffer that can be submitted.
     fn abstract_build(self) -> CommandBuffer where Self: Sized;
 }
 
-unsafe impl<C> AbstractCommandsList for C where C: CommandsList {
+unsafe impl<C> AbstractCommandsList for C
+    where C: CommandsList, <C as CommandsList>::Output: 'static
+{
     #[inline]
     fn abstract_build(self) -> CommandBuffer {
-        Box::new(self.build())
+        let tmp = self.build();
+
+        CommandBuffer {
+            states: tmp.states,
+            commands: Box::new(tmp.commands) as Box<_>,
+        }
     }
-}*/
+}
 
 /// Extension trait for both `CommandsListBase` and `CommandsListOutput` that indicates that we're
 /// possibly outside a render pass.
@@ -277,7 +284,7 @@ pub unsafe trait CommandsListOutput<S = StatesManager> {
                         fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo;
 }
 
-pub struct CommandBuffer<C /* = Box<CommandsListOutput>*/> {
+pub struct CommandBuffer<C = Box<CommandsListOutput>> {
     states: StatesManager,
     commands: C,
 }
