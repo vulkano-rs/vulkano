@@ -19,8 +19,8 @@ use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
+use device::Device;
 use device::Queue;
 use instance::QueueFamily;
 use sync::AccessFlagBits;
@@ -197,11 +197,14 @@ pub struct FillCommandCb<L, B> where B: TrackedBuffer, L: CommandsListOutput {
 unsafe impl<L, B> CommandsListOutput for FillCommandCb<L, B>
     where B: TrackedBuffer, L: CommandsListOutput
 {
-    type Pool = L::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.previous.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.previous.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.previous.device()
     }
 
     unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo

@@ -657,15 +657,11 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
     /// Executes secondary command buffers..
     // TODO: check for same device
-    // TODO: allow multiple command buffers from different pools
-    pub unsafe fn execute_commands<'sec, I, SecP: 'sec>(&mut self, command_buffers: I)
-        where I: IntoIterator<Item = &'sec UnsafeCommandBuffer<SecP>>,
-              SecP: CommandPool
+    // TODO: crappy API
+    pub unsafe fn execute_commands<I>(&mut self, command_buffers: I)
+        where I: IntoIterator<Item = vk::CommandBuffer>
     {
-        let raw_cbs: SmallVec<[_; 16]> = command_buffers.into_iter().map(|cb| {
-            debug_assert!(cb.secondary_cb);
-            cb.cmd
-        }).collect();
+        let raw_cbs: SmallVec<[_; 16]> = command_buffers.into_iter().collect();
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();

@@ -17,10 +17,10 @@ use command_buffer::states_manager::StatesManager;
 use command_buffer::submit::Submit;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
+use device::Device;
 use device::Queue;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
@@ -266,11 +266,12 @@ pub unsafe trait CommandsListPossibleInsideRenderPass {
 }
 
 pub unsafe trait CommandsListOutput<S = StatesManager> {
-    /// Type of the pool that was used to allocate the command buffer.
-    type Pool: CommandPool;
-
     /// Returns the inner object.
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+    // TODO: crappy API
+    fn inner(&self) -> vk::CommandBuffer;
+
+    /// Returns the device this object belongs to.
+    fn device(&self) -> &Arc<Device>;
 
     unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
@@ -282,11 +283,14 @@ pub struct CommandBuffer<C /* = Box<CommandsListOutput>*/> {
 }
 
 unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
-    type Pool = C::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.commands.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.commands.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.commands.device()
     }
 
     #[inline]

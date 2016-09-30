@@ -20,8 +20,8 @@ use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
+use device::Device;
 use device::Queue;
 use format::ClearValue;
 use framebuffer::traits::TrackedFramebuffer;
@@ -207,11 +207,14 @@ pub struct BeginRenderPassCommandCb<L, Rp, F>
 unsafe impl<L, Rp, Fb> CommandsListOutput for BeginRenderPassCommandCb<L, Rp, Fb>
     where L: CommandsListOutput, Rp: RenderPass, Fb: TrackedFramebuffer
 {
-    type Pool = L::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.previous.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.previous.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.previous.device()
     }
 
     #[inline]
@@ -356,11 +359,14 @@ pub struct NextSubpassCommandCb<L> where L: CommandsListOutput {
 }
 
 unsafe impl<L> CommandsListOutput for NextSubpassCommandCb<L> where L: CommandsListOutput {
-    type Pool = L::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.previous.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.previous.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.previous.device()
     }
 
     #[inline]
@@ -472,11 +478,14 @@ pub struct EndRenderPassCommandCb<L> where L: CommandsListOutput {
 }
 
 unsafe impl<L> CommandsListOutput for EndRenderPassCommandCb<L> where L: CommandsListOutput {
-    type Pool = L::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.previous.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.previous.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.previous.device()
     }
 
     #[inline]

@@ -18,8 +18,8 @@ use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
+use device::Device;
 use device::Queue;
 use instance::QueueFamily;
 use sync::Fence;
@@ -177,11 +177,14 @@ pub struct ExecuteCommandCb<Cb, L> where Cb: CommandsListOutput, L: CommandsList
 unsafe impl<Cb, L> CommandsListOutput for ExecuteCommandCb<Cb, L>
     where Cb: CommandsListOutput, L: CommandsListOutput
 {
-    type Pool = L::Pool;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.previous.inner()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        self.previous.inner()
+    fn device(&self) -> &Arc<Device> {
+        self.previous.device()
     }
 
     #[inline]

@@ -12,12 +12,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use smallvec::SmallVec;
 
-use command_buffer::pool::CommandPool;
 use command_buffer::sys::Kind;
 use command_buffer::sys::Flags;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::Queue;
 use framebuffer::framebuffer::EmptyAttachmentsList;
@@ -47,11 +45,12 @@ pub unsafe trait Submit {
         SubmitList::new().add(self).submit(queue)
     }
 
-    /// Type of the pool that was used to allocate the command buffer.
-    type Pool: CommandPool;
-
     /// Returns the inner object.
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+    // TODO: crappy API
+    fn inner(&self) -> vk::CommandBuffer;
+
+    /// Returns the device this object belongs to.
+    fn device(&self) -> &Arc<Device>;
 
     /// Called slightly before the command buffer is submitted. Signals the command buffers that it
     /// is going to be submitted on the given queue. The function must return the list of
@@ -269,7 +268,7 @@ unsafe impl<C, R> SubmitListTrait for (C, R) where C: Submit + 'static, R: Submi
         let (current, rest) = self;
 
         let mut infos = rest.infos(queue);
-        let device = current.inner().device().clone();
+        let device = current.device().clone();
         let current_infos = unsafe { current.on_submit(queue, || {
             if let Some(fence) = infos.fence.as_ref() {
                 return fence.clone();
@@ -303,7 +302,7 @@ unsafe impl<C, R> SubmitListTrait for (C, R) where C: Submit + 'static, R: Submi
             infos.keep_alive.push(Arc::new(cb) as Arc<_>);
         }
 
-        infos.command_buffers.push(current.inner().internal_object());
+        infos.command_buffers.push(current.inner());
 
         if !current_infos.post_pipeline_barrier.is_empty() {
             let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),

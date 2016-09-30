@@ -29,6 +29,7 @@ use framebuffer::StdFramebuffer;
 use framebuffer::framebuffer::EmptyAttachmentsList;
 use instance::QueueFamily;
 use sync::Fence;
+use VulkanObject;
 use vk;
 
 pub struct PrimaryCbBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
@@ -133,11 +134,14 @@ pub struct PrimaryCb<P = Arc<StandardCommandPool>> where P: CommandPool {
 }
 
 unsafe impl<P> CommandsListOutput for PrimaryCb<P> where P: CommandPool {
-    type Pool = P;
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.cb.internal_object()
+    }
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
-        &self.cb
+    fn device(&self) -> &Arc<Device> {
+        self.cb.device()
     }
 
     unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfo
