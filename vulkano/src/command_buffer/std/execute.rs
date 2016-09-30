@@ -13,8 +13,8 @@ use smallvec::SmallVec;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleInsideRenderPass;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -27,7 +27,7 @@ use vk;
 
 /// Wraps around a commands list and adds a command at the end of it that executes a secondary
 /// command buffer.
-pub struct ExecuteCommand<Cb, L> where Cb: CommandsListOutput, L: CommandsListBase {
+pub struct ExecuteCommand<Cb, L> where Cb: CommandsListOutput, L: CommandsList {
     // Parent commands list.
     previous: L,
     // Command buffer to execute.
@@ -35,7 +35,7 @@ pub struct ExecuteCommand<Cb, L> where Cb: CommandsListOutput, L: CommandsListBa
 }
 
 impl<Cb, L> ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListBase
+    where Cb: CommandsListOutput, L: CommandsList
 {
     /// See the documentation of the `execute` method.
     #[inline]
@@ -50,8 +50,8 @@ impl<Cb, L> ExecuteCommand<Cb, L>
 }
 
 // TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
-unsafe impl<Cb, L> CommandsListBase for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListBase
+unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsList
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -88,8 +88,8 @@ unsafe impl<Cb, L> CommandsListBase for ExecuteCommand<Cb, L>
 }
 
 // TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
-unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsList
+unsafe impl<Cb, L> CommandsListConcrete for ExecuteCommand<Cb, L>
+    where Cb: CommandsListOutput, L: CommandsListConcrete
 {
     type Pool = L::Pool;
     type Output = ExecuteCommandCb<Cb, L::Output>;
@@ -136,7 +136,7 @@ unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
 }
 
 unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass + CommandsListBase
+    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass + CommandsList
 {
     type RenderPass = L::RenderPass;
 
@@ -158,7 +158,7 @@ unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L
 }
 
 unsafe impl<Cb, L> CommandsListPossibleOutsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass + CommandsListBase
+    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass + CommandsList
 {
     #[inline]
     fn is_outside_render_pass(&self) -> bool {

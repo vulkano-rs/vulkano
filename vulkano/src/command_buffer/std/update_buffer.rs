@@ -14,8 +14,8 @@ use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -30,7 +30,7 @@ use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct UpdateCommand<'a, L, B, D: ?Sized>
-    where B: TrackedBuffer, L: CommandsListBase, D: 'static
+    where B: TrackedBuffer, L: CommandsList, D: 'static
 {
     // Parent commands list.
     previous: L,
@@ -46,7 +46,7 @@ pub struct UpdateCommand<'a, L, B, D: ?Sized>
 
 impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: CommandsListBase + CommandsListPossibleOutsideRenderPass,
+          L: CommandsList + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
 {
     /// See the documentation of the `update_buffer` method.
@@ -79,9 +79,9 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> CommandsListBase for UpdateCommand<'a, L, B, D>
+unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: CommandsListBase,
+          L: CommandsList,
           D: Copy + 'static,
 {
     #[inline]
@@ -116,9 +116,9 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsListBase for UpdateCommand<'a, L, B, D>
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
+unsafe impl<'a, L, B, D: ?Sized> CommandsListConcrete for UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: CommandsList,
+          L: CommandsListConcrete,
           D: Copy + 'static,
 {
     type Pool = L::Pool;
@@ -180,7 +180,7 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
 
 unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass for UpdateCommand<'a, L, B, D>
     where B: TrackedBuffer,
-          L: CommandsListBase,
+          L: CommandsList,
           D: Copy + 'static,
 {
     #[inline]
@@ -263,7 +263,7 @@ mod tests {
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::CommandsListBase;
+    use command_buffer::std::CommandsList;
     use command_buffer::submit::CommandBuffer;
 
     #[test]

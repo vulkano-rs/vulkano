@@ -44,7 +44,7 @@ pub mod render_pass;
 pub mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
-pub unsafe trait CommandsListBase {
+pub unsafe trait CommandsList {
     /// Adds a command that writes the content of a buffer.
     ///
     /// After this command is executed, the content of `buffer` will become `data`.
@@ -90,7 +90,7 @@ pub unsafe trait CommandsListBase {
     fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
                                dimensions: [u32; 3], push_constants: &'a Pc)
                                -> dispatch::DispatchCommand<'a, Self, Pl, S, Pc>
-        where Self: Sized + CommandsListBase + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
               S: TrackedDescriptorSetsCollection, Pc: 'a
     {
         dispatch::DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
@@ -139,10 +139,22 @@ pub unsafe trait CommandsListBase {
                                        dynamic: &DynamicState, vertices: V, sets: S,
                                        push_constants: &'a Pc)
                                        -> draw::DrawCommand<'a, Self, Pv, Pl, Prp, S, Pc>
-        where Self: Sized + CommandsListBase + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
               S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
     {
         draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)
+    }
+
+    /// Turns the commands list into a command buffer that can be submitted.
+    #[inline]
+    fn build(self) -> CommandBuffer<Self::Output> where Self: Sized + CommandsListConcrete {
+        CommandsListConcrete::build(self)
+    }
+
+    /// Builds a boxed command buffer object.
+    #[inline]
+    fn abstract_build(self) -> CommandBuffer where Self: Sized + CommandsListAbstract {
+        CommandsListAbstract::abstract_build(self)
     }
 
     /// Returns true if the command buffer can be built. This function should always return true,
@@ -172,7 +184,7 @@ pub unsafe trait CommandsListBase {
     fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
 }
 
-pub unsafe trait CommandsList: CommandsListBase {
+pub unsafe trait CommandsListConcrete: CommandsList {
     type Pool: CommandPool;
     /// The type of the command buffer that will be generated.
     type Output: CommandsListOutput;
@@ -215,25 +227,19 @@ pub unsafe trait CommandsList: CommandsListBase {
             commands: output,
         }
     }
-
-    /// Builds a boxed command buffer object.
-    #[inline]
-    fn abstract_build(self) -> CommandBuffer where Self: Sized + AbstractCommandsList {
-        AbstractCommandsList::abstract_build(self)
-    }
 }
 
-pub unsafe trait AbstractCommandsList: CommandsListBase {
+pub unsafe trait CommandsListAbstract: CommandsList {
     /// Turns the commands list into a command buffer that can be submitted.
     fn abstract_build(self) -> CommandBuffer where Self: Sized;
 }
 
-unsafe impl<C> AbstractCommandsList for C
-    where C: CommandsList, <C as CommandsList>::Output: 'static
+unsafe impl<C> CommandsListAbstract for C
+    where C: CommandsListConcrete, <C as CommandsListConcrete>::Output: 'static
 {
     #[inline]
     fn abstract_build(self) -> CommandBuffer {
-        let tmp = self.build();
+        let tmp = CommandsListConcrete::build(self);
 
         CommandBuffer {
             states: tmp.states,
@@ -242,7 +248,7 @@ unsafe impl<C> AbstractCommandsList for C
     }
 }
 
-/// Extension trait for both `CommandsListBase` and `CommandsListOutput` that indicates that we're
+/// Extension trait for both `CommandsList` and `CommandsListOutput` that indicates that we're
 /// possibly outside a render pass.
 ///
 /// In other words, if this trait is *not* implemented then we're guaranteed *not* to be outside
@@ -252,7 +258,7 @@ pub unsafe trait CommandsListPossibleOutsideRenderPass {
     fn is_outside_render_pass(&self) -> bool;
 }
 
-/// Extension trait for both `CommandsListBase` and `CommandsListOutput` that indicates that we're
+/// Extension trait for both `CommandsList` and `CommandsListOutput` that indicates that we're
 /// possibly inside a render pass.
 ///
 /// In other words, if this trait is *not* implemented then we're guaranteed *not* to be inside

@@ -13,8 +13,8 @@ use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -57,7 +57,7 @@ impl<P> PrimaryCbBuilder<P> where P: CommandPool {
     }
 }
 
-unsafe impl<P> CommandsListBase for PrimaryCbBuilder<P> where P: CommandPool {
+unsafe impl<P> CommandsList for PrimaryCbBuilder<P> where P: CommandPool {
     #[inline]
     fn num_commands(&self) -> usize {
         0
@@ -89,7 +89,7 @@ unsafe impl<P> CommandsListBase for PrimaryCbBuilder<P> where P: CommandPool {
     }
 }
 
-unsafe impl<P> CommandsList for PrimaryCbBuilder<P> where P: CommandPool {
+unsafe impl<P> CommandsListConcrete for PrimaryCbBuilder<P> where P: CommandPool {
     type Pool = P;
     type Output = PrimaryCb<P>;
 
@@ -158,7 +158,7 @@ unsafe impl<P> CommandsListOutput for PrimaryCb<P> where P: CommandPool {
 #[cfg(test)]
 mod tests {
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::CommandsListBase;
+    use command_buffer::std::CommandsList;
     use command_buffer::submit::CommandBuffer;
 
     #[test]

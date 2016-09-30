@@ -13,8 +13,8 @@ use smallvec::SmallVec;
 
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -32,7 +32,7 @@ use vk;
 
 /// Wraps around a commands list and adds a dispatch command at the end of it.
 pub struct DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     // Parent commands list.
     previous: L,
@@ -51,7 +51,7 @@ pub struct DispatchCommand<'a, L, Pl, S, Pc>
 }
 
 impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsListBase + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
+    where L: CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     /// See the documentation of the `dispatch` method.
@@ -78,8 +78,8 @@ impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
     }
 }
 
-unsafe impl<'a, L, Pl, S, Pc> CommandsListBase for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+unsafe impl<'a, L, Pl, S, Pc> CommandsList for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -116,8 +116,8 @@ unsafe impl<'a, L, Pl, S, Pc> CommandsListBase for DispatchCommand<'a, L, Pl, S,
     }
 }
 
-unsafe impl<'a, L, Pl, S, Pc> CommandsList for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+unsafe impl<'a, L, Pl, S, Pc> CommandsListConcrete for DispatchCommand<'a, L, Pl, S, Pc>
+    where L: CommandsListConcrete, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type Pool = L::Pool;
     type Output = DispatchCommandCb<L::Output, Pl, S>;
@@ -184,7 +184,7 @@ unsafe impl<'a, L, Pl, S, Pc> CommandsList for DispatchCommand<'a, L, Pl, S, Pc>
 }
 
 unsafe impl<'a, L, Pl, S, Pc> CommandsListPossibleOutsideRenderPass for DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsListBase, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
+    where L: CommandsList, Pl: PipelineLayout, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     #[inline]
     fn is_outside_render_pass(&self) -> bool {

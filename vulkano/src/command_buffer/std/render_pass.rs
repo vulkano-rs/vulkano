@@ -15,8 +15,8 @@ use smallvec::SmallVec;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleInsideRenderPass;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -33,7 +33,7 @@ use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommand<L, Rp, F>
-    where L: CommandsListBase, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsList, Rp: RenderPass, F: TrackedFramebuffer
 {
     // Parent commands list.
     previous: L,
@@ -52,7 +52,7 @@ pub struct BeginRenderPassCommand<L, Rp, F>
 }
 
 impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
-    where L: CommandsListBase + CommandsListPossibleOutsideRenderPass, F: TrackedFramebuffer
+    where L: CommandsList + CommandsListPossibleOutsideRenderPass, F: TrackedFramebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
@@ -87,8 +87,8 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
     }
 }
 
-unsafe impl<L, Rp, Fb> CommandsListBase for BeginRenderPassCommand<L, Rp, Fb>
-    where L: CommandsListBase, Rp: RenderPass, Fb: TrackedFramebuffer
+unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
+    where L: CommandsList, Rp: RenderPass, Fb: TrackedFramebuffer
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -126,8 +126,8 @@ unsafe impl<L, Rp, Fb> CommandsListBase for BeginRenderPassCommand<L, Rp, Fb>
     }
 }
 
-unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
-    where L: CommandsList, Rp: RenderPass, Fb: TrackedFramebuffer
+unsafe impl<L, Rp, Fb> CommandsListConcrete for BeginRenderPassCommand<L, Rp, Fb>
+    where L: CommandsListConcrete, Rp: RenderPass, Fb: TrackedFramebuffer
 {
     type Pool = L::Pool;
     type Output = BeginRenderPassCommandCb<L::Output, Rp, Fb>;
@@ -169,7 +169,7 @@ unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
 }
 
 unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCommand<L, Rp, F>
-    where L: CommandsListBase, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsList, Rp: RenderPass, F: TrackedFramebuffer
 {
     type RenderPass = Rp;
 
@@ -247,14 +247,14 @@ unsafe impl<L, Rp, Fb> CommandsListOutput for BeginRenderPassCommandCb<L, Rp, Fb
 }
 
 /// Wraps around a commands list and adds a command at the end of it that jumps to the next subpass.
-pub struct NextSubpassCommand<L> where L: CommandsListBase {
+pub struct NextSubpassCommand<L> where L: CommandsList {
     // Parent commands list.
     previous: L,
     // True if only secondary command buffers can be added.
     secondary: bool,
 }
 
-impl<L> NextSubpassCommand<L> where L: CommandsListBase + CommandsListPossibleInsideRenderPass {
+impl<L> NextSubpassCommand<L> where L: CommandsList + CommandsListPossibleInsideRenderPass {
     /// See the documentation of the `next_subpass` method.
     #[inline]
     pub fn new(previous: L, secondary: bool) -> NextSubpassCommand<L> {
@@ -268,8 +268,8 @@ impl<L> NextSubpassCommand<L> where L: CommandsListBase + CommandsListPossibleIn
     }
 }
 
-unsafe impl<L> CommandsListBase for NextSubpassCommand<L>
-    where L: CommandsListBase + CommandsListPossibleInsideRenderPass
+unsafe impl<L> CommandsList for NextSubpassCommand<L>
+    where L: CommandsList + CommandsListPossibleInsideRenderPass
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -306,8 +306,8 @@ unsafe impl<L> CommandsListBase for NextSubpassCommand<L>
     }
 }
 
-unsafe impl<L> CommandsList for NextSubpassCommand<L>
-    where L: CommandsList + CommandsListPossibleInsideRenderPass
+unsafe impl<L> CommandsListConcrete for NextSubpassCommand<L>
+    where L: CommandsListConcrete + CommandsListPossibleInsideRenderPass
 {
     type Pool = L::Pool;
     type Output = NextSubpassCommandCb<L::Output>;
@@ -332,7 +332,7 @@ unsafe impl<L> CommandsList for NextSubpassCommand<L>
 }
 
 unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
-    where L: CommandsListBase + CommandsListPossibleInsideRenderPass
+    where L: CommandsList + CommandsListPossibleInsideRenderPass
 {
     type RenderPass = L::RenderPass;
 
@@ -378,12 +378,12 @@ unsafe impl<L> CommandsListOutput for NextSubpassCommandCb<L> where L: CommandsL
 }
 
 /// Wraps around a commands list and adds an end render pass command at the end of it.
-pub struct EndRenderPassCommand<L> where L: CommandsListBase {
+pub struct EndRenderPassCommand<L> where L: CommandsList {
     // Parent commands list.
     previous: L,
 }
 
-impl<L> EndRenderPassCommand<L> where L: CommandsListBase + CommandsListPossibleInsideRenderPass {
+impl<L> EndRenderPassCommand<L> where L: CommandsList + CommandsListPossibleInsideRenderPass {
     /// See the documentation of the `end_render_pass` method.
     #[inline]
     pub fn new(previous: L) -> EndRenderPassCommand<L> {
@@ -395,7 +395,7 @@ impl<L> EndRenderPassCommand<L> where L: CommandsListBase + CommandsListPossible
     }
 }
 
-unsafe impl<L> CommandsListBase for EndRenderPassCommand<L> where L: CommandsListBase {
+unsafe impl<L> CommandsList for EndRenderPassCommand<L> where L: CommandsList {
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
@@ -431,7 +431,7 @@ unsafe impl<L> CommandsListBase for EndRenderPassCommand<L> where L: CommandsLis
     }
 }
 
-unsafe impl<L> CommandsList for EndRenderPassCommand<L> where L: CommandsList {
+unsafe impl<L> CommandsListConcrete for EndRenderPassCommand<L> where L: CommandsListConcrete {
     type Pool = L::Pool;
     type Output = EndRenderPassCommandCb<L::Output>;
 
@@ -463,7 +463,7 @@ unsafe impl<L> CommandsList for EndRenderPassCommand<L> where L: CommandsList {
 }
 
 unsafe impl<L> CommandsListPossibleOutsideRenderPass for EndRenderPassCommand<L>
-    where L: CommandsListBase
+    where L: CommandsList
 {
     #[inline]
     fn is_outside_render_pass(&self) -> bool {

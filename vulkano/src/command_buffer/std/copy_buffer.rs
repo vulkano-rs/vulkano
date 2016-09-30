@@ -9,14 +9,14 @@
 
 use std::any::Any;
 
-pub struct CopyCommand<L, B> where B: Buffer, L: CommandsList {
+pub struct CopyCommand<L, B> where B: Buffer, L: CommandsListConcrete {
     previous: L,
     buffer: B,
     buffer_state: B::CommandBufferState,
     transition: Option<>,
 }
 
-impl<L, B> CommandsList for CopyCommand<L, B> where B: Buffer, L: CommandsList {
+impl<L, B> CommandsListConcrete for CopyCommand<L, B> where B: Buffer, L: CommandsListConcrete {
     pub fn new(previous: L, buffer: B) -> CopyCommand<L, B> {
         let (state, transition) = previous.current_buffer_state(buffer)
                                           .transition(false, self.num_commands(), ShaderStages, AccessFlagBits);
@@ -24,7 +24,7 @@ impl<L, B> CommandsList for CopyCommand<L, B> where B: Buffer, L: CommandsList {
     }
 }
 
-unsafe impl<L, B> CommandsList for CopyCommand<L, B> where B: Buffer, L: CommandsList {
+unsafe impl<L, B> CommandsListConcrete for CopyCommand<L, B> where B: Buffer, L: CommandsListConcrete {
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1
     }

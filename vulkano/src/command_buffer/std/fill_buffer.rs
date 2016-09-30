@@ -14,8 +14,8 @@ use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsListBase;
 use command_buffer::std::CommandsList;
+use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -30,7 +30,7 @@ use vk;
 
 /// Wraps around a commands list and adds a fill buffer command at the end of it.
 pub struct FillCommand<L, B>
-    where B: TrackedBuffer, L: CommandsListBase
+    where B: TrackedBuffer, L: CommandsList
 {
     // Parent commands list.
     previous: L,
@@ -46,7 +46,7 @@ pub struct FillCommand<L, B>
 
 impl<L, B> FillCommand<L, B>
     where B: TrackedBuffer,
-          L: CommandsListBase + CommandsListPossibleOutsideRenderPass,
+          L: CommandsList + CommandsListPossibleOutsideRenderPass,
 {
     /// See the documentation of the `fill_buffer` method.
     pub fn new(mut previous: L, buffer: B, data: u32) -> FillCommand<L, B> {
@@ -79,9 +79,9 @@ impl<L, B> FillCommand<L, B>
     }
 }
 
-unsafe impl<L, B> CommandsListBase for FillCommand<L, B>
+unsafe impl<L, B> CommandsList for FillCommand<L, B>
     where B: TrackedBuffer,
-          L: CommandsListBase,
+          L: CommandsList,
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -115,9 +115,9 @@ unsafe impl<L, B> CommandsListBase for FillCommand<L, B>
     }
 }
 
-unsafe impl<L, B> CommandsList for FillCommand<L, B>
+unsafe impl<L, B> CommandsListConcrete for FillCommand<L, B>
     where B: TrackedBuffer,
-          L: CommandsList,
+          L: CommandsListConcrete,
 {
     type Pool = L::Pool;
     type Output = FillCommandCb<L::Output, B>;
@@ -178,7 +178,7 @@ unsafe impl<L, B> CommandsList for FillCommand<L, B>
 
 unsafe impl<L, B> CommandsListPossibleOutsideRenderPass for FillCommand<L, B>
     where B: TrackedBuffer,
-          L: CommandsListBase,
+          L: CommandsList,
 {
     #[inline]
     fn is_outside_render_pass(&self) -> bool {
@@ -237,7 +237,7 @@ mod tests {
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
     use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::CommandsListBase;
+    use command_buffer::std::CommandsList;
     use command_buffer::submit::CommandBuffer;
 
     #[test]
