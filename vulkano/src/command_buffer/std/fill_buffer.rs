@@ -207,11 +207,11 @@ unsafe impl<L, B> CommandsListOutput for FillCommandCb<L, B>
         self.previous.device()
     }
 
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
         // We query the parent.
-        let mut parent = self.previous.on_submit(states, queue, &mut fence);
+        let mut parent = self.previous.on_submit(states, queue, fence);
 
         // Then build our own output that modifies the parent's.
         let submit_infos = self.buffer.on_submit(states, queue, fence);

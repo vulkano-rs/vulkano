@@ -218,13 +218,13 @@ unsafe impl<L, Rp, Fb> CommandsListOutput for BeginRenderPassCommandCb<L, Rp, Fb
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        mut fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
         // FIXME: merge semaphore iterators
 
-        let framebuffer_submit_reqs = self.framebuffer.on_submit(states, queue, &mut fence);
-        let parent_reqs = self.previous.on_submit(states, queue, &mut fence);
+        let framebuffer_submit_reqs = self.framebuffer.on_submit(states, queue, fence);
+        let parent_reqs = self.previous.on_submit(states, queue, fence);
 
         assert!(framebuffer_submit_reqs.semaphores_wait.len() == 0);        // not implemented
         assert!(framebuffer_submit_reqs.semaphores_signal.len() == 0);      // not implemented
@@ -370,10 +370,10 @@ unsafe impl<L> CommandsListOutput for NextSubpassCommandCb<L> where L: CommandsL
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
-        self.previous.on_submit(states, queue, &mut fence)
+        self.previous.on_submit(states, queue, fence)
     }
 }
 
@@ -489,9 +489,9 @@ unsafe impl<L> CommandsListOutput for EndRenderPassCommandCb<L> where L: Command
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
-        self.previous.on_submit(states, queue, &mut fence)
+        self.previous.on_submit(states, queue, fence)
     }
 }

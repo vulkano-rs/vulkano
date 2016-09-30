@@ -236,10 +236,10 @@ unsafe impl<Rp, A, S> TrackedFramebuffer<S> for StdFramebuffer<Rp, A>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &S, q: &Arc<Queue>, f: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &S, q: &Arc<Queue>,
+                        mut f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
-        self.resources.on_submit(states, q, f)
+        self.resources.on_submit(states, q, &mut f)
     }
 }
 
@@ -261,6 +261,7 @@ pub unsafe trait AttachmentsList<States> {
 
     fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
+    // TODO: take &mut FnMut() -> Arc<Fence>
     unsafe fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>;
 }

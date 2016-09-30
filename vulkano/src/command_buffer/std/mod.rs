@@ -273,8 +273,8 @@ pub unsafe trait CommandsListOutput<S = StatesManager> {
     /// Returns the device this object belongs to.
     fn device(&self) -> &Arc<Device>;
 
-    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>;
+    unsafe fn on_submit(&self, states: &S, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo;
 }
 
 pub struct CommandBuffer<C /* = Box<CommandsListOutput>*/> {
@@ -294,9 +294,9 @@ unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
         where F: FnMut() -> Arc<Fence>
     {
-        self.commands.on_submit(&self.states, queue, fence)
+        self.commands.on_submit(&self.states, queue, &mut fence)
     }
 }

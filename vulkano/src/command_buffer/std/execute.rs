@@ -188,9 +188,9 @@ unsafe impl<Cb, L> CommandsListOutput for ExecuteCommandCb<Cb, L>
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
-        self.previous.on_submit(states, queue, &mut fence)
+        self.previous.on_submit(states, queue, fence)
     }
 }

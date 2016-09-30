@@ -144,8 +144,8 @@ unsafe impl<P> CommandsListOutput for PrimaryCb<P> where P: CommandPool {
         self.cb.device()
     }
 
-    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
+                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
         // TODO: Must handle non-SimultaneousUse and Once flags ; for now the `SimultaneousUse`
         //       flag is mandatory, so there's no safety issue. However it will need to be handled

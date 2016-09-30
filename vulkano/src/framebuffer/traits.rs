@@ -82,8 +82,8 @@ pub unsafe trait TrackedFramebuffer<States = StatesManager>: Framebuffer {
 
     fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
 
-    unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>;
+    unsafe fn on_submit(&self, states: &States, q: &Arc<Queue>,
+                        f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo;
 }
 
 unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFramebuffer<States> {
@@ -100,8 +100,8 @@ unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFra
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &States, q: &Arc<Queue>, f: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &States, q: &Arc<Queue>,
+                        f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
     {
         (**self).on_submit(states, q, f)
     }
