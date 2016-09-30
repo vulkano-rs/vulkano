@@ -215,6 +215,12 @@ pub unsafe trait CommandsList: CommandsListBase {
             commands: output,
         }
     }
+
+    /// Builds a boxed command buffer object.
+    #[inline]
+    fn abstract_build(self) -> CommandBuffer where Self: Sized + AbstractCommandsList {
+        AbstractCommandsList::abstract_build(self)
+    }
 }
 
 pub unsafe trait AbstractCommandsList: CommandsListBase {
