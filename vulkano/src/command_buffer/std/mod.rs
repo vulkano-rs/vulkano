@@ -184,6 +184,38 @@ pub unsafe trait CommandsList {
     fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
 }
 
+unsafe impl CommandsList for Box<CommandsList> {
+    #[inline]
+    fn buildable_state(&self) -> bool {
+        (**self).buildable_state()
+    }
+
+    #[inline]
+    fn num_commands(&self) -> usize {
+        (**self).num_commands()
+    }
+
+    #[inline]
+    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> {
+        (**self).check_queue_validity(queue)
+    }
+
+    #[inline]
+    fn extract_states(&mut self) -> StatesManager {
+        (**self).extract_states()
+    }
+
+    #[inline]
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
+        (**self).is_compute_pipeline_bound(pipeline)
+    }
+
+    #[inline]
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
+        (**self).is_graphics_pipeline_bound(pipeline)
+    }
+}
+
 pub unsafe trait CommandsListConcrete: CommandsList {
     type Pool: CommandPool;
     /// The type of the command buffer that will be generated.
