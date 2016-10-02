@@ -13,6 +13,7 @@ use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::DescriptorBufferDesc;
 use descriptor::descriptor_set::StdDescriptorSetBuf;
+use descriptor::descriptor_set::StdDescriptorSetBufTy;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -275,8 +276,7 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for B
 
         StdDescriptorSetBuf {
             buffer: self,
-            offset: 0,
-            size: size,
+            ty: StdDescriptorSetBufTy::UniformBuffer,
             write: false,
             stage: PipelineStages {       // FIXME:
                 all_graphics: true,
@@ -310,8 +310,7 @@ unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for B
 
         StdDescriptorSetBuf {
             buffer: self,
-            offset: 0,
-            size: size,
+            ty: StdDescriptorSetBufTy::StorageBuffer,
             write: false,
             stage: PipelineStages {       // FIXME:
                 all_graphics: true,

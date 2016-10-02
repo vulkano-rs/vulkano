@@ -21,6 +21,7 @@ pub use self::pool::DescriptorPool;
 pub use self::std::StdDescriptorSet;
 pub use self::std::StdDescriptorSetResourcesCollection;
 pub use self::std::StdDescriptorSetBuf;
+pub use self::std::StdDescriptorSetBufTy;
 pub use self::sys::UnsafeDescriptorSet;
 pub use self::sys::DescriptorWrite;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;

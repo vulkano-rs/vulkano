@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
@@ -113,8 +114,7 @@ unsafe impl<S> StdDescriptorSetResourcesCollection<S> for () {
 
 pub struct StdDescriptorSetBuf<B> {
     pub buffer: B,
-    pub offset: usize,
-    pub size: usize,
+    pub ty: StdDescriptorSetBufTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
@@ -127,13 +127,28 @@ unsafe impl<B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
-        unimplemented!()
+        let trans = self.buffer.transition(states, num_command, 0, self.buffer.size(),
+                                           self.write, self.stage, self.access);
+        
+        if let Some(trans) = trans {
+            let n = trans.after_command_num;
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_buffer_barrier_request(&self.buffer, trans);
+            (n, b)
+        } else {
+            (0, PipelineBarrierBuilder::new())
+        }
     }
 
     #[inline]
     unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
-        // TODO:
-        unimplemented!()
+        if let Some(trans) = self.buffer.finish(in_s, out) {
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_buffer_barrier_request(&self.buffer, trans);
+            b
+        } else {
+            PipelineBarrierBuilder::new()
+        }
     }
 
     unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F) -> SubmitInfo
@@ -143,6 +158,13 @@ unsafe impl<B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf
     }
 }
 
+pub enum StdDescriptorSetBufTy {
+    StorageBuffer,
+    UniformBuffer,
+    DynamicStorageBuffer,
+    DynamicUniformBuffer,
+}
+
 macro_rules! tuple_impl {
     ($first:ident, $($rest:ident),+) => (
         unsafe impl<S, $first, $($rest),+> StdDescriptorSetResourcesCollection<S> for ($first $(, $rest)+)
@@ -150,15 +172,30 @@ macro_rules! tuple_impl {
                   $($rest: StdDescriptorSetResourcesCollection<S>),+
         {
             #[inline]
-            unsafe fn transition(&self, states: &mut S, _num_command: usize)
+            unsafe fn transition(&self, states: &mut S, num_command: usize)
                                  -> (usize, PipelineBarrierBuilder)
             {
-                unimplemented!()
+                #![allow(non_snake_case)]
+                let &(ref $first $(, ref $rest)+) = self;
+                let (mut nc, mut barrier) = $first.transition(states, num_command);
+                $({
+                    let (n, b) = $rest.transition(states, num_command);
+                    nc = cmp::max(nc, n);
+                    barrier.merge(b);
+                })+
+                debug_assert!(nc <= num_command);
+                (nc, barrier)
             }
 
             #[inline]
-            unsafe fn finish(&self, _: &mut S, _: &mut S) -> PipelineBarrierBuilder {
-                unimplemented!()
+            unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
+                #![allow(non_snake_case)]
+                let &(ref $first $(, ref $rest)+) = self;
+                let mut barrier = $first.finish(in_s, out);
+                $(
+                    barrier.merge($rest.finish(in_s, out));
+                )+
+                barrier
             }
 
             unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F)
