@@ -10,6 +10,8 @@
 use std::cmp;
 use std::sync::Arc;
 
+use buffer::Buffer;
+use buffer::BufferView;
 use buffer::TrackedBuffer;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -163,6 +165,57 @@ pub enum StdDescriptorSetBufTy {
     UniformBuffer,
     DynamicStorageBuffer,
     DynamicUniformBuffer,
+}
+
+pub struct StdDescriptorSetBufView<F, B> where B: Buffer {
+    pub view: Arc<BufferView<F, B>>,
+    pub ty: StdDescriptorSetBufViewTy,
+    pub write: bool,
+    pub stage: PipelineStages,
+    pub access: AccessFlagBits,
+}
+
+unsafe impl<F, B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBufView<F, B>
+    where B: TrackedBuffer<S>
+{
+    #[inline]
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder)
+    {
+        let trans = self.view.buffer().transition(states, num_command, 0, self.view.buffer().size(),
+                                                  self.write, self.stage, self.access);
+        
+        if let Some(trans) = trans {
+            let n = trans.after_command_num;
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_buffer_barrier_request(&self.view.buffer(), trans);
+            (n, b)
+        } else {
+            (0, PipelineBarrierBuilder::new())
+        }
+    }
+
+    #[inline]
+    unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
+        if let Some(trans) = self.view.buffer().finish(in_s, out) {
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_buffer_barrier_request(&self.view.buffer(), trans);
+            b
+        } else {
+            PipelineBarrierBuilder::new()
+        }
+    }
+
+    unsafe fn on_submit<Fe>(&self, _: &S, queue: &Arc<Queue>, fence: Fe) -> SubmitInfo
+        where Fe: FnMut() -> Arc<Fence>
+    {
+        unimplemented!()        // FIXME:
+    }
+}
+
+pub enum StdDescriptorSetBufViewTy {
+    StorageBufferView,
+    UniformBufferView,
 }
 
 macro_rules! tuple_impl {
