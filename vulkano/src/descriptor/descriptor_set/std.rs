@@ -11,7 +11,7 @@ use std::cmp;
 use std::sync::Arc;
 
 use buffer::Buffer;
-use buffer::BufferView;
+use buffer::BufferViewRef;
 use buffer::TrackedBuffer;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -167,28 +167,29 @@ pub enum StdDescriptorSetBufTy {
     DynamicUniformBuffer,
 }
 
-pub struct StdDescriptorSetBufView<F, B> where B: Buffer {
-    pub view: Arc<BufferView<F, B>>,
+pub struct StdDescriptorSetBufView<V> where V: BufferViewRef {
+    pub view: V,
     pub ty: StdDescriptorSetBufViewTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
 }
 
-unsafe impl<F, B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBufView<F, B>
-    where B: TrackedBuffer<S>
+unsafe impl<V, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBufView<V>
+    where V: BufferViewRef, V::Buffer: TrackedBuffer<S>
 {
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
-        let trans = self.view.buffer().transition(states, num_command, 0, self.view.buffer().size(),
-                                                  self.write, self.stage, self.access);
+        let trans = self.view.view().buffer()
+                        .transition(states, num_command, 0, self.view.view().buffer().size(),
+                                    self.write, self.stage, self.access);
         
         if let Some(trans) = trans {
             let n = trans.after_command_num;
             let mut b = PipelineBarrierBuilder::new();
-            b.add_buffer_barrier_request(&self.view.buffer(), trans);
+            b.add_buffer_barrier_request(&self.view.view().buffer(), trans);
             (n, b)
         } else {
             (0, PipelineBarrierBuilder::new())
@@ -197,9 +198,9 @@ unsafe impl<F, B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSet
 
     #[inline]
     unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
-        if let Some(trans) = self.view.buffer().finish(in_s, out) {
+        if let Some(trans) = self.view.view().buffer().finish(in_s, out) {
             let mut b = PipelineBarrierBuilder::new();
-            b.add_buffer_barrier_request(&self.view.buffer(), trans);
+            b.add_buffer_barrier_request(&self.view.view().buffer(), trans);
             b
         } else {
             PipelineBarrierBuilder::new()

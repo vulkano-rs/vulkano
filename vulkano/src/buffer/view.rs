@@ -193,6 +193,43 @@ impl<F, B> Drop for BufferView<F, B> where B: Buffer {
     }
 }
 
+pub unsafe trait BufferViewRef {
+    type Buffer: Buffer;
+    type Format;
+
+    fn view(&self) -> &BufferView<Self::Format, Self::Buffer>;
+}
+
+unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
+    type Buffer = B;
+    type Format = F;
+
+    #[inline]
+    fn view(&self) -> &BufferView<F, B> {
+        self
+    }
+}
+
+unsafe impl<F, B> BufferViewRef for Arc<BufferView<F, B>> where B: Buffer {
+    type Buffer = B;
+    type Format = F;
+
+    #[inline]
+    fn view(&self) -> &BufferView<F, B> {
+        &**self
+    }
+}
+
+unsafe impl<'a, F, B> BufferViewRef for &'a BufferView<F, B> where B: Buffer {
+    type Buffer = B;
+    type Format = F;
+
+    #[inline]
+    fn view(&self) -> &BufferView<F, B> {
+        *self
+    }
+}
+
 /// Error that can happen when creating a buffer view.
 #[derive(Debug, Copy, Clone)]
 pub enum BufferViewCreationError {

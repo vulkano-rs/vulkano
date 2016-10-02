@@ -76,6 +76,7 @@ pub use self::traits::TrackedBufferPipelineBarrierRequest;
 pub use self::traits::TrackedBufferPipelineMemoryBarrierRequest;
 pub use self::traits::TrackedBufferSubmitInfos;
 pub use self::view::BufferView;
+pub use self::view::BufferViewRef;
 
 pub mod cpu_access;
 pub mod device_local;
