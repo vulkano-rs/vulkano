@@ -104,6 +104,18 @@ impl UnsafeDescriptorSet {
     {
         let vk = self.pool.device().pointers();
 
+        // In this function, we build 4 arrays: one array of image descriptors (image_descriptors),
+        // one for buffer descriptors (buffer_descriptors), one for buffer view descriptors
+        // (buffer_views_descriptors), and one for the final list of writes (raw_writes).
+        // Only the final list is passed to Vulkan, but it will contain pointers to the first three
+        // lists in pImageInfo, pBufferInfo and pTexelBufferView.
+        //
+        // In order to handle that, we start by writing null pointers as placeholders in the final
+        // writes, and we store in raw_writes_img_infos, raw_writes_buf_infos and
+        // raw_writes_buf_view_infos the offsets of the pointers compared to the start of the list.
+        // Once we have finished iterating all the writes requested by the user, we modify
+        // `raw_writes` to point to the correct locations.
+
         let mut buffer_descriptors: SmallVec<[_; 64]> = SmallVec::new();
         let mut image_descriptors: SmallVec<[_; 64]> = SmallVec::new();
         let mut buffer_views_descriptors: SmallVec<[_; 64]> = SmallVec::new();
@@ -114,10 +126,12 @@ impl UnsafeDescriptorSet {
         let mut raw_writes_buf_view_infos: SmallVec<[_; 64]> = SmallVec::new();
 
         for indiv_write in writes {
-            if indiv_write.inner.is_empty() {
-                continue;
-            }
+            // Since the `DescriptorWrite` objects are built only through functions, we know for
+            // sure that it's impossible to have an empty descriptor write.
+            debug_assert!(!indiv_write.is_empty());
 
+            // The whole struct that wr write here is valid, except for pImageInfo, pBufferInfo
+            // and pTexelBufferView which are placeholder values.
             raw_writes.push(vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),
@@ -218,6 +232,8 @@ impl UnsafeDescriptorSet {
             }
         }
 
+        // Now that `image_descriptors`, `buffer_descriptors` and `buffer_views_descriptors` are
+        // entirely filled and will never move again, we can fill the pointers in `raw_writes`.
         for (i, write) in raw_writes.iter_mut().enumerate() {
             write.pImageInfo = match raw_writes_img_infos[i] {
                 Some(off) => image_descriptors.as_ptr().offset(off as isize),
@@ -235,6 +251,8 @@ impl UnsafeDescriptorSet {
             };
         }
 
+        // It is forbidden to call `vkUpdateDescriptorSets` with 0 writes, so we need to perform
+        // this emptiness check.
         if !raw_writes.is_empty() {
             vk.UpdateDescriptorSets(self.pool.device().internal_object(),
                                     raw_writes.len() as u32, raw_writes.as_ptr(), 0, ptr::null());
