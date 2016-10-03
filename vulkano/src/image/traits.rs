@@ -232,9 +232,6 @@ pub unsafe trait ImageView {
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
 
-    /// Returns the blocks of the parent image this image view overlaps.
-    fn blocks(&self) -> Vec<(u32, u32)>;
-
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {
@@ -288,11 +285,6 @@ unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T where T: ImageView {
     }
 
     #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        (**self).blocks()
-    }
-
-    #[inline]
     fn descriptor_set_storage_image_layout(&self) -> Layout {
         (**self).descriptor_set_storage_image_layout()
     }
@@ -334,11 +326,6 @@ unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
     #[inline]
     fn dimensions(&self) -> Dimensions {
         (**self).dimensions()
-    }
-
-    #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        (**self).blocks()
     }
 
     #[inline]

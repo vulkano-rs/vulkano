@@ -195,11 +195,6 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
-    }
-
-    #[inline]
     fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
