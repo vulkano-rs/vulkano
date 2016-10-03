@@ -128,7 +128,7 @@ impl UnsafeDescriptorSet {
         for indiv_write in writes {
             // Since the `DescriptorWrite` objects are built only through functions, we know for
             // sure that it's impossible to have an empty descriptor write.
-            debug_assert!(!indiv_write.is_empty());
+            debug_assert!(!indiv_write.inner.is_empty());
 
             // The whole struct that wr write here is valid, except for pImageInfo, pBufferInfo
             // and pTexelBufferView which are placeholder values.
