@@ -99,134 +99,145 @@ impl UnsafeDescriptorSet {
     /// - Doesn't keep the resources alive. You have to do that yourself.
     /// - Updating a descriptor set obeys synchronization rules that aren't checked here.
     ///
-    pub unsafe fn write<I>(&mut self, write: I)
-        where I: Iterator<Item = DescriptorWrite> + Clone       // TODO (low prio): don't require Clone
+    pub unsafe fn write<I>(&mut self, writes: I)
+        where I: Iterator<Item = DescriptorWrite>
     {
         let vk = self.pool.device().pointers();
 
-        let buffer_descriptors = write.clone().filter_map(|write| {
-            match write.inner {
-                DescriptorWriteInner::UniformBuffer(buffer, offset, size) |
-                DescriptorWriteInner::DynamicUniformBuffer(buffer, offset, size) => {
-                    Some(vk::DescriptorBufferInfo {
-                        buffer: buffer,
-                        offset: offset as u64,
-                        range: size as u64,
-                    })
-                },
-                DescriptorWriteInner::StorageBuffer(buffer, offset, size) |
-                DescriptorWriteInner::DynamicStorageBuffer(buffer, offset, size) => {
-                    Some(vk::DescriptorBufferInfo {
-                        buffer: buffer,
-                        offset: offset as u64,
-                        range: size as u64,
-                    })
-                },
-                _ => None
+        let mut buffer_descriptors: SmallVec<[_; 64]> = SmallVec::new();
+        let mut image_descriptors: SmallVec<[_; 64]> = SmallVec::new();
+        let mut buffer_views_descriptors: SmallVec<[_; 64]> = SmallVec::new();
+
+        let mut raw_writes: SmallVec<[_; 64]> = SmallVec::new();
+        let mut raw_writes_img_infos: SmallVec<[_; 64]> = SmallVec::new();
+        let mut raw_writes_buf_infos: SmallVec<[_; 64]> = SmallVec::new();
+        let mut raw_writes_buf_view_infos: SmallVec<[_; 64]> = SmallVec::new();
+
+        for indiv_write in writes {
+            if indiv_write.inner.is_empty() {
+                continue;
             }
-        }).collect::<SmallVec<[_; 64]>>();
 
-        let image_descriptors = write.clone().filter_map(|write| {
-            match write.inner {
-                DescriptorWriteInner::Sampler(sampler) => {
-                    Some(vk::DescriptorImageInfo {
-                        sampler: sampler,
-                        imageView: 0,
-                        imageLayout: 0,
-                    })
-                },
-                DescriptorWriteInner::CombinedImageSampler(sampler, view, layout) => {
-                    Some(vk::DescriptorImageInfo {
-                        sampler: sampler,
-                        imageView: view,
-                        imageLayout: layout,
-                    })
-                },
-                DescriptorWriteInner::StorageImage(view, layout) => {
-                    Some(vk::DescriptorImageInfo {
-                        sampler: 0,
-                        imageView: view,
-                        imageLayout: layout,
-                    })
-                },
-                DescriptorWriteInner::SampledImage(view, layout) => {
-                    Some(vk::DescriptorImageInfo {
-                        sampler: 0,
-                        imageView: view,
-                        imageLayout: layout,
-                    })
-                },
-                DescriptorWriteInner::InputAttachment(view, layout) => {
-                    Some(vk::DescriptorImageInfo {
-                        sampler: 0,
-                        imageView: view,
-                        imageLayout: layout,
-                    })
-                },
-                _ => None
-            }
-        }).collect::<SmallVec<[_; 64]>>();
-
-        let buffer_views_descriptors = write.clone().filter_map(|write| {
-            match write.inner {
-                DescriptorWriteInner::UniformTexelBuffer(view) |
-                DescriptorWriteInner::StorageTexelBuffer(view) => {
-                    Some(view)
-                },
-                _ => None
-            }
-        }).collect::<SmallVec<[_; 16]>>();
-
-
-        let mut next_buffer_desc = 0;
-        let mut next_image_desc = 0;
-        let mut next_buffer_view_desc = 0;
-
-        let vk_writes = write.clone().map(|write| {
-            let (buffer_info, image_info, buffer_view_info) = match write.inner {
-                DescriptorWriteInner::Sampler(_) | DescriptorWriteInner::CombinedImageSampler(_, _, _) |
-                DescriptorWriteInner::SampledImage(_, _) | DescriptorWriteInner::StorageImage(_, _) |
-                DescriptorWriteInner::InputAttachment(_, _) => {
-                    let img = image_descriptors.as_ptr().offset(next_image_desc as isize);
-                    next_image_desc += 1;
-                    (ptr::null(), img, ptr::null())
-                },
-                DescriptorWriteInner::UniformBuffer(_, _, _) | DescriptorWriteInner::StorageBuffer(_, _, _) |
-                DescriptorWriteInner::DynamicUniformBuffer(_, _, _) |
-                DescriptorWriteInner::DynamicStorageBuffer(_, _, _) => {
-                    let buf = buffer_descriptors.as_ptr().offset(next_buffer_desc as isize);
-                    next_buffer_desc += 1;
-                    (buf, ptr::null(), ptr::null())
-                },
-                DescriptorWriteInner::UniformTexelBuffer(_) |
-                DescriptorWriteInner::StorageTexelBuffer(_) => {
-                    let buf = buffer_views_descriptors.as_ptr().offset(next_buffer_view_desc as isize);
-                    next_buffer_view_desc += 1;
-                    (ptr::null(), ptr::null(), buf)
-                },
-            };
-
-            vk::WriteDescriptorSet {
+            raw_writes.push(vk::WriteDescriptorSet {
                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 pNext: ptr::null(),
                 dstSet: self.set,
-                dstBinding: write.binding,
-                dstArrayElement: write.first_array_element,
-                descriptorCount: 1,
-                descriptorType: write.ty() as u32,
-                pImageInfo: image_info,
-                pBufferInfo: buffer_info,
-                pTexelBufferView: buffer_view_info,
+                dstBinding: indiv_write.binding,
+                dstArrayElement: indiv_write.first_array_element,
+                descriptorCount: indiv_write.inner.len() as u32,
+                descriptorType: indiv_write.ty() as u32,
+                pImageInfo: ptr::null(),
+                pBufferInfo: ptr::null(),
+                pTexelBufferView: ptr::null(),
+            });
+
+            match indiv_write.inner[0] {
+                DescriptorWriteInner::Sampler(_) |
+                DescriptorWriteInner::CombinedImageSampler(_, _, _) |
+                DescriptorWriteInner::SampledImage(_, _) |
+                DescriptorWriteInner::StorageImage(_, _) |
+                DescriptorWriteInner::InputAttachment(_, _) => {
+                    raw_writes_img_infos.push(Some(image_descriptors.len()));
+                    raw_writes_buf_infos.push(None);
+                    raw_writes_buf_view_infos.push(None);
+                },
+                DescriptorWriteInner::UniformBuffer(_, _, _) |
+                DescriptorWriteInner::StorageBuffer(_, _, _) |
+                DescriptorWriteInner::DynamicUniformBuffer(_, _, _) |
+                DescriptorWriteInner::DynamicStorageBuffer(_, _, _) => {
+                    raw_writes_img_infos.push(None);
+                    raw_writes_buf_infos.push(Some(buffer_descriptors.len()));
+                    raw_writes_buf_view_infos.push(None);
+                },
+                DescriptorWriteInner::UniformTexelBuffer(_) |
+                DescriptorWriteInner::StorageTexelBuffer(_) => {
+                    raw_writes_img_infos.push(None);
+                    raw_writes_buf_infos.push(None);
+                    raw_writes_buf_view_infos.push(Some(buffer_views_descriptors.len()));
+                },
             }
-        }).collect::<SmallVec<[_; 64]>>();
 
-        debug_assert_eq!(next_buffer_desc, buffer_descriptors.len());
-        debug_assert_eq!(next_image_desc, image_descriptors.len());
-        debug_assert_eq!(next_buffer_view_desc, buffer_views_descriptors.len());
+            for elem in indiv_write.inner.iter() {
+                match *elem {
+                    DescriptorWriteInner::UniformBuffer(buffer, offset, size) |
+                    DescriptorWriteInner::DynamicUniformBuffer(buffer, offset, size) => {
+                        buffer_descriptors.push(vk::DescriptorBufferInfo {
+                            buffer: buffer,
+                            offset: offset as u64,
+                            range: size as u64,
+                        });
+                    },
+                    DescriptorWriteInner::StorageBuffer(buffer, offset, size) |
+                    DescriptorWriteInner::DynamicStorageBuffer(buffer, offset, size) => {
+                        buffer_descriptors.push(vk::DescriptorBufferInfo {
+                            buffer: buffer,
+                            offset: offset as u64,
+                            range: size as u64,
+                        });
+                    },
+                    DescriptorWriteInner::Sampler(sampler) => {
+                        image_descriptors.push(vk::DescriptorImageInfo {
+                            sampler: sampler,
+                            imageView: 0,
+                            imageLayout: 0,
+                        });
+                    },
+                    DescriptorWriteInner::CombinedImageSampler(sampler, view, layout) => {
+                        image_descriptors.push(vk::DescriptorImageInfo {
+                            sampler: sampler,
+                            imageView: view,
+                            imageLayout: layout,
+                        });
+                    },
+                    DescriptorWriteInner::StorageImage(view, layout) => {
+                        image_descriptors.push(vk::DescriptorImageInfo {
+                            sampler: 0,
+                            imageView: view,
+                            imageLayout: layout,
+                        });
+                    },
+                    DescriptorWriteInner::SampledImage(view, layout) => {
+                        image_descriptors.push(vk::DescriptorImageInfo {
+                            sampler: 0,
+                            imageView: view,
+                            imageLayout: layout,
+                        });
+                    },
+                    DescriptorWriteInner::InputAttachment(view, layout) => {
+                        image_descriptors.push(vk::DescriptorImageInfo {
+                            sampler: 0,
+                            imageView: view,
+                            imageLayout: layout,
+                        });
+                    },
+                    DescriptorWriteInner::UniformTexelBuffer(view) |
+                    DescriptorWriteInner::StorageTexelBuffer(view) => {
+                        buffer_views_descriptors.push(view);
+                    },
+                }
+            }
+        }
 
-        if !vk_writes.is_empty() {
+        for (i, write) in raw_writes.iter_mut().enumerate() {
+            write.pImageInfo = match raw_writes_img_infos[i] {
+                Some(off) => image_descriptors.as_ptr().offset(off as isize),
+                None => ptr::null()
+            };
+            
+            write.pBufferInfo = match raw_writes_buf_infos[i] {
+                Some(off) => buffer_descriptors.as_ptr().offset(off as isize),
+                None => ptr::null()
+            };
+
+            write.pTexelBufferView = match raw_writes_buf_view_infos[i] {
+                Some(off) => buffer_views_descriptors.as_ptr().offset(off as isize),
+                None => ptr::null()
+            };
+        }
+
+        if !raw_writes.is_empty() {
             vk.UpdateDescriptorSets(self.pool.device().internal_object(),
-                                    vk_writes.len() as u32, vk_writes.as_ptr(), 0, ptr::null());
+                                    raw_writes.len() as u32, raw_writes.as_ptr(), 0, ptr::null());
         }
     }
 
@@ -264,7 +275,7 @@ impl Drop for UnsafeDescriptorSet {
 pub struct DescriptorWrite {
     binding: u32,
     first_array_element: u32,
-    inner: DescriptorWriteInner,
+    inner: SmallVec<[DescriptorWriteInner; 1]>,
 }
 
 #[derive(Debug, Clone)]
@@ -282,6 +293,10 @@ enum DescriptorWriteInner {
     InputAttachment(vk::ImageView, vk::ImageLayout),
 }
 
+macro_rules! smallvec {
+    ($elem:expr) => ({ let mut s = SmallVec::new(); s.push($elem); s });
+}
+
 impl DescriptorWrite {
     #[inline]
     pub fn storage_image<I>(binding: u32, image: &I) -> DescriptorWrite
@@ -290,10 +305,10 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: {
+            inner: smallvec!({
                 let layout = image.descriptor_set_storage_image_layout() as u32;
                 DescriptorWriteInner::StorageImage(image.inner().internal_object(), layout)
-            },
+            }),
         }
     }
 
@@ -302,7 +317,7 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::Sampler(sampler.internal_object())
+            inner: smallvec!(DescriptorWriteInner::Sampler(sampler.internal_object()))
         }
     }
 
@@ -313,10 +328,10 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: {
+            inner: smallvec!({
                 let layout = image.descriptor_set_sampled_image_layout() as u32;
                 DescriptorWriteInner::SampledImage(image.inner().internal_object(), layout)
-            },
+            }),
         }
     }
 
@@ -327,10 +342,10 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: {
+            inner: smallvec!({
                 let layout = image.descriptor_set_combined_image_sampler_layout() as u32;
                 DescriptorWriteInner::CombinedImageSampler(sampler.internal_object(), image.inner().internal_object(), layout)
-            },
+            }),
         }
     }
 
@@ -344,7 +359,7 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::UniformTexelBuffer(view.internal_object()),
+            inner: smallvec!(DescriptorWriteInner::UniformTexelBuffer(view.internal_object())),
         }
     }
 
@@ -358,7 +373,7 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::StorageTexelBuffer(view.internal_object()),
+            inner: smallvec!(DescriptorWriteInner::StorageTexelBuffer(view.internal_object())),
         }
     }
 
@@ -372,7 +387,9 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::UniformBuffer(buffer.internal_object(), offset, size),
+            inner: smallvec!({
+                DescriptorWriteInner::UniformBuffer(buffer.internal_object(), offset, size)
+            }),
         }
     }
 
@@ -386,7 +403,9 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::StorageBuffer(buffer.internal_object(), offset, size),
+            inner: smallvec!({
+                DescriptorWriteInner::StorageBuffer(buffer.internal_object(), offset, size)
+            }),
         }
     }
 
@@ -400,8 +419,8 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicUniformBuffer(buffer.internal_object(),
-                                                              offset, size),
+            inner: smallvec!(DescriptorWriteInner::DynamicUniformBuffer(buffer.internal_object(),
+                                                                        offset, size)),
         }
     }
 
@@ -415,8 +434,8 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: DescriptorWriteInner::DynamicStorageBuffer(buffer.internal_object(),
-                                                              offset, size),
+            inner: smallvec!(DescriptorWriteInner::DynamicStorageBuffer(buffer.internal_object(),
+                                                                        offset, size)),
         }
     }
 
@@ -427,17 +446,17 @@ impl DescriptorWrite {
         DescriptorWrite {
             binding: binding,
             first_array_element: 0,
-            inner: {
+            inner: smallvec!({
                 let layout = image.descriptor_set_input_attachment_layout() as u32;
                 DescriptorWriteInner::InputAttachment(image.inner().internal_object(), layout)
-            },
+            }),
         }
     }
 
     /// Returns the type corresponding to this write.
     #[inline]
     pub fn ty(&self) -> DescriptorType {
-        match self.inner {
+        match self.inner[0] {
             DescriptorWriteInner::Sampler(_) => DescriptorType::Sampler,
             DescriptorWriteInner::CombinedImageSampler(_, _, _) => DescriptorType::CombinedImageSampler,
             DescriptorWriteInner::SampledImage(_, _) => DescriptorType::SampledImage,
