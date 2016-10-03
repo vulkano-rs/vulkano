@@ -162,7 +162,7 @@ pub struct TrackedBufferSubmitInfos {
     pub post_barrier: Option<TrackedBufferPipelineBarrierRequest>,
 }
 
-unsafe impl<B:? Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> {
+unsafe impl<B: ?Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> {
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)

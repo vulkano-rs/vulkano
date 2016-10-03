@@ -60,6 +60,20 @@ pub unsafe trait Image {
     }
 }
 
+unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        (**self).inner()
+    }
+}
+
 /// Extension trait for `Image`. Types that implement this can be used in a `StdCommandBuffer`.
 ///
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
@@ -90,6 +104,60 @@ pub unsafe trait TrackedImage<States = StatesManager>: Image {
     fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F)
                     -> TrackedImageSubmitInfos
         where F: FnOnce() -> Arc<Fence>;
+}
+
+unsafe impl<I: ?Sized, S> TrackedImage<S> for Arc<I> where I: TrackedImage<S> {
+    #[inline]
+    fn transition(&self, states: &mut S, num_command: usize, first_mipmap: u32,
+                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
+                  stage: PipelineStages, access: AccessFlagBits)
+                  -> Option<TrackedImagePipelineBarrierRequest>
+    {
+        (**self).transition(states, num_command, first_mipmap, num_mipmaps, first_layer, num_layers,
+                            write, layout, stage, access)
+    }
+
+    #[inline]
+    fn finish(&self, in_s: &mut S, out: &mut S)
+              -> Option<TrackedImagePipelineBarrierRequest>
+    {
+        (**self).finish(in_s, out)
+    }
+
+    #[inline]
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
+                    -> TrackedImageSubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        (**self).on_submit(states, queue, fence)
+    }
+}
+
+unsafe impl<'a, I: ?Sized + 'a, S> TrackedImage<S> for &'a I where I: TrackedImage<S> {
+    #[inline]
+    fn transition(&self, states: &mut S, num_command: usize, first_mipmap: u32,
+                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
+                  stage: PipelineStages, access: AccessFlagBits)
+                  -> Option<TrackedImagePipelineBarrierRequest>
+    {
+        (**self).transition(states, num_command, first_mipmap, num_mipmaps, first_layer, num_layers,
+                            write, layout, stage, access)
+    }
+
+    #[inline]
+    fn finish(&self, in_s: &mut S, out: &mut S)
+              -> Option<TrackedImagePipelineBarrierRequest>
+    {
+        (**self).finish(in_s, out)
+    }
+
+    #[inline]
+    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
+                    -> TrackedImageSubmitInfos
+        where F: FnOnce() -> Arc<Fence>
+    {
+        (**self).on_submit(states, queue, fence)
+    }
 }
 
 /// Requests that a pipeline barrier is created.
@@ -203,7 +271,56 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<T> ImageView for Arc<T> where T: ImageView {
+unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T where T: ImageView {
+    #[inline]
+    fn parent(&self) -> &Image {
+        (**self).parent()
+    }
+
+    #[inline]
+    fn inner(&self) -> &UnsafeImageView {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        (**self).dimensions()
+    }
+
+    #[inline]
+    fn blocks(&self) -> Vec<(u32, u32)> {
+        (**self).blocks()
+    }
+
+    #[inline]
+    fn descriptor_set_storage_image_layout(&self) -> Layout {
+        (**self).descriptor_set_storage_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
+        (**self).descriptor_set_combined_image_sampler_layout()
+    }
+    #[inline]
+    fn descriptor_set_sampled_image_layout(&self) -> Layout {
+        (**self).descriptor_set_sampled_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_input_attachment_layout(&self) -> Layout {
+        (**self).descriptor_set_input_attachment_layout()
+    }
+
+    #[inline]
+    fn identity_swizzle(&self) -> bool {
+        (**self).identity_swizzle()
+    }
+
+    #[inline]
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        (**self).can_be_sampled(sampler)
+    }
+}
+
+unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
     #[inline]
     fn parent(&self) -> &Image {
         (**self).parent()
@@ -258,7 +375,16 @@ pub unsafe trait TrackedImageView<States>: ImageView {
     fn image(&self) -> &Self::Image;
 }
 
-unsafe impl<States, T> TrackedImageView<States> for Arc<T> where T: TrackedImageView<States> {
+unsafe impl<'a, S, T: ?Sized + 'a> TrackedImageView<S> for &'a T where T: TrackedImageView<S> {
+    type Image = T::Image;
+
+    #[inline]
+    fn image(&self) -> &Self::Image {
+        (**self).image()
+    }
+}
+
+unsafe impl<S, T: ?Sized> TrackedImageView<S> for Arc<T> where T: TrackedImageView<S> {
     type Image = T::Image;
 
     #[inline]
