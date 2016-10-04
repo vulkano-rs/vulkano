@@ -15,7 +15,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use command_buffer::SubmitInfo;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
 use device::Device;
 use device::Queue;

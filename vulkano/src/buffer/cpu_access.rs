@@ -41,7 +41,7 @@ use buffer::traits::TrackedBuffer;
 use buffer::traits::TrackedBufferSubmitInfos;
 use buffer::traits::TrackedBufferPipelineBarrierRequest;
 use buffer::traits::TrackedBufferPipelineMemoryBarrierRequest;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::Submission;
 use device::Device;
 use device::Queue;

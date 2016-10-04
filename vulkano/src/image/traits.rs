@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use device::Queue;
 use format::ClearValue;
 use format::Format;

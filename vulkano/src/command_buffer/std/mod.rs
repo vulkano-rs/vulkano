@@ -13,7 +13,7 @@ use std::sync::Arc;
 use buffer::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::submit::Submit;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;

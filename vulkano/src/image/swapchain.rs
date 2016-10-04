@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::Submission;
 use device::Queue;
 use format::ClearValue;

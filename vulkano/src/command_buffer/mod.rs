@@ -41,6 +41,7 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
+pub use self::states_manager::StatesManager;
 pub use self::std::CommandBuffer;
 pub use self::std::CommandsList;
 pub use self::submit::Submission;
@@ -54,10 +55,10 @@ use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 
 pub mod pool;
-pub mod states_manager;
 pub mod std;
 pub mod sys;
 
+mod states_manager;
 mod submit;
 
 #[repr(C)]

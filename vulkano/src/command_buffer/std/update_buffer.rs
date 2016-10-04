@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 
 use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
 use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListConcrete;

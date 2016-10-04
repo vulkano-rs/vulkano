@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use command_buffer::DynamicState;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use command_buffer::std::CommandsListPossibleInsideRenderPass;
 use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListConcrete;

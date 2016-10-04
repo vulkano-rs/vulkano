@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
-use command_buffer::states_manager::StatesManager;
+use command_buffer::StatesManager;
 use device::Queue;
 use memory::Content;
 
