@@ -26,7 +26,6 @@ use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
-use image::traits::Image;
 use image::traits::TrackedImage;
 use image::traits::TrackedImageView;
 use sync::AccessFlagBits;
@@ -363,7 +362,7 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
             debug_assert!(barrier.after_command_num <= num_command);
             rest_cmd = cmp::max(rest_cmd, barrier.after_command_num);
 
-            rest_barrier.add_image_barrier_request(self.first.image().inner(), barrier); 
+            rest_barrier.add_image_barrier_request(self.first.image(), barrier); 
         }
 
         (rest_cmd, rest_barrier)
@@ -376,7 +375,7 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
 
         if let Some(barrier) = first_barrier {
             unsafe {
-                rest_barrier.add_image_barrier_request(self.first.image().inner(), barrier);
+                rest_barrier.add_image_barrier_request(self.first.image(), barrier);
             }
         }
 
@@ -394,10 +393,10 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
         if let Some(s) = first_infos.pre_semaphore { rest_infos.semaphores_wait.push(s); }
         if let Some(s) = first_infos.post_semaphore { rest_infos.semaphores_signal.push(s); }
         if let Some(rq) = first_infos.pre_barrier {
-            rest_infos.pre_pipeline_barrier.add_image_barrier_request(self.first.image().inner(), rq);
+            rest_infos.pre_pipeline_barrier.add_image_barrier_request(self.first.image(), rq);
         }
         if let Some(rq) = first_infos.post_barrier {
-            rest_infos.post_pipeline_barrier.add_image_barrier_request(self.first.image().inner(), rq);
+            rest_infos.post_pipeline_barrier.add_image_barrier_request(self.first.image(), rq);
         }
 
         rest_infos

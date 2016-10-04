@@ -1245,8 +1245,9 @@ impl PipelineBarrierBuilder {
         }
     }
 
-    pub unsafe fn add_image_barrier_request(&mut self, image: &UnsafeImage,
-                                            request: TrackedImagePipelineBarrierRequest)
+    pub unsafe fn add_image_barrier_request<I>(&mut self, image: &I,
+                                               request: TrackedImagePipelineBarrierRequest)
+        where I: Image
     {
         if !request.by_region {
             self.dependency_flags = 0;
@@ -1265,7 +1266,7 @@ impl PipelineBarrierBuilder {
             // TODO: add more debug asserts
 
             debug_assert!(memory_barrier.first_mipmap +
-                          memory_barrier.num_mipmaps <= image.mipmap_levels());
+                          memory_barrier.num_mipmaps <= image.inner().mipmap_levels());     // TODO: don't use inner()
             debug_assert!(memory_barrier.first_layer +
                           memory_barrier.num_layers <= image.dimensions().array_layers());
 
@@ -1278,7 +1279,7 @@ impl PipelineBarrierBuilder {
                 newLayout: memory_barrier.new_layout as u32,
                 srcQueueFamilyIndex: src_queue,
                 dstQueueFamilyIndex: dest_queue,
-                image: image.internal_object(),
+                image: image.inner().internal_object(),
                 subresourceRange: vk::ImageSubresourceRange {
                     aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
                     baseMipLevel: memory_barrier.first_mipmap,

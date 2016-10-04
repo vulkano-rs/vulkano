@@ -21,6 +21,9 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::sys::UnsafeDescriptorSet;
 use device::Queue;
+use image::TrackedImage;
+use image::TrackedImageView;
+use image::sys::Layout;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
@@ -217,6 +220,66 @@ unsafe impl<V, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf
 pub enum StdDescriptorSetBufViewTy {
     StorageBufferView,
     UniformBufferView,
+}
+
+pub struct StdDescriptorSetImg<I> {
+    pub image: I,
+    pub ty: StdDescriptorSetImgTy,
+    pub write: bool,
+    pub first_mipmap: u32,
+    pub num_mipmaps: u32,
+    pub first_layer: u32,
+    pub num_layers: u32,
+    pub layout: Layout,
+    pub stage: PipelineStages,
+    pub access: AccessFlagBits,
+}
+
+unsafe impl<I, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetImg<I>
+    where I: TrackedImageView<S>
+{
+    #[inline]
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
+                         -> (usize, PipelineBarrierBuilder)
+    {
+        // TODO: check whether mipmaps and layers are in range
+
+        let trans = self.image.image()
+                        .transition(states, num_command, self.first_mipmap, self.num_mipmaps,
+                                    self.first_layer, self.num_layers, self.write, self.layout,
+                                    self.stage, self.access);
+
+        if let Some(trans) = trans {
+            let n = trans.after_command_num;
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_image_barrier_request(&self.image.image(), trans);
+            (n, b)
+        } else {
+            (0, PipelineBarrierBuilder::new())
+        }
+    }
+
+    #[inline]
+    unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
+        if let Some(trans) = self.image.image().finish(in_s, out) {
+            let mut b = PipelineBarrierBuilder::new();
+            b.add_image_barrier_request(&self.image.image(), trans);
+            b
+        } else {
+            PipelineBarrierBuilder::new()
+        }
+    }
+
+    unsafe fn on_submit<Fe>(&self, _: &S, queue: &Arc<Queue>, fence: Fe) -> SubmitInfo
+        where Fe: FnMut() -> Arc<Fence>
+    {
+        unimplemented!()        // FIXME:
+    }
+}
+
+pub enum StdDescriptorSetImgTy {
+    StorageImage,
+    SampledImage,
 }
 
 macro_rules! tuple_impl {
