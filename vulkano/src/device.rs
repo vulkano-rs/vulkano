@@ -109,7 +109,6 @@ use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
 use memory::pool::StdMemoryPool;
-use sync::Semaphore;
 
 use Error;
 use OomError;
@@ -447,7 +446,6 @@ impl Iterator for QueuesIter {
                 device: self.device.clone(),
                 family: family,
                 id: id,
-                dedicated_semaphore: Mutex::new(None),
             }))
         }
     }
@@ -507,14 +505,6 @@ pub struct Queue {
     device: Arc<Device>,
     family: u32,
     id: u32,    // id within family
-
-    // For safety purposes, each command buffer submitted to a queue has to both wait on and
-    // signal the semaphore specified here.
-    //
-    // If this is `None`, then that means we haven't used the semaphore yet.
-    //
-    // For more infos, see TODO: see what?
-    dedicated_semaphore: Mutex<Option<Arc<Semaphore>>>,
 }
 
 impl Queue {
@@ -558,28 +548,6 @@ impl Queue {
     #[inline]
     pub fn wait(&self) {
         self.wait_raw().unwrap();
-    }
-
-    // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
-    /*// TODO: document
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn dedicated_semaphore(&self) -> Result<(Arc<Semaphore>, bool), OomError> {
-        let mut sem = self.dedicated_semaphore.lock().unwrap();
-
-        if let Some(ref semaphore) = *sem {
-            return Ok((semaphore.clone(), true));
-        }
-
-        let semaphore = try!(Semaphore::new(&self.device));
-        *sem = Some(semaphore.clone());
-        Ok((semaphore, false))
-    }*/
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn dedicated_semaphore(&self, signalled: Arc<Semaphore>) -> Option<Arc<Semaphore>> {
-        let mut sem = self.dedicated_semaphore.lock().unwrap();
-        mem::replace(&mut *sem, Some(signalled))
     }
 }
 
