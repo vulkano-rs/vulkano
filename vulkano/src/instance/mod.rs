@@ -17,7 +17,7 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! 
-//! let _instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -33,7 +33,7 @@
 //!
 //! # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
-//!     println!("Available device: {}", physical_device.name())
+//!     println!("Available device: {}", physical_device.name());
 //! }
 //! ```
 //!
@@ -65,7 +65,7 @@
 //!     .. InstanceExtensions::none()
 //! };
 //!
-//! let _instance = match Instance::new(None, &extensions, None) {
+//! let instance = match Instance::new(None, &extensions, None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -124,6 +124,7 @@ pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
 pub use self::loader::LoadingError;
+pub use version::Version;
 
 pub mod debug;
 
