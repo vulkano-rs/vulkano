@@ -43,7 +43,12 @@
 
 pub use self::std::CommandBuffer;
 pub use self::std::CommandsList;
+//pub use self::submit::Submission;     // TODO:
 pub use self::submit::Submit;
+pub use self::submit::SubmitInfo;
+pub use self::submit::SubmitList;
+pub use self::submit::SubmitListOpaque;
+pub use self::submit::SubmitListTrait;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -56,8 +61,9 @@ use sync::FenceWaitError;
 pub mod pool;
 pub mod states_manager;
 pub mod std;
-pub mod submit;
 pub mod sys;
+
+mod submit;
 
 // TODO: temporary object to make old system compile
 // TODO: remove

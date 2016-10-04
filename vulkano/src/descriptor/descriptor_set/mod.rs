@@ -9,8 +9,8 @@
 
 use std::sync::Arc;
 
+use command_buffer::SubmitInfo;
 use command_buffer::states_manager::StatesManager;
-use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use device::Queue;

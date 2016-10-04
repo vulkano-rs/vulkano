@@ -13,7 +13,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferViewRef;
 use buffer::TrackedBuffer;
-use command_buffer::submit::SubmitInfo;
+use command_buffer::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::TrackedDescriptorSet;

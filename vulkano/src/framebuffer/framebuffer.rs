@@ -14,9 +14,9 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use command_buffer::SubmitInfo;
 use command_buffer::states_manager::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::submit::SubmitInfo;
 use device::Device;
 use device::Queue;
 use framebuffer::RenderPass;
