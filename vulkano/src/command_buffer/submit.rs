@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::fmt;
 use std::ptr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use framebuffer::framebuffer::EmptyAttachmentsList;
 use framebuffer::EmptySinglePassRenderPass;
 use framebuffer::StdFramebuffer;
 use sync::Fence;
+use sync::FenceWaitError;
 use sync::PipelineStages;
 use sync::Semaphore;
 
@@ -123,6 +125,15 @@ impl SubmitInfo {
 pub struct Submission {
     fence: Arc<Fence>,      // TODO: make optional
     keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
+    queue: Arc<Queue>,
+}
+
+impl fmt::Debug for Submission {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        // TODO: better impl?
+        write!(fmt, "<Vulkan submission>")
+    }
 }
 
 impl Submission {
@@ -136,6 +147,18 @@ impl Submission {
     #[inline]
     pub fn finished(&self) -> bool {
         self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?   
+    }
+
+    /// Waits until the submission has finished.
+    #[inline]
+    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
+        self.fence.wait(timeout)
+    }
+
+    /// Returns the queue the submission was submitted to.
+    #[inline]
+    pub fn queue(&self) -> &Arc<Queue> {
+        &self.queue
     }
 }
 
@@ -226,6 +249,7 @@ impl<L> SubmitList<L> where L: SubmitListTrait {
         Submission {
             keep_alive: keep_alive,
             fence: fence,
+            queue: queue.clone(),
         }
     }
 }
