@@ -13,6 +13,12 @@ use command_buffer::states_manager::StatesManager;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
+use format::PossibleFloatFormatDesc;
+use format::PossibleUintFormatDesc;
+use format::PossibleSintFormatDesc;
+use format::PossibleDepthFormatDesc;
+use format::PossibleStencilFormatDesc;
+use format::PossibleDepthStencilFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::sys::Layout;
@@ -33,6 +39,29 @@ pub unsafe trait Image {
     #[inline]
     fn format(&self) -> Format {
         self.inner().format()
+    }
+
+    /// Returns true if the image is a color image.
+    #[inline]
+    fn has_color(&self) -> bool {
+        let format = self.format();
+        format.is_float() || format.is_uint() || format.is_sint()
+    }
+
+    /// Returns true if the image has a depth component. In other words, if it is a depth or a
+    /// depth-stencil format. 
+    #[inline]
+    fn has_depth(&self) -> bool {
+        let format = self.format();
+        format.is_depth() || format.is_depth_stencil()
+    }
+
+    /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
+    /// depth-stencil format. 
+    #[inline]
+    fn has_stencil(&self) -> bool {
+        let format = self.format();
+        format.is_stencil() || format.is_depth_stencil()
     }
 
     /// Returns the number of samples of this image.

@@ -1281,7 +1281,11 @@ impl PipelineBarrierBuilder {
                 dstQueueFamilyIndex: dest_queue,
                 image: image.inner().internal_object(),
                 subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
+                    aspectMask: if image.has_color() {
+                        vk::IMAGE_ASPECT_COLOR_BIT
+                    } else {
+                        vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT
+                    },
                     baseMipLevel: memory_barrier.first_mipmap,
                     levelCount: memory_barrier.num_mipmaps,
                     baseArrayLayer: memory_barrier.first_layer,
