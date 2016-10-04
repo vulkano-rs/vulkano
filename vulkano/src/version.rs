@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// The `Version` object is reexported from the `instance` module.
+
 use std::cmp::Ordering;
 
 /// Represents an API version of Vulkan.
