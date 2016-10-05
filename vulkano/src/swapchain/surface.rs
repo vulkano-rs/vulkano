@@ -328,6 +328,80 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an iOS `UIView`.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the `view` is correct and stays alive for the entire
+    ///   lifetime of the surface.
+    /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    pub unsafe fn from_ios_moltenvk<T>(instance: &Arc<Instance>, view: *const T)
+                                       -> Result<Arc<Surface>, SurfaceCreationError>
+    {
+        let vk = instance.pointers();
+
+        if !instance.loaded_extensions().mvk_ios_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_MVK_ios_surface" });
+        }
+
+        let surface = {
+            let infos = vk::IOSSurfaceCreateInfoMVK {
+                sType: vk::STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                pView: view as *const _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateIOSSurfaceMVK(instance.internal_object(), &infos,
+                                                     ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
+    /// Creates a `Surface` from a MacOS `NSView`.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the `view` is correct and stays alive for the entire
+    ///   lifetime of the surface.
+    /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    pub unsafe fn from_macos_moltenvk<T>(instance: &Arc<Instance>, view: *const T)
+                                         -> Result<Arc<Surface>, SurfaceCreationError>
+    {
+        let vk = instance.pointers();
+
+        if !instance.loaded_extensions().mvk_macos_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_MVK_macos_surface" });
+        }
+
+        let surface = {
+            let infos = vk::MacOSSurfaceCreateInfoMVK {
+                sType: vk::STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                pView: view as *const _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateMacOSSurfaceMVK(instance.internal_object(), &infos,
+                                                       ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
     /// Returns true if the given queue family can draw on this surface.
     pub fn is_supported(&self, queue: &QueueFamily) -> Result<bool, OomError> {
         unsafe {
