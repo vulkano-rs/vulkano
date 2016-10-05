@@ -52,7 +52,7 @@ pub enum PrimitiveTopology {
     TriangleFan,
     LineListWithAdjacency,
     LineStripWithAdjacency,
-    TriangleListWithAdjancecy,
+    TriangleListWithAdjacency,
     TriangleStripWithAdjacency,
     PatchList { vertices_per_patch: u32 },
 }
@@ -69,7 +69,7 @@ impl Into<vk::PrimitiveTopology> for PrimitiveTopology {
             PrimitiveTopology::TriangleFan => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
             PrimitiveTopology::LineListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
             PrimitiveTopology::LineStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
-            PrimitiveTopology::TriangleListWithAdjancecy => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
+            PrimitiveTopology::TriangleListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
             PrimitiveTopology::TriangleStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
             PrimitiveTopology::PatchList { .. } => vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
         }
