@@ -21,6 +21,7 @@ lazy_static! {
         #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
         #[cfg(all(unix, not(target_os = "android")))] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
         #[cfg(target_os = "android")] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
+        #[cfg(any(target_os = "macos", target_os = "ios"))] fn get_path() -> &'static Path { Path::new("MoltenVK") }
         let path = get_path();
         shared_library::dynamic_library::DynamicLibrary::open(Some(path))
                                     .map_err(|err| LoadingError::LibraryLoadFailure(err))
