@@ -81,7 +81,8 @@ pub use self::view::BufferViewRef;
 pub mod cpu_access;
 pub mod device_local;
 pub mod immutable;
-mod slice;
 pub mod sys;
-mod traits;
 pub mod view;
+
+mod slice;
+mod traits;

@@ -26,21 +26,34 @@ pub unsafe trait Buffer {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
 
+    /// Returns the size of the buffer in bytes.
     #[inline]
     fn size(&self) -> usize {
         self.inner().buffer.size()
     }
 
+    /// Returns the length of the buffer in number of elements.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
     fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 
+    /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
-    fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self> where Self: Sized + TypedBuffer {
+    fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
+        where Self: Sized + TypedBuffer
+    {
         BufferSlice::from(self)
     }
 
+    /// Builds a `BufferSlice` object holding part of the buffer by reference.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    ///
+    /// This method can be used when you want to perform an operation on some part of the buffer
+    /// and not on the whole buffer.
     ///
     /// Returns `None` if out of range.
     #[inline]
@@ -51,16 +64,23 @@ pub unsafe trait Buffer {
         BufferSlice::slice(self.as_buffer_slice(), range)
     }
 
+    /// Builds a `BufferSlice` object holding the buffer by value.
     #[inline]
-    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self> where Self: Sized + TypedBuffer {
+    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
+        where Self: Sized + TypedBuffer
+    {
         BufferSlice::from(self)
     }
 }
 
+/// Inner information about a buffer.
 #[derive(Copy, Clone, Debug)]
 pub struct BufferInner<'a> {
+    /// The underlying buffer object.
     pub buffer: &'a UnsafeBuffer,
-    pub offset: usize
+    /// The offset in bytes from the start of the underlying buffer object to the start of the
+    /// buffer we're describing.
+    pub offset: usize,
 }
 
 unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
