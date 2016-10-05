@@ -2515,6 +2515,14 @@ ptrs!(InstancePointers, {
     CreateDebugReportCallbackEXT => (instance: Instance, pCreateInfo: *const DebugReportCallbackCreateInfoEXT, pAllocator: *const AllocationCallbacks, pCallback: *mut DebugReportCallbackEXT) -> Result,
     DestroyDebugReportCallbackEXT => (instance: Instance, callback: DebugReportCallbackEXT, pAllocator: *const AllocationCallbacks) -> (),
     DebugReportMessageEXT => (instance: Instance, flags: DebugReportFlagsEXT, objectType: DebugReportObjectTypeEXT, object: u64, location: usize, messageCode: i32, pLayerPrefix: *const c_char, pMessage: *const c_char) -> (),
+    CreateIOSSurfaceMVK => (instance: Instance, pCreateInfo: *const IOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    CreateMacOSSurfaceMVK => (instance: Instance, pCreateInfo: *const MacOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    ActivateMoltenVKLicenseMVK => (licenseID: *const c_char, licenseKey: *const c_char, acceptLicenseTermsAndConditions: Bool32) -> Result,
+    ActivateMoltenVKLicensesMVK => () -> Result,
+    GetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    SetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    GetPhysicalDeviceMetalFeaturesMVK => (physicalDevice: PhysicalDevice, pMetalFeatures: *mut MVKPhysicalDeviceMetalFeatures) -> Result,
+    GetSwapchainPerformanceMVK => (device: Device, swapchain: SwapchainKHR, pSwapchainPerf: *mut MVKSwapchainPerformance) -> Result,
 });
 
 ptrs!(DevicePointers, {
@@ -2644,12 +2652,4 @@ ptrs!(DevicePointers, {
     AcquireNextImageKHR => (device: Device, swapchain: SwapchainKHR, timeout: u64, semaphore: Semaphore, fence: Fence, pImageIndex: *mut u32) -> Result,
     QueuePresentKHR => (queue: Queue, pPresentInfo: *const PresentInfoKHR) -> Result,
     CreateSharedSwapchainsKHR => (device: Device, swapchainCount: u32, pCreateInfos: *const SwapchainCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSwapchains: *mut SwapchainKHR) -> Result,
-    CreateIOSSurfaceMVK => (instance: Instance, pCreateInfo: *const IOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
-    CreateMacOSSurfaceMVK => (instance: Instance, pCreateInfo: *const MacOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
-    ActivateMoltenVKLicenseMVK => (licenseID: *const c_char, licenseKey: *const c_char, acceptLicenseTermsAndConditions: Bool32) -> Result,
-    ActivateMoltenVKLicensesMVK => () -> Result,
-    GetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
-    SetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
-    GetPhysicalDeviceMetalFeaturesMVK => (physicalDevice: PhysicalDevice, pMetalFeatures: *mut MVKPhysicalDeviceMetalFeatures) -> Result,
-    GetSwapchainPerformanceMVK => (device: Device, swapchain: SwapchainKHR, pSwapchainPerf: *mut MVKSwapchainPerformance) -> Result,
 });
