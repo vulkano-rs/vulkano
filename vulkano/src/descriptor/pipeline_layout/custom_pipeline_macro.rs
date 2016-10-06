@@ -150,9 +150,9 @@ macro_rules! pipeline_layout {
             #[inline]
             impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
                 pub fn res(&self) -> ($(<$field as ValidParameter<$ty>>::Resource),*) {
-                    (
-                        ValidParameter<$ty>::build(&self.$field)
-                    )
+                    ($(
+                        ValidParameter::<$ty>::build(&self.$field),
+                    )*)
                 }
             }
 
