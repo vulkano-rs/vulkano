@@ -17,7 +17,7 @@ extern crate vulkano;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
-use vulkano::command_buffer::std::StdCommandsList;
+use vulkano::command_buffer::CommandsList;
 
 use std::sync::Arc;
 use std::time::Duration;

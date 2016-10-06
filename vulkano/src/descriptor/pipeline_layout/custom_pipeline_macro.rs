@@ -119,19 +119,21 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor_set::DescriptorPool;
             use $crate::descriptor::descriptor_set::DescriptorSet;
             use $crate::descriptor::descriptor_set::DescriptorSetDesc;
+            use $crate::descriptor::descriptor_set::StdDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor::descriptor_set::DescriptorWrite;
             use $crate::descriptor::pipeline_layout::PipelineLayout;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformTexelBuffer;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageTexelBuffer;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::SampledImage;
+            // TODO: restore
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformTexelBuffer;
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageTexelBuffer;
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::CombinedImageSampler;
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::SampledImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::DescriptorMarker;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageBuffer;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageImage;
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageImage;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformBuffer;
-            use $crate::descriptor::pipeline_layout::custom_pipeline_macro::InputAttachment;
+            //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::InputAttachment;
             use $crate::descriptor::pipeline_layout::custom_pipeline_macro::ValidParameter;
 
             // This constant is part of the API, but Rust sees it as dead code.
@@ -146,9 +148,8 @@ macro_rules! pipeline_layout {
             }
 
             #[allow(non_camel_case_types)]
-            #[allow(unused_assignments)]
-            #[inline]
             impl<$($field: ValidParameter<$ty>),*> Descriptors<$($field),*> {
+                #[inline]
                 pub fn res(&self) -> ($(<$field as ValidParameter<$ty>>::Resource),*) {
                     ($(
                         ValidParameter::<$ty>::build(&self.$field),
@@ -156,23 +157,22 @@ macro_rules! pipeline_layout {
                 }
             }
 
-            pub struct Set {
-                inner: UnsafeDescriptorSet
+            pub struct Set<R> {
+                inner: StdDescriptorSet<R>
             }
 
-            impl Set {
+            impl<R> Set<R> {
                 #[inline]
                 #[allow(non_camel_case_types)]
                 pub fn raw<$($field: ValidParameter<$ty>),*>
                           (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
                            descriptors: &Descriptors<$($field),*>)
-                           -> Result<Set, OomError>
+                           -> Result<Set<R>, OomError>
                 {
                     #![allow(unsafe_code)]
                     unsafe {
                         let layout = layout.inner().descriptor_set_layout($num).unwrap();
-                        let mut set = try!(UnsafeDescriptorSet::uninitialized_raw(pool, layout));
-                        set.write(descriptors.writes());
+                        let mut set = try!(StdDescriptorSet::new(pool, layout, descriptors.res()));
                         Ok(Set { inner: set })
                     }
                 }
@@ -182,22 +182,22 @@ macro_rules! pipeline_layout {
                 pub fn new<$($field: ValidParameter<$ty>),*>
                           (pool: &Arc<DescriptorPool>, layout: &Arc<CustomPipeline>,
                            descriptors: &Descriptors<$($field),*>)
-                           -> Arc<Set>
+                           -> Arc<Set<R>>
                 {
                     Arc::new(Set::raw(pool, layout, descriptors).unwrap())
                 }
             }
 
             #[allow(unsafe_code)]
-            unsafe impl DescriptorSet for Set {
+            unsafe impl<R> DescriptorSet for Set<R> {
                 #[inline]
                 fn inner(&self) -> &UnsafeDescriptorSet {
-                    &self.inner
+                    &self.inner.inner()
                 }
             }
 
             #[allow(unsafe_code)]
-            unsafe impl DescriptorSetDesc for Set {
+            unsafe impl<R> DescriptorSetDesc for Set<R> {
                 type Iter = VecIntoIter<DescriptorDesc>;
 
                 #[inline]
@@ -232,9 +232,7 @@ macro_rules! pipeline_layout {
 
             #[inline]
             #[allow(dead_code)]
-            pub fn build_set_layout(device: &Arc<Device>)
-                                    -> Arc<UnsafeDescriptorSetLayout>
-            {
+            pub fn build_set_layout(device: &Arc<Device>) -> Arc<UnsafeDescriptorSetLayout> {
                 Arc::new(build_set_layout_raw(device).unwrap())
             }
         }
