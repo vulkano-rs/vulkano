@@ -22,6 +22,8 @@ pub fn required_extensions() -> InstanceExtensions {
         khr_mir_surface: true,
         khr_android_surface: true,
         khr_win32_surface: true,
+        mvk_ios_surface: true,
+        mvk_macos_surface: true,
         ..InstanceExtensions::none()
     };
 
@@ -151,4 +153,12 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
     Surface::from_hwnd(instance,
                        ptr::null() as *const (), // FIXME
                        win.get_hwnd())
+}
+
+#[cfg(macos)]
+unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window)
+                           -> Result<Arc<Surface>, SurfaceCreationError>
+{
+    use winit::os::macos::WindowExt;
+    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
