@@ -8,11 +8,14 @@
 // according to those terms.
 
 use std::fmt;
+use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
 use std::time::Duration;
 use smallvec::SmallVec;
 
+use command_buffer::pool::CommandPool;
+use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::Queue;
 use sync::Fence;
@@ -28,18 +31,27 @@ use SynchronizedVulkanObject;
 
 /// Trait for objects that can be submitted to the GPU.
 pub unsafe trait Submit {
-    /// Submits the command buffer.
+    /// Submits the object to the queue.
     ///
     /// Note that since submitting has a fixed overhead, you should try, if possible, to submit
-    /// multiple command buffers at once instead.
-    ///
-    /// This is a simple shortcut for creating a `Submit` object.
+    /// multiple command buffers at once instead. To do so, you can use the `chain` method.
+    // TODO: add example
     #[inline]
     fn submit(self, queue: &Arc<Queue>) -> Submission<Self> where Self: Sized {
         submit(self, queue)
     }
 
-    /// Chains this `Submit` object with another one, so that both are submitted at once.
+    /// Consumes this object and another one to return a `SubmitChain` object that will submit both
+    /// at once.
+    ///
+    /// `self` will be executed first, and then `other` afterwards.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the two objects don't belong to the same `Device`.
+    ///
+    // TODO: add test for panic
+    // TODO: add example
     #[inline]
     fn chain<S>(self, other: S) -> SubmitChain<Self, S> where Self: Sized, S: Submit {
         assert_eq!(self.device().internal_object(),
@@ -50,8 +62,8 @@ pub unsafe trait Submit {
     /// Returns the device this object belongs to.
     fn device(&self) -> &Arc<Device>;
 
-    /// Called slightly before the object is submitted. The function must return a `SubmitBuilder`
-    /// containing the list of things to submit.
+    /// Called slightly before the object is submitted. The function must modify an existing
+    /// `SubmitBuilder` object to append the list of things to submit to it.
     ///
     /// # Safety for the caller
     ///
@@ -63,8 +75,9 @@ pub unsafe trait Submit {
     ///
     /// # Safety for the implementation
     ///
-    /// To write.
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder;
+    /// TODO: To write.
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                   -> SubmitBuilder<'a>;
 }
 
 unsafe impl<'a, S> Submit for &'a S where S: Submit + 'a {
@@ -74,7 +87,9 @@ unsafe impl<'a, S> Submit for &'a S where S: Submit + 'a {
     }
 
     #[inline]
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+    unsafe fn append_submission<'b>(&'b self, base: SubmitBuilder<'b>, queue: &Arc<Queue>)
+                                    -> SubmitBuilder<'b>
+    {
         (**self).append_submission(base, queue)
     }
 }
@@ -86,7 +101,9 @@ unsafe impl<S> Submit for Box<S> where S: Submit {
     }
 
     #[inline]
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                    -> SubmitBuilder<'a>
+    {
         (**self).append_submission(base, queue)
     }
 }
@@ -98,20 +115,37 @@ unsafe impl<S> Submit for Arc<S> where S: Submit {
     }
 
     #[inline]
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                    -> SubmitBuilder<'a>
+    {
         (**self).append_submission(base, queue)
     }
 }
 
 /// Allows building a submission.
+///
+/// This object contains a list of operations that the GPU should perform in order. You can add new
+/// operations to the list with the various `add_*` methods.
+///
+/// > **Note**: Command buffers submitted one after another are not executed in order. Instead they
+/// > are only guarateed to *start* in the order they were added. The object that implements
+/// > `Submit` should be aware of that fact and add appropriate pipeline barriers to the command
+/// > buffers.
+///
+/// # Safety
+///
+/// While it is safe to build a `SubmitBuilder` from scratch, the only way to actually submit
+/// something is through the `Submit` trait which is unsafe to implement.
 // TODO: can be optimized by storing all the semaphores in a single vec and all command buffers
 // in a single vec
-pub struct SubmitBuilder {
+// TODO: add sparse bindings and swapchain presents
+pub struct SubmitBuilder<'a> {
     semaphores_storage: SmallVec<[vk::Semaphore; 16]>,
     dest_stages_storage: SmallVec<[vk::PipelineStageFlags; 8]>,
     command_buffers_storage: SmallVec<[vk::CommandBuffer; 4]>,
     submits: SmallVec<[SubmitBuilderSubmit; 2]>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
+    marker: PhantomData<&'a ()>,
 }
 
 #[derive(Default)]
@@ -120,25 +154,28 @@ struct SubmitBuilderSubmit {
     fence: Option<Arc<Fence>>,
 }
 
-impl SubmitBuilder {
+impl<'a> SubmitBuilder<'a> {
     /// Builds a new empty `SubmitBuilder`.
     #[inline]
-    pub fn new() -> SubmitBuilder {
+    pub fn new() -> SubmitBuilder<'a> {
         SubmitBuilder {
             semaphores_storage: SmallVec::new(),
             dest_stages_storage: SmallVec::new(),
             command_buffers_storage: SmallVec::new(),
             submits: SmallVec::new(),
             keep_alive_semaphores: SmallVec::new(),
+            marker: PhantomData,
         }
     }
 
-    /// Adds a fence to signal.
+    /// Adds an operation that signals a fence.
     ///
     /// > **Note**: Due to the way the Vulkan API is designed, you are strongly encouraged to use
     /// > only one fence and signal at the very end of the submission.
+    ///
+    /// The fence is signalled after all previous operations of the `SubmitBuilder` are finished.
     #[inline]
-    pub fn add_fence(mut self, fence: Arc<Fence>) -> SubmitBuilder {
+    pub fn add_fence_signal(mut self, fence: Arc<Fence>) -> SubmitBuilder<'a> {
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
         }
@@ -152,11 +189,21 @@ impl SubmitBuilder {
         self
     }
 
-    /// Adds a semaphore to wait upon.
+    /// Adds an operation that waits on a semaphore.
+    ///
+    /// Only the given `stages` of the command buffers added afterwards will wait upon
+    /// the semaphore. Other stages not included in `stages` can execute before waiting.
+    ///
+    /// The semaphore must be signalled by a previous submission.
     #[inline]
     pub fn add_wait_semaphore(mut self, semaphore: Arc<Semaphore>, stages: PipelineStages)
-                              -> SubmitBuilder
+                              -> SubmitBuilder<'a>
     {
+        // TODO: check device of the semaphore with a debug_assert
+        // TODO: if stages contains tessellation or geometry stages, make sure the corresponding
+        // feature is active with a debug_assert
+        debug_assert!({ let f: vk::PipelineStageFlagBits = stages.into(); f != 0 });
+
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
         }
@@ -179,10 +226,29 @@ impl SubmitBuilder {
         self
     }
 
-    // TODO: API shouldn't expose vk ; instead take a `&'a UnsafeCommandBuffer` where `'a` is a
-    //       lifetime on `Submit::append_submission`.
+    /// Adds an operation that executes a command buffer.
+    ///
+    /// > **Note**: Command buffers submitted one after another are not executed in order. Instead
+    /// > they are only guarateed to *start* in the order they were added. The object that
+    /// > implements `Submit` should be aware of that fact and add appropriate pipeline barriers
+    /// > to the command buffers.
+    ///
+    /// Thanks to the lifetime requirement, the command buffer must outlive the `Submit` object
+    /// that builds this `SubmitBuilder`. Consequently keeping the `Submit` object alive is enough
+    /// to guarantee that the command buffer is kept alive as well.
     #[inline]
-    pub fn add_command_buffer(mut self, command_buffer: vk::CommandBuffer) -> SubmitBuilder {
+    pub fn add_command_buffer<P>(self, command_buffer: &'a UnsafeCommandBuffer<P>)
+                                 -> SubmitBuilder<'a>
+        where P: CommandPool
+    {
+        self.add_command_buffer_raw(command_buffer.internal_object())
+    }
+
+    // TODO: remove in favor of `add_command_buffer`?
+    #[inline]
+    pub fn add_command_buffer_raw(mut self, command_buffer: vk::CommandBuffer)
+                                  -> SubmitBuilder<'a>
+    {
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
         }
@@ -200,9 +266,16 @@ impl SubmitBuilder {
         self
     }
 
-    /// Adds a semaphore to signal after all the previous elements have completed.
+    /// Adds an operation that signals a semaphore.
+    ///
+    /// The semaphore is signalled after all previous operations of the `SubmitBuilder` are
+    /// finished.
+    ///
+    /// The semaphore must be unsignalled.
     #[inline]
-    pub fn add_signal_semaphore(mut self, semaphore: Arc<Semaphore>) -> SubmitBuilder {
+    pub fn add_signal_semaphore(mut self, semaphore: Arc<Semaphore>) -> SubmitBuilder<'a> {
+        // TODO: check device of the semaphore with a debug_assert
+
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
         }
@@ -237,19 +310,24 @@ impl SubmitBuilder {
     }
 }
 
-pub fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
+// Implementation for `Submit::submit`.
+fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
     where S: Submit
 {
+    let last_fence;
+    let keep_alive_semaphores;
+
     unsafe {
         let mut builder = submit.append_submission(SubmitBuilder::new(), queue);
+        keep_alive_semaphores = builder.keep_alive_semaphores;
 
-        let last_fence = if let Some(last) = builder.submits.last_mut() {
+        last_fence = if let Some(last) = builder.submits.last_mut() {
             if last.fence.is_none() {
                 last.fence = Some(Fence::new(submit.device().clone()));
             }
 
             last.fence.as_ref().unwrap().clone()
-            
+
         } else {
             Fence::new(submit.device().clone())     // TODO: meh
         };
@@ -264,13 +342,17 @@ pub fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
 
             for submit in builder.submits.iter_mut() {
                 for batch in submit.batches.iter_mut() {
-                    batch.pWaitSemaphores = builder.semaphores_storage.as_ptr().offset(next_semaphore);
-                    batch.pWaitDstStageMask = builder.dest_stages_storage.as_ptr().offset(next_wait_stage);
+                    batch.pWaitSemaphores = builder.semaphores_storage
+                                                   .as_ptr().offset(next_semaphore);
+                    batch.pWaitDstStageMask = builder.dest_stages_storage
+                                                     .as_ptr().offset(next_wait_stage);
                     next_semaphore += batch.waitSemaphoreCount as isize;
                     next_wait_stage += batch.waitSemaphoreCount as isize;
-                    batch.pCommandBuffers = builder.command_buffers_storage.as_ptr().offset(next_command_buffer);
+                    batch.pCommandBuffers = builder.command_buffers_storage
+                                                   .as_ptr().offset(next_command_buffer);
                     next_command_buffer += batch.commandBufferCount as isize;
-                    batch.pSignalSemaphores = builder.semaphores_storage.as_ptr().offset(next_semaphore);
+                    batch.pSignalSemaphores = builder.semaphores_storage
+                                                     .as_ptr().offset(next_semaphore);
                     next_semaphore += batch.signalSemaphoreCount as isize;
                 }
 
@@ -284,16 +366,17 @@ pub fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
             debug_assert_eq!(next_wait_stage as usize, builder.dest_stages_storage.len());
             debug_assert_eq!(next_command_buffer as usize, builder.command_buffers_storage.len());
         }
+    }
 
-        Submission {
-            queue: queue.clone(),
-            fence: last_fence,
-            keep_alive_semaphores: builder.keep_alive_semaphores,
-            submit: submit,
-        }
+    Submission {
+        queue: queue.clone(),
+        fence: last_fence,
+        keep_alive_semaphores: keep_alive_semaphores,
+        submit: submit,
     }
 }
 
+/// Chain of two `Submit` objects. See `Submit::chain`.
 pub struct SubmitChain<A, B> {
     first: A,
     second: B,
@@ -309,13 +392,15 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
     }
 
     #[inline]
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                    -> SubmitBuilder<'a>
+    {
         let builder = self.first.append_submission(base, queue);
         self.second.append_submission(builder, queue)
     }
 }
 
-/// Returned when you submit one or multiple command buffers.
+/// Returned when you submit something to a queue.
 ///
 /// This object holds the resources that are used by the GPU and that must be kept alive for at
 /// least as long as the GPU is executing the submission. Therefore destroying a `Submission`
