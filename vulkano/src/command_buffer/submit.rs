@@ -13,15 +13,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use smallvec::SmallVec;
 
-use command_buffer::sys::Kind;
-use command_buffer::sys::Flags;
 use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Device;
 use device::Queue;
-use framebuffer::framebuffer::EmptyAttachmentsList;
-use framebuffer::EmptySinglePassRenderPass;
-use framebuffer::StdFramebuffer;
 use sync::Fence;
 use sync::FenceWaitError;
 use sync::PipelineStages;
@@ -41,10 +35,9 @@ pub unsafe trait Submit {
     /// multiple command buffers at once instead.
     ///
     /// This is a simple shortcut for creating a `Submit` object.
-    // TODO: remove 'static
     #[inline]
-    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized + 'static {
-        SubmitList::new().add(self).submit(queue)
+    fn submit(self, queue: &Arc<Queue>) -> Submission<Self> where Self: Sized {
+        submit(self, queue)
     }
 
     /// Returns the inner object.
@@ -54,33 +47,25 @@ pub unsafe trait Submit {
     /// Returns the device this object belongs to.
     fn device(&self) -> &Arc<Device>;
 
-    /// Called slightly before the command buffer is submitted. Signals the command buffers that it
-    /// is going to be submitted on the given queue. The function must return the list of
-    /// semaphores to wait upon and transitions to perform.
-    ///
-    /// The `fence` parameter is a closure that can be used to pull a fence if required. If a fence
-    /// is pulled, it is guaranteed that it will be signaled after the command buffer ends.
+    /// Called slightly before the object is submitted. The function must return a `SubmitBuilder`
+    /// containing the list of things to submit.
     ///
     /// # Safety for the caller
     ///
-    /// This function must only be called if there's actually a submission that follows. If a
-    /// fence is pulled, then it must eventually be signaled. All the semaphores that are waited
-    /// upon must become unsignaled, and all the semaphores that are supposed to be signaled must
-    /// become signaled.
+    /// This function must only be called if there's actually a submission with the returned
+    /// parameters that follows.
     ///
     /// This function is supposed to be called only by vulkano's internals. It is recommended
     /// that you never call it.
     ///
     /// # Safety for the implementation
     ///
-    /// The implementation must ensure that the command buffer doesn't get destroyed before the
-    /// fence is signaled, or before a fence of a later submission to the same queue is signaled.
-    ///
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>;
+    /// To write.
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder;
 }
 
 /// Information about how the submitting function should synchronize the submission.
+// TODO: move or remove
 pub struct SubmitInfo {
     /// List of semaphores to wait upon before the command buffer starts execution.
     pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
@@ -106,6 +91,197 @@ impl SubmitInfo {
     }
 }
 
+/// Allows building a submission.
+// TODO: can be optimized by storing all the semaphores in a single vec and all command buffers
+// in a single vec
+pub struct SubmitBuilder {
+    semaphores_storage: SmallVec<[vk::Semaphore; 16]>,
+    dest_stages_storage: SmallVec<[vk::PipelineStageFlags; 8]>,
+    command_buffers_storage: SmallVec<[vk::CommandBuffer; 4]>,
+    submits: SmallVec<[SubmitBuilderSubmit; 2]>,
+    keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
+}
+
+#[derive(Default)]
+struct SubmitBuilderSubmit {
+    batches: SmallVec<[vk::SubmitInfo; 4]>,
+    fence: Option<Arc<Fence>>,
+}
+
+impl SubmitBuilder {
+    /// Builds a new empty `SubmitBuilder`.
+    #[inline]
+    pub fn new() -> SubmitBuilder {
+        SubmitBuilder {
+            semaphores_storage: SmallVec::new(),
+            dest_stages_storage: SmallVec::new(),
+            command_buffers_storage: SmallVec::new(),
+            submits: SmallVec::new(),
+            keep_alive_semaphores: SmallVec::new(),
+        }
+    }
+
+    /// Adds a fence to signal.
+    ///
+    /// > **Note**: Due to the way the Vulkan API is designed, you are strongly encouraged to use
+    /// > only one fence and signal at the very end of the submission.
+    #[inline]
+    pub fn add_fence(mut self, fence: Arc<Fence>) -> SubmitBuilder {
+        if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
+            self.submits.push(Default::default());
+        }
+
+        {
+            let mut last = self.submits.last_mut().unwrap();
+            debug_assert!(last.fence.is_none());
+            last.fence = Some(fence);
+        }
+
+        self
+    }
+
+    /// Adds a semaphore to wait upon.
+    #[inline]
+    pub fn add_wait_semaphore(mut self, semaphore: Arc<Semaphore>, stages: PipelineStages)
+                              -> SubmitBuilder
+    {
+        if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
+            self.submits.push(Default::default());
+        }
+
+        {
+            let mut submit = self.submits.last_mut().unwrap();
+            if submit.batches.last().map(|b| b.signalSemaphoreCount != 0 ||
+                                             b.commandBufferCount != 0)
+                                    .unwrap_or(true)
+            {
+                submit.batches.push(SubmitBuilder::empty_vk_submit_info());
+            }
+
+            submit.batches.last_mut().unwrap().waitSemaphoreCount += 1;
+            self.dest_stages_storage.push(stages.into());
+            self.semaphores_storage.push(semaphore.internal_object());
+            self.keep_alive_semaphores.push(semaphore);
+        }
+
+        self
+    }
+
+    // TODO: API shouldn't expose vk ; instead take a `&'a UnsafeCommandBuffer` where `'a` is a
+    //       lifetime on `Submit::append_submission`.
+    #[inline]
+    pub fn add_command_buffer(mut self, command_buffer: vk::CommandBuffer) -> SubmitBuilder {
+        if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
+            self.submits.push(Default::default());
+        }
+
+        {
+            let mut submit = self.submits.last_mut().unwrap();
+            if submit.batches.last().map(|b| b.signalSemaphoreCount != 0).unwrap_or(true) {
+                submit.batches.push(SubmitBuilder::empty_vk_submit_info());
+            }
+
+            self.command_buffers_storage.push(command_buffer);
+            submit.batches.last_mut().unwrap().commandBufferCount += 1;
+        }
+
+        self
+    }
+
+    /// Adds a semaphore to signal after all the previous elements have completed.
+    #[inline]
+    pub fn add_signal_semaphore(mut self, semaphore: Arc<Semaphore>) -> SubmitBuilder {
+        if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
+            self.submits.push(Default::default());
+        }
+
+        {
+            let mut submit = self.submits.last_mut().unwrap();
+            if submit.batches.is_empty() {
+                submit.batches.push(SubmitBuilder::empty_vk_submit_info());
+            }
+
+            submit.batches.last_mut().unwrap().signalSemaphoreCount += 1;
+            self.semaphores_storage.push(semaphore.internal_object());
+            self.keep_alive_semaphores.push(semaphore);
+        }
+
+        self
+    }
+
+    #[inline]
+    fn empty_vk_submit_info() -> vk::SubmitInfo {
+        vk::SubmitInfo {
+            sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
+            pNext: ptr::null(),
+            waitSemaphoreCount: 0,
+            pWaitSemaphores: ptr::null(),
+            pWaitDstStageMask: ptr::null(),
+            commandBufferCount: 0,
+            pCommandBuffers: ptr::null(),
+            signalSemaphoreCount: 0,
+            pSignalSemaphores: ptr::null(),
+        }
+    }
+}
+
+pub fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
+    where S: Submit
+{
+    unsafe {
+        let mut builder = submit.append_submission(SubmitBuilder::new(), queue);
+
+        let last_fence = if let Some(last) = builder.submits.last_mut() {
+            if last.fence.is_none() {
+                last.fence = Some(Fence::new(submit.device().clone()));
+            }
+
+            last.fence.as_ref().unwrap().clone()
+            
+        } else {
+            Fence::new(submit.device().clone())     // TODO: meh
+        };
+
+        {
+            let vk = queue.device().pointers();
+            let queue = queue.internal_object_guard();
+
+            let mut next_semaphore = 0;
+            let mut next_wait_stage = 0;
+            let mut next_command_buffer = 0;
+
+            for submit in builder.submits.iter_mut() {
+                for batch in submit.batches.iter_mut() {
+                    batch.pWaitSemaphores = builder.semaphores_storage.as_ptr().offset(next_semaphore);
+                    batch.pWaitDstStageMask = builder.dest_stages_storage.as_ptr().offset(next_wait_stage);
+                    next_semaphore += batch.waitSemaphoreCount as isize;
+                    next_wait_stage += batch.waitSemaphoreCount as isize;
+                    batch.pCommandBuffers = builder.command_buffers_storage.as_ptr().offset(next_command_buffer);
+                    next_command_buffer += batch.commandBufferCount as isize;
+                    batch.pSignalSemaphores = builder.semaphores_storage.as_ptr().offset(next_semaphore);
+                    next_semaphore += batch.signalSemaphoreCount as isize;
+                }
+
+                let fence = submit.fence.as_ref().map(|f| f.internal_object()).unwrap_or(0);
+                check_errors(vk.QueueSubmit(*queue, submit.batches.len() as u32,
+                                            submit.batches.as_ptr(), fence)).unwrap();        // TODO: handle errors (trickier than it looks)
+
+            }
+
+            debug_assert_eq!(next_semaphore as usize, builder.semaphores_storage.len());
+            debug_assert_eq!(next_wait_stage as usize, builder.dest_stages_storage.len());
+            debug_assert_eq!(next_command_buffer as usize, builder.command_buffers_storage.len());
+        }
+
+        Submission {
+            queue: queue.clone(),
+            fence: last_fence,
+            keep_alive_semaphores: builder.keep_alive_semaphores,
+            submit: submit,
+        }
+    }
+}
+
 /// Returned when you submit one or multiple command buffers.
 ///
 /// This object holds the resources that are used by the GPU and that must be kept alive for at
@@ -122,13 +298,14 @@ impl SubmitInfo {
 // The `Submission` object can hold borrows of command buffers. In order for it to be safe to leak
 // a `Submission`, the borrowed object themselves must be protected by a fence.
 #[must_use]
-pub struct Submission {
+pub struct Submission<S = Box<Submit>> {
     fence: Arc<Fence>,      // TODO: make optional
-    keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
     queue: Arc<Queue>,
+    keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
+    submit: S,
 }
 
-impl fmt::Debug for Submission {
+impl<S> fmt::Debug for Submission<S> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         // TODO: better impl?
@@ -136,7 +313,7 @@ impl fmt::Debug for Submission {
     }
 }
 
-impl Submission {
+impl<S> Submission<S> {
     /// Returns `true` if destroying this `Submission` object would block the CPU for some time.
     #[inline]
     pub fn destroying_would_block(&self) -> bool {
@@ -162,200 +339,9 @@ impl Submission {
     }
 }
 
-impl Drop for Submission {
+impl<S> Drop for Submission<S> {
     fn drop(&mut self) {
         self.fence.wait(Duration::from_secs(10)).unwrap();      // TODO: handle some errors
-    }
-}
-
-trait KeepAlive {}
-impl<T> KeepAlive for T {}
-
-#[derive(Debug, Copy, Clone)]
-pub struct SubmitList<L> {
-    list: L,
-}
-
-impl SubmitList<()> {
-    /// Builds an empty submission list.
-    #[inline]
-    pub fn new() -> SubmitList<()> {
-        SubmitList { list: () }
-    }
-}
-
-impl<L> SubmitList<L> where L: SubmitListTrait {
-    /// Adds a command buffer to submit to the list.
-    ///
-    /// In the Vulkan API, a submission is divided into batches that each contain one or more
-    /// command buffers. Vulkano will automatically determine which command buffers can be grouped
-    /// into the same batch.
-    // TODO: remove 'static
-    #[inline]
-    pub fn add<C>(self, command_buffer: C) -> SubmitList<(C, L)> where C: Submit + 'static {
-        SubmitList { list: (command_buffer, self.list) }
-    }
-
-    /// Submits the list of command buffers.
-    pub fn submit(self, queue: &Arc<Queue>) -> Submission {
-        let SubmitListOpaque { fence, wait_semaphores, wait_stages, command_buffers,
-                               signal_semaphores, mut submits, keep_alive }
-                             = self.list.infos(queue);
-
-        // TODO: for now we always create a Fence in order to put it in the submission
-        let fence = fence.unwrap_or_else(|| Fence::new(queue.device().clone()));
-
-        // Filling the pointers inside `submits`.
-        unsafe {
-            debug_assert_eq!(wait_semaphores.len(), wait_stages.len());
-
-            let mut next_wait = 0;
-            let mut next_cb = 0;
-            let mut next_signal = 0;
-
-            for submit in submits.iter_mut() {
-                debug_assert!(submit.waitSemaphoreCount as usize + next_wait as usize <=
-                              wait_semaphores.len());
-                debug_assert!(submit.commandBufferCount as usize + next_cb as usize <=
-                              command_buffers.len());
-                debug_assert!(submit.signalSemaphoreCount as usize + next_signal as usize <=
-                              signal_semaphores.len());
-
-                submit.pWaitSemaphores = wait_semaphores.as_ptr().offset(next_wait);
-                submit.pWaitDstStageMask = wait_stages.as_ptr().offset(next_wait);
-                submit.pCommandBuffers = command_buffers.as_ptr().offset(next_cb);
-                submit.pSignalSemaphores = signal_semaphores.as_ptr().offset(next_signal);
-
-                next_wait += submit.waitSemaphoreCount as isize;
-                next_cb += submit.commandBufferCount as isize;
-                next_signal += submit.signalSemaphoreCount as isize;
-            }
-
-            debug_assert_eq!(next_wait as usize, wait_semaphores.len());
-            debug_assert_eq!(next_wait as usize, wait_stages.len());
-            debug_assert_eq!(next_cb as usize, command_buffers.len());
-            debug_assert_eq!(next_signal as usize, signal_semaphores.len());
-        }
-
-        unsafe {
-            let vk = queue.device().pointers();
-            let queue = queue.internal_object_guard();
-            //let fence = fence.as_ref().map(|f| f.internal_object()).unwrap_or(0);
-            let fence = fence.internal_object();
-            check_errors(vk.QueueSubmit(*queue, submits.len() as u32, submits.as_ptr(),
-                                        fence)).unwrap();        // TODO: handle errors (trickier than it looks)
-        }
-
-        Submission {
-            keep_alive: keep_alive,
-            fence: fence,
-            queue: queue.clone(),
-        }
-    }
-}
-
-/* TODO: All that stuff below is undocumented */
-
-pub struct SubmitListOpaque {
-    fence: Option<Arc<Fence>>,
-    wait_semaphores: SmallVec<[vk::Semaphore; 16]>,
-    wait_stages: SmallVec<[vk::PipelineStageFlags; 16]>,
-    command_buffers: SmallVec<[vk::CommandBuffer; 16]>,
-    signal_semaphores: SmallVec<[vk::Semaphore; 16]>,
-    submits: SmallVec<[vk::SubmitInfo; 8]>,
-    keep_alive: SmallVec<[Arc<KeepAlive>; 4]>,
-}
-
-pub unsafe trait SubmitListTrait {
-    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque;
-}
-
-unsafe impl SubmitListTrait for () {
-    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
-        SubmitListOpaque {
-            fence: None,
-            wait_semaphores: SmallVec::new(),
-            wait_stages: SmallVec::new(),
-            command_buffers: SmallVec::new(),
-            signal_semaphores: SmallVec::new(),
-            submits: SmallVec::new(),
-            keep_alive: SmallVec::new(),
-        }
-    }
-}
-
-// TODO: remove 'static
-unsafe impl<C, R> SubmitListTrait for (C, R) where C: Submit + 'static, R: SubmitListTrait {
-    fn infos(self, queue: &Arc<Queue>) -> SubmitListOpaque {
-        // TODO: attempt to group multiple submits into one when possible
-
-        let (current, rest) = self;
-
-        let mut infos = rest.infos(queue);
-        let device = current.device().clone();
-        let current_infos = unsafe { current.on_submit(queue, || {
-            if let Some(fence) = infos.fence.as_ref() {
-                return fence.clone();
-            }
-
-            let new_fence = Fence::new(device.clone());
-            infos.fence = Some(new_fence.clone());
-            new_fence
-        })};
-
-        let mut new_submit = vk::SubmitInfo {
-            sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
-            pNext: ptr::null(),
-            waitSemaphoreCount: 0,
-            pWaitSemaphores: ptr::null(),
-            pWaitDstStageMask: ptr::null(),
-            commandBufferCount: 1,
-            pCommandBuffers: ptr::null(),
-            signalSemaphoreCount: 0,
-            pSignalSemaphores: ptr::null(),
-        };
-
-        if !current_infos.pre_pipeline_barrier.is_empty() {
-            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
-                                                         Kind::Primary::<EmptySinglePassRenderPass,
-                                                                         StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>,
-                                                         Flags::OneTimeSubmit).unwrap();
-            cb.pipeline_barrier(current_infos.pre_pipeline_barrier);
-            new_submit.commandBufferCount += 1;
-            infos.command_buffers.push(cb.internal_object());
-            infos.keep_alive.push(Arc::new(cb) as Arc<_>);
-        }
-
-        infos.command_buffers.push(current.inner());
-
-        if !current_infos.post_pipeline_barrier.is_empty() {
-            let mut cb = UnsafeCommandBufferBuilder::new(Device::standard_command_pool(&device, queue.family()),
-                                                         Kind::Primary::<EmptySinglePassRenderPass,
-                                                                         StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>,
-                                                         Flags::OneTimeSubmit).unwrap();
-            cb.pipeline_barrier(current_infos.post_pipeline_barrier);
-            new_submit.commandBufferCount += 1;
-            infos.command_buffers.push(cb.internal_object());
-            infos.keep_alive.push(Arc::new(cb) as Arc<_>);
-        }
-
-        for (semaphore, stage) in current_infos.semaphores_wait {
-            infos.wait_semaphores.push(semaphore.internal_object());
-            infos.wait_stages.push(stage.into());
-            infos.keep_alive.push(semaphore);
-            new_submit.waitSemaphoreCount += 1;
-        }
-
-        for semaphore in current_infos.semaphores_signal {
-            infos.signal_semaphores.push(semaphore.internal_object());
-            infos.keep_alive.push(semaphore);
-            new_submit.signalSemaphoreCount += 1;
-        }
-
-        infos.submits.push(new_submit);
-        infos.keep_alive.push(Arc::new(current) as Arc<_>);
-
-        infos
     }
 }
 

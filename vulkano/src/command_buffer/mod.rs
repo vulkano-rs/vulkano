@@ -47,10 +47,8 @@ pub use self::std::CommandBuffer;
 pub use self::std::CommandsList;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
+pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitInfo;
-pub use self::submit::SubmitList;
-pub use self::submit::SubmitListOpaque;
-pub use self::submit::SubmitListTrait;
 
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;

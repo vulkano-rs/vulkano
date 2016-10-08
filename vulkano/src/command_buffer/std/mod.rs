@@ -14,6 +14,7 @@ use buffer::TrackedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::StatesManager;
+use command_buffer::submit::SubmitBuilder;
 use command_buffer::submit::Submit;
 use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
@@ -345,9 +346,7 @@ unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, mut fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
-    {
-        self.commands.on_submit(&self.states, queue, &mut fence)
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+        unimplemented!()        // FIXME:
     }
 }
