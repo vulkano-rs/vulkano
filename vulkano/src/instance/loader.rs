@@ -25,9 +25,15 @@ extern {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn load_static() -> Result<vk::Static, LoadingError> {
-    vk::Static {
-        GetInstanceProcAddr: vkGetInstanceProcAddr as fn(vk::Instance, *const ::std::os::raw::c_char) -> vk::PFN_vkVoidFunction,
+    extern "system" fn wrapper(instance: vk::Instance, pName: *const ::std::os::raw::c_char) -> vk::PFN_vkVoidFunction {
+        unsafe {
+            vkGetInstanceProcAddr(instance, pName)
+        }
     }
+
+    Ok(vk::Static {
+        GetInstanceProcAddr: wrapper,
+    })
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
