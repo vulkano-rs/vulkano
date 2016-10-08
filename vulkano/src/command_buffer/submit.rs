@@ -145,6 +145,7 @@ pub struct SubmitBuilder<'a> {
     command_buffers_storage: SmallVec<[vk::CommandBuffer; 4]>,
     submits: SmallVec<[SubmitBuilderSubmit; 2]>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
+    keep_alive_fences: SmallVec<[Arc<Fence>; 2]>,
     marker: PhantomData<&'a ()>,
 }
 
@@ -164,6 +165,7 @@ impl<'a> SubmitBuilder<'a> {
             command_buffers_storage: SmallVec::new(),
             submits: SmallVec::new(),
             keep_alive_semaphores: SmallVec::new(),
+            keep_alive_fences: SmallVec::new(),
             marker: PhantomData,
         }
     }
@@ -183,6 +185,7 @@ impl<'a> SubmitBuilder<'a> {
         {
             let mut last = self.submits.last_mut().unwrap();
             debug_assert!(last.fence.is_none());
+            self.keep_alive_fences.push(fence.clone());
             last.fence = Some(fence);
         }
 
@@ -316,10 +319,12 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
 {
     let last_fence;
     let keep_alive_semaphores;
+    let keep_alive_fences;
 
     unsafe {
         let mut builder = submit.append_submission(SubmitBuilder::new(), queue);
         keep_alive_semaphores = builder.keep_alive_semaphores;
+        keep_alive_fences = builder.keep_alive_fences;
 
         last_fence = if let Some(last) = builder.submits.last_mut() {
             if last.fence.is_none() {
@@ -372,6 +377,7 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
         queue: queue.clone(),
         fence: last_fence,
         keep_alive_semaphores: keep_alive_semaphores,
+        keep_alive_fences: keep_alive_fences,
         submit: submit,
     }
 }
@@ -420,6 +426,7 @@ pub struct Submission<S = Box<Submit>> {
     fence: Arc<Fence>,      // TODO: make optional
     queue: Arc<Queue>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
+    keep_alive_fences: SmallVec<[Arc<Fence>; 2]>,
     submit: S,
 }
 
