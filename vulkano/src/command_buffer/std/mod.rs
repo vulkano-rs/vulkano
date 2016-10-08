@@ -336,11 +336,6 @@ pub struct CommandBuffer<C = Box<CommandsListOutput>> {
 
 unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
     #[inline]
-    fn inner(&self) -> vk::CommandBuffer {
-        self.commands.inner()
-    }
-
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.commands.device()
     }

@@ -48,6 +48,7 @@ pub use self::std::CommandsList;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
+pub use self::submit::SubmitChain;
 pub use self::submit::SubmitInfo;
 
 use pipeline::viewport::Viewport;

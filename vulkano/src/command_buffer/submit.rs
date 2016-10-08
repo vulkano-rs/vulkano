@@ -40,9 +40,13 @@ pub unsafe trait Submit {
         submit(self, queue)
     }
 
-    /// Returns the inner object.
-    // TODO: crappy API
-    fn inner(&self) -> vk::CommandBuffer;
+    /// Chains this `Submit` object with another one, so that both are submitted at once.
+    #[inline]
+    fn chain<S>(self, other: S) -> SubmitChain<Self, S> where Self: Sized, S: Submit {
+        assert_eq!(self.device().internal_object(),
+                   other.device().internal_object());
+        SubmitChain { first: self, second: other }
+    }
 
     /// Returns the device this object belongs to.
     fn device(&self) -> &Arc<Device>;
@@ -62,6 +66,42 @@ pub unsafe trait Submit {
     ///
     /// To write.
     unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder;
+}
+
+unsafe impl<'a, S> Submit for &'a S where S: Submit + 'a {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
+    }
+
+    #[inline]
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+        (**self).append_submission(base, queue)
+    }
+}
+
+unsafe impl<S> Submit for Box<S> where S: Submit {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
+    }
+
+    #[inline]
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+        (**self).append_submission(base, queue)
+    }
+}
+
+unsafe impl<S> Submit for Arc<S> where S: Submit {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
+    }
+
+    #[inline]
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+        (**self).append_submission(base, queue)
+    }
 }
 
 /// Information about how the submitting function should synchronize the submission.
@@ -279,6 +319,27 @@ pub fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
             keep_alive_semaphores: builder.keep_alive_semaphores,
             submit: submit,
         }
+    }
+}
+
+pub struct SubmitChain<A, B> {
+    first: A,
+    second: B,
+}
+
+unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        debug_assert_eq!(self.first.device().internal_object(),
+                         self.second.device().internal_object());
+        
+        self.first.device()
+    }
+
+    #[inline]
+    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
+        let builder = self.first.append_submission(base, queue);
+        self.second.append_submission(builder, queue)
     }
 }
 
