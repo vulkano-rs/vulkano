@@ -96,7 +96,7 @@ pub unsafe trait Submit {
                                    -> SubmitBuilder<'a>;
 }
 
-unsafe impl<'a, S> Submit for &'a S where S: Submit + 'a {
+unsafe impl<'a, S: ?Sized> Submit for &'a S where S: Submit + 'a {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
@@ -110,7 +110,7 @@ unsafe impl<'a, S> Submit for &'a S where S: Submit + 'a {
     }
 }
 
-unsafe impl<S> Submit for Box<S> where S: Submit {
+unsafe impl<S: ?Sized> Submit for Box<S> where S: Submit {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
@@ -124,7 +124,7 @@ unsafe impl<S> Submit for Box<S> where S: Submit {
     }
 }
 
-unsafe impl<S> Submit for Arc<S> where S: Submit {
+unsafe impl<S: ?Sized> Submit for Arc<S> where S: Submit {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
