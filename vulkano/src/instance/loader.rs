@@ -19,7 +19,7 @@ use vk;
 lazy_static! {
     static ref VK_LIB: Result<shared_library::dynamic_library::DynamicLibrary, LoadingError> = {
         #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
-        #[cfg(all(unix, not(target_os = "android")))] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
+        #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
         #[cfg(target_os = "android")] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
         #[cfg(any(target_os = "macos", target_os = "ios"))] fn get_path() -> &'static Path { Path::new("MoltenVK") }
         let path = get_path();
