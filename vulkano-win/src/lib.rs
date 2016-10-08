@@ -122,7 +122,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
     Surface::from_anativewindow(instance, win.get_native_window())
 }
 
-#[cfg(all(unix, not(target_os = "android")))]
+#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 unsafe fn winit_to_surface(instance: &Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
@@ -145,7 +145,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
     }
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 unsafe fn winit_to_surface(instance: &Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
@@ -155,7 +155,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
                        win.get_hwnd())
 }
 
-#[cfg(macos)]
+#[cfg(target_os = "macos")]
 unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError>
 {
