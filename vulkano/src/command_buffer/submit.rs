@@ -33,11 +33,27 @@ use SynchronizedVulkanObject;
 pub unsafe trait Submit {
     /// Submits the object to the queue.
     ///
-    /// Note that since submitting has a fixed overhead, you should try, if possible, to submit
-    /// multiple command buffers at once instead. To do so, you can use the `chain` method.
+    /// Since submitting has a fixed overhead, you should try, if possible, to submit multiple
+    /// command buffers at once instead. To do so, you can use the `chain` method.
+    ///
+    /// `s.submit(queue)` is a shortcut for `s.submit_precise(queue).boxed()`.
     // TODO: add example
     #[inline]
-    fn submit(self, queue: &Arc<Queue>) -> Submission<Self> where Self: Sized {
+    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized + 'static {
+        self.submit_precise(queue).boxed()
+    }
+
+    /// Submits the object to the queue.
+    ///
+    /// Since submitting has a fixed overhead, you should try, if possible, to submit multiple
+    /// command buffers at once instead. To do so, you can use the `chain` method.
+    ///
+    /// Contrary to `submit`, this method preserves strong typing in the submission. This means
+    /// that it has a lower overhead but it is less convenient to store in a container. This method
+    /// also has the advantage of not requiring `Self: 'static`.
+    // TODO: add example
+    #[inline]
+    fn submit_precise(self, queue: &Arc<Queue>) -> Submission<Self> where Self: Sized {
         submit(self, queue)
     }
 
@@ -375,7 +391,7 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
 
     Submission {
         queue: queue.clone(),
-        fence: last_fence,
+        fence: FenceWithWaiting(last_fence),
         keep_alive_semaphores: keep_alive_semaphores,
         keep_alive_fences: keep_alive_fences,
         submit: submit,
@@ -423,11 +439,18 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
 // a `Submission`, the borrowed object themselves must be protected by a fence.
 #[must_use]
 pub struct Submission<S = Box<Submit>> {
-    fence: Arc<Fence>,      // TODO: make optional
+    fence: FenceWithWaiting,      // TODO: make optional
     queue: Arc<Queue>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
     keep_alive_fences: SmallVec<[Arc<Fence>; 2]>,
     submit: S,
+}
+
+struct FenceWithWaiting(Arc<Fence>);
+impl Drop for FenceWithWaiting {
+    fn drop(&mut self) {
+        self.0.wait(Duration::from_secs(10)).unwrap();      // TODO: handle some errors
+    }
 }
 
 impl<S> fmt::Debug for Submission<S> {
@@ -448,13 +471,13 @@ impl<S> Submission<S> {
     /// Returns `true` if the GPU has finished executing this submission.
     #[inline]
     pub fn finished(&self) -> bool {
-        self.fence.ready().unwrap_or(false)     // TODO: what to do in case of error?   
+        self.fence.0.ready().unwrap_or(false)     // TODO: what to do in case of error?   
     }
 
     /// Waits until the submission has finished.
     #[inline]
     pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
-        self.fence.wait(timeout)
+        self.fence.0.wait(timeout)
     }
 
     /// Returns the queue the submission was submitted to.
@@ -464,9 +487,16 @@ impl<S> Submission<S> {
     }
 }
 
-impl<S> Drop for Submission<S> {
-    fn drop(&mut self) {
-        self.fence.wait(Duration::from_secs(10)).unwrap();      // TODO: handle some errors
+impl<S> Submission<S> where S: Submit + 'static {
+    /// Turns this submission into a boxed submission.
+    pub fn boxed(self) -> Submission {
+        Submission {
+            fence: self.fence,
+            queue: self.queue,
+            keep_alive_semaphores: self.keep_alive_semaphores,
+            keep_alive_fences: self.keep_alive_fences,
+            submit: Box::new(self.submit) as Box<_>,
+        }
     }
 }
 

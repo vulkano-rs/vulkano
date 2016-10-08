@@ -341,7 +341,41 @@ unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
     }
 
     #[inline]
-    unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
-        unimplemented!()        // FIXME:
+    unsafe fn append_submission<'a>(&'a self, mut base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                    -> SubmitBuilder<'a>
+    {
+        let mut fence = None;
+        let infos = self.commands.on_submit(&self.states, queue, &mut || {
+            match &mut fence {
+                f @ &mut None => {
+                    let fe = Fence::new(self.device().clone()); *f = Some(fe.clone()); fe
+                },
+                &mut Some(ref f) => f.clone()
+            }
+        });
+
+        for (sem_wait, sem_stage) in infos.semaphores_wait {
+            base = base.add_wait_semaphore(sem_wait, sem_stage);
+        }
+
+        if !infos.pre_pipeline_barrier.is_empty() {
+            unimplemented!()
+        }
+
+        base = base.add_command_buffer_raw(self.commands.inner());
+
+        if !infos.post_pipeline_barrier.is_empty() {
+            unimplemented!()
+        }
+
+        for sem_signal in infos.semaphores_signal {
+            base = base.add_signal_semaphore(sem_signal);
+        }
+
+        if let Some(fence) = fence {
+            base = base.add_fence_signal(fence);
+        }
+
+        base
     }
 }
