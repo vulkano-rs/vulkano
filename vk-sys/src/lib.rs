@@ -2424,7 +2424,7 @@ macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
             $(
-                $name: extern "system" fn($($param_ty),*) -> $ret,
+                pub $name: extern "system" fn($($param_ty),*) -> $ret,
             )+
         }
 
