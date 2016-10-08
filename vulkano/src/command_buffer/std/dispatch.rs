@@ -12,11 +12,11 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use command_buffer::StatesManager;
+use command_buffer::SubmitInfo;
 use command_buffer::std::CommandsListPossibleOutsideRenderPass;
 use command_buffer::std::CommandsList;
 use command_buffer::std::CommandsListConcrete;
 use command_buffer::std::CommandsListOutput;
-use command_buffer::submit::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayout;

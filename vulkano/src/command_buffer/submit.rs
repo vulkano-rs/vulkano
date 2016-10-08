@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use smallvec::SmallVec;
 
-use command_buffer::sys::PipelineBarrierBuilder;
 use device::Device;
 use device::Queue;
 use sync::Fence;
@@ -101,33 +100,6 @@ unsafe impl<S> Submit for Arc<S> where S: Submit {
     #[inline]
     unsafe fn append_submission(&self, base: SubmitBuilder, queue: &Arc<Queue>) -> SubmitBuilder {
         (**self).append_submission(base, queue)
-    }
-}
-
-/// Information about how the submitting function should synchronize the submission.
-// TODO: move or remove
-pub struct SubmitInfo {
-    /// List of semaphores to wait upon before the command buffer starts execution.
-    pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
-    /// List of semaphores to signal after the command buffer has finished.
-    pub semaphores_signal: Vec<Arc<Semaphore>>,
-    /// Pipeline barrier to execute on the queue and immediately before the command buffer.
-    /// Ignored if empty.
-    pub pre_pipeline_barrier: PipelineBarrierBuilder,
-    /// Pipeline barrier to execute on the queue and immediately after the command buffer.
-    /// Ignored if empty.
-    pub post_pipeline_barrier: PipelineBarrierBuilder,
-}
-
-impl SubmitInfo {
-    #[inline]
-    pub fn empty() -> SubmitInfo {
-        SubmitInfo {
-            semaphores_wait: Vec::new(),
-            semaphores_signal: Vec::new(),
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
-        }
     }
 }
 

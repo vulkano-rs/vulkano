@@ -49,10 +49,13 @@ pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitChain;
-pub use self::submit::SubmitInfo;
 
+use std::sync::Arc;
+use command_buffer::sys::PipelineBarrierBuilder;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
+use sync::PipelineStages;
+use sync::Semaphore;
 
 pub mod pool;
 pub mod std;
@@ -103,5 +106,32 @@ impl Default for DynamicState {
     #[inline]
     fn default() -> DynamicState {
         DynamicState::none()
+    }
+}
+
+/// Information about how the submitting function should synchronize the submission.
+// TODO: rework that design? move to std?
+pub struct SubmitInfo {
+    /// List of semaphores to wait upon before the command buffer starts execution.
+    pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
+    /// List of semaphores to signal after the command buffer has finished.
+    pub semaphores_signal: Vec<Arc<Semaphore>>,
+    /// Pipeline barrier to execute on the queue and immediately before the command buffer.
+    /// Ignored if empty.
+    pub pre_pipeline_barrier: PipelineBarrierBuilder,
+    /// Pipeline barrier to execute on the queue and immediately after the command buffer.
+    /// Ignored if empty.
+    pub post_pipeline_barrier: PipelineBarrierBuilder,
+}
+
+impl SubmitInfo {
+    #[inline]
+    pub fn empty() -> SubmitInfo {
+        SubmitInfo {
+            semaphores_wait: Vec::new(),
+            semaphores_signal: Vec::new(),
+            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
+            post_pipeline_barrier: PipelineBarrierBuilder::new(),
+        }
     }
 }
