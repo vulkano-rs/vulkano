@@ -409,7 +409,7 @@ fn main() {
             .build();
 
         // Now all we need to do is submit the command buffer to the queue.
-        submissions.push(command_buffer.submit(&queue));
+        submissions.push(command_buffer.submit(&queue).unwrap());
 
         // The color output is now expected to contain our triangle. But in order to show it on
         // the screen, we have to *present* the image by calling `present`.

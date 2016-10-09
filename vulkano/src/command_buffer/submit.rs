@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ptr;
@@ -30,6 +31,7 @@ use VulkanPointers;
 use SynchronizedVulkanObject;
 
 /// Trait for objects that can be submitted to the GPU.
+// TODO: is Box<Error> appropriate? maybe something else?
 pub unsafe trait Submit {
     /// Submits the object to the queue.
     ///
@@ -39,8 +41,10 @@ pub unsafe trait Submit {
     /// `s.submit(queue)` is a shortcut for `s.submit_precise(queue).boxed()`.
     // TODO: add example
     #[inline]
-    fn submit(self, queue: &Arc<Queue>) -> Submission where Self: Sized + 'static {
-        self.submit_precise(queue).boxed()
+    fn submit(self, queue: &Arc<Queue>) -> Result<Submission, Box<Error>>
+        where Self: Sized + 'static
+    {
+        Ok(try!(self.submit_precise(queue)).boxed())
     }
 
     /// Submits the object to the queue.
@@ -53,7 +57,9 @@ pub unsafe trait Submit {
     /// also has the advantage of not requiring `Self: 'static`.
     // TODO: add example
     #[inline]
-    fn submit_precise(self, queue: &Arc<Queue>) -> Submission<Self> where Self: Sized {
+    fn submit_precise(self, queue: &Arc<Queue>) -> Result<Submission<Self>, Box<Error>>
+        where Self: Sized
+    {
         submit(self, queue)
     }
 
@@ -93,7 +99,7 @@ pub unsafe trait Submit {
     ///
     /// TODO: To write.
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                   -> SubmitBuilder<'a>;
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>;
 }
 
 unsafe impl<'a, S: ?Sized> Submit for &'a S where S: Submit + 'a {
@@ -104,7 +110,7 @@ unsafe impl<'a, S: ?Sized> Submit for &'a S where S: Submit + 'a {
 
     #[inline]
     unsafe fn append_submission<'b>(&'b self, base: SubmitBuilder<'b>, queue: &Arc<Queue>)
-                                    -> SubmitBuilder<'b>
+                                    -> Result<SubmitBuilder<'b>, Box<Error>>
     {
         (**self).append_submission(base, queue)
     }
@@ -118,7 +124,7 @@ unsafe impl<S: ?Sized> Submit for Box<S> where S: Submit {
 
     #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> SubmitBuilder<'a>
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         (**self).append_submission(base, queue)
     }
@@ -132,7 +138,7 @@ unsafe impl<S: ?Sized> Submit for Arc<S> where S: Submit {
 
     #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> SubmitBuilder<'a>
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         (**self).append_submission(base, queue)
     }
@@ -330,7 +336,7 @@ impl<'a> SubmitBuilder<'a> {
 }
 
 // Implementation for `Submit::submit`.
-fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
+fn submit<S>(submit: S, queue: &Arc<Queue>) -> Result<Submission<S>, Box<Error>>
     where S: Submit
 {
     let last_fence;
@@ -338,7 +344,7 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
     let keep_alive_fences;
 
     unsafe {
-        let mut builder = submit.append_submission(SubmitBuilder::new(), queue);
+        let mut builder = try!(submit.append_submission(SubmitBuilder::new(), queue));
         keep_alive_semaphores = builder.keep_alive_semaphores;
         keep_alive_fences = builder.keep_alive_fences;
 
@@ -389,13 +395,13 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Submission<S>
         }
     }
 
-    Submission {
+    Ok(Submission {
         queue: queue.clone(),
         fence: FenceWithWaiting(last_fence),
         keep_alive_semaphores: keep_alive_semaphores,
         keep_alive_fences: keep_alive_fences,
         submit: submit,
-    }
+    })
 }
 
 /// Chain of two `Submit` objects. See `Submit::chain`.
@@ -415,9 +421,9 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
 
     #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> SubmitBuilder<'a>
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
     {
-        let builder = self.first.append_submission(base, queue);
+        let builder = try!(self.first.append_submission(base, queue));
         self.second.append_submission(builder, queue)
     }
 }

@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error::Error;
 use std::iter;
 use std::sync::Arc;
 
@@ -342,7 +343,7 @@ unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
 
     #[inline]
     unsafe fn append_submission<'a>(&'a self, mut base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> SubmitBuilder<'a>
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         let mut fence = None;
         let infos = self.commands.on_submit(&self.states, queue, &mut || {
@@ -376,6 +377,6 @@ unsafe impl<C> Submit for CommandBuffer<C> where C: CommandsListOutput {
             base = base.add_fence_signal(fence);
         }
 
-        base
+        Ok(base)
     }
 }
