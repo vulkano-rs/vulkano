@@ -18,6 +18,18 @@ use vk;
 
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
+#[link(name = "c++")]
+extern {}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[link(name = "Metal", kind = "framework")]
+extern {}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[link(name = "QuartzCore", kind = "framework")]
+extern {}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[link(name = "MoltenVK", kind = "framework")]
 extern {
     fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const ::std::os::raw::c_char) -> vk::PFN_vkVoidFunction;

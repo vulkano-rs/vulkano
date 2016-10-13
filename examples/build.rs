@@ -1,6 +1,7 @@
 extern crate vulkano_shaders;
 
 fn main() {
+    println!("cargo:rustc-link-search=framework={}", "/Library/Frameworks");
     // building the shaders used in the examples
     vulkano_shaders::build_glsl_shaders([
         ("src/bin/triangle_vs.glsl", vulkano_shaders::ShaderType::Vertex),
