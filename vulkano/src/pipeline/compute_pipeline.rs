@@ -13,7 +13,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::PipelineLayout;
+use descriptor::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
@@ -42,7 +42,7 @@ impl<Pl> ComputePipeline<Pl> {
     pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
                          shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
                          -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
-        where Pl: PipelineLayout + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
+        where Pl: PipelineLayoutRef + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
               Css: SpecializationConstants
     {
         let vk = device.pointers();
@@ -80,7 +80,7 @@ impl<Pl> ComputePipeline<Pl> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: PipelineLayout::inner(&**pipeline_layout).internal_object(),
+                layout: PipelineLayoutRef::inner(&**pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };

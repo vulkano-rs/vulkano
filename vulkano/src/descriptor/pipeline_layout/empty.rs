@@ -13,12 +13,12 @@ use std::sync::Arc;
 
 use device::Device;
 use descriptor::descriptor::DescriptorDesc;
-use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::UnsafePipelineLayout;
 use descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
 
-/// Implementation of `PipelineLayout` for an empty pipeline.
+/// Implementation of `PipelineLayoutRef` for an empty pipeline.
 pub struct EmptyPipeline {
     inner: UnsafePipelineLayout
 }
@@ -36,7 +36,7 @@ impl EmptyPipeline {
     }
 }
 
-unsafe impl PipelineLayout for EmptyPipeline {
+unsafe impl PipelineLayoutRef for EmptyPipeline {
     #[inline]
     fn inner(&self) -> &UnsafePipelineLayout {
         &self.inner

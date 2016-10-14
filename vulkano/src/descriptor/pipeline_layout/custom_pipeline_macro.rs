@@ -29,7 +29,7 @@ macro_rules! pipeline_layout {
         use $crate::device::Device;
         use $crate::descriptor::descriptor::DescriptorDesc;
         use $crate::descriptor::descriptor::ShaderStages;
-        use $crate::descriptor::pipeline_layout::PipelineLayout;
+        use $crate::descriptor::pipeline_layout::PipelineLayoutRef;
         use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
         use $crate::descriptor::pipeline_layout::UnsafePipelineLayout;
         use $crate::descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
@@ -71,7 +71,7 @@ macro_rules! pipeline_layout {
         }
 
         #[allow(unsafe_code)]
-        unsafe impl PipelineLayout for CustomPipeline {
+        unsafe impl PipelineLayoutRef for CustomPipeline {
             #[inline]
             fn inner(&self) -> &UnsafePipelineLayout {
                 &self.inner
@@ -123,7 +123,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor::descriptor_set::DescriptorWrite;
-            use $crate::descriptor::pipeline_layout::PipelineLayout;
+            use $crate::descriptor::pipeline_layout::PipelineLayoutRef;
             // TODO: restore
             //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::UniformTexelBuffer;
             //use $crate::descriptor::pipeline_layout::custom_pipeline_macro::StorageTexelBuffer;

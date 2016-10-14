@@ -16,7 +16,7 @@ use std::u32;
 use smallvec::SmallVec;
 
 use device::Device;
-use descriptor::PipelineLayout;
+use descriptor::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::EmptyPipeline;
@@ -150,7 +150,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayout, Rp: RenderPass + RenderPassDesc
+    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -167,7 +167,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                                               Fs, Fi, Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
+              L: PipelineLayoutRef + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl>,
               Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
@@ -198,7 +198,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                                               Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+              L: PipelineLayoutRef + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
                  PipelineLayoutSuperset<Gl>,
               Vl: PipelineLayoutDesc,
               Fl: PipelineLayoutDesc,
@@ -244,7 +244,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                                               Fo, Fl, L, Rp>)
               -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+              L: PipelineLayoutRef + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
                  PipelineLayoutSuperset<Tcl> + PipelineLayoutSuperset<Tel>,
               Vl: PipelineLayoutDesc,
               Fl: PipelineLayoutDesc,
@@ -288,7 +288,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
-              L: PipelineLayout + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
+              L: PipelineLayoutRef + PipelineLayoutSuperset<Vl> + PipelineLayoutSuperset<Fl> +
                  PipelineLayoutSuperset<Tcl> + PipelineLayoutSuperset<Tel> +
                  PipelineLayoutSuperset<Gl>,
               Vl: PipelineLayoutDesc,
@@ -851,7 +851,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
-                layout: PipelineLayout::inner(&**params.layout).internal_object(),
+                layout: PipelineLayoutRef::inner(&**params.layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -900,7 +900,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayout
+    where L: PipelineLayoutRef
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]

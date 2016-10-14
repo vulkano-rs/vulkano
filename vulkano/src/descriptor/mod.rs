@@ -54,11 +54,11 @@
 //! # Pipeline initialization
 //!
 //! When you build a pipeline object (a `GraphicsPipeline` or a `ComputePipeline`), you have to
-//! pass a reference to a struct that implements the `PipelineLayout` trait. This object will
+//! pass a reference to a struct that implements the `PipelineLayoutRef` trait. This object will
 //! describe to the Vulkan implementation the types and layouts of the descriptors and push
 //! constants that are going to be accessed by the shaders of the pipeline.
 //!
-//! The `PipelineLayout` trait is unsafe. You are encouraged not to implemented it yourself, but
+//! The `PipelineLayoutRef` trait is unsafe. You are encouraged not to implemented it yourself, but
 //! instead use the `pipeline_layout!` macro, which will generate a struct that implements this
 //! trait for you.
 //!
@@ -98,7 +98,7 @@
 //! TODO: talk about perfs of changing sets
 
 pub use self::descriptor_set::DescriptorSet;
-pub use self::pipeline_layout::PipelineLayout;
+pub use self::pipeline_layout::PipelineLayoutRef;
 
 pub mod descriptor;
 pub mod descriptor_set;

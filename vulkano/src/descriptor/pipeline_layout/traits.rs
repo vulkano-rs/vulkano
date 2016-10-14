@@ -12,10 +12,24 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::UnsafePipelineLayout;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-pub unsafe trait PipelineLayout: PipelineLayoutDesc + 'static + Send + Sync {
+pub unsafe trait PipelineLayoutRef: PipelineLayoutDesc + 'static + Send + Sync {
     /// Returns the inner `UnsafePipelineLayout`.
     fn inner(&self) -> &UnsafePipelineLayout;
 }
+
+/*unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
+    #[inline]
+    fn inner(&self) -> &UnsafePipelineLayout {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, T> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
+    #[inline]
+    fn inner(&self) -> &UnsafePipelineLayout {
+        (**self).inner()
+    }
+}*/
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutDesc {
@@ -32,7 +46,7 @@ pub unsafe trait PipelineLayoutDesc {
 
 /// Traits that allow determining whether a pipeline layout is a superset of another one.
 ///
-/// This trait is automatically implemented on all types that implement `PipelineLayout`.
+/// This trait is automatically implemented on all types that implement `PipelineLayoutRef`.
 /// TODO: once specialization lands, we can add implementations that don't perform deep comparisons
 pub unsafe trait PipelineLayoutSuperset<Other>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc
@@ -107,12 +121,12 @@ unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
 
 /// Traits that allow determining whether 
 // TODO: require a trait on Pc
-pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc>: PipelineLayout {
+pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc>: PipelineLayoutRef {
     /// Returns true if `Pc` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Pc) -> bool;
 }
 
-unsafe impl<T, U> PipelineLayoutPushConstantsCompatible<U> for T where T: PipelineLayout {
+unsafe impl<T, U> PipelineLayoutPushConstantsCompatible<U> for T where T: PipelineLayoutRef {
     fn is_compatible(&self, _: &U) -> bool {
         // FIXME:
         true

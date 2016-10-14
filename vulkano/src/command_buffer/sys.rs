@@ -43,7 +43,7 @@ use buffer::sys::UnsafeBuffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolFinished;
-use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor::ShaderStages;
 use device::Device;
@@ -989,7 +989,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                                           layout: &L, first_set: u32,
                                                           descriptor_sets: Ides,
                                                           dynamic_offsets: Idyn)
-        where L: PipelineLayout,
+        where L: PipelineLayoutRef,
               Ides: IntoIterator<Item = &'a UnsafeDescriptorSet>,
               Idyn: IntoIterator<Item = u32>
     {
@@ -1021,7 +1021,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
     pub unsafe fn push_constants<L, D: ?Sized>(&mut self, layout: &L,
                                                stages: ShaderStages, offset: usize, data: &D)
-        where L: PipelineLayout
+        where L: PipelineLayoutRef
     {
         assert_eq!(layout.inner().device().internal_object(), self.device.internal_object());
 
