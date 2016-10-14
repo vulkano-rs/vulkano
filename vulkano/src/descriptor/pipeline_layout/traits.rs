@@ -9,37 +9,35 @@
 
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use descriptor::pipeline_layout::UnsafePipelineLayout;
+use descriptor::pipeline_layout::PipelineLayout;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutRef: PipelineLayoutDesc + 'static + Send + Sync {
-    /// Returns the inner `UnsafePipelineLayout`.
-    fn inner(&self) -> &UnsafePipelineLayout;
+    /// Returns the inner `PipelineLayout`.
+    fn inner(&self) -> &PipelineLayout;
 }
 
 /*unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     #[inline]
-    fn inner(&self) -> &UnsafePipelineLayout {
+    fn inner(&self) -> &PipelineLayout {
         (**self).inner()
     }
 }
 
 unsafe impl<'a, T> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
     #[inline]
-    fn inner(&self) -> &UnsafePipelineLayout {
+    fn inner(&self) -> &PipelineLayout {
         (**self).inner()
     }
 }*/
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutDesc {
-    /// Iterator that describes descriptor sets.
-    type SetsIter: Iterator<Item = Self::DescIter>;
-    /// Iterator that describes individual descriptors.
-    type DescIter: Iterator<Item = DescriptorDesc>;
+    fn num_sets(&self) -> usize;
 
-    /// Describes the layout of the descriptors of the pipeline.
-    fn descriptors_desc(&self) -> Self::SetsIter;
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize>;
+
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
     // TODO: describe push constants
 }
@@ -59,7 +57,7 @@ unsafe impl<T, U> PipelineLayoutSuperset<U> for T
     where T: PipelineLayoutDesc, U: PipelineLayoutDesc
 {
     fn is_superset_of(&self, other: &U) -> bool {
-        let mut other_descriptor_sets = other.descriptors_desc();
+        /*let mut other_descriptor_sets = other.descriptors_desc();
 
         for my_set in self.descriptors_desc() {
             let mut other_set = match other_descriptor_sets.next() {
@@ -77,8 +75,9 @@ unsafe impl<T, U> PipelineLayoutSuperset<U> for T
                     return false;
                 }
             }
-        }
+        }*/
 
+        // FIXME: 
         true
     }
 }
@@ -95,7 +94,7 @@ unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
     where T: PipelineLayoutDesc, U: DescriptorSetsCollection
 {
     fn is_compatible(&self, sets: &U) -> bool {
-        let mut other_descriptor_sets = DescriptorSetsCollection::description(sets);
+        /*let mut other_descriptor_sets = DescriptorSetsCollection::description(sets);
 
         for my_set in self.descriptors_desc() {
             let mut other_set = match other_descriptor_sets.next() {
@@ -113,8 +112,9 @@ unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
                     return false;
                 }
             }
-        }
+        }*/
 
+        // FIXME: 
         true
     }
 }

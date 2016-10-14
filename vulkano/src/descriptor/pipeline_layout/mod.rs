@@ -20,7 +20,7 @@
 
 pub use self::empty::EmptyPipeline;
 pub use self::empty::EmptyPipelineDesc;
-pub use self::sys::UnsafePipelineLayout;
+pub use self::sys::PipelineLayout;
 pub use self::sys::UnsafePipelineLayoutCreationError;
 pub use self::traits::PipelineLayoutRef;
 pub use self::traits::PipelineLayoutDesc;

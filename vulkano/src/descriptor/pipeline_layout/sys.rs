@@ -29,32 +29,32 @@ use device::Device;
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
-pub struct UnsafePipelineLayout {
+pub struct PipelineLayout {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
     layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
 }
 
-impl UnsafePipelineLayout {
-    /// Creates a new `UnsafePipelineLayout`.
+impl PipelineLayout {
+    /// Creates a new `PipelineLayout`.
     ///
     /// # Panic
     ///
     /// Panics if one of the `UnsafeDescriptorSetLayout` was not created with `device`.
     #[inline]
     pub fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
-                         -> Result<UnsafePipelineLayout, UnsafePipelineLayoutCreationError>
+                         -> Result<PipelineLayout, UnsafePipelineLayoutCreationError>
         where I: IntoIterator<Item = &'a Arc<UnsafeDescriptorSetLayout>>,
               P: IntoIterator<Item = (usize, usize, ShaderStages)>,
     {
-        UnsafePipelineLayout::new_inner(device, layouts.into_iter().map(|e| e.clone()).collect(),
+        PipelineLayout::new_inner(device, layouts.into_iter().map(|e| e.clone()).collect(),
                                         push_constants.into_iter().collect())
     }
 
     /// Same as `new` but won't be inlined.
     fn new_inner(device: &Arc<Device>, layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
                  push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
-                 -> Result<UnsafePipelineLayout, UnsafePipelineLayoutCreationError>
+                 -> Result<PipelineLayout, UnsafePipelineLayoutCreationError>
     {
         let vk = device.pointers();
         let limits = device.physical_device().limits();
@@ -110,7 +110,7 @@ impl UnsafePipelineLayout {
             output
         };
 
-        Ok(UnsafePipelineLayout {
+        Ok(PipelineLayout {
             device: device.clone(),
             layout: layout,
             layouts: layouts,
@@ -132,7 +132,7 @@ impl UnsafePipelineLayout {
     }
 }
 
-unsafe impl VulkanObject for UnsafePipelineLayout {
+unsafe impl VulkanObject for PipelineLayout {
     type Object = vk::PipelineLayout;
 
     #[inline]
@@ -141,7 +141,7 @@ unsafe impl VulkanObject for UnsafePipelineLayout {
     }
 }
 
-impl Drop for UnsafePipelineLayout {
+impl Drop for PipelineLayout {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -228,13 +228,13 @@ mod tests {
     use std::sync::Arc;
     use descriptor::descriptor::ShaderStages;
     use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-    use descriptor::pipeline_layout::sys::UnsafePipelineLayout;
+    use descriptor::pipeline_layout::sys::PipelineLayout;
     use descriptor::pipeline_layout::sys::UnsafePipelineLayoutCreationError;
 
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _layout = UnsafePipelineLayout::new(&device, iter::empty(), iter::empty()).unwrap();
+        let _layout = PipelineLayout::new(&device, iter::empty(), iter::empty()).unwrap();
     }
 
     #[test]
@@ -248,7 +248,7 @@ mod tests {
             Err(_) => return
         };
 
-        let _ = UnsafePipelineLayout::new(&device2, Some(&set), iter::empty());
+        let _ = PipelineLayout::new(&device2, Some(&set), iter::empty());
     }
 
     #[test]
@@ -257,7 +257,7 @@ mod tests {
 
         let push_constant = (0, 8, ShaderStages::none());
 
-        match UnsafePipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
+        match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }
@@ -269,7 +269,7 @@ mod tests {
 
         let push_constant = (0, 0, ShaderStages::all_graphics());
 
-        match UnsafePipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
+        match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }
@@ -281,7 +281,7 @@ mod tests {
 
         let push_constant = (0, 11, ShaderStages::all_graphics());
 
-        match UnsafePipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
+        match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }

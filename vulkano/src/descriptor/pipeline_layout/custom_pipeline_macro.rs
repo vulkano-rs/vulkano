@@ -31,7 +31,7 @@ macro_rules! pipeline_layout {
         use $crate::descriptor::descriptor::ShaderStages;
         use $crate::descriptor::pipeline_layout::PipelineLayoutRef;
         use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-        use $crate::descriptor::pipeline_layout::UnsafePipelineLayout;
+        use $crate::descriptor::pipeline_layout::PipelineLayout;
         use $crate::descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
 
         #[derive(Debug, Copy, Clone)]
@@ -40,7 +40,7 @@ macro_rules! pipeline_layout {
         }
 
         pub struct CustomPipeline {
-            inner: UnsafePipelineLayout
+            inner: PipelineLayout
         }
 
         impl CustomPipeline {
@@ -61,7 +61,7 @@ macro_rules! pipeline_layout {
                 };
 
                 let inner = {
-                    try!(UnsafePipelineLayout::new(device, layouts.iter(), push_constants))
+                    try!(PipelineLayout::new(device, layouts.iter(), push_constants))
                 };
 
                 Ok(Arc::new(CustomPipeline {
@@ -73,7 +73,7 @@ macro_rules! pipeline_layout {
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutRef for CustomPipeline {
             #[inline]
-            fn inner(&self) -> &UnsafePipelineLayout {
+            fn inner(&self) -> &PipelineLayout {
                 &self.inner
             }
         }

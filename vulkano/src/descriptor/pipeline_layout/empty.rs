@@ -8,26 +8,25 @@
 // according to those terms.
 
 use std::iter;
-use std::iter::Empty;
 use std::sync::Arc;
 
 use device::Device;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::UnsafePipelineLayout;
+use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
 
 /// Implementation of `PipelineLayoutRef` for an empty pipeline.
 pub struct EmptyPipeline {
-    inner: UnsafePipelineLayout
+    inner: PipelineLayout
 }
 
 impl EmptyPipeline {
     /// Builds a new empty pipeline.
     pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, UnsafePipelineLayoutCreationError> {
         let inner = {
-            try!(UnsafePipelineLayout::new(device, iter::empty(), iter::empty()))
+            try!(PipelineLayout::new(device, iter::empty(), iter::empty()))
         };
 
         Ok(Arc::new(EmptyPipeline {
@@ -38,17 +37,25 @@ impl EmptyPipeline {
 
 unsafe impl PipelineLayoutRef for EmptyPipeline {
     #[inline]
-    fn inner(&self) -> &UnsafePipelineLayout {
+    fn inner(&self) -> &PipelineLayout {
         &self.inner
     }
 }
 
 unsafe impl PipelineLayoutDesc for EmptyPipeline {
-    type SetsIter = Empty<Self::DescIter>;
-    type DescIter = Empty<DescriptorDesc>;
+    #[inline]
+    fn num_sets(&self) -> usize {
+        0
+    }
 
-    fn descriptors_desc(&self) -> Self::SetsIter {
-        iter::empty()
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        None
     }
 }
 
@@ -57,11 +64,19 @@ unsafe impl PipelineLayoutDesc for EmptyPipeline {
 pub struct EmptyPipelineDesc;
 
 unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
-    type SetsIter = Empty<Self::DescIter>;
-    type DescIter = Empty<DescriptorDesc>;
+    #[inline]
+    fn num_sets(&self) -> usize {
+        0
+    }
 
-    fn descriptors_desc(&self) -> Self::SetsIter {
-        iter::empty()
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        None
     }
 }
 
