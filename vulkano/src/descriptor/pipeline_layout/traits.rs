@@ -116,7 +116,7 @@ pub unsafe trait PipelineLayoutDesc {
     }
 }
 
-unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
+unsafe impl<T: ?Sized> PipelineLayoutDesc for Box<T> where T: PipelineLayoutDesc {
     #[inline]
     fn num_sets(&self) -> usize {
         (**self).num_sets()
@@ -141,6 +141,14 @@ unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
     fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
         (**self).push_constants_range(num)
     }
+}
+
+/// Extension trait for `PipelineLayoutDesc`. Allows retreiving a descriptor by its name.
+pub unsafe trait PipelineLayoutDescNames: PipelineLayoutDesc {
+    /// Returns the set ID and descriptor ID within set of the descriptor with the given name.
+    ///
+    /// Returns `None` if the name was not found.
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)>;
 }
 
 /// Traits that allow determining whether a pipeline layout is a superset of another one.

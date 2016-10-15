@@ -24,6 +24,7 @@ pub use self::sys::PipelineLayoutCreationError;
 pub use self::sys::PipelineLayoutSys;
 pub use self::traits::PipelineLayoutRef;
 pub use self::traits::PipelineLayoutDesc;
+pub use self::traits::PipelineLayoutDescNames;
 pub use self::traits::PipelineLayoutSuperset;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;

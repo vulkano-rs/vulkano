@@ -28,19 +28,19 @@ use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
 
-pub struct StdDescriptorSet<R> {
+pub struct SimpleDescriptorSet<R> {
     inner: UnsafeDescriptorSet,
     resources: R,
 }
 
-impl<R> StdDescriptorSet<R> {
+impl<R> SimpleDescriptorSet<R> {
     ///
     /// # Safety
     ///
     /// - The resources must match the layout.
     ///
     pub unsafe fn new(pool: &Arc<DescriptorPool>, layout: &Arc<UnsafeDescriptorSetLayout>,
-                      resources: R) -> StdDescriptorSet<R>
+                      resources: R) -> SimpleDescriptorSet<R>
     {
         unimplemented!()
     }
@@ -52,15 +52,15 @@ impl<R> StdDescriptorSet<R> {
     }
 }
 
-unsafe impl<R> DescriptorSet for StdDescriptorSet<R> {
+unsafe impl<R> DescriptorSet for SimpleDescriptorSet<R> {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         &self.inner
     }
 }
 
-unsafe impl<R, S> TrackedDescriptorSet<S> for StdDescriptorSet<R>
-    where R: StdDescriptorSetResourcesCollection<S>
+unsafe impl<R, S> TrackedDescriptorSet<S> for SimpleDescriptorSet<R>
+    where R: SimpleDescriptorSetResourcesCollection<S>
 {
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
@@ -84,7 +84,7 @@ unsafe impl<R, S> TrackedDescriptorSet<S> for StdDescriptorSet<R>
 
 // TODO: re-read docs
 /// Collection of tracked resources. Makes it possible to treat multiple buffers and images as one.
-pub unsafe trait StdDescriptorSetResourcesCollection<States> {
+pub unsafe trait SimpleDescriptorSetResourcesCollection<States> {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     // TODO: must return a Result if multiple elements conflict with one another
@@ -98,7 +98,7 @@ pub unsafe trait StdDescriptorSetResourcesCollection<States> {
         where F: FnMut() -> Arc<Fence>;
 }
 
-unsafe impl<S> StdDescriptorSetResourcesCollection<S> for () {
+unsafe impl<S> SimpleDescriptorSetResourcesCollection<S> for () {
     #[inline]
     unsafe fn transition(&self, _: &mut S, _: usize) -> (usize, PipelineBarrierBuilder) {
         (0, PipelineBarrierBuilder::new())
@@ -117,15 +117,15 @@ unsafe impl<S> StdDescriptorSetResourcesCollection<S> for () {
     }
 }
 
-pub struct StdDescriptorSetBuf<B> {
+pub struct SimpleDescriptorSetBuf<B> {
     pub buffer: B,
-    pub ty: StdDescriptorSetBufTy,
+    pub ty: SimpleDescriptorSetBufTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
 }
 
-unsafe impl<B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf<B>
+unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBuf<B>
     where B: TrackedBuffer<S>
 {
     #[inline]
@@ -163,22 +163,22 @@ unsafe impl<B, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf
     }
 }
 
-pub enum StdDescriptorSetBufTy {
+pub enum SimpleDescriptorSetBufTy {
     StorageBuffer,
     UniformBuffer,
     DynamicStorageBuffer,
     DynamicUniformBuffer,
 }
 
-pub struct StdDescriptorSetBufView<V> where V: BufferViewRef {
+pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
     pub view: V,
-    pub ty: StdDescriptorSetBufViewTy,
+    pub ty: SimpleDescriptorSetBufViewTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
 }
 
-unsafe impl<V, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBufView<V>
+unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBufView<V>
     where V: BufferViewRef, V::Buffer: TrackedBuffer<S>
 {
     #[inline]
@@ -217,14 +217,14 @@ unsafe impl<V, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetBuf
     }
 }
 
-pub enum StdDescriptorSetBufViewTy {
+pub enum SimpleDescriptorSetBufViewTy {
     StorageBufferView,
     UniformBufferView,
 }
 
-pub struct StdDescriptorSetImg<I> {
+pub struct SimpleDescriptorSetImg<I> {
     pub image: I,
-    pub ty: StdDescriptorSetImgTy,
+    pub ty: SimpleDescriptorSetImgTy,
     pub write: bool,
     pub first_mipmap: u32,
     pub num_mipmaps: u32,
@@ -235,7 +235,7 @@ pub struct StdDescriptorSetImg<I> {
     pub access: AccessFlagBits,
 }
 
-unsafe impl<I, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetImg<I>
+unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetImg<I>
     where I: TrackedImageView<S>
 {
     #[inline]
@@ -277,16 +277,16 @@ unsafe impl<I, S> StdDescriptorSetResourcesCollection<S> for StdDescriptorSetImg
     }
 }
 
-pub enum StdDescriptorSetImgTy {
+pub enum SimpleDescriptorSetImgTy {
     StorageImage,
     SampledImage,
 }
 
 macro_rules! tuple_impl {
     ($first:ident, $($rest:ident),+) => (
-        unsafe impl<S, $first, $($rest),+> StdDescriptorSetResourcesCollection<S> for ($first $(, $rest)+)
-            where $first: StdDescriptorSetResourcesCollection<S>,
-                  $($rest: StdDescriptorSetResourcesCollection<S>),+
+        unsafe impl<S, $first, $($rest),+> SimpleDescriptorSetResourcesCollection<S> for ($first $(, $rest)+)
+            where $first: SimpleDescriptorSetResourcesCollection<S>,
+                  $($rest: SimpleDescriptorSetResourcesCollection<S>),+
         {
             #[inline]
             unsafe fn transition(&self, states: &mut S, num_command: usize)

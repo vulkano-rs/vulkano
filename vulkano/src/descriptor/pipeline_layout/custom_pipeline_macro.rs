@@ -12,8 +12,8 @@ use std::marker::PhantomData;
 use buffer::TypedBuffer;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::DescriptorBufferDesc;
-use descriptor::descriptor_set::StdDescriptorSetBuf;
-use descriptor::descriptor_set::StdDescriptorSetBufTy;
+use descriptor::descriptor_set::SimpleDescriptorSetBuf;
+use descriptor::descriptor_set::SimpleDescriptorSetBufTy;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -119,7 +119,7 @@ macro_rules! pipeline_layout {
             use $crate::descriptor::descriptor_set::DescriptorPool;
             use $crate::descriptor::descriptor_set::DescriptorSet;
             use $crate::descriptor::descriptor_set::DescriptorSetDesc;
-            use $crate::descriptor::descriptor_set::StdDescriptorSet;
+            use $crate::descriptor::descriptor_set::SimpleDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSet;
             use $crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
             use $crate::descriptor::descriptor_set::DescriptorWrite;
@@ -158,7 +158,7 @@ macro_rules! pipeline_layout {
             }
 
             pub struct Set<R> {
-                inner: StdDescriptorSet<R>
+                inner: SimpleDescriptorSet<R>
             }
 
             impl<R> Set<R> {
@@ -172,7 +172,7 @@ macro_rules! pipeline_layout {
                     #![allow(unsafe_code)]
                     unsafe {
                         let layout = layout.inner().descriptor_set_layout($num).unwrap();
-                        let mut set = try!(StdDescriptorSet::new(pool, layout, descriptors.res()));
+                        let mut set = try!(SimpleDescriptorSet::new(pool, layout, descriptors.res()));
                         Ok(Set { inner: set })
                     }
                 }
@@ -266,15 +266,15 @@ unsafe impl<T: ?Sized> DescriptorMarker for UniformBuffer<T> {
 unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<UniformBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
-    type Resource = StdDescriptorSetBuf<B>;
+    type Resource = SimpleDescriptorSetBuf<B>;
 
     #[inline]
     fn build(self) -> Self::Resource {
         let size = self.size();
 
-        StdDescriptorSetBuf {
+        SimpleDescriptorSetBuf {
             buffer: self,
-            ty: StdDescriptorSetBufTy::UniformBuffer,
+            ty: SimpleDescriptorSetBufTy::UniformBuffer,
             write: false,
             stage: PipelineStages {       // FIXME:
                 all_graphics: true,
@@ -300,15 +300,15 @@ unsafe impl<T: ?Sized> DescriptorMarker for StorageBuffer<T> {
 unsafe impl<'a, B, T: ?Sized + 'static> ValidParameter<StorageBuffer<T>> for B
     where B: TypedBuffer<Content = T>
 {
-    type Resource = StdDescriptorSetBuf<B>;
+    type Resource = SimpleDescriptorSetBuf<B>;
 
     #[inline]
     fn build(self) -> Self::Resource {
         let size = self.size();
 
-        StdDescriptorSetBuf {
+        SimpleDescriptorSetBuf {
             buffer: self,
-            ty: StdDescriptorSetBufTy::StorageBuffer,
+            ty: SimpleDescriptorSetBufTy::StorageBuffer,
             write: false,
             stage: PipelineStages {       // FIXME:
                 all_graphics: true,

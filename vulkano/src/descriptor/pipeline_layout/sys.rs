@@ -24,6 +24,7 @@ use vk;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
 
@@ -31,7 +32,7 @@ use device::Device;
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
-pub struct PipelineLayout<L = Box<PipelineLayoutDesc + Send + Sync>> {
+pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
     layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
