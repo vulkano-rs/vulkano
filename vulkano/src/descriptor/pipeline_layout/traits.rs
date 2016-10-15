@@ -19,31 +19,57 @@ use device::Device;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutRef {
-    /// Returns an opaque struct representing the pipeline layout.
+    /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
-    /// Can be obtained by calling `PipelineLayout::sys()` on the referenced pipeline layout.
+    /// Can be obtained by calling `PipelineLayoutRef::sys()` on the pipeline layout.
+    ///
+    /// > **Note**: This is an internal function that you normally don't need to call.
     fn sys(&self) -> PipelineLayoutSys;
 
     /// Returns the description of the pipeline layout.
+    ///
+    /// Can be obtained by calling `PipelineLayoutRef::desc()` on the pipeline layout.
     fn desc(&self) -> &PipelineLayoutDesc;
 
     /// Returns the device that this pipeline layout belongs to.
+    ///
+    /// Can be obtained by calling `PipelineLayoutRef::device()` on the pipeline layout.
     fn device(&self) -> &Arc<Device>;
 }
 
-/*unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
+unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     #[inline]
-    fn inner(&self) -> &PipelineLayout {
-        (**self).inner()
+    fn sys(&self) -> PipelineLayoutSys {
+        (**self).sys()
+    }
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        (**self).desc()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
     }
 }
 
 unsafe impl<'a, T> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
     #[inline]
-    fn inner(&self) -> &PipelineLayout {
-        (**self).inner()
+    fn sys(&self) -> PipelineLayoutSys {
+        (**self).sys()
     }
-}*/
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        (**self).desc()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
+    }
+}
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutDesc {

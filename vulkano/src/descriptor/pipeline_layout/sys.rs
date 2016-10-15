@@ -24,6 +24,7 @@ use vk;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
 
 /// Low-level struct that represents the layout of the resources available to your shaders.
@@ -132,24 +133,22 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layouts.get(index)
     }
+}
 
-    /// Returns the device used to create this pipeline layout.
+unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDesc {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
+    fn sys(&self) -> PipelineLayoutSys {
+        PipelineLayoutSys(&self.layout)
     }
 
     #[inline]
-    pub fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDesc {
         &self.desc
     }
 
-    /// Returns an opaque object that allows internal access to the pipeline layout.
-    ///
-    /// > **Note**: This is an internal function that you normally don't need to call.
     #[inline]
-    pub fn sys(&self) -> PipelineLayoutSys {
-        PipelineLayoutSys(&self.layout)
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
