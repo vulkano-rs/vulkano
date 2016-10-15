@@ -19,6 +19,7 @@ use device::Device;
 use descriptor::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassDesc;
@@ -59,7 +60,6 @@ mod tests;
 /// Description of a `GraphicsPipeline`.
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>
-    where L: 'a
 {
     /// Describes the layout of the vertex input.
     ///
@@ -107,7 +107,7 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl,
 
     /// Describes the list of descriptors and push constants that the various shaders are going to
     /// use.
-    pub layout: &'a Arc<L>,
+    pub layout: L,
 
     /// Which subpass of which render pass this pipeline will run on. It is an error to run a
     /// graphics pipeline on a different subpass.
@@ -129,7 +129,7 @@ pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel
 pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
-    layout: Arc<Layout>,
+    layout: Layout,
 
     render_pass: RenderP,
     render_pass_subpass: u32,
@@ -847,7 +847,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
-                layout: PipelineLayoutRef::sys(&**params.layout).internal_object(),
+                layout: PipelineLayoutRef::sys(&params.layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -865,7 +865,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         Ok(Arc::new(GraphicsPipeline {
             device: device.clone(),
             pipeline: pipeline,
-            layout: params.layout.clone(),
+            layout: params.layout,
 
             vertex_definition: params.vertex_input,
 
@@ -900,7 +900,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]
-    pub fn layout(&self) -> &Arc<L> {
+    pub fn layout(&self) -> &L {
         &self.layout
     }
 }
@@ -968,6 +968,25 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     #[inline]
     pub fn has_dynamic_stencil_reference(&self) -> bool {
         self.dynamic_stencil_reference
+    }
+}
+
+unsafe impl<Mv, L, Rp> PipelineLayoutRef for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutRef
+{
+    #[inline]
+    fn sys(&self) -> PipelineLayoutSys {
+        self.layout().sys()
+    }
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        self.layout().desc()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

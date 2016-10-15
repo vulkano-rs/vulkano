@@ -14,6 +14,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use descriptor::PipelineLayoutRef;
+use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
@@ -34,21 +35,22 @@ use vk;
 pub struct ComputePipeline<Pl> {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
-    pipeline_layout: Arc<Pl>,
+    pipeline_layout: Pl,
 }
 
 impl<Pl> ComputePipeline<Pl> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
+    pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: Pl,
                          shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
                          -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
-        where Pl: PipelineLayoutRef + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
+        where Pl: PipelineLayoutRef,
+              Csl: PipelineLayoutDesc,
               Css: SpecializationConstants
     {
         let vk = device.pointers();
 
         // TODO: more details in the error
-        if !PipelineLayoutSuperset::is_superset_of(&**pipeline_layout, shader.layout()) {
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), shader.layout()) {
             return Err(ComputePipelineCreationError::IncompatiblePipelineLayout);
         }
 
@@ -80,7 +82,7 @@ impl<Pl> ComputePipeline<Pl> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: PipelineLayoutRef::sys(&**pipeline_layout).internal_object(),
+                layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
@@ -94,7 +96,7 @@ impl<Pl> ComputePipeline<Pl> {
         Ok(Arc::new(ComputePipeline {
             device: device.clone(),
             pipeline: pipeline,
-            pipeline_layout: pipeline_layout.clone(),
+            pipeline_layout: pipeline_layout,
         }))
     }
 
@@ -106,8 +108,25 @@ impl<Pl> ComputePipeline<Pl> {
 
     /// Returns the pipeline layout used in this compute pipeline.
     #[inline]
-    pub fn layout(&self) -> &Arc<Pl> {
+    pub fn layout(&self) -> &Pl {
         &self.pipeline_layout
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayoutRef {
+    #[inline]
+    fn sys(&self) -> PipelineLayoutSys {
+        self.layout().sys()
+    }
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        self.layout().desc()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.device()
     }
 }
 

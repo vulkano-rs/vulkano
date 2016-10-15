@@ -51,7 +51,8 @@ pub struct DispatchCommand<'a, L, Pl, S, Pc>
 }
 
 impl<'a, L, Pl, S, Pc> DispatchCommand<'a, L, Pl, S, Pc>
-    where L: CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayoutRef,
+    where L: CommandsList + CommandsListPossibleOutsideRenderPass,
+          Pl: PipelineLayoutRef,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     /// See the documentation of the `dispatch` method.
@@ -166,9 +167,9 @@ unsafe impl<'a, L, Pl, S, Pc> CommandsListConcrete for DispatchCommand<'a, L, Pl
             }
 
             let sets: SmallVec<[_; 8]> = my_sets.list().collect();      // TODO: ideally shouldn't collect, but there are lifetime problems
-            cb.bind_descriptor_sets(false, &**my_pipeline.layout(), 0,
+            cb.bind_descriptor_sets(false, my_pipeline.layout(), 0,
                                     sets.iter().map(|s| s.inner()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary
-            cb.push_constants(&**my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
+            cb.push_constants(my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
                               &my_push_constants);
             cb.dispatch(my_dimensions[0], my_dimensions[1], my_dimensions[2]);
             cb.pipeline_barrier(transitions_to_apply);

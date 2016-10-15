@@ -203,9 +203,9 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, 
             }
 
             let sets: SmallVec<[_; 8]> = my_sets.list().collect();      // TODO: ideally shouldn't collect, but there are lifetime problems
-            cb.bind_descriptor_sets(true, &**my_pipeline.layout(), 0,
+            cb.bind_descriptor_sets(true, my_pipeline.layout(), 0,
                                     sets.iter().map(|s| s.inner()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary
-            cb.push_constants(&**my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
+            cb.push_constants(my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
                               &my_push_constants);
 
             cb.bind_vertex_buffers(0, my_vertex_buffers.iter().map(|buf| (buf.inner().buffer, 0)));
