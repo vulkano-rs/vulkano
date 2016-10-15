@@ -37,7 +37,7 @@ pub unsafe trait PipelineLayoutRef {
     fn device(&self) -> &Arc<Device>;
 }
 
-unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
+unsafe impl<T: ?Sized> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         (**self).sys()
@@ -54,7 +54,7 @@ unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     }
 }
 
-unsafe impl<'a, T> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
+unsafe impl<'a, T: ?Sized> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         (**self).sys()
@@ -147,14 +147,14 @@ unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
 ///
 /// This trait is automatically implemented on all types that implement `PipelineLayoutRef`.
 /// TODO: once specialization lands, we can add implementations that don't perform deep comparisons
-pub unsafe trait PipelineLayoutSuperset<Other>: PipelineLayoutDesc
+pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc
 {
     /// Returns true if `self` is a superset of `Other`.
     fn is_superset_of(&self, &Other) -> bool;
 }
 
-unsafe impl<T, U> PipelineLayoutSuperset<U> for T
+unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
     where T: PipelineLayoutDesc, U: PipelineLayoutDesc
 {
     fn is_superset_of(&self, other: &U) -> bool {
@@ -184,14 +184,14 @@ unsafe impl<T, U> PipelineLayoutSuperset<U> for T
 }
 
 /// Traits that allow determining whether 
-pub unsafe trait PipelineLayoutSetsCompatible<Other>: PipelineLayoutDesc
+pub unsafe trait PipelineLayoutSetsCompatible<Other: ?Sized>: PipelineLayoutDesc
     where Other: DescriptorSetsCollection
 {
     /// Returns true if `Other` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Other) -> bool;
 }
 
-unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
+unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSetsCompatible<U> for T
     where T: PipelineLayoutDesc, U: DescriptorSetsCollection
 {
     fn is_compatible(&self, sets: &U) -> bool {
@@ -222,12 +222,14 @@ unsafe impl<T, U> PipelineLayoutSetsCompatible<U> for T
 
 /// Traits that allow determining whether 
 // TODO: require a trait on Pc
-pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc>: PipelineLayoutRef {
+pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>: PipelineLayoutRef {
     /// Returns true if `Pc` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Pc) -> bool;
 }
 
-unsafe impl<T, U> PipelineLayoutPushConstantsCompatible<U> for T where T: PipelineLayoutRef {
+unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutPushConstantsCompatible<U> for T
+    where T: PipelineLayoutRef
+{
     fn is_compatible(&self, _: &U) -> bool {
         // FIXME:
         true
