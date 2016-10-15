@@ -7,9 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
@@ -40,9 +42,41 @@ pub unsafe trait PipelineLayoutDesc {
 
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
+    #[inline]
+    fn provided_set_layout(&self, set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
+        None
+    }
+
     fn num_push_constants_ranges(&self) -> usize;
 
     fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
+}
+
+unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        (**self).num_sets()
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        (**self).num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        (**self).descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        (**self).num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+        (**self).push_constant_range(num)
+    }
 }
 
 /// Traits that allow determining whether a pipeline layout is a superset of another one.

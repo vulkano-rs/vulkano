@@ -23,41 +23,43 @@ use vk;
 
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
 use device::Device;
 
 /// Low-level struct that represents the layout of the resources available to your shaders.
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
-pub struct PipelineLayout {
+pub struct PipelineLayout<L = Box<PipelineLayoutDesc + Send + Sync>> {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
     layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+    desc: L,
 }
 
-impl PipelineLayout {
+impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     /// Creates a new `PipelineLayout`.
-    ///
-    /// # Panic
-    ///
-    /// Panics if one of the `UnsafeDescriptorSetLayout` was not created with `device`.
     #[inline]
-    pub fn new<'a, I, P>(device: &Arc<Device>, layouts: I, push_constants: P)
-                         -> Result<PipelineLayout, UnsafePipelineLayoutCreationError>
-        where I: IntoIterator<Item = &'a Arc<UnsafeDescriptorSetLayout>>,
-              P: IntoIterator<Item = (usize, usize, ShaderStages)>,
-    {
-        PipelineLayout::new_inner(device, layouts.into_iter().map(|e| e.clone()).collect(),
-                                        push_constants.into_iter().collect())
-    }
-
-    /// Same as `new` but won't be inlined.
-    fn new_inner(device: &Arc<Device>, layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
-                 push_constants: SmallVec<[(usize, usize, ShaderStages); 8]>)
-                 -> Result<PipelineLayout, UnsafePipelineLayoutCreationError>
+    pub fn new(device: &Arc<Device>, desc: L)
+               -> Result<PipelineLayout<L>, UnsafePipelineLayoutCreationError>
     {
         let vk = device.pointers();
         let limits = device.physical_device().limits();
+
+        let layouts = {
+            let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
+            for num in 0 .. desc.num_sets() {
+                layouts.push(match desc.provided_set_layout(num) {
+                    Some(l) => l,
+                    None => {
+                        let sets_iter = 0 .. desc.num_bindings_in_set(num).unwrap_or(0);
+                        let desc_iter = sets_iter.filter_map(|d| desc.descriptor(num, d));
+                        Arc::new(try!(UnsafeDescriptorSetLayout::raw(device.clone(), desc_iter)))
+                    },
+                });
+            }
+            layouts
+        };
 
         let layouts_ids = layouts.iter().map(|l| {
                                     assert_eq!(&**l.device() as *const Device,
@@ -74,19 +76,24 @@ impl PipelineLayout {
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
-            for pc in push_constants.iter() {
-                if pc.2 == ShaderStages::none() || pc.1 == 0 || (pc.1 % 4) != 0 {
+            for pc_id in 0 .. desc.num_push_constants_ranges() {
+                let (offset, size, shader_stages) = match desc.push_constant_range(pc_id) {
+                    Some(o) => o,
+                    None => continue,
+                };
+
+                if shader_stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
                     return Err(UnsafePipelineLayoutCreationError::InvalidPushConstant);
                 }
 
-                if pc.0 + pc.1 > limits.max_push_constants_size() as usize {
+                if offset + size > limits.max_push_constants_size() as usize {
                     return Err(UnsafePipelineLayoutCreationError::MaxPushConstantsSizeExceeded);
                 }
 
                 out.push(vk::PushConstantRange {
-                    stageFlags: pc.2.into(),
-                    offset: pc.0 as u32,
-                    size: pc.1 as u32,
+                    stageFlags: shader_stages.into(),
+                    offset: offset as u32,
+                    size: size as u32,
                 });
             }
 
@@ -114,12 +121,13 @@ impl PipelineLayout {
             device: device.clone(),
             layout: layout,
             layouts: layouts,
+            desc: desc,
         })
     }
 
     /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
     ///
-    /// Returns `None` if out of range.
+    /// Returns `None` if out of range or if the set is empty for this index.
     #[inline]
     pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layouts.get(index)
@@ -132,7 +140,7 @@ impl PipelineLayout {
     }
 }
 
-unsafe impl VulkanObject for PipelineLayout {
+unsafe impl<L> VulkanObject for PipelineLayout<L> {
     type Object = vk::PipelineLayout;
 
     #[inline]
@@ -141,7 +149,7 @@ unsafe impl VulkanObject for PipelineLayout {
     }
 }
 
-impl Drop for PipelineLayout {
+impl<L> Drop for PipelineLayout<L> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

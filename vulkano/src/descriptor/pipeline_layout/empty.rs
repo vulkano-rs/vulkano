@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use std::sync::Arc;
 
 use device::Device;
@@ -27,7 +26,7 @@ impl EmptyPipeline {
     /// Builds a new empty pipeline.
     pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, UnsafePipelineLayoutCreationError> {
         let inner = {
-            try!(PipelineLayout::new(device, iter::empty(), iter::empty()))
+            try!(PipelineLayout::new(device, Box::new(EmptyPipelineDesc) as Box<_>))
         };
 
         Ok(Arc::new(EmptyPipeline {
