@@ -851,7 +851,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
-                layout: PipelineLayoutRef::inner(&**params.layout).internal_object(),
+                layout: PipelineLayoutRef::inner(&**params.layout).sys().internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:

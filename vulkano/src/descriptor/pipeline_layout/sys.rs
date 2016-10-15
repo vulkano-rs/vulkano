@@ -138,14 +138,13 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
-}
 
-unsafe impl<L> VulkanObject for PipelineLayout<L> {
-    type Object = vk::PipelineLayout;
-
+    /// Returns an opaque object that allows internal access to the pipeline layout.
+    ///
+    /// > **Note**: This is an internal function that you normally don't need to call.
     #[inline]
-    fn internal_object(&self) -> vk::PipelineLayout {
-        self.layout
+    pub fn sys(&self) -> PipelineLayoutSys {
+        PipelineLayoutSys(&self.layout)
     }
 }
 
@@ -156,6 +155,22 @@ impl<L> Drop for PipelineLayout<L> {
             let vk = self.device.pointers();
             vk.DestroyPipelineLayout(self.device.internal_object(), self.layout, ptr::null());
         }
+    }
+}
+
+/// Opaque object that is borrowed from a `PipelineLayout`.
+///
+/// This object exists so that we can pass it around without having to be generic over the template
+/// parameter of the `PipelineLayout`.
+#[derive(Copy, Clone)]
+pub struct PipelineLayoutSys<'a>(&'a vk::PipelineLayout);
+
+unsafe impl<'a> VulkanObject for PipelineLayoutSys<'a> {
+    type Object = vk::PipelineLayout;
+
+    #[inline]
+    fn internal_object(&self) -> vk::PipelineLayout {
+        *self.0
     }
 }
 

@@ -1007,7 +1007,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdBindDescriptorSets(cmd, bind_point, layout.inner().internal_object(), first_set,
+        vk.CmdBindDescriptorSets(cmd, bind_point, layout.inner().sys().internal_object(), first_set,
                                  descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
                                  dynamic_offsets.len() as u32, dynamic_offsets.as_ptr());
     }
@@ -1030,7 +1030,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdPushConstants(cmd, layout.inner().internal_object(), stages.into(), offset as u32,
+        vk.CmdPushConstants(cmd, layout.inner().sys().internal_object(), stages.into(), offset as u32,
                             mem::size_of_val(data) as u32, data as *const D as *const _);
     }
 }
