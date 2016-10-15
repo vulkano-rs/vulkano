@@ -18,7 +18,6 @@
 //! of resources is set by creating *descriptor set* objects and passing these sets when you
 //! submit a draw command.
 
-pub use self::empty::EmptyPipeline;
 pub use self::empty::EmptyPipelineDesc;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
