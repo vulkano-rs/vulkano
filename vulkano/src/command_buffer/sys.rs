@@ -996,7 +996,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         let bind_point = if graphics_bind_point { vk::PIPELINE_BIND_POINT_GRAPHICS }
                          else { vk::PIPELINE_BIND_POINT_COMPUTE };
 
-        assert_eq!(layout.inner().device().internal_object(), self.device.internal_object());
+        assert_eq!(layout.device().internal_object(), self.device.internal_object());
 
         let descriptor_sets: SmallVec<[_; 16]> = descriptor_sets.into_iter().map(|set| {
             assert_eq!(set.layout().device().internal_object(), self.device.internal_object());
@@ -1007,7 +1007,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdBindDescriptorSets(cmd, bind_point, layout.inner().sys().internal_object(), first_set,
+        vk.CmdBindDescriptorSets(cmd, bind_point, layout.sys().internal_object(), first_set,
                                  descriptor_sets.len() as u32, descriptor_sets.as_ptr(),
                                  dynamic_offsets.len() as u32, dynamic_offsets.as_ptr());
     }
@@ -1023,14 +1023,14 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
                                                stages: ShaderStages, offset: usize, data: &D)
         where L: PipelineLayoutRef
     {
-        assert_eq!(layout.inner().device().internal_object(), self.device.internal_object());
+        assert_eq!(layout.device().internal_object(), self.device.internal_object());
 
         debug_assert!(offset <= u32::MAX as usize);
         debug_assert!(mem::size_of_val(data) <= u32::MAX as usize);
 
         let vk = self.device.pointers();
         let cmd = self.cmd.clone().take().unwrap();
-        vk.CmdPushConstants(cmd, layout.inner().sys().internal_object(), stages.into(), offset as u32,
+        vk.CmdPushConstants(cmd, layout.sys().internal_object(), stages.into(), offset as u32,
                             mem::size_of_val(data) as u32, data as *const D as *const _);
     }
 }

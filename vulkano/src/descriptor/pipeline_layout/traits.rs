@@ -13,14 +13,22 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use device::Device;
 
-
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-pub unsafe trait PipelineLayoutRef: PipelineLayoutDesc + 'static + Send + Sync {
-    /// Returns the inner `PipelineLayout`.
-    fn inner(&self) -> &PipelineLayout;
+pub unsafe trait PipelineLayoutRef {
+    /// Returns an opaque struct representing the pipeline layout.
+    ///
+    /// Can be obtained by calling `PipelineLayout::sys()` on the referenced pipeline layout.
+    fn sys(&self) -> PipelineLayoutSys;
+
+    /// Returns the description of the pipeline layout.
+    fn desc(&self) -> &PipelineLayoutDesc;
+
+    /// Returns the device that this pipeline layout belongs to.
+    fn device(&self) -> &Arc<Device>;
 }
 
 /*unsafe impl<T> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {

@@ -15,6 +15,7 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 
 /// Implementation of `PipelineLayoutRef` for an empty pipeline.
@@ -37,8 +38,18 @@ impl EmptyPipeline {
 
 unsafe impl PipelineLayoutRef for EmptyPipeline {
     #[inline]
-    fn inner(&self) -> &PipelineLayout {
-        &self.inner
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+
+    #[inline]
+    fn sys(&self) -> PipelineLayoutSys {
+        self.inner.sys()
+    }
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        self.inner.desc()
     }
 }
 

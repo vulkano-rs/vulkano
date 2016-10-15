@@ -139,6 +139,11 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
         &self.device
     }
 
+    #[inline]
+    pub fn desc(&self) -> &PipelineLayoutDesc {
+        &self.desc
+    }
+
     /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
     /// > **Note**: This is an internal function that you normally don't need to call.
