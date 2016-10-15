@@ -13,7 +13,7 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
-use descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
+use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use device::Device;
 
 
@@ -75,7 +75,7 @@ pub unsafe trait PipelineLayoutDesc {
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
     #[inline]
     fn build(self, device: &Arc<Device>)
-             -> Result<PipelineLayout<Self>, UnsafePipelineLayoutCreationError>
+             -> Result<PipelineLayout<Self>, PipelineLayoutCreationError>
         where Self: Sized
     {
         PipelineLayout::new(device, self)

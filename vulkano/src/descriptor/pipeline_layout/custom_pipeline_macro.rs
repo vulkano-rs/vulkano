@@ -32,7 +32,7 @@ macro_rules! pipeline_layout {
         use $crate::descriptor::pipeline_layout::PipelineLayoutRef;
         use $crate::descriptor::pipeline_layout::PipelineLayoutDesc;
         use $crate::descriptor::pipeline_layout::PipelineLayout;
-        use $crate::descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
+        use $crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
 
         #[derive(Debug, Copy, Clone)]
         pub struct PushConstants {
@@ -46,7 +46,7 @@ macro_rules! pipeline_layout {
         impl CustomPipeline {
             #[allow(unsafe_code)]
             pub fn new(device: &Arc<Device>)
-                       -> Result<Arc<CustomPipeline>, UnsafePipelineLayoutCreationError>
+                       -> Result<Arc<CustomPipeline>, PipelineLayoutCreationError>
             {
                 let layouts = vec![
                     $(

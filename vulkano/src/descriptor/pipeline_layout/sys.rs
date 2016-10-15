@@ -41,7 +41,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     /// Creates a new `PipelineLayout`.
     #[inline]
     pub fn new(device: &Arc<Device>, desc: L)
-               -> Result<PipelineLayout<L>, UnsafePipelineLayoutCreationError>
+               -> Result<PipelineLayout<L>, PipelineLayoutCreationError>
     {
         let vk = device.pointers();
         let limits = device.physical_device().limits();
@@ -70,7 +70,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
         // FIXME: must also check per-descriptor-type limits (eg. max uniform buffer descriptors)
 
         if layouts_ids.len() > limits.max_bound_descriptor_sets() as usize {
-            return Err(UnsafePipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded);
+            return Err(PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded);
         }
 
         let push_constants = {
@@ -83,11 +83,11 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
                 };
 
                 if shader_stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
-                    return Err(UnsafePipelineLayoutCreationError::InvalidPushConstant);
+                    return Err(PipelineLayoutCreationError::InvalidPushConstant);
                 }
 
                 if offset + size > limits.max_push_constants_size() as usize {
-                    return Err(UnsafePipelineLayoutCreationError::MaxPushConstantsSizeExceeded);
+                    return Err(PipelineLayoutCreationError::MaxPushConstantsSizeExceeded);
                 }
 
                 out.push(vk::PushConstantRange {
@@ -161,7 +161,7 @@ impl<L> Drop for PipelineLayout<L> {
 
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UnsafePipelineLayoutCreationError {
+pub enum PipelineLayoutCreationError {
     /// Not enough memory.
     OomError(OomError),
     /// The maximum number of descriptor sets has been exceeded.
@@ -173,20 +173,20 @@ pub enum UnsafePipelineLayoutCreationError {
     InvalidPushConstant,
 }
 
-impl error::Error for UnsafePipelineLayoutCreationError {
+impl error::Error for PipelineLayoutCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            UnsafePipelineLayoutCreationError::OomError(_) => {
+            PipelineLayoutCreationError::OomError(_) => {
                 "not enough memory available"
             },
-            UnsafePipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded => {
+            PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded => {
                 "the maximum number of descriptor sets has been exceeded"
             },
-            UnsafePipelineLayoutCreationError::MaxPushConstantsSizeExceeded => {
+            PipelineLayoutCreationError::MaxPushConstantsSizeExceeded => {
                 "the maximum size of push constants has been exceeded"
             },
-            UnsafePipelineLayoutCreationError::InvalidPushConstant => {
+            PipelineLayoutCreationError::InvalidPushConstant => {
                 "one of the push constants range didn't obey the rules"
             },
         }
@@ -195,35 +195,35 @@ impl error::Error for UnsafePipelineLayoutCreationError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            UnsafePipelineLayoutCreationError::OomError(ref err) => Some(err),
+            PipelineLayoutCreationError::OomError(ref err) => Some(err),
             _ => None
         }
     }
 }
 
-impl fmt::Display for UnsafePipelineLayoutCreationError {
+impl fmt::Display for PipelineLayoutCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "{}", error::Error::description(self))
     }
 }
 
-impl From<OomError> for UnsafePipelineLayoutCreationError {
+impl From<OomError> for PipelineLayoutCreationError {
     #[inline]
-    fn from(err: OomError) -> UnsafePipelineLayoutCreationError {
-        UnsafePipelineLayoutCreationError::OomError(err)
+    fn from(err: OomError) -> PipelineLayoutCreationError {
+        PipelineLayoutCreationError::OomError(err)
     }
 }
 
-impl From<Error> for UnsafePipelineLayoutCreationError {
+impl From<Error> for PipelineLayoutCreationError {
     #[inline]
-    fn from(err: Error) -> UnsafePipelineLayoutCreationError {
+    fn from(err: Error) -> PipelineLayoutCreationError {
         match err {
             err @ Error::OutOfHostMemory => {
-                UnsafePipelineLayoutCreationError::OomError(OomError::from(err))
+                PipelineLayoutCreationError::OomError(OomError::from(err))
             },
             err @ Error::OutOfDeviceMemory => {
-                UnsafePipelineLayoutCreationError::OomError(OomError::from(err))
+                PipelineLayoutCreationError::OomError(OomError::from(err))
             },
             _ => panic!("unexpected error: {:?}", err)
         }
@@ -237,7 +237,7 @@ mod tests {
     use descriptor::descriptor::ShaderStages;
     use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
     use descriptor::pipeline_layout::sys::PipelineLayout;
-    use descriptor::pipeline_layout::sys::UnsafePipelineLayoutCreationError;
+    use descriptor::pipeline_layout::sys::PipelineLayoutCreationError;
 
     #[test]
     fn empty() {
@@ -266,7 +266,7 @@ mod tests {
         let push_constant = (0, 8, ShaderStages::none());
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
-            Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
+            Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }
     }
@@ -278,7 +278,7 @@ mod tests {
         let push_constant = (0, 0, ShaderStages::all_graphics());
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
-            Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
+            Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }
     }
@@ -290,7 +290,7 @@ mod tests {
         let push_constant = (0, 11, ShaderStages::all_graphics());
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
-            Err(UnsafePipelineLayoutCreationError::InvalidPushConstant) => (),
+            Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
             _ => panic!()
         }
     }
