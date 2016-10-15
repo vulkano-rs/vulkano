@@ -8,6 +8,7 @@
 // according to those terms.
 
 use descriptor::descriptor::DescriptorDesc;
+use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayout;
 
@@ -39,7 +40,9 @@ pub unsafe trait PipelineLayoutDesc {
 
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
-    // TODO: describe push constants
+    fn num_push_constants_ranges(&self) -> usize;
+
+    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
 }
 
 /// Traits that allow determining whether a pipeline layout is a superset of another one.

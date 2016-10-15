@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use device::Device;
 use descriptor::descriptor::DescriptorDesc;
+use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayout;
@@ -57,6 +58,16 @@ unsafe impl PipelineLayoutDesc for EmptyPipeline {
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         None
     }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+        None
+    }
 }
 
 /// Description of an empty pipeline layout.
@@ -76,6 +87,16 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
 
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        None
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
         None
     }
 }
