@@ -13,6 +13,9 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::UnsafePipelineLayoutCreationError;
+use device::Device;
+
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutRef: PipelineLayoutDesc + 'static + Send + Sync {
@@ -36,20 +39,47 @@ unsafe impl<'a, T> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutDesc {
+    /// Returns the number of sets in the layout. Includes possibly empty sets.
+    ///
+    /// In other words, this should be equal to the highest set number plus one.
     fn num_sets(&self) -> usize;
 
+    /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
+    ///
+    /// Returns `None` if the set is out of range.
     fn num_bindings_in_set(&self, set: usize) -> Option<usize>;
 
+    /// Returns the descriptor for the given binding of the given set.
+    ///
+    /// Returns `None` if out of range.
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
+    /// If the `PipelineLayoutDesc` implementation is able to provide an existing
+    /// `UnsafeDescriptorSetLayout` for a given set, it can do so by returning it here.
     #[inline]
     fn provided_set_layout(&self, set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
         None
     }
 
+    /// Returns the number of push constant ranges of the layout.
     fn num_push_constants_ranges(&self) -> usize;
 
-    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
+    /// Returns a description of the given push constants range.
+    ///
+    /// Contrary to the descriptors, a push constants range can't be empty.
+    ///
+    /// Returns `None` if out of range.
+    // TODO: better return value
+    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
+
+    /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
+    #[inline]
+    fn build(self, device: &Arc<Device>)
+             -> Result<PipelineLayout<Self>, UnsafePipelineLayoutCreationError>
+        where Self: Sized
+    {
+        PipelineLayout::new(device, self)
+    }
 }
 
 unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
@@ -74,8 +104,8 @@ unsafe impl PipelineLayoutDesc for Box<PipelineLayoutDesc + Send + Sync> {
     }
 
     #[inline]
-    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
-        (**self).push_constant_range(num)
+    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+        (**self).push_constants_range(num)
     }
 }
 

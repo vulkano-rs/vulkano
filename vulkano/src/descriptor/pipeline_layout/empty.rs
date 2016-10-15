@@ -64,7 +64,7 @@ unsafe impl PipelineLayoutDesc for EmptyPipeline {
     }
 
     #[inline]
-    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
         None
     }
 }
@@ -95,7 +95,7 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
     }
 
     #[inline]
-    fn push_constant_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
         None
     }
 }

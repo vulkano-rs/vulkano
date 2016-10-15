@@ -77,7 +77,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
             for pc_id in 0 .. desc.num_push_constants_ranges() {
-                let (offset, size, shader_stages) = match desc.push_constant_range(pc_id) {
+                let (offset, size, shader_stages) = match desc.push_constants_range(pc_id) {
                     Some(o) => o,
                     None => continue,
                 };
