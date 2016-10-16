@@ -48,52 +48,27 @@
 //! individual descriptors one by one, but you create then bind descriptor sets one by one. You are
 //! therefore encouraged to put descriptors that are often used together in the same set.
 //!
-//! The layout of all the descriptors and the push constants used by all the stages of a graphics
-//! or compute pipeline is grouped in a *pipeline layout* object.
+//! In order to pass descriptors to your shaders, you first have to create descriptor sets. To do
+//! so, the easiest way is to use the `simple_descriptor_set!` macro.
 //!
-//! # Pipeline initialization
-//!
-//! When you build a pipeline object (a `GraphicsPipeline` or a `ComputePipeline`), you have to
-//! pass a reference to a struct that implements the `PipelineLayoutRef` trait. This object will
-//! describe to the Vulkan implementation the types and layouts of the descriptors and push
-//! constants that are going to be accessed by the shaders of the pipeline.
-//!
-//! The `PipelineLayoutRef` trait is unsafe. You are encouraged not to implemented it yourself, but
-//! instead use the `pipeline_layout!` macro, which will generate a struct that implements this
-//! trait for you.
-//!
-//! Here is an example usage:
-//!
-//! ```ignore       // TODO: make it pass doctests
-//! mod pipeline_layout {
-//!     pipeline_layout!{
-//!         push_constants: {
-//!             opacity: f32
-//!         },
-//!         set0: {
-//!             u_texture: CombinedImageSampler
-//!         }
-//!     }
-//! }
-//!
-//! let _pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
+//! ```ignore
+//! let set0 = simple_descriptor_set!(&graphics_pipeline, 0, {
+//!     buffer1: &my_buffer1,
+//!     buffer2: &my_buffer2,
+//!     image1: &my_image,
+//! });
+//! 
+//! let set1 = simple_descriptor_set!(&graphics_pipeline, 1, {
+//!     buffer3: &my_buffer3,
+//! });
 //! ```
 //!
 //! # When drawing
 //!
 //! When you call a function that adds a draw command to a command buffer, one of the parameters
 //! corresponds to the list of descriptor sets to use, and another parameter contains the push
-//! constants. Vulkano will check that what you passed is compatible with the pipeline layout that
-//! you used when creating the pipeline.
-//!
-//! It is encouraged, but not mandatory, that the descriptor sets you pass when drawing were
-//! created from the same pipeline layout as the one you create the graphics or compute pipeline
-//! with.
-//!
-//! Descriptor sets have to be created in advance from a descriptor pool. You can use the same
-//! descriptor set multiple time with multiple draw commands, and keep alive descriptor sets
-//! between frames. Creating a descriptor set is quite cheap, so it won't kill your performances
-//! to create new sets at each frame.
+//! constants. Vulkano will check that what you passed is compatible with the layout of the
+//! compute or graphics pipeline.
 //!
 //! TODO: talk about perfs of changing sets
 
