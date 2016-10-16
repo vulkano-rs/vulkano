@@ -38,7 +38,8 @@ use vulkano::command_buffer::PrimaryCbBuilder;
 use vulkano::command_buffer::CommandsList;
 use vulkano::command_buffer::Submit;
 use vulkano::command_buffer::Submission;
-use vulkano::descriptor::pipeline_layout::EmptyPipeline;
+use vulkano::descriptor::pipeline_layout::PipelineLayout;
+use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 use vulkano::device::Device;
 use vulkano::framebuffer::StdFramebuffer;
 use vulkano::framebuffer::Subpass;
@@ -331,7 +332,7 @@ fn main() {
         // Shaders can usually access resources such as images or buffers. This parameters is here
         // to indicate the layout of the accessed resources, which is also called the *pipeline
         // layout*. Here we don't access anything, so we just create an `EmptyPipeline` object.
-        layout: &EmptyPipeline::new(&device).unwrap(),
+        layout: PipelineLayout::new(&device, EmptyPipelineDesc).unwrap(),
 
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.

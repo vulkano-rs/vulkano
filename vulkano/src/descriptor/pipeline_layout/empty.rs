@@ -10,6 +10,7 @@
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutDescNames;
 
 /// Description of an empty pipeline layout.
 #[derive(Debug, Copy, Clone)]
@@ -38,6 +39,13 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
 
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+        None
+    }
+}
+
+unsafe impl PipelineLayoutDescNames for EmptyPipelineDesc {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
         None
     }
 }
