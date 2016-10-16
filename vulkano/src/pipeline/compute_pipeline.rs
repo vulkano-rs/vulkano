@@ -16,6 +16,7 @@ use std::sync::Arc;
 use descriptor::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
@@ -120,7 +121,7 @@ unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayo
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDescNames {
         self.layout().desc()
     }
 

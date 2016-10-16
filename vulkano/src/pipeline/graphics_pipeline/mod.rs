@@ -18,6 +18,7 @@ use smallvec::SmallVec;
 use device::Device;
 use descriptor::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
@@ -980,7 +981,7 @@ unsafe impl<Mv, L, Rp> PipelineLayoutRef for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDescNames {
         self.layout().desc()
     }
 

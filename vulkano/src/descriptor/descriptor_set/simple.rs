@@ -20,6 +20,8 @@ use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::sys::UnsafeDescriptorSet;
+use descriptor::descriptor_set::sys::DescriptorWrite;
+use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Queue;
 use image::TrackedImage;
 use image::TrackedImageView;
@@ -34,20 +36,9 @@ pub struct SimpleDescriptorSet<R> {
 }
 
 impl<R> SimpleDescriptorSet<R> {
-    ///
-    /// # Safety
-    ///
-    /// - The resources must match the layout.
-    ///
-    pub unsafe fn new(pool: &Arc<DescriptorPool>, layout: &Arc<UnsafeDescriptorSetLayout>,
-                      resources: R) -> SimpleDescriptorSet<R>
-    {
-        unimplemented!()
-    }
-
     /// Returns the layout used to create this descriptor set.
     #[inline]
-    pub fn layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
+    pub fn set_layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
         self.inner.layout()
     }
 }
@@ -79,6 +70,76 @@ unsafe impl<R, S> TrackedDescriptorSet<S> for SimpleDescriptorSet<R>
         where F: FnMut() -> Arc<Fence>
     {
         self.resources.on_submit(states, queue, fence)
+    }
+}
+
+#[macro_export]
+macro_rules! simple_descriptor_set {
+    ($layout:expr, $set_num:expr, {$($name:ident: $val:expr),*$(,)*}) => ({
+        use $crate::descriptor_set::SimpleDescriptorSetBufferExt;
+        let builder = SimpleDescriptorSetBuilder::new($layout, $set_num);
+
+        $(
+            let builder = $val.add_me(builder, stringify!($name));
+        )*
+
+        builder.build()
+    });
+}
+
+pub struct SimpleDescriptorSetBuilder<L, R> {
+    layout: L,
+    set_id: usize,
+    writes: Vec<DescriptorWrite>,
+    resources: R,
+}
+
+impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
+    pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
+        SimpleDescriptorSetBuilder {
+            layout: layout,
+            set_id: set_id,
+            writes: Vec::new(),
+            resources: (),
+        }
+    }
+
+    pub fn build(self) -> SimpleDescriptorSet<R> {
+        //let set_layout = self.layout.;
+        unimplemented!()
+    }
+}
+
+pub unsafe trait SimpleDescriptorSetBufferExt<In> {
+    type Out;
+
+    // TODO: return Result
+    fn add_me(self, i: In, name: &str) -> Self::Out;
+}
+
+unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<SimpleDescriptorSetBuilder<L, R>> for T
+    where T: TrackedBuffer, L: PipelineLayoutRef
+{
+    type Out = SimpleDescriptorSetBuilder<L, (R, SimpleDescriptorSetBuf<T>)>;
+
+    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str) -> Self::Out {
+        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        assert_eq!(set_id, i.set_id);       // TODO: Result instead
+        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+
+        //i.writes.push(DescriptorWrite:);
+
+        SimpleDescriptorSetBuilder {
+            layout: i.layout,
+            set_id: i.set_id,
+            writes: i.writes,
+            resources: (i.resources, SimpleDescriptorSetBuf {
+                buffer: self,
+                write: !desc.readonly,
+                stage: PipelineStages::none(),      // FIXME:
+                access: AccessFlagBits::none(),     // FIXME:
+            })
+        }
     }
 }
 
@@ -119,7 +180,6 @@ unsafe impl<S> SimpleDescriptorSetResourcesCollection<S> for () {
 
 pub struct SimpleDescriptorSetBuf<B> {
     pub buffer: B,
-    pub ty: SimpleDescriptorSetBufTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
@@ -163,16 +223,8 @@ unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     }
 }
 
-pub enum SimpleDescriptorSetBufTy {
-    StorageBuffer,
-    UniformBuffer,
-    DynamicStorageBuffer,
-    DynamicUniformBuffer,
-}
-
 pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
     pub view: V,
-    pub ty: SimpleDescriptorSetBufViewTy,
     pub write: bool,
     pub stage: PipelineStages,
     pub access: AccessFlagBits,
@@ -217,14 +269,8 @@ unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     }
 }
 
-pub enum SimpleDescriptorSetBufViewTy {
-    StorageBufferView,
-    UniformBufferView,
-}
-
 pub struct SimpleDescriptorSetImg<I> {
     pub image: I,
-    pub ty: SimpleDescriptorSetImgTy,
     pub write: bool,
     pub first_mipmap: u32,
     pub num_mipmaps: u32,
@@ -275,11 +321,6 @@ unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     {
         unimplemented!()        // FIXME:
     }
-}
-
-pub enum SimpleDescriptorSetImgTy {
-    StorageImage,
-    SampledImage,
 }
 
 macro_rules! tuple_impl {

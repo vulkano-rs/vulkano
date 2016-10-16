@@ -29,7 +29,7 @@ pub use self::traits::PipelineLayoutSuperset;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 
-pub mod custom_pipeline_macro;
+//pub mod custom_pipeline_macro;
 
 mod empty;
 mod sys;

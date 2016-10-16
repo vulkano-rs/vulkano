@@ -29,7 +29,8 @@ pub unsafe trait PipelineLayoutRef {
     /// Returns the description of the pipeline layout.
     ///
     /// Can be obtained by calling `PipelineLayoutRef::desc()` on the pipeline layout.
-    fn desc(&self) -> &PipelineLayoutDesc;
+    // TODO: meh for `PipelineLayoutDescNames instead of `PipelineLayoutDesc`
+    fn desc(&self) -> &PipelineLayoutDescNames;
 
     /// Returns the device that this pipeline layout belongs to.
     ///
@@ -44,7 +45,7 @@ unsafe impl<T: ?Sized> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDescNames {
         (**self).desc()
     }
 
@@ -61,7 +62,7 @@ unsafe impl<'a, T: ?Sized> PipelineLayoutRef for &'a T where T: 'a + PipelineLay
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDescNames {
         (**self).desc()
     }
 

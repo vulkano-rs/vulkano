@@ -136,14 +136,14 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     }
 }
 
-unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDesc {
+unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDescNames {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         PipelineLayoutSys(&self.layout)
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    fn desc(&self) -> &PipelineLayoutDescNames {
         &self.desc
     }
 

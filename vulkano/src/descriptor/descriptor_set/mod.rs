@@ -18,10 +18,7 @@ use sync::Fence;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
-pub use self::simple::SimpleDescriptorSet;
-pub use self::simple::SimpleDescriptorSetResourcesCollection;
-pub use self::simple::SimpleDescriptorSetBuf;
-pub use self::simple::SimpleDescriptorSetBufTy;
+pub use self::simple::*;
 pub use self::sys::UnsafeDescriptorSet;
 pub use self::sys::DescriptorWrite;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;

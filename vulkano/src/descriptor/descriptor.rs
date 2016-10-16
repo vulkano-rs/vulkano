@@ -14,6 +14,7 @@ use vk;
 #[derive(Debug, Copy, Clone)]
 pub struct DescriptorDesc {
     /// Offset of the binding within the descriptor.
+    // TODO: remove?
     pub binding: u32,
 
     /// Describes the content and layout of each array element of a descriptor.
