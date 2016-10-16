@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
@@ -40,16 +40,17 @@ pub struct ComputePipeline<Pl> {
     pipeline_layout: Pl,
 }
 
-impl<Pl> ComputePipeline<Pl> {
+impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: Pl,
-                         shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
-                         -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
-        where Pl: PipelineLayoutRef,
-              Csl: PipelineLayoutDesc,
+    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
+                         specialization: &Css) 
+                         -> Result<Arc<ComputePipeline<PipelineLayout<Csl>>>, ComputePipelineCreationError>
+        where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
         let vk = device.pointers();
+
+        let pipeline_layout = shader.layout().clone().build(device).unwrap();     // TODO: error
 
         // TODO: more details in the error
         if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), shader.layout()) {
@@ -101,7 +102,9 @@ impl<Pl> ComputePipeline<Pl> {
             pipeline_layout: pipeline_layout,
         }))
     }
+}
 
+impl<Pl> ComputePipeline<Pl> {
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {

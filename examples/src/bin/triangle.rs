@@ -329,11 +329,6 @@ fn main() {
         // attachments without any change.
         blend: Blend::pass_through(),
 
-        // Shaders can usually access resources such as images or buffers. This parameters is here
-        // to indicate the layout of the accessed resources, which is also called the *pipeline
-        // layout*. Here we don't access anything, so we just create an `EmptyPipeline` object.
-        layout: PipelineLayout::new(&device, EmptyPipelineDesc).unwrap(),
-
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
         render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),

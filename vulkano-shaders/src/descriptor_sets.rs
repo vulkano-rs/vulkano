@@ -91,6 +91,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     }).collect::<Vec<_>>().concat();
 
     format!(r#"
+        #[derive(Debug, Clone)]
         pub struct Layout(ShaderStages);
 
         #[allow(unsafe_code)]

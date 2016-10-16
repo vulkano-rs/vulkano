@@ -18,8 +18,10 @@ use smallvec::SmallVec;
 use device::Device;
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
@@ -61,7 +63,7 @@ mod tests;
 
 /// Description of a `GraphicsPipeline`.
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                                  Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, L, Rp>
+                                  Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
 {
     /// Describes the layout of the vertex input.
     ///
@@ -107,10 +109,6 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl,
     /// the existing value in the attachments.
     pub blend: Blend,
 
-    /// Describes the list of descriptors and push constants that the various shaders are going to
-    /// use.
-    pub layout: L,
-
     /// Which subpass of which render pass this pipeline will run on. It is an error to run a
     /// graphics pipeline on a different subpass.
     pub render_pass: Subpass<Rp>,
@@ -151,8 +149,8 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     num_viewports: u32,
 }
 
-impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
+impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
+    where Rp: RenderPass + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -166,11 +164,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               (device: &Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
-                                              Fs, Fi, Fo, Fl, L, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+                                              Fs, Fi, Fo, Fl, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayoutRef,
-              Vl: PipelineLayoutDesc, Fl: PipelineLayoutDesc,
+              Vl: PipelineLayoutDescNames + Clone,
+              Fl: PipelineLayoutDescNames + Clone,
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Vo: ShaderInterfaceDef,
@@ -180,9 +178,13 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
         }
 
+        let pl = params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .build(device).unwrap();      // TODO: error
+
         GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipelineDesc, (), (), (),
                                       EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, _, _, _, _>
-                                      (device, params)
+                                      (device, params, pl)
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
@@ -197,13 +199,12 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               (device: &Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
-                                              Fo, Fl, L, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+                                              Fo, Fl, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayoutRef,
-              Vl: PipelineLayoutDesc,
-              Fl: PipelineLayoutDesc,
-              Gl: PipelineLayoutDesc,
+              Vl: PipelineLayoutDescNames + Clone,
+              Fl: PipelineLayoutDescNames + Clone,
+              Gl: PipelineLayoutDescNames + Clone,
               Gi: ShaderInterfaceDefMatch<Vo>,
               Vo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
@@ -225,7 +226,12 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             }
         }
 
-        GraphicsPipeline::new_inner(device, params)
+        let pl = params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
+                    .build(device).unwrap();      // TODO: error
+
+        GraphicsPipeline::new_inner(device, params, pl)
     }
 
     /// Builds a new graphics pipeline object with tessellation shaders.
@@ -242,14 +248,13 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               (device: &Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
-                                              Fo, Fl, L, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+                                              Fo, Fl, Rp>)
+              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              L: PipelineLayoutRef,
-              Vl: PipelineLayoutDesc,
-              Fl: PipelineLayoutDesc,
-              Tcl: PipelineLayoutDesc,
-              Tel: PipelineLayoutDesc,
+              Vl: PipelineLayoutDescNames + Clone,
+              Fl: PipelineLayoutDescNames + Clone,
+              Tcl: PipelineLayoutDescNames + Clone,
+              Tel: PipelineLayoutDescNames + Clone,
               Tci: ShaderInterfaceDefMatch<Vo>,
               Tei: ShaderInterfaceDefMatch<Tco>,
               Vo: ShaderInterfaceDef,
@@ -276,54 +281,63 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             }
         }
 
-        GraphicsPipeline::new_inner(device, params)
-    }
+        let pl = params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
+                    .build(device).unwrap();      // TODO: error
 
+        GraphicsPipeline::new_inner(device, params, pl)
+    }
+}
+
+impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
+    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
+{
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
                 (device: &Arc<Device>,
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
-                                                Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, L,
-                                                Rp>)
+                                                Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>,
+                 pipeline_layout: L)
                  -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
-              L: PipelineLayoutRef,
-              Vl: PipelineLayoutDesc,
-              Fl: PipelineLayoutDesc,
-              Gl: PipelineLayoutDesc,
-              Tcl: PipelineLayoutDesc,
-              Tel: PipelineLayoutDesc,
+              Vl: PipelineLayoutDescNames,
+              Fl: PipelineLayoutDescNames,
+              Gl: PipelineLayoutDescNames,
+              Tcl: PipelineLayoutDescNames,
+              Tel: PipelineLayoutDescNames,
               Rp: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        if !PipelineLayoutSuperset::is_superset_of(params.layout.desc(),
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
                                                    params.vertex_shader.layout())
         {
             return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
         }
-        if !PipelineLayoutSuperset::is_superset_of(params.layout.desc(),
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
                                                    params.fragment_shader.layout())
         {
             return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
         }
         if let Some(ref geometry_shader) = params.geometry_shader {
-            if !PipelineLayoutSuperset::is_superset_of(params.layout.desc(),
+            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
                                                        geometry_shader.layout())
             {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
         }
         if let Some(ref tess) = params.tessellation {
-            if !PipelineLayoutSuperset::is_superset_of(params.layout.desc(),
+            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
                                                        tess.tessellation_control_shader.layout())
             {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
-            if !PipelineLayoutSuperset::is_superset_of(params.layout.desc(),
+            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
                                                        tess.tessellation_evaluation_shader.layout())
             {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
@@ -849,7 +863,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
-                layout: PipelineLayoutRef::sys(&params.layout).internal_object(),
+                layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -867,7 +881,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         Ok(Arc::new(GraphicsPipeline {
             device: device.clone(),
             pipeline: pipeline,
-            layout: params.layout,
+            layout: pipeline_layout,
 
             vertex_definition: params.vertex_input,
 
