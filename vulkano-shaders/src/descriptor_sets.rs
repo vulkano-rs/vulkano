@@ -73,13 +73,13 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
 
     }).collect::<Vec<_>>().concat();
 
-    let max_set = descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
+    let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
 
     // Writing the body of the `num_bindings_in_set` method.
     let num_bindings_in_set_body = {
-        (0 .. max_set + 1).map(|set| {
-            let num = descriptors.iter().filter(|d| d.set == set)
-                                 .fold(0, |s, d| cmp::max(s, d.binding));
+        (0 .. num_sets).map(|set| {
+            let num = 1 + descriptors.iter().filter(|d| d.set == set)
+                                     .fold(0, |s, d| cmp::max(s, d.binding));
             format!("{set} => Some({num}),", set = set, num = num)
         }).collect::<Vec<_>>().concat()
     };
@@ -96,7 +96,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
             fn num_sets(&self) -> usize {{
-                {max_set}
+                {num_sets}
             }}
 
             fn num_bindings_in_set(&self, set: usize) -> Option<usize> {{
@@ -131,7 +131,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 }}
             }}
         }}
-        "#, max_set = max_set, num_bindings_in_set_body = num_bindings_in_set_body,
+        "#, num_sets = num_sets, num_bindings_in_set_body = num_bindings_in_set_body,
             descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body)
 }
 
