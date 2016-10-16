@@ -13,6 +13,7 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use device::Device;
@@ -121,6 +122,12 @@ pub unsafe trait PipelineLayoutDesc {
     /// Returns `None` if out of range.
     // TODO: better return value
     fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
+
+    /// Builds the union of this layout and another.
+    #[inline]
+    fn union<T>(self, other: T) -> PipelineLayoutDescUnion<Self, T> where Self: Sized {
+        PipelineLayoutDescUnion::new(self, other)
+    }
 
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
     #[inline]

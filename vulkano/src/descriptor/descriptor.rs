@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
+use std::ops::BitOr;
 use format::Format;
 use vk;
 
@@ -36,6 +38,22 @@ impl DescriptorDesc {
         self.ty.is_superset_of(&other.ty) &&
         self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) &&
         (!self.readonly || other.readonly)
+    }
+
+    /// Builds a `DescriptorDesc` that is the union of `self` and `other`.
+    ///
+    /// The returned value will be a superset of both `self` and `other`.
+    // TODO: Result instead of Option
+    #[inline]
+    pub fn union(&self, other: &DescriptorDesc) -> Option<DescriptorDesc> {
+        if self.ty != other.ty { return None; }
+
+        Some(DescriptorDesc {
+            ty: self.ty.clone(),
+            array_count: cmp::max(self.array_count, other.array_count),
+            stages: self.stages | other.stages,
+            readonly: self.readonly && other.readonly,
+        })
     }
 }
 
@@ -304,6 +322,22 @@ impl ShaderStages {
         (self.geometry || !other.geometry) &&
         (self.fragment || !other.fragment) &&
         (self.compute || !other.compute)
+    }
+}
+
+impl BitOr for ShaderStages {
+    type Output = ShaderStages;
+
+    #[inline]
+    fn bitor(self, other: ShaderStages) -> ShaderStages {
+        ShaderStages {
+            vertex: self.vertex || other.vertex,
+            tessellation_control: self.tessellation_control || other.tessellation_control,
+            tessellation_evaluation: self.tessellation_evaluation || other.tessellation_evaluation,
+            geometry: self.geometry || other.geometry,
+            fragment: self.fragment || other.fragment,
+            compute: self.compute || other.compute,
+        }
     }
 }
 
