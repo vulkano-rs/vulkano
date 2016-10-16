@@ -76,7 +76,9 @@ unsafe impl<R, S> TrackedDescriptorSet<S> for SimpleDescriptorSet<R>
 #[macro_export]
 macro_rules! simple_descriptor_set {
     ($layout:expr, $set_num:expr, {$($name:ident: $val:expr),*$(,)*}) => ({
-        use $crate::descriptor_set::SimpleDescriptorSetBufferExt;
+        use $crate::descriptor::descriptor_set::SimpleDescriptorSetBuilder;
+        use $crate::descriptor::descriptor_set::SimpleDescriptorSetBufferExt;
+
         let builder = SimpleDescriptorSetBuilder::new($layout, $set_num);
 
         $(

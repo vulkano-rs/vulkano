@@ -66,7 +66,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         format!("({set}, {binding}) => Some(DescriptorDesc {{
             ty: {desc_ty},
             array_count: 1,
-            stages: stages.clone(),
+            stages: self.0.clone(),
             readonly: {readonly},
         }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty,
               readonly = if d.readonly { "true" } else { "false" })

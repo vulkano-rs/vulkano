@@ -125,21 +125,6 @@ fn main() {
         depth: (vulkano::format::D16Unorm, 1)
     }).unwrap();
 
-    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
-
-    mod pipeline_layout {
-        pipeline_layout!{
-            set0: {
-                uniforms: UniformBuffer<::vs::ty::Data>
-            }
-        }
-    }
-
-    let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
-    let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
-        uniforms: &uniform_buffer
-    });
-
     let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
         vertex_shader: vs.main_entry_point(),
@@ -161,9 +146,12 @@ fn main() {
         fragment_shader: fs.main_entry_point(),
         depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
         blend: vulkano::pipeline::blend::Blend::pass_through(),
-        layout: &pipeline_layout,
         render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
     }).unwrap();
+
+    let set = simple_descriptor_set!(&pipeline, 0, {
+        uniforms: &uniform_buffer
+    });
 
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {
