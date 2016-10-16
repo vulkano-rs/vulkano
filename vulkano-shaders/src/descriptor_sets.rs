@@ -64,7 +64,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Writing the body of the `descriptor` method.
     let descriptor_body = descriptors.iter().map(|d| {
         format!("({set}, {binding}) => Some(DescriptorDesc {{
-            binding: {binding},
             ty: {desc_ty},
             array_count: 1,
             stages: stages.clone(),

@@ -13,10 +13,6 @@ use vk;
 /// Describes a single descriptor.
 #[derive(Debug, Copy, Clone)]
 pub struct DescriptorDesc {
-    /// Offset of the binding within the descriptor.
-    // TODO: remove?
-    pub binding: u32,
-
     /// Describes the content and layout of each array element of a descriptor.
     pub ty: DescriptorDescTy,
 
@@ -37,7 +33,7 @@ impl DescriptorDesc {
     /// array elements count, or it is the same with more shader stages.
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
-        self.binding == other.binding && self.ty.is_superset_of(&other.ty) &&
+        self.ty.is_superset_of(&other.ty) &&
         self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) &&
         (!self.readonly || other.readonly)
     }
