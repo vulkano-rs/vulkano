@@ -96,7 +96,7 @@ pub struct SimpleDescriptorSetBuilder<L, R> {
     resources: R,
 }
 
-impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
+impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
     pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
         SimpleDescriptorSetBuilder {
             layout: layout,
@@ -105,7 +105,9 @@ impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
             resources: (),
         }
     }
+}
 
+impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
     pub fn build(self) -> SimpleDescriptorSet<R> {
         // TODO: don't create a pool every time
         let pool = Arc::new(DescriptorPool::raw(self.layout.device()).unwrap());       // FIXME: error
