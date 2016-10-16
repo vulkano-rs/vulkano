@@ -30,8 +30,6 @@ pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 pub use self::union::PipelineLayoutDescUnion;
 
-//pub mod custom_pipeline_macro;
-
 mod empty;
 mod sys;
 mod traits;
