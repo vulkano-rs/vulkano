@@ -30,6 +30,22 @@ use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
 
+/// A simple immutable descriptor set.
+///
+/// It is named "simple" because creating such a descriptor set allocates from a pool, and because
+/// it can't be modified once created. It is sufficient for most usages, but in some situations
+/// you may wish to use something more optimized instead.
+///
+/// In order to build a `SimpleDescriptorSet`, you need to use a `SimpleDescriptorSetBuilder`. But
+/// the easiest way is to use the `simple_descriptor_set!` macro.
+///
+/// The template parameter of the `SimpleDescriptorSet` is very complex, and you shouldn't try to
+/// express it explicitely. If you want to store your descriptor set in a struct or in a `Vec` for
+/// example, you are encouraged to turn `SimpleDescriptorSet` into a `Box<DescriptorSet>` or a
+/// `Arc<DescriptorSet>`.
+///
+/// # Example
+// TODO:
 pub struct SimpleDescriptorSet<R> {
     inner: UnsafeDescriptorSet,
     resources: R,
@@ -73,6 +89,8 @@ unsafe impl<R, S> TrackedDescriptorSet<S> for SimpleDescriptorSet<R>
     }
 }
 
+/// Builds a descriptor set in the form of a `SimpleDescriptorSet` object.
+// TODO: more doc
 #[macro_export]
 macro_rules! simple_descriptor_set {
     ($layout:expr, $set_num:expr, {$($name:ident: $val:expr),*$(,)*}) => ({
@@ -89,6 +107,13 @@ macro_rules! simple_descriptor_set {
     });
 }
 
+/// Prototype of a `SimpleDescriptorSet`.
+///
+/// > **Note**: You are encouraged to use the `simple_descriptor_set!` macro instead of
+/// > manipulating these internals.
+///
+/// # Example
+// TODO: example here
 pub struct SimpleDescriptorSetBuilder<L, R> {
     layout: L,
     set_id: usize,
@@ -97,7 +122,16 @@ pub struct SimpleDescriptorSetBuilder<L, R> {
 }
 
 impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
+    /// Builds a new prototype for a `SimpleDescriptorSet`. Requires a reference to a pipeline
+    /// layout, and the id of the set within the layout.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the set id is out of range.
+    ///
     pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
+        assert!(layout.desc().num_sets() > set_id);
+
         SimpleDescriptorSetBuilder {
             layout: layout,
             set_id: set_id,
@@ -108,7 +142,9 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
 }
 
 impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
+    /// Builds a `SimpleDescriptorSet` from the builder.
     pub fn build(self) -> SimpleDescriptorSet<R> {
+        // TODO: check that we filled everything
         // TODO: don't create a pool every time
         let pool = Arc::new(DescriptorPool::raw(self.layout.device()).unwrap());       // FIXME: error
         let set_layout = self.layout.descriptor_set_layout(self.set_id).unwrap();       // FIXME: error
@@ -126,19 +162,23 @@ impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
     }
 }
 
-pub unsafe trait SimpleDescriptorSetBufferExt<In> {
+/// Trait implemented on buffer values that can be appended to a simple descriptor set builder.
+pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
     type Out;
 
     // TODO: return Result
-    fn add_me(self, i: In, name: &str) -> Self::Out;
+    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str)
+              -> SimpleDescriptorSetBuilder<L, Self::Out>;
 }
 
-unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<SimpleDescriptorSetBuilder<L, R>> for T
+unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
     where T: TrackedBuffer, L: PipelineLayoutRef
 {
-    type Out = SimpleDescriptorSetBuilder<L, (R, SimpleDescriptorSetBuf<T>)>;
+    type Out = (R, SimpleDescriptorSetBuf<T>);
 
-    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str) -> Self::Out {
+    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str)
+              -> SimpleDescriptorSetBuilder<L, Self::Out>
+    {
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
         let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
@@ -159,8 +199,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<SimpleDescriptorSetBuilder<L, 
     }
 }
 
-// TODO: re-read docs
-/// Collection of tracked resources. Makes it possible to treat multiple buffers and images as one.
+/// Internal trait related to the `SimpleDescriptorSet` system.
 pub unsafe trait SimpleDescriptorSetResourcesCollection<States> {
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
@@ -194,11 +233,12 @@ unsafe impl<S> SimpleDescriptorSetResourcesCollection<S> for () {
     }
 }
 
+/// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetBuf<B> {
-    pub buffer: B,
-    pub write: bool,
-    pub stage: PipelineStages,
-    pub access: AccessFlagBits,
+    buffer: B,
+    write: bool,
+    stage: PipelineStages,
+    access: AccessFlagBits,
 }
 
 unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBuf<B>
@@ -239,11 +279,12 @@ unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     }
 }
 
+/// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
-    pub view: V,
-    pub write: bool,
-    pub stage: PipelineStages,
-    pub access: AccessFlagBits,
+    view: V,
+    write: bool,
+    stage: PipelineStages,
+    access: AccessFlagBits,
 }
 
 unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBufView<V>
@@ -285,16 +326,17 @@ unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     }
 }
 
+/// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetImg<I> {
-    pub image: I,
-    pub write: bool,
-    pub first_mipmap: u32,
-    pub num_mipmaps: u32,
-    pub first_layer: u32,
-    pub num_layers: u32,
-    pub layout: Layout,
-    pub stage: PipelineStages,
-    pub access: AccessFlagBits,
+    image: I,
+    write: bool,
+    first_mipmap: u32,
+    num_mipmaps: u32,
+    first_layer: u32,
+    num_layers: u32,
+    layout: Layout,
+    stage: PipelineStages,
+    access: AccessFlagBits,
 }
 
 unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetImg<I>
@@ -339,51 +381,33 @@ unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     }
 }
 
-macro_rules! tuple_impl {
-    ($first:ident, $($rest:ident),+) => (
-        unsafe impl<S, $first, $($rest),+> SimpleDescriptorSetResourcesCollection<S> for ($first $(, $rest)+)
-            where $first: SimpleDescriptorSetResourcesCollection<S>,
-                  $($rest: SimpleDescriptorSetResourcesCollection<S>),+
-        {
-            #[inline]
-            unsafe fn transition(&self, states: &mut S, num_command: usize)
-                                 -> (usize, PipelineBarrierBuilder)
-            {
-                #![allow(non_snake_case)]
-                let &(ref $first $(, ref $rest)+) = self;
-                let (mut nc, mut barrier) = $first.transition(states, num_command);
-                $({
-                    let (n, b) = $rest.transition(states, num_command);
-                    nc = cmp::max(nc, n);
-                    barrier.merge(b);
-                })+
-                debug_assert!(nc <= num_command);
-                (nc, barrier)
-            }
+unsafe impl<S, A, B> SimpleDescriptorSetResourcesCollection<S> for (A, B)
+    where A: SimpleDescriptorSetResourcesCollection<S>,
+          B: SimpleDescriptorSetResourcesCollection<S>
+{
+    #[inline]
+    unsafe fn transition(&self, states: &mut S, num_command: usize)
+                            -> (usize, PipelineBarrierBuilder)
+    {
+        let (mut nc, mut barrier) = self.0.transition(states, num_command);
+        let (n, b) = self.1.transition(states, num_command);
+        nc = cmp::max(nc, n);
+        barrier.merge(b);
+        debug_assert!(nc <= num_command);
+        (nc, barrier)
+    }
 
-            #[inline]
-            unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
-                #![allow(non_snake_case)]
-                let &(ref $first $(, ref $rest)+) = self;
-                let mut barrier = $first.finish(in_s, out);
-                $(
-                    barrier.merge($rest.finish(in_s, out));
-                )+
-                barrier
-            }
+    #[inline]
+    unsafe fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
+        let mut barrier = self.0.finish(in_s, out);
+        barrier.merge(self.1.finish(in_s, out));
+        barrier
+    }
 
-            unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F)
-                                -> SubmitInfo
-                where F: FnMut() -> Arc<Fence>
-            {
-                unimplemented!()
-            }
-        }
-
-        tuple_impl!($($rest),+);
-    );
-
-    ($first:ident) => ();
+    unsafe fn on_submit<F>(&self, _: &S, queue: &Arc<Queue>, fence: F)
+                        -> SubmitInfo
+        where F: FnMut() -> Arc<Fence>
+    {
+        unimplemented!()
+    }
 }
-
-tuple_impl!(A, C, D, E, G, H, J, K, M, N, O, P, Q, R, T, U, V, W, X, Y, Z);
