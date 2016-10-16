@@ -126,14 +126,6 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             desc: desc,
         })
     }
-
-    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
-    ///
-    /// Returns `None` if out of range or if the set is empty for this index.
-    #[inline]
-    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layouts.get(index)
-    }
 }
 
 unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDescNames {
@@ -150,6 +142,11 @@ unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDe
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    #[inline]
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layouts.get(index)
     }
 }
 

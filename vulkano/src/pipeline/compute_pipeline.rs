@@ -14,6 +14,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use descriptor::PipelineLayoutRef;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
@@ -128,6 +129,11 @@ unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayo
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.device()
+    }
+
+    #[inline]
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layout().descriptor_set_layout(index)
     }
 }
 

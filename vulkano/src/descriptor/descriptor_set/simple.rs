@@ -105,8 +105,20 @@ impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
     }
 
     pub fn build(self) -> SimpleDescriptorSet<R> {
-        //let set_layout = self.layout.;
-        unimplemented!()
+        // TODO: don't create a pool every time
+        let pool = Arc::new(DescriptorPool::raw(self.layout.device()).unwrap());       // FIXME: error
+        let set_layout = self.layout.descriptor_set_layout(self.set_id).unwrap();       // FIXME: error
+
+        let set = unsafe {
+            let mut set = UnsafeDescriptorSet::uninitialized_raw(&pool, set_layout).unwrap();      // FIXME: error
+            set.write(self.writes.into_iter());
+            set
+        };
+
+        SimpleDescriptorSet {
+            inner: set,
+            resources: self.resources,
+        }
     }
 }
 

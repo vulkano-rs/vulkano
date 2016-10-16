@@ -36,6 +36,11 @@ pub unsafe trait PipelineLayoutRef {
     ///
     /// Can be obtained by calling `PipelineLayoutRef::device()` on the pipeline layout.
     fn device(&self) -> &Arc<Device>;
+
+    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
+    ///
+    /// Returns `None` if out of range or if the set is empty for this index.
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>>;
 }
 
 unsafe impl<T: ?Sized> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
@@ -53,6 +58,11 @@ unsafe impl<T: ?Sized> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
     fn device(&self) -> &Arc<Device> {
         (**self).device()
     }
+
+    #[inline]
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        (**self).descriptor_set_layout(index)
+    }
 }
 
 unsafe impl<'a, T: ?Sized> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
@@ -69,6 +79,11 @@ unsafe impl<'a, T: ?Sized> PipelineLayoutRef for &'a T where T: 'a + PipelineLay
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
+    }
+
+    #[inline]
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        (**self).descriptor_set_layout(index)
     }
 }
 
