@@ -167,6 +167,13 @@ pub unsafe trait PipelineLayoutDescNames: PipelineLayoutDesc {
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)>;
 }
 
+unsafe impl<T: ?Sized> PipelineLayoutDescNames for Box<T> where T: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        (**self).descriptor_by_name(name)
+    }
+}
+
 /// Traits that allow determining whether a pipeline layout is a superset of another one.
 ///
 /// This trait is automatically implemented on all types that implement `PipelineLayoutRef`.

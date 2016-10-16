@@ -18,6 +18,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
+        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
@@ -52,6 +53,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         let (desc_ty, readonly) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
+            name: name,
             desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
@@ -82,6 +84,12 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             format!("{set} => Some({num}),", set = set, num = num)
         }).collect::<Vec<_>>().concat()
     };
+
+    // Writing the body of the `descriptor_by_name_body` method.
+    let descriptor_by_name_body = descriptors.iter().map(|d| {
+        format!(r#"{name:?} => Some(({set}, {binding})),"#,
+                name = d.name, set = d.set, binding = d.binding)
+    }).collect::<Vec<_>>().concat();
 
     format!(r#"
         pub struct Layout(ShaderStages);
@@ -115,8 +123,17 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             }}
         }}
 
+        #[allow(unsafe_code)]
+        unsafe impl PipelineLayoutDescNames for Layout {{
+            fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {{
+                match name {{
+                    {descriptor_by_name_body}
+                    _ => None
+                }}
+            }}
+        }}
         "#, max_set = max_set, num_bindings_in_set_body = num_bindings_in_set_body,
-            descriptor_body = descriptor_body)
+            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body)
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
