@@ -25,6 +25,7 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
 
@@ -79,12 +80,14 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
             for pc_id in 0 .. desc.num_push_constants_ranges() {
-                let (offset, size, shader_stages) = match desc.push_constants_range(pc_id) {
-                    Some(o) => o,
-                    None => continue,
+                let PipelineLayoutDescPcRange { offset, size, stages } = {
+                    match desc.push_constants_range(pc_id) {
+                        Some(o) => o,
+                        None => continue,
+                    }
                 };
 
-                if shader_stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
+                if stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
                     return Err(PipelineLayoutCreationError::InvalidPushConstant);
                 }
 
@@ -93,7 +96,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
                 }
 
                 out.push(vk::PushConstantRange {
-                    stageFlags: shader_stages.into(),
+                    stageFlags: stages.into(),
                     offset: offset as u32,
                     size: size as u32,
                 });

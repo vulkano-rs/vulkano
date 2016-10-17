@@ -10,10 +10,10 @@
 use std::cmp;
 use std::sync::Arc;
 use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
 pub struct PipelineLayoutDescUnion<A, B> {
     a: A,
@@ -73,7 +73,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
     }
 
     #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         // FIXME:
         None
     }

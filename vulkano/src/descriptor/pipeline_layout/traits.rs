@@ -121,7 +121,7 @@ pub unsafe trait PipelineLayoutDesc {
     ///
     /// Returns `None` if out of range.
     // TODO: better return value
-    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)>;
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange>;
 
     /// Builds the union of this layout and another.
     #[inline]
@@ -137,6 +137,14 @@ pub unsafe trait PipelineLayoutDesc {
     {
         PipelineLayout::new(device, self)
     }
+}
+
+// TODO: should contain the layout as well
+#[derive(Debug, Copy, Clone)]
+pub struct PipelineLayoutDescPcRange {
+    pub offset: usize,
+    pub size: usize,
+    pub stages: ShaderStages,
 }
 
 unsafe impl<T: ?Sized> PipelineLayoutDesc for Box<T> where T: PipelineLayoutDesc {
@@ -161,7 +169,7 @@ unsafe impl<T: ?Sized> PipelineLayoutDesc for Box<T> where T: PipelineLayoutDesc
     }
 
     #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         (**self).push_constants_range(num)
     }
 }

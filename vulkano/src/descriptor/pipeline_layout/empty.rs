@@ -8,9 +8,9 @@
 // according to those terms.
 
 use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
 /// Description of an empty pipeline layout.
 #[derive(Debug, Copy, Clone)]
@@ -38,7 +38,7 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
     }
 
     #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         None
     }
 }
