@@ -39,16 +39,21 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     /// See the docs of new().
     pub fn raw<I>(device: P, descriptors: I)
                   -> Result<UnsafeDescriptorSetLayout<P>, OomError>
-        where I: IntoIterator<Item = DescriptorDesc>
+        where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
-        let bindings = descriptors.into_iter().map(|desc| {
-            vk::DescriptorSetLayoutBinding {
-                binding: desc.binding,
+        let bindings = descriptors.into_iter().enumerate().filter_map(|(binding, desc)| {
+            let desc = match desc {
+                Some(d) => d,
+                None => return None
+            };
+
+            Some(vk::DescriptorSetLayoutBinding {
+                binding: binding as u32,
                 descriptorType: desc.ty.ty().unwrap() /* TODO: shouldn't panic */ as u32,
                 descriptorCount: desc.array_count,
                 stageFlags: desc.stages.into(),
                 pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
-            }
+            })
         }).collect::<SmallVec<[_; 32]>>();
 
         let layout = unsafe {
@@ -75,13 +80,17 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
 
     /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
     ///
+    /// The descriptors must be passed in the order of the bindings. In order words, descriptor
+    /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
+    /// empty, you can make the iterator yield `None` for an element.
+    ///
     /// # Panic
     ///
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
     pub fn new<I>(device: P, descriptors: I) -> Arc<UnsafeDescriptorSetLayout<P>>
-        where I: IntoIterator<Item = DescriptorDesc>
+        where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
         Arc::new(UnsafeDescriptorSetLayout::raw(device, descriptors).unwrap())
     }

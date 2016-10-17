@@ -18,18 +18,20 @@
 //! of resources is set by creating *descriptor set* objects and passing these sets when you
 //! submit a draw command.
 
-pub use self::empty::EmptyPipeline;
 pub use self::empty::EmptyPipelineDesc;
-pub use self::sys::UnsafePipelineLayout;
-pub use self::sys::UnsafePipelineLayoutCreationError;
-pub use self::traits::PipelineLayout;
+pub use self::sys::PipelineLayout;
+pub use self::sys::PipelineLayoutCreationError;
+pub use self::sys::PipelineLayoutSys;
+pub use self::traits::PipelineLayoutRef;
 pub use self::traits::PipelineLayoutDesc;
+pub use self::traits::PipelineLayoutDescNames;
+pub use self::traits::PipelineLayoutDescPcRange;
 pub use self::traits::PipelineLayoutSuperset;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
-
-pub mod custom_pipeline_macro;
+pub use self::union::PipelineLayoutDescUnion;
 
 mod empty;
 mod sys;
 mod traits;
+mod union;

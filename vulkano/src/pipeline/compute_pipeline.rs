@@ -13,8 +13,11 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::PipelineLayout;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::PipelineLayoutRef;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
@@ -34,21 +37,23 @@ use vk;
 pub struct ComputePipeline<Pl> {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
-    pipeline_layout: Arc<Pl>,
+    pipeline_layout: Pl,
 }
 
-impl<Pl> ComputePipeline<Pl> {
+impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, pipeline_layout: &Arc<Pl>,
-                         shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) 
-                         -> Result<Arc<ComputePipeline<Pl>>, ComputePipelineCreationError>
-        where Pl: PipelineLayout + PipelineLayoutSuperset<Csl>, Csl: PipelineLayoutDesc,
+    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
+                         specialization: &Css) 
+                         -> Result<Arc<ComputePipeline<PipelineLayout<Csl>>>, ComputePipelineCreationError>
+        where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
         let vk = device.pointers();
 
+        let pipeline_layout = shader.layout().clone().build(device).unwrap();     // TODO: error
+
         // TODO: more details in the error
-        if !PipelineLayoutSuperset::is_superset_of(&**pipeline_layout, shader.layout()) {
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), shader.layout()) {
             return Err(ComputePipelineCreationError::IncompatiblePipelineLayout);
         }
 
@@ -80,7 +85,7 @@ impl<Pl> ComputePipeline<Pl> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: PipelineLayout::inner(&**pipeline_layout).internal_object(),
+                layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
@@ -94,10 +99,12 @@ impl<Pl> ComputePipeline<Pl> {
         Ok(Arc::new(ComputePipeline {
             device: device.clone(),
             pipeline: pipeline,
-            pipeline_layout: pipeline_layout.clone(),
+            pipeline_layout: pipeline_layout,
         }))
     }
+}
 
+impl<Pl> ComputePipeline<Pl> {
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -106,8 +113,30 @@ impl<Pl> ComputePipeline<Pl> {
 
     /// Returns the pipeline layout used in this compute pipeline.
     #[inline]
-    pub fn layout(&self) -> &Arc<Pl> {
+    pub fn layout(&self) -> &Pl {
         &self.pipeline_layout
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayoutRef {
+    #[inline]
+    fn sys(&self) -> PipelineLayoutSys {
+        self.layout().sys()
+    }
+
+    #[inline]
+    fn desc(&self) -> &PipelineLayoutDescNames {
+        self.layout().desc()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.device()
+    }
+
+    #[inline]
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layout().descriptor_set_layout(index)
     }
 }
 

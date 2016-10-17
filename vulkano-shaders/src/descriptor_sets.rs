@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashSet;
+use std::cmp;
 
 use enums;
 use parse;
@@ -18,6 +18,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
+        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
@@ -52,6 +53,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         let (desc_ty, readonly) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
+            name: name,
             desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
@@ -59,58 +61,79 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         });
     }
 
-    // Sorting descriptors by binding in order to make sure we're in the right order.
-    descriptors.sort_by(|a, b| a.binding.cmp(&b.binding));
+    // Writing the body of the `descriptor` method.
+    let descriptor_body = descriptors.iter().map(|d| {
+        format!("({set}, {binding}) => Some(DescriptorDesc {{
+            ty: {desc_ty},
+            array_count: 1,
+            stages: self.0.clone(),
+            readonly: {readonly},
+        }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty,
+              readonly = if d.readonly { "true" } else { "false" })
 
-    // Computing the list of sets that are needed.
-    let sets_list = descriptors.iter().map(|d| d.set).collect::<HashSet<u32>>();
+    }).collect::<Vec<_>>().concat();
 
-    let mut output = String::new();
+    let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
 
-    // Iterate once per set.
-    for &set in sets_list.iter() {
-        let descr = descriptors.iter().enumerate().filter(|&(_, d)| d.set == set)
-                               .map(|(_, d)| {
-                                   format!("DescriptorDesc {{
-                                                binding: {binding},
-                                                ty: {desc_ty},
-                                                array_count: 1,
-                                                stages: stages.clone(),
-                                                readonly: {readonly},
-                                            }}", binding = d.binding, desc_ty = d.desc_ty,
-                                                 readonly = if d.readonly { "true" } else { "false" })
-                               })
-                               .collect::<Vec<_>>();
+    // Writing the body of the `num_bindings_in_set` method.
+    let num_bindings_in_set_body = {
+        (0 .. num_sets).map(|set| {
+            let num = 1 + descriptors.iter().filter(|d| d.set == set)
+                                     .fold(0, |s, d| cmp::max(s, d.binding));
+            format!("{set} => Some({num}),", set = set, num = num)
+        }).collect::<Vec<_>>().concat()
+    };
 
-        output.push_str(&format!(r#"
-            fn set{set}_layout(stages: ShaderStages) -> VecIntoIter<DescriptorDesc> {{
-                vec![
-                    {descr}
-                ].into_iter()
-            }}
-        "#, set = set, descr = descr.join(",")));
-    }
+    // Writing the body of the `descriptor_by_name_body` method.
+    let descriptor_by_name_body = descriptors.iter().map(|d| {
+        format!(r#"{name:?} => Some(({set}, {binding})),"#,
+                name = d.name, set = d.set, binding = d.binding)
+    }).collect::<Vec<_>>().concat();
 
-    let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);
-
-    output.push_str(&format!(r#"
+    format!(r#"
+        #[derive(Debug, Clone)]
         pub struct Layout(ShaderStages);
 
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
-            type SetsIter = VecIntoIter<Self::DescIter>;
-            type DescIter = VecIntoIter<DescriptorDesc>;
+            fn num_sets(&self) -> usize {{
+                {num_sets}
+            }}
 
-            fn descriptors_desc(&self) -> Self::SetsIter {{
-                vec![
-                    {layouts}
-                ].into_iter()
+            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {{
+                match set {{
+                    {num_bindings_in_set_body}
+                    _ => None
+                }}
+            }}
+
+            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {{
+                match (set, binding) {{
+                    {descriptor_body}
+                    _ => None
+                }}
+            }}
+
+            fn num_push_constants_ranges(&self) -> usize {{
+                0       // FIXME:
+            }}
+
+            fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {{
+                None
             }}
         }}
 
-        "#, layouts = (0 .. max_set).map(|n| format!("set{}_layout(self.0)", n)).collect::<Vec<_>>().join(",")));
-
-    output
+        #[allow(unsafe_code)]
+        unsafe impl PipelineLayoutDescNames for Layout {{
+            fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {{
+                match name {{
+                    {descriptor_by_name_body}
+                    _ => None
+                }}
+            }}
+        }}
+        "#, num_sets = num_sets, num_bindings_in_set_body = num_bindings_in_set_body,
+            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body)
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed

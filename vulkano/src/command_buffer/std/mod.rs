@@ -20,7 +20,7 @@ use command_buffer::SubmitBuilder;
 use command_buffer::Submit;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
-use descriptor::PipelineLayout;
+use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
 use device::Queue;
@@ -92,7 +92,7 @@ pub unsafe trait CommandsList {
     fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
                                dimensions: [u32; 3], push_constants: &'a Pc)
                                -> dispatch::DispatchCommand<'a, Self, Pl, S, Pc>
-        where Self: Sized + CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection, Pc: 'a
     {
         dispatch::DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
@@ -141,7 +141,7 @@ pub unsafe trait CommandsList {
                                        dynamic: &DynamicState, vertices: V, sets: S,
                                        push_constants: &'a Pc)
                                        -> draw::DrawCommand<'a, Self, Pv, Pl, Prp, S, Pc>
-        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayout,
+        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
     {
         draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)

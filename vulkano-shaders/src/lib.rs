@@ -99,7 +99,7 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::UnsafePipelineLayout;
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescNames;
     "#);
 
     {

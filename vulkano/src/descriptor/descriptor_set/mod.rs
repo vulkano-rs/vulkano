@@ -18,10 +18,7 @@ use sync::Fence;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
-pub use self::std::StdDescriptorSet;
-pub use self::std::StdDescriptorSetResourcesCollection;
-pub use self::std::StdDescriptorSetBuf;
-pub use self::std::StdDescriptorSetBufTy;
+pub use self::simple::*;
 pub use self::sys::UnsafeDescriptorSet;
 pub use self::sys::DescriptorWrite;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
@@ -29,7 +26,7 @@ pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 pub mod collection;
 
 mod pool;
-mod std;
+mod simple;
 mod sys;
 mod unsafe_layout;
 
@@ -39,6 +36,20 @@ mod unsafe_layout;
 pub unsafe trait DescriptorSet {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
+}
+
+unsafe impl<T> DescriptorSet for Arc<T> where T: DescriptorSet {
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, T> DescriptorSet for &'a T where T: 'a + DescriptorSet {
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        (**self).inner()
+    }
 }
 
 /// Trait for objects that describe the layout of the descriptors of a set.
