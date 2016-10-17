@@ -42,9 +42,9 @@
 // struct. The restrictions are enforced only in the public types.
 
 pub use self::states_manager::StatesManager;
-pub use self::std::PrimaryCbBuilder;
-pub use self::std::CommandBuffer;
-pub use self::std::CommandsList;
+pub use self::cmd::PrimaryCbBuilder;
+pub use self::cmd::CommandBuffer;
+pub use self::cmd::CommandsList;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
@@ -57,8 +57,8 @@ use pipeline::viewport::Scissor;
 use sync::PipelineStages;
 use sync::Semaphore;
 
+pub mod cmd;
 pub mod pool;
-pub mod std;
 pub mod sys;
 
 mod states_manager;

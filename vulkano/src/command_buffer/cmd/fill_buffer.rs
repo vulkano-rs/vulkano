@@ -14,10 +14,10 @@ use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
 use command_buffer::StatesManager;
 use command_buffer::SubmitInfo;
-use command_buffer::std::CommandsListPossibleOutsideRenderPass;
-use command_buffer::std::CommandsList;
-use command_buffer::std::CommandsListConcrete;
-use command_buffer::std::CommandsListOutput;
+use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
+use command_buffer::cmd::CommandsList;
+use command_buffer::cmd::CommandsListConcrete;
+use command_buffer::cmd::CommandsListOutput;
 use command_buffer::sys::PipelineBarrierBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use device::Device;
@@ -236,8 +236,8 @@ mod tests {
     use std::time::Duration;
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
-    use command_buffer::std::PrimaryCbBuilder;
-    use command_buffer::std::CommandsList;
+    use command_buffer::cmd::PrimaryCbBuilder;
+    use command_buffer::cmd::CommandsList;
     use command_buffer::submit::CommandBuffer;
 
     #[test]
