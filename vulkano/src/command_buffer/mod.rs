@@ -51,11 +51,15 @@ pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitChain;
 
 use std::sync::Arc;
+use std::marker::PhantomData;
+
 use command_buffer::sys::PipelineBarrierBuilder;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 use sync::PipelineStages;
 use sync::Semaphore;
+
+use vk;
 
 pub mod cmd;
 pub mod pool;
@@ -107,6 +111,16 @@ impl Default for DynamicState {
     fn default() -> DynamicState {
         DynamicState::none()
     }
+}
+
+/// Opaque struct that contains a command buffer in construction.
+pub struct CommandBufferBuilder<'a> {
+    command_buffer: vk::CommandBuffer,
+    current_state: DynamicState,
+    bound_graphics_pipeline: vk::Pipeline,
+    bound_compute_pipeline: vk::Pipeline,
+    resources_states: StatesManager,
+    marker: PhantomData<&'a ()>,
 }
 
 /// Information about how the submitting function should synchronize the submission.
