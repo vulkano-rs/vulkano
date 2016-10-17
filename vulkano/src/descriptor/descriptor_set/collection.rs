@@ -7,11 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::iter::Empty as EmptyIter;
-use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
-use std::vec::IntoIter as VecIntoIter;
 
 use command_buffer::SubmitInfo;
 use command_buffer::StatesManager;
@@ -19,25 +15,29 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
+use descriptor::descriptor_set::UnsafeDescriptorSet;
 use device::Queue;
 use sync::Fence;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
-    /// An iterator that produces the list of descriptor set objects contained in this collection.
-    type ListIter: ExactSizeIterator<Item = Arc<DescriptorSet>>;
+    /// Returns the number of sets in the collection. Includes possibly empty sets.
+    ///
+    /// In other words, this should be equal to the highest set number plus one.
+    fn num_sets(&self) -> usize;
 
-    /// An iterator that produces the description of the list of sets.
-    type SetsIter: ExactSizeIterator<Item = Self::DescIter>;
+    /// Returns the descriptor set with the given id. Returns `None` if the set is empty.
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet>;
 
-    /// An iterator that produces the description of a set.
-    type DescIter: ExactSizeIterator<Item = DescriptorDesc>;
+    /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
+    ///
+    /// Returns `None` if the set is out of range.
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize>;
 
-    /// Returns the list of descriptor set objects of this collection.
-    fn list(&self) -> Self::ListIter;
-
-    /// Produces a description of the sets, as if it was a layout.
-    fn description(&self) -> Self::SetsIter;
+    /// Returns the descriptor for the given binding of the given set.
+    ///
+    /// Returns `None` if out of range.
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 }
 
 /// Extension trait for a descriptor sets collection so that it can be used with the standard
@@ -60,18 +60,24 @@ pub unsafe trait TrackedDescriptorSetsCollection<States = StatesManager>: Descri
 }
 
 unsafe impl DescriptorSetsCollection for () {
-    type ListIter = EmptyIter<Arc<DescriptorSet>>;
-    type SetsIter = EmptyIter<EmptyIter<DescriptorDesc>>;
-    type DescIter = EmptyIter<DescriptorDesc>;
-
     #[inline]
-    fn list(&self) -> Self::ListIter {
-        iter::empty()
+    fn num_sets(&self) -> usize {
+        0
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        iter::empty()
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
+        None
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        None
     }
 }
 
@@ -98,18 +104,27 @@ unsafe impl<S> TrackedDescriptorSetsCollection<S> for () {
 unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
     where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
 {
-    type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
-    type SetsIter = OptionIntoIter<Self::DescIter>;
-    type DescIter = <T as DescriptorSetDesc>::Iter;
-
     #[inline]
-    fn list(&self) -> Self::ListIter {
-        Some(self.clone() as Arc<_>).into_iter()
+    fn num_sets(&self) -> usize {
+        1
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        Some(self.desc()).into_iter()
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
+        match set {
+            0 => Some(self.inner()),
+            _ => None
+        }
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        unimplemented!()
     }
 }
 
@@ -117,21 +132,30 @@ unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
 unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
     where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
 {
-    type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
-    type SetsIter = OptionIntoIter<Self::DescIter>;
-    type DescIter = <T as DescriptorSetDesc>::Iter;
-
     #[inline]
-    fn list(&self) -> Self::ListIter {
-        Some((*self).clone() as Arc<_>).into_iter()
+    fn num_sets(&self) -> usize {
+        1
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        Some(self.desc()).into_iter()
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
+        match set {
+            0 => Some(self.inner()),
+            _ => None
+        }
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        unimplemented!()
     }
 }
-
+/*
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)*) => (
         unsafe impl<'a, $first$(, $others)*> DescriptorSetsCollection for
@@ -175,3 +199,4 @@ macro_rules! impl_collection {
 }
 
 impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
+*/

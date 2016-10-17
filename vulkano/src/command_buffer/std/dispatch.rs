@@ -166,9 +166,8 @@ unsafe impl<'a, L, Pl, S, Pc> CommandsListConcrete for DispatchCommand<'a, L, Pl
                 cb.bind_pipeline_compute(&my_pipeline);
             }
 
-            let sets: SmallVec<[_; 8]> = my_sets.list().collect();      // TODO: ideally shouldn't collect, but there are lifetime problems
-            cb.bind_descriptor_sets(false, my_pipeline.layout(), 0,
-                                    sets.iter().map(|s| s.inner()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary
+            cb.bind_descriptor_sets(false, my_pipeline.layout(), 0,     // TODO: shouldn't unwrap
+                                    (0 .. my_sets.num_sets()).map(|n| my_sets.descriptor_set(n).unwrap()), iter::empty());         // TODO: dynamic ranges, and don't bind if not necessary
             cb.push_constants(my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
                               &my_push_constants);
             cb.dispatch(my_dimensions[0], my_dimensions[1], my_dimensions[2]);
