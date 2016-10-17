@@ -38,6 +38,20 @@ pub unsafe trait DescriptorSet {
     fn inner(&self) -> &UnsafeDescriptorSet;
 }
 
+unsafe impl<T> DescriptorSet for Arc<T> where T: DescriptorSet {
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        (**self).inner()
+    }
+}
+
+unsafe impl<'a, T> DescriptorSet for &'a T where T: 'a + DescriptorSet {
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        (**self).inner()
+    }
+}
+
 /// Trait for objects that describe the layout of the descriptors of a set.
 pub unsafe trait DescriptorSetDesc {
     /// Iterator that describes individual descriptors.

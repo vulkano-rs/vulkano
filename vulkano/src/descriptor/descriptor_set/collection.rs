@@ -15,6 +15,7 @@ use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
+use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use device::Queue;
 use sync::Fence;
@@ -100,9 +101,8 @@ unsafe impl<S> TrackedDescriptorSetsCollection<S> for () {
     }
 }
 
-// TODO: remove  + 'static + Send + Sync
-unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
+unsafe impl<T> DescriptorSetsCollection for T
+    where T: DescriptorSet + DescriptorSetDesc
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -128,67 +128,89 @@ unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
     }
 }
 
-// TODO: remove  + 'static + Send + Sync
-unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc + 'static + Send + Sync
-{
+// TODO: we can't be generic over the State because we get a conflicting implementation :-/
+unsafe impl<T> TrackedDescriptorSetsCollection for T where T: TrackedDescriptorSet + DescriptorSetDesc /* TODO */ {
     #[inline]
-    fn num_sets(&self) -> usize {
-        1
+    unsafe fn transition(&self, states: &mut StatesManager) -> (usize, PipelineBarrierBuilder) {
+        TrackedDescriptorSet::transition(self, states, 0 /* FIXME */)
     }
 
     #[inline]
-    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
-        match set {
-            0 => Some(self.inner()),
-            _ => None
-        }
+    unsafe fn finish(&self, i: &mut StatesManager, o: &mut StatesManager) -> PipelineBarrierBuilder {
+        TrackedDescriptorSet::finish(self, i, o)
     }
 
     #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        unimplemented!()
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        unimplemented!()
+    unsafe fn on_submit<F>(&self, states: &StatesManager, queue: &Arc<Queue>, fence: F) -> SubmitInfo
+        where F: FnMut() -> Arc<Fence>
+    {
+        TrackedDescriptorSet::on_submit(self, states, queue, fence)
     }
 }
-/*
+
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)*) => (
-        unsafe impl<'a, $first$(, $others)*> DescriptorSetsCollection for
-                                                        (&'a Arc<$first>, $(&'a Arc<$others>),*)
-            where $first: DescriptorSet + DescriptorSetDesc + 'static
-                  $(, $others: DescriptorSet + DescriptorSetDesc + 'static)*
+        unsafe impl<$first$(, $others)*> DescriptorSetsCollection for ($first, $($others),*)
+            where $first: DescriptorSet + DescriptorSetDesc
+                  $(, $others: DescriptorSet + DescriptorSetDesc)*
         {
-            type ListIter = VecIntoIter<Arc<DescriptorSet>>;
-            type SetsIter = VecIntoIter<Self::DescIter>;
-            type DescIter = VecIntoIter<DescriptorDesc>;
-
             #[inline]
-            fn list(&self) -> Self::ListIter {
+            fn num_sets(&self) -> usize {
                 #![allow(non_snake_case)]
-                let ($first, $($others),*) = *self;
-
-                let list = vec![
-                    $first.clone() as Arc<_>,
-                    $($others.clone() as Arc<_>),*
-                ];
-
-                list.into_iter()
+                1 $( + {let $others=0;1})*
             }
 
             #[inline]
-            fn description(&self) -> Self::SetsIter {
+            fn descriptor_set(&self, mut set: usize) -> Option<&UnsafeDescriptorSet> {
                 #![allow(non_snake_case)]
-                let ($first, $($others),*) = *self;
+                #![allow(unused_mut)]       // For the `set` parameter.
 
-                let mut list = Vec::new();
-                list.push($first.desc().collect::<Vec<_>>().into_iter());
-                $(list.push($others.desc().collect::<Vec<_>>().into_iter());)*
-                list.into_iter()
+                if set == 0 {
+                    return Some(self.0.inner());
+                }
+
+                let &(_, $(ref $others,)*) = self;
+
+                $(
+                    set -= 1;
+                    if set == 0 {
+                        return Some($others.inner());
+                    }
+                )*
+
+                None
+            }
+
+            #[inline]
+            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                unimplemented!()
+            }
+
+            #[inline]
+            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                unimplemented!()
+            }
+        }
+
+        unsafe impl<$first$(, $others)*, St> TrackedDescriptorSetsCollection<St> for ($first, $($others),*)
+            where $first: TrackedDescriptorSet<St> + DescriptorSetDesc /* TODO */
+                  $(, $others: TrackedDescriptorSet<St> + DescriptorSetDesc /* TODO */)*
+        {
+            #[inline]
+            unsafe fn transition(&self, states: &mut St) -> (usize, PipelineBarrierBuilder) {
+                unimplemented!()
+            }
+
+            #[inline]
+            unsafe fn finish(&self, i: &mut St, o: &mut St) -> PipelineBarrierBuilder {
+                unimplemented!()
+            }
+
+            #[inline]
+            unsafe fn on_submit<Fe>(&self, states: &St, queue: &Arc<Queue>, fence: Fe) -> SubmitInfo
+                where Fe: FnMut() -> Arc<Fence>
+            {
+                unimplemented!()
             }
         }
 
@@ -199,4 +221,3 @@ macro_rules! impl_collection {
 }
 
 impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
-*/
