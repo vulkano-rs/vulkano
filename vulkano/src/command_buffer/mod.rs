@@ -54,6 +54,7 @@ use std::sync::Arc;
 use std::marker::PhantomData;
 
 use command_buffer::sys::PipelineBarrierBuilder;
+use device::Device;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 use sync::PipelineStages;
@@ -115,7 +116,8 @@ impl Default for DynamicState {
 
 /// Opaque struct that contains a command buffer in construction.
 pub struct CommandBufferBuilder<'a> {
-    command_buffer: vk::CommandBuffer,
+    device: Arc<Device>,
+    command_buffer: Option<vk::CommandBuffer>,
     current_state: DynamicState,
     bound_graphics_pipeline: vk::Pipeline,
     bound_compute_pipeline: vk::Pipeline,

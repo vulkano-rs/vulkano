@@ -7,11 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
+use std::mem;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use buffer::BufferInner;
 use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::StatesManager;
 use command_buffer::SubmitInfo;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
@@ -26,6 +30,8 @@ use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
+use VulkanObject;
+use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
@@ -79,11 +85,35 @@ impl<'a, L, B, D: ?Sized> UpdateCommand<'a, L, B, D>
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> CommandsList for UpdateCommand<'a, L, B, D>
+unsafe impl<'d, L, B, D: ?Sized> CommandsList for UpdateCommand<'d, L, B, D>
     where B: TrackedBuffer,
           L: CommandsList,
           D: Copy + 'static,
 {
+    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+        let builder = self.previous.append(builder);
+
+        let size = self.buffer.size();
+        let BufferInner { buffer, offset } = self.buffer.inner();
+
+        assert_eq!(buffer.device().internal_object(), builder.device.internal_object());
+
+        let size = cmp::min(size, mem::size_of_val(self.data));
+
+        debug_assert_eq!(offset % 4, 0);
+        debug_assert_eq!(size % 4, 0);
+        debug_assert!(size <= 65536);
+
+        unsafe {
+            let vk = builder.device.pointers();
+            let cmd = builder.command_buffer.clone().take().unwrap();
+            vk.CmdUpdateBuffer(cmd, buffer.internal_object(), offset as vk::DeviceSize,
+                               size as vk::DeviceSize, self.data as *const D as *const _);
+        }
+
+        builder
+    }
+
     #[inline]
     fn num_commands(&self) -> usize {
         self.previous.num_commands() + 1

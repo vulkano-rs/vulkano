@@ -169,34 +169,34 @@ pub unsafe trait CommandsList {
     /// Returns true if the command buffer can be built. This function should always return true,
     /// except when we're building a primary command buffer that is inside a render pass.
     // TODO: remove function
-    fn buildable_state(&self) -> bool;
+    fn buildable_state(&self) -> bool { unimplemented!() }
 
     /// Returns the number of commands in the commands list.
     ///
     /// Note that multiple actual commands may count for just 1.
     // TODO: remove function
-    fn num_commands(&self) -> usize;
+    fn num_commands(&self) -> usize { unimplemented!() }
 
     /// Checks whether the command can be executed on the given queue family.
     // TODO: error type?
     // TODO: remove function
-    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()>;
+    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> { unimplemented!() }
 
     /// Extracts the object that contains the states of all the resources of the commands list.
     ///
     /// Panics if the states were already extracted.
     // TODO: remove function
-    fn extract_states(&mut self) -> StatesManager;
+    fn extract_states(&mut self) -> StatesManager { unimplemented!() }
 
     /// Returns true if the given compute pipeline is currently binded in the commands list.
     // TODO: better API?
     // TODO: remove function
-    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
+    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool { unimplemented!() }
 
     /// Returns true if the given graphics pipeline is currently binded in the commands list.
     // TODO: better API?
     // TODO: remove function
-    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool;
+    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool { unimplemented!() }
 }
 
 unsafe impl CommandsList for Box<CommandsList> {
