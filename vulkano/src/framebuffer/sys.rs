@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
+use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassRef;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
@@ -318,6 +319,11 @@ unsafe impl RenderPassRef for RenderPass {
     #[inline]
     fn inner(&self) -> &RenderPass {
         self
+    }
+
+    #[inline]
+    fn desc(&self) -> &RenderPassDesc {
+        unimplemented!()        // FIXME:
     }
 }
 

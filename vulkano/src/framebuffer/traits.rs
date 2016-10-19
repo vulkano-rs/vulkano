@@ -120,6 +120,9 @@ pub unsafe trait RenderPassRef {
     /// Returns the underlying `RenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &RenderPass;
 
+    /// Returns the description of the render pass.
+    fn desc(&self) -> &RenderPassDesc;
+
     #[inline]
     fn subpass(&self, index: u32) -> Option<Subpass<&Self>> where Self: RenderPassDesc {
         Subpass::from(self, index)
@@ -131,12 +134,22 @@ unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
     fn inner(&self) -> &RenderPass {
         (**self).inner()
     }
+
+    #[inline]
+    fn desc(&self) -> &RenderPassDesc {
+        (**self).desc()
+    }
 }
 
 unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     #[inline]
     fn inner(&self) -> &RenderPass {
         (**self).inner()
+    }
+
+    #[inline]
+    fn desc(&self) -> &RenderPassDesc {
+        (**self).desc()
     }
 }
 
