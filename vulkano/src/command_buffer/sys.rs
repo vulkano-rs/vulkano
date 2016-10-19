@@ -936,17 +936,18 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// - Panics if one of the buffers was not created with the same device as this command buffer.
     ///
-    // TODO: don't request UnsafeBuffer
+    // TODO: don't request vk::Buffer
     #[inline]
     pub unsafe fn bind_vertex_buffers<'a, I>(&mut self, first_binding: u32, buffers: I)
-        where I: IntoIterator<Item = (&'a UnsafeBuffer, usize)>
+        where I: IntoIterator<Item = (vk::Buffer, usize)>
     {
         let mut raw_buffers: SmallVec<[_; 8]> = SmallVec::new();
         let mut raw_offsets: SmallVec<[_; 8]> = SmallVec::new();
 
         for (buf, off) in buffers {
-            assert_eq!(buf.device().internal_object(), self.device.internal_object());
-            raw_buffers.push(buf.internal_object());
+            // TODO: restore
+            //assert_eq!(buf.device().internal_object(), self.device.internal_object());
+            raw_buffers.push(buf);
             raw_offsets.push(off as vk::DeviceSize);
         }
 

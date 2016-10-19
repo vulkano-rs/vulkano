@@ -11,7 +11,6 @@ use std::iter;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
 use command_buffer::DynamicState;
 use command_buffer::StatesManager;
 use command_buffer::SubmitInfo;
@@ -34,7 +33,7 @@ use VulkanObject;
 use vk;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
-pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+pub struct DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
     where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     // Parent commands list.
@@ -47,8 +46,9 @@ pub struct DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
     pipeline_barrier: (usize, PipelineBarrierBuilder),
     // The push constants.   TODO: use Cow
     push_constants: &'a Pc,
-    // FIXME: strong typing and state transitions
-    vertex_buffers: SmallVec<[Arc<Buffer>; 4]>,
+    // FIXME: state transitions
+    vertex_buffers: V,
+    raw_vertex_buffers: SmallVec<[(vk::Buffer, usize); 4]>,
     // States of the resources, or `None` if it has been extracted.
     resources_states: Option<StatesManager>,
     // Actual type of draw.
@@ -74,14 +74,14 @@ enum DrawInner {
     // TODO: indirect rendering
 }
 
-impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+impl<'a, L, V, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
     where L: CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     /// See the documentation of the `draw` method.
-    pub fn regular<V>(mut previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-                      dynamic: &DynamicState, vertices: V, sets: S, push_constants: &'a Pc)
-                      -> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+    pub fn regular(mut previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
+                   dynamic: &DynamicState, vertices: V, sets: S, push_constants: &'a Pc)
+                   -> DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
         let mut states = previous.extract_states();
@@ -92,8 +92,11 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
 
         // FIXME: lot of stuff missing here
 
-        let (buffers, num_vertices, num_instances) = pipeline.vertex_definition().decode(vertices);
-        let buffers = buffers.collect();
+        let (raw_buffers, num_vertices, num_instances) = {
+            let (raw_buffers, num_vertices, num_instances) = pipeline.vertex_definition().decode(&vertices);
+            let raw_buffers = raw_buffers.iter().map(|b| (b.buffer.internal_object(), b.offset)).collect();
+            (raw_buffers, num_vertices, num_instances)
+        };
 
         DrawCommand {
             previous: previous,
@@ -101,7 +104,8 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
             sets: sets,
             pipeline_barrier: (barrier_loc, barrier),
             push_constants: push_constants,
-            vertex_buffers: buffers,
+            vertex_buffers: vertices,
+            raw_vertex_buffers: raw_buffers,
             resources_states: Some(states),
             inner: DrawInner::Regular {
                 vertex_count: num_vertices as u32,
@@ -113,7 +117,7 @@ impl<'a, L, Pv, Pl, Prp, S, Pc> DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+unsafe impl<'a, L, V, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
     where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     #[inline]
@@ -151,11 +155,11 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsList for DrawCommand<'a, L, Pv, P
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+unsafe impl<'a, L, V, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
     where L: CommandsListConcrete, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection, Pc: 'a
 {
     type Pool = L::Pool;
-    type Output = DrawCommandCb<L::Output, Pv, Pl, Prp, S>;
+    type Output = DrawCommandCb<L::Output, V, Pv, Pl, Prp, S>;
 
 
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
@@ -192,7 +196,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, 
         let bind_pipeline = !self.previous.is_graphics_pipeline_bound(my_pipeline.internal_object());
         let my_sets = self.sets;
         let my_push_constants = self.push_constants;
-        let my_vertex_buffers = self.vertex_buffers;
+        let my_vertex_buffers = self.raw_vertex_buffers;
         let my_inner = self.inner;
 
         // Passing to the parent.
@@ -207,7 +211,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, 
             cb.push_constants(my_pipeline.layout(), ShaderStages::all(), 0,        // TODO: stages
                               &my_push_constants);
 
-            cb.bind_vertex_buffers(0, my_vertex_buffers.iter().map(|buf| (buf.inner().buffer, 0)));
+            cb.bind_vertex_buffers(0, my_vertex_buffers.iter().cloned());
 
             match my_inner {
                 DrawInner::Regular { vertex_count, instance_count,
@@ -231,12 +235,12 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListConcrete for DrawCommand<'a, 
             previous: parent,
             pipeline: my_pipeline,
             sets: my_sets,
-            vertex_buffers: my_vertex_buffers,
+            vertex_buffers: self.vertex_buffers,
         }
     }
 }
 
-unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for DrawCommand<'a, L, Pv, Pl, Prp, S, Pc>
+unsafe impl<'a, L, V, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for DrawCommand<'a, L, V, Pv, Pl, Prp, S, Pc>
     where L: CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
@@ -259,7 +263,7 @@ unsafe impl<'a, L, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass for 
 }
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
-pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
+pub struct DrawCommandCb<L, V, Pv, Pl, Prp, S>
     where L: CommandsListOutput, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
 {
     // The previous commands.
@@ -268,11 +272,11 @@ pub struct DrawCommandCb<L, Pv, Pl, Prp, S>
     pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
     // The descriptor sets. Stored here to keep them alive.
     sets: S,
-    // FIXME: strong typing and state transitions
-    vertex_buffers: SmallVec<[Arc<Buffer>; 4]>,
+    // The vertex buffers used.
+    vertex_buffers: V,
 }
 
-unsafe impl<L, Pv, Pl, Prp, S> CommandsListOutput for DrawCommandCb<L, Pv, Pl, Prp, S>
+unsafe impl<L, V, Pv, Pl, Prp, S> CommandsListOutput for DrawCommandCb<L, V, Pv, Pl, Prp, S>
     where L: CommandsListOutput, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
 {
     #[inline]

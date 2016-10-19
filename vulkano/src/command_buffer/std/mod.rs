@@ -140,7 +140,7 @@ pub unsafe trait CommandsList {
     fn draw<'a, Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
                                        dynamic: &DynamicState, vertices: V, sets: S,
                                        push_constants: &'a Pc)
-                                       -> draw::DrawCommand<'a, Self, Pv, Pl, Prp, S, Pc>
+                                       -> draw::DrawCommand<'a, Self, V, Pv, Pl, Prp, S, Pc>
         where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
     {

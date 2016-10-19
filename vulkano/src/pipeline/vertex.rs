@@ -68,10 +68,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::option::IntoIter as OptionIntoIter;
-use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
-use buffer::Buffer;
+use buffer::BufferInner;
 use buffer::TypedBuffer;
 use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
@@ -217,13 +216,12 @@ impl fmt::Display for IncompatibleVertexDefinitionError {
 
 /// Extension trait of `Definition`. The `L` parameter is an acceptable vertex source for this
 /// vertex definition.
-pub unsafe trait Source<L>: 'static + Send + Sync {
-    /// Iterator used by `decode`.
-    type Iter: ExactSizeIterator<Item = Arc<Buffer>>;
-
-    /// Checks and returns the list of buffers, number of vertices and number of instances.
+pub unsafe trait Source<L> {
+    /// Checks and returns the list of buffers with offsets, number of vertices and number of instances.
     // TODO: return error if problem
-    fn decode(&self, L) -> (Self::Iter, usize, usize);
+    // TODO: better than a Vec
+    // TODO: return a struct instead
+    fn decode<'l>(&self, &'l L) -> (Vec<BufferInner<'l>>, usize, usize);
 }
 
 /// Implementation of `Definition` for a single vertex buffer.
@@ -279,15 +277,12 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
     }
 }
 
-unsafe impl<'a, B, V> Source<&'a Arc<B>> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = [V]> + 'static, V: Vertex + 'static
+unsafe impl<'a, B, V> Source<B> for SingleBufferDefinition<V>
+    where B: TypedBuffer<Content = [V]>, V: Vertex
 {
-    type Iter = OptionIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: &'a Arc<B>) -> (OptionIntoIter<Arc<Buffer>>, usize, usize) {
-        let iter = Some(source.clone() as Arc<_>).into_iter();
-        (iter, source.len(), 1)
+    fn decode<'l>(&self, source: &'l B) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (vec![source.inner()], source.len(), 1)
     }
 }
 
@@ -352,18 +347,14 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for TwoBuffersDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, T: 'static
+unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for TwoBuffersDefinition<T, U>
+    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
+          U: Vertex, Bu: TypedBuffer<Content = [U]>
 {
-    type Iter = VecIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
-              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
-    {
-        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
+    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
+        let vertices = [source.0.len(), source.1.len()].iter().cloned().min().unwrap();
+        (vec![source.0.inner(), source.1.inner()], vertices, 1)
     }
 }
 
@@ -428,18 +419,13 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, U: 'static
+unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
+    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
+          U: Vertex, Bu: TypedBuffer<Content = [U]>
 {
-    type Iter = VecIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
-              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
-    {
-        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, source.0.len(), source.1.len())
+    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (vec![source.0.inner(), source.1.inner()], source.0.len(), source.1.len())
     }
 }
 
