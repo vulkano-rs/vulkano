@@ -14,7 +14,7 @@ use std::sync::Arc;
 use device::Device;
 use format::ClearValue;
 use framebuffer::framebuffer::FramebufferCreationError;
-use framebuffer::sys::UnsafeRenderPass;
+use framebuffer::sys::RenderPass;
 use framebuffer::sys::RenderPassCreationError;
 use framebuffer::traits::RenderPassRef;
 use framebuffer::traits::RenderPassDesc;
@@ -29,7 +29,7 @@ use framebuffer::traits::LayoutPassDependencyDescription;
 /// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
 /// be `()`.
 pub struct EmptySinglePassRenderPass {
-    render_pass: UnsafeRenderPass,
+    render_pass: RenderPass,
 }
 
 impl EmptySinglePassRenderPass {
@@ -44,7 +44,7 @@ impl EmptySinglePassRenderPass {
                 preserve_attachments: vec![],
             };
 
-            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
+            RenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
         });
 
         Ok(EmptySinglePassRenderPass {
@@ -66,7 +66,7 @@ impl EmptySinglePassRenderPass {
 
 unsafe impl RenderPassRef for EmptySinglePassRenderPass {
     #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &RenderPass {
         &self.render_pass
     }
 }

@@ -51,7 +51,7 @@ use format::ClearValue;
 use format::FormatTy;
 use framebuffer::RenderPassRef;
 use framebuffer::Subpass;
-use framebuffer::UnsafeRenderPass;
+use framebuffer::RenderPass;
 use framebuffer::traits::Framebuffer;
 use image::Image;
 use image::sys::Layout;
@@ -715,7 +715,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The render pass and the framebuffer must be compatible.
     /// - The clear values must be valid for the attachments.
     ///
-    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: &UnsafeRenderPass,
+    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: &RenderPass,
                                           framebuffer: &F, clear_values: I,
                                           rect: [Range<u32>; 2], secondary: bool)
         where I: Iterator<Item = ClearValue>,

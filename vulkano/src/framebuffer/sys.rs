@@ -30,7 +30,7 @@ use check_errors;
 use vk;
 
 /// Defines the layout of multiple subpasses.
-pub struct UnsafeRenderPass {
+pub struct RenderPass {
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
 
@@ -41,7 +41,7 @@ pub struct UnsafeRenderPass {
     granularity: Mutex<Option<[u32; 2]>>,
 }
 
-impl UnsafeRenderPass {
+impl RenderPass {
     /// Builds a new renderpass.
     ///
     /// # Safety
@@ -59,7 +59,7 @@ impl UnsafeRenderPass {
     ///
     pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
                                   pass_dependencies: Id)
-                                  -> Result<UnsafeRenderPass, RenderPassCreationError>
+                                  -> Result<RenderPass, RenderPassCreationError>
         where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
               Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
               Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
@@ -267,7 +267,7 @@ impl UnsafeRenderPass {
             output
         };
 
-        Ok(UnsafeRenderPass {
+        Ok(RenderPass {
             device: device.clone(),
             renderpass: renderpass,
             granularity: Mutex::new(None),
@@ -305,7 +305,7 @@ impl UnsafeRenderPass {
     }
 }
 
-unsafe impl VulkanObject for UnsafeRenderPass {
+unsafe impl VulkanObject for RenderPass {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -314,14 +314,14 @@ unsafe impl VulkanObject for UnsafeRenderPass {
     }
 }
 
-unsafe impl RenderPassRef for UnsafeRenderPass {
+unsafe impl RenderPassRef for RenderPass {
     #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &RenderPass {
         self
     }
 }
 
-impl Drop for UnsafeRenderPass {
+impl Drop for RenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {

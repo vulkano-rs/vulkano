@@ -22,7 +22,7 @@ use device::Queue;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
-use framebuffer::UnsafeRenderPass;
+use framebuffer::RenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
@@ -144,8 +144,8 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         where R: RenderPassRef,
               Rp: RenderPassRef + RenderPassCompatible<R>
     {
-        (&*self.render_pass.inner() as *const UnsafeRenderPass as usize ==
-         &*render_pass.inner() as *const UnsafeRenderPass as usize) ||
+        (&*self.render_pass.inner() as *const RenderPass as usize ==
+         &*render_pass.inner() as *const RenderPass as usize) ||
             self.render_pass.is_compatible_with(render_pass)
     }
 
