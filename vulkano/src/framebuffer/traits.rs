@@ -12,11 +12,12 @@ use std::sync::Arc;
 use command_buffer::SubmitInfo;
 use command_buffer::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
+use device::Device;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassSys;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
@@ -117,8 +118,11 @@ unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFra
 /// - `num_subpasses` has to return a correct value.
 ///
 pub unsafe trait RenderPassRef {
-    /// Returns the underlying `RenderPass`. Used by vulkano's internals.
-    fn inner(&self) -> &RenderPass;
+    /// Returns an opaque object representing the render pass. Used by vulkano's internals.
+    fn sys(&self) -> RenderPassSys;
+
+    /// Returns the device this render pass was created with.
+    fn device(&self) -> &Arc<Device>;
 
     /// Returns the description of the render pass.
     fn desc(&self) -> &RenderPassDesc;
@@ -131,8 +135,13 @@ pub unsafe trait RenderPassRef {
 
 unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
     #[inline]
-    fn inner(&self) -> &RenderPass {
-        (**self).inner()
+    fn sys(&self) -> RenderPassSys {
+        (**self).sys()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
     }
 
     #[inline]
@@ -143,8 +152,13 @@ unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
 
 unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     #[inline]
-    fn inner(&self) -> &RenderPass {
-        (**self).inner()
+    fn sys(&self) -> RenderPassSys {
+        (**self).sys()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
     }
 
     #[inline]

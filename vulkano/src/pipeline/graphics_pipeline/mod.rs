@@ -864,7 +864,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
                 layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
-                renderPass: params.render_pass.render_pass().inner().internal_object(),
+                renderPass: params.render_pass.render_pass().sys().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
                 basePipelineIndex: -1,       // TODO:

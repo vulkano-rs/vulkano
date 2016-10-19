@@ -22,7 +22,6 @@ use device::Queue;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
-use framebuffer::RenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
@@ -65,7 +64,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList<StatesManager>        // TODO: use another trait in order to be generic over the states
     {
-        let device = render_pass.inner().device().clone();
+        let device = render_pass.device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
@@ -75,7 +74,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
 
         // Checking the dimensions against the limits.
         {
-            let limits = render_pass.inner().device().physical_device().limits();
+            let limits = render_pass.device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
@@ -109,13 +108,13 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         };*/
 
         let framebuffer = unsafe {
-            let vk = render_pass.inner().device().pointers();
+            let vk = render_pass.device().pointers();
 
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                renderPass: render_pass.inner().internal_object(),
+                renderPass: render_pass.sys().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
                 width: dimensions[0],
@@ -144,8 +143,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         where R: RenderPassRef,
               Rp: RenderPassRef + RenderPassCompatible<R>
     {
-        (&*self.render_pass.inner() as *const RenderPass as usize ==
-         &*render_pass.inner() as *const RenderPass as usize) ||
+        (self.render_pass.sys().internal_object() == render_pass.sys().internal_object()) ||
             self.render_pass.is_compatible_with(render_pass)
     }
 

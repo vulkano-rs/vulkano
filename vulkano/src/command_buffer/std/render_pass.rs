@@ -153,8 +153,8 @@ unsafe impl<L, Rp, Fb> CommandsListConcrete for BeginRenderPassCommand<L, Rp, Fb
                                                                              .chain(barriers);
 
         let parent = self.previous.raw_build(in_s, out, |cb| {
-            cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.inner())
-                                               .unwrap_or(my_framebuffer.render_pass().inner()),
+            cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.sys())
+                                               .unwrap_or(my_framebuffer.render_pass().sys()),
                                  &my_framebuffer, my_clear_values.into_iter(),
                                  my_rect, my_secondary);
             additional_elements(cb);

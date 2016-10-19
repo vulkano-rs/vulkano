@@ -15,6 +15,7 @@ use device::Device;
 use format::ClearValue;
 use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::RenderPass;
+use framebuffer::sys::RenderPassSys;
 use framebuffer::sys::RenderPassCreationError;
 use framebuffer::traits::RenderPassRef;
 use framebuffer::traits::RenderPassDesc;
@@ -66,8 +67,13 @@ impl EmptySinglePassRenderPass {
 
 unsafe impl RenderPassRef for EmptySinglePassRenderPass {
     #[inline]
-    fn inner(&self) -> &RenderPass {
-        &self.render_pass
+    fn sys(&self) -> RenderPassSys {
+        unimplemented!()        // TODO:
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        unimplemented!()        // TODO:
     }
 
     #[inline]
