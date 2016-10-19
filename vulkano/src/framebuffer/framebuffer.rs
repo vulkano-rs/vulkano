@@ -19,7 +19,7 @@ use command_buffer::StatesManager;
 use command_buffer::sys::PipelineBarrierBuilder;
 use device::Device;
 use device::Queue;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
 use framebuffer::UnsafeRenderPass;
@@ -58,10 +58,10 @@ pub struct StdFramebuffer<Rp, A> {
 impl<Rp, A> StdFramebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
-    /// The `attachments` parameter depends on which `RenderPass` implementation is used.
+    /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
                    attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
-        where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
+        where Rp: RenderPassRef + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList<StatesManager>        // TODO: use another trait in order to be generic over the states
     {
@@ -141,8 +141,8 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
     pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
-        where R: RenderPass,
-              Rp: RenderPass + RenderPassCompatible<R>
+        where R: RenderPassRef,
+              Rp: RenderPassRef + RenderPassCompatible<R>
     {
         (&*self.render_pass.inner() as *const UnsafeRenderPass as usize ==
          &*render_pass.inner() as *const UnsafeRenderPass as usize) ||
@@ -186,11 +186,11 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPass {
-    type RenderPass = Rp;
+unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPassRef {
+    type RenderPassRef = Rp;
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         &self.render_pass
     }
 
@@ -220,7 +220,7 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
 }
 
 unsafe impl<Rp, A, S> TrackedFramebuffer<S> for StdFramebuffer<Rp, A>
-    where Rp: RenderPass, A: AttachmentsList<S>
+    where Rp: RenderPassRef, A: AttachmentsList<S>
 {
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)

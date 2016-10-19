@@ -59,7 +59,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::device::Device;
         use $crate::format::ClearValue;
         use $crate::framebuffer::UnsafeRenderPass;
-        use $crate::framebuffer::RenderPass;
+        use $crate::framebuffer::RenderPassRef;
         use $crate::framebuffer::RenderPassDesc;
         use $crate::framebuffer::RenderPassClearValues;
         use $crate::framebuffer::RenderPassAttachmentsList;
@@ -118,7 +118,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[allow(unsafe_code)]
-        unsafe impl RenderPass for CustomRenderPass {
+        unsafe impl RenderPassRef for CustomRenderPass {
             #[inline]
             fn inner(&self) -> &UnsafeRenderPass {
                 &self.render_pass

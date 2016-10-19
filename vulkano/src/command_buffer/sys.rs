@@ -49,7 +49,7 @@ use descriptor::descriptor::ShaderStages;
 use device::Device;
 use format::ClearValue;
 use format::FormatTy;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::Subpass;
 use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer;
@@ -88,7 +88,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Creates a new builder.
     pub fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
                      -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -117,7 +117,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     pub unsafe fn already_allocated<R, F>(pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
                                           -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let device = pool.device().clone();
         let vk = device.pointers();
