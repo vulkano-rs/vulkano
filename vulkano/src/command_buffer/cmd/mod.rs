@@ -35,10 +35,12 @@ use pipeline::vertex::Source;
 use sync::Fence;
 use vk;
 
+pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 pub use self::unsynced_update_buffer::{CmdUnsyncedUpdate, CmdUnsyncedUpdateError};
 
+mod bind_pipeline;
 pub mod dispatch;
 pub mod draw;
 pub mod empty;
