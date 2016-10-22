@@ -41,7 +41,13 @@ impl<L> CmdSetState<L> where L: CommandsList {
         CmdSetState {
             previous: previous,
             device: device,
-            dynamic_state: state,
+            dynamic_state: DynamicState {
+                // This constructor is explicitely layed out so that we don't forget to
+                // modify this code if we add a new member to `DynamicState`.
+                line_width: state.line_width,
+                viewports: state.viewports,
+                scissors: state.scissors,
+            },
         }
     }
 }
@@ -67,13 +73,13 @@ unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
             if let Some(ref viewports) = self.dynamic_state.viewports {
                 // TODO: cache state
                 let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());      // TODO: viewport num
+                vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
             }
 
             if let Some(ref scissors) = self.dynamic_state.scissors {
                 // TODO: cache state
                 let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());     // TODO: viewport num
+                vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
             }
         }
 
