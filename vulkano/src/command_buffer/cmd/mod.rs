@@ -38,6 +38,7 @@ use vk;
 pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
+pub use self::set_state::{CmdSetState};
 pub use self::update_buffer_unsynced::{CmdUpdateBufferUnsynced, CmdUpdateBufferUnsyncedError};
 
 mod bind_pipeline;
@@ -47,6 +48,7 @@ pub mod empty;
 pub mod execute;
 pub mod fill_buffer;
 pub mod render_pass;
+mod set_state;
 pub mod update_buffer;
 mod update_buffer_unsynced;
 
