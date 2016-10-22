@@ -38,7 +38,7 @@ use vk;
 pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
-pub use self::unsynced_update_buffer::{CmdUnsyncedUpdate, CmdUnsyncedUpdateError};
+pub use self::update_buffer_unsynced::{CmdUpdateBufferUnsynced, CmdUpdateBufferUnsyncedError};
 
 mod bind_pipeline;
 pub mod dispatch;
@@ -48,7 +48,7 @@ pub mod execute;
 pub mod fill_buffer;
 pub mod render_pass;
 pub mod update_buffer;
-mod unsynced_update_buffer;
+mod update_buffer_unsynced;
 
 /// A list of commands that can be turned into a command buffer.
 pub unsafe trait CommandsList {

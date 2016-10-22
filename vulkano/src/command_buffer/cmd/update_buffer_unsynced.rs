@@ -20,7 +20,7 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
-pub struct CmdUnsyncedUpdate<'a, L, B, D: ?Sized>
+pub struct CmdUpdateBufferUnsynced<'a, L, B, D: ?Sized>
     where B: Buffer, L: CommandsList, D: 'static
 {
     // Parent commands list.
@@ -37,7 +37,7 @@ pub struct CmdUnsyncedUpdate<'a, L, B, D: ?Sized>
     data: &'a D,
 }
 
-impl<'a, L, B, D: ?Sized> CmdUnsyncedUpdate<'a, L, B, D>
+impl<'a, L, B, D: ?Sized> CmdUpdateBufferUnsynced<'a, L, B, D>
     where B: Buffer,
           L: CommandsList + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
@@ -48,9 +48,9 @@ impl<'a, L, B, D: ?Sized> CmdUnsyncedUpdate<'a, L, B, D>
     /// of both will be written.
     ///
     /// The size of the modification must not exceed 65536 bytes. The offset and size must be
-    /// multiples of four. 
+    /// multiples of four.
     pub unsafe fn new(previous: L, buffer: B, data: &'a D)
-                      -> Result<CmdUnsyncedUpdate<'a, L, B, D>, CmdUnsyncedUpdateError>
+                      -> Result<CmdUpdateBufferUnsynced<'a, L, B, D>, CmdUpdateBufferUnsyncedError>
     {
         assert!(previous.is_outside_render_pass());     // TODO: error
 
@@ -59,20 +59,20 @@ impl<'a, L, B, D: ?Sized> CmdUnsyncedUpdate<'a, L, B, D>
         let (buffer_handle, offset) = {
             let BufferInner { buffer: buffer_inner, offset } = buffer.inner();
             if offset % 4 != 0 {
-                return Err(CmdUnsyncedUpdateError::WrongAlignment);
+                return Err(CmdUpdateBufferUnsyncedError::WrongAlignment);
             }
             (buffer_inner.internal_object(), offset)
         };
 
         if size % 4 != 0 {
-            return Err(CmdUnsyncedUpdateError::WrongAlignment);
+            return Err(CmdUpdateBufferUnsyncedError::WrongAlignment);
         }
 
         if size > 65536 {
-            return Err(CmdUnsyncedUpdateError::DataTooLarge);
+            return Err(CmdUpdateBufferUnsyncedError::DataTooLarge);
         }
 
-        Ok(CmdUnsyncedUpdate {
+        Ok(CmdUpdateBufferUnsynced {
             previous: previous,
             buffer: buffer,
             buffer_handle: buffer_handle,
@@ -83,7 +83,7 @@ impl<'a, L, B, D: ?Sized> CmdUnsyncedUpdate<'a, L, B, D>
     }
 }
 
-unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUnsyncedUpdate<'d, L, B, D>
+unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBufferUnsynced<'d, L, B, D>
     where B: Buffer,
           L: CommandsList,
           D: Copy + 'static,
@@ -107,7 +107,7 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUnsyncedUpdate<'d, L, B, D>
 }
 
 unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
-    for CmdUnsyncedUpdate<'a, L, B, D>
+    for CmdUpdateBufferUnsynced<'a, L, B, D>
     where B: Buffer,
           L: CommandsList,
           D: Copy + 'static,
@@ -118,28 +118,28 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
     }
 }
 
-/// Error that can happen when creating a `CmdUnsyncedUpdate`.
+/// Error that can happen when creating a `CmdUpdateBufferUnsynced`.
 #[derive(Debug, Copy, Clone)]
-pub enum CmdUnsyncedUpdateError {
+pub enum CmdUpdateBufferUnsyncedError {
     /// The data or size must be 4-bytes aligned.
     WrongAlignment,
     /// The data must not be larger than 64k bytes.
     DataTooLarge,
 }
 
-impl error::Error for CmdUnsyncedUpdateError {
+impl error::Error for CmdUpdateBufferUnsyncedError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdUnsyncedUpdateError::WrongAlignment => {
+            CmdUpdateBufferUnsyncedError::WrongAlignment => {
                 "the offset or size are not aligned to 4 bytes"
             },
-            CmdUnsyncedUpdateError::DataTooLarge => "data is too large",
+            CmdUpdateBufferUnsyncedError::DataTooLarge => "data is too large",
         }
     }
 }
 
-impl fmt::Display for CmdUnsyncedUpdateError {
+impl fmt::Display for CmdUpdateBufferUnsyncedError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "{}", error::Error::description(self))
