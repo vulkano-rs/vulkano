@@ -16,28 +16,18 @@ use std::ptr;
 use shared_library;
 use vk;
 
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[link(name = "c++")]
-extern {}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[link(name = "Metal", kind = "framework")]
-extern {}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[link(name = "QuartzCore", kind = "framework")]
-extern {}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[link(name = "MoltenVK", kind = "framework")]
-extern {
-    fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const ::std::os::raw::c_char) -> vk::PFN_vkVoidFunction;
-}
-
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn load_static() -> Result<vk::Static, LoadingError> {
-    extern "system" fn wrapper(instance: vk::Instance, pName: *const ::std::os::raw::c_char) -> vk::PFN_vkVoidFunction {
+    use std::os::raw::c_char;
+
+    extern {
+        fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
+                                 -> vk::PFN_vkVoidFunction;
+    }
+
+    extern "system" fn wrapper(instance: vk::Instance, pName: *const c_char)
+                               -> vk::PFN_vkVoidFunction
+    {
         unsafe {
             vkGetInstanceProcAddr(instance, pName)
         }

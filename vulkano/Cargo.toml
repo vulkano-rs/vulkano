@@ -6,6 +6,7 @@ repository = "https://github.com/tomaka/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vulkano"
+build = "build.rs"
 
 [dependencies]
 crossbeam = "0.2.5"
