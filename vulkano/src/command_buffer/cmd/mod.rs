@@ -38,6 +38,7 @@ use vk;
 pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
+pub use self::copy_buffer_unsynced::{CmdCopyBufferUnsynced, CmdCopyBufferUnsyncedError};
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 pub use self::set_state::{CmdSetState};
@@ -45,6 +46,7 @@ pub use self::update_buffer_unsynced::{CmdUpdateBufferUnsynced, CmdUpdateBufferU
 
 mod bind_pipeline;
 mod blit_image_unsynced;
+mod copy_buffer_unsynced;
 pub mod dispatch;
 pub mod draw;
 pub mod empty;
