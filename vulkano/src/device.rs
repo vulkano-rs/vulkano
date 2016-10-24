@@ -210,7 +210,9 @@ impl Device {
                 if let Some(q) = queues.iter_mut().find(|q| q.0 == queue_family.id()) {
                     output_queues.push((queue_family.id(), q.1.len() as u32));
                     q.1.push(priority);
-                    assert!(q.1.len() < queue_family.queues_count());
+                    if q.1.len() >= queue_family.queues_count() {
+                        return Err(DeviceCreationError::TooManyQueuesForFamily);
+                    }
                     continue;
                 }
                 queues.push((queue_family.id(), vec![priority]));
@@ -468,6 +470,8 @@ pub enum DeviceCreationError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
+    /// Tried to create too many queues for a given family.
+    TooManyQueuesForFamily,
     // FIXME: other values
 }
 
@@ -476,7 +480,12 @@ impl error::Error for DeviceCreationError {
     fn description(&self) -> &str {
         match *self {
             DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-            DeviceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
+            DeviceCreationError::OutOfDeviceMemory => {
+                "no memory available on the graphical device"
+            },
+            DeviceCreationError::TooManyQueuesForFamily => {
+                "tried to create too many queues for a given family"
+            },
         }
     }
 }
