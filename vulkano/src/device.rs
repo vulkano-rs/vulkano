@@ -604,10 +604,32 @@ unsafe impl SynchronizedVulkanObject for Queue {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use device::Device;
+    use device::DeviceCreationError;
+    use device::DeviceExtensions;
+    use features::Features;
+    use instance;
 
     #[test]
     fn one_ref() {
         let (mut device, _) = gfx_dev_and_queue!();
         assert!(Arc::get_mut(&mut device).is_some());
+    }
+
+    #[test]
+    fn too_many_queues() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+        let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
+
+        match Device::new(&physical, &Features::none(), &DeviceExtensions::none(), queues) {
+            Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
+            _ => panic!()
+        };
     }
 }
