@@ -155,10 +155,7 @@ impl Device {
     ///
     /// # Panic
     ///
-    /// - Panics if one of the requested features is not supported by the physical device.
     /// - Panics if one of the queue families doesn't belong to the given device.
-    /// - Panics if you request more queues from a family than available.
-    /// - Panics if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
@@ -169,7 +166,9 @@ impl Device {
     {
         let queue_families = queue_families.into_iter();
 
-        assert!(phys.supported_features().superset_of(&requested_features));
+        if !phys.supported_features().superset_of(&requested_features) {
+            return Err(DeviceCreationError::UnsupportedFeatures);
+        }
 
         let vk_i = phys.instance().pointers();
 
@@ -204,7 +203,9 @@ impl Device {
                 // checking the parameters
                 assert_eq!(queue_family.physical_device().internal_object(),
                            phys.internal_object());
-                assert!(priority >= 0.0 && priority <= 1.0);
+                if priority < 0.0 || priority > 1.0 {
+                    return Err(DeviceCreationError::PriorityOutOfRange);
+                }
 
                 // adding to `queues` and `output_queues`
                 if let Some(q) = queues.iter_mut().find(|q| q.0 == queue_family.id()) {
@@ -472,7 +473,10 @@ pub enum DeviceCreationError {
     OutOfDeviceMemory,
     /// Tried to create too many queues for a given family.
     TooManyQueuesForFamily,
-    // FIXME: other values
+    /// Some of the requested features are unsupported by the physical device.
+    UnsupportedFeatures,
+    /// The priority of one of the queues is out of the [0.0; 1.0] range.
+    PriorityOutOfRange,
 }
 
 impl error::Error for DeviceCreationError {
@@ -485,6 +489,12 @@ impl error::Error for DeviceCreationError {
             },
             DeviceCreationError::TooManyQueuesForFamily => {
                 "tried to create too many queues for a given family"
+            },
+            DeviceCreationError::UnsupportedFeatures => {
+                "some of the requested features are unsupported by the physical device"
+            },
+            DeviceCreationError::PriorityOutOfRange => {
+                "the priority of one of the queues is out of the [0.0; 1.0] range"
             },
         }
     }
@@ -629,6 +639,53 @@ mod tests {
 
         match Device::new(&physical, &Features::none(), &DeviceExtensions::none(), queues) {
             Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn unsupposed_features() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+
+        let features = Features::all();
+        // In the unlikely situation where the device supports everything, we ignore the test.
+        if physical.supported_features().superset_of(&features) {
+            return;
+        }
+
+        match Device::new(&physical, &features, &DeviceExtensions::none(), Some((family, 1.0))) {
+            Err(DeviceCreationError::UnsupportedFeatures) => return,     // Success
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn priority_out_of_range() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+
+        match Device::new(&physical, &Features::none(),
+                          &DeviceExtensions::none(), Some((family, 1.4)))
+        {
+            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
+            _ => panic!()
+        };
+
+        match Device::new(&physical, &Features::none(),
+                          &DeviceExtensions::none(), Some((family, -0.2)))
+        {
+            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
             _ => panic!()
         };
     }
