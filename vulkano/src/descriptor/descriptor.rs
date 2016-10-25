@@ -7,18 +7,58 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Description of a single descriptor.
+//! 
+//! This module contains traits and structs related to describing a single descriptor. A descriptor
+//! is a slot where you can bind a buffer or an image so that it can be accessed from your shaders.
+//! In order to specify which buffer or image to bind to a descriptor, see the `descriptor_set`
+//! module.
+//! 
+//! There are four different kinds of descriptors that give access to buffers:
+//! 
+//! - Uniform texel buffers. Gives read-only access to the content of a buffer. Only supports
+//!   certain buffer formats.
+//! - Storage texel buffers. Gives read and/or write access to the content of a buffer. Only
+//!   supports certain buffer formats. Less restrictive but sometimes slower than uniform texel
+//!   buffers.
+//! - Uniform buffers. Gives read-only access to the content of a buffer. Less restrictive but
+//!   sometimes slower than uniform texel buffers.
+//! - Storage buffers. Gives read and/or write access to the content of a buffer. Less restrictive
+//!   but sometimes slower than uniform buffers and storage texel buffers.
+//! 
+//! There are five different kinds of descriptors related to images:
+//! 
+//! - Storage images. Gives read and/or write access to individual pixels in an image. The image
+//!   cannot be sampled. In other words, you have exactly specify which pixel to read or write.
+//! - Sampled images. Gives read-only access to an image. Before you can use a sampled image in a
+//!   a shader, you have to combine it with a sampler (see below). The sampler describes how
+//!   reading the image will behave.
+//! - Samplers. Doesn't contain an image but a sampler object that describes how an image will be
+//!   accessed. This is meant to be combined with a sampled image (see above).
+//! - Combined image and sampler. Similar to a sampled image, but also directly includes the
+//!   sampler which indicates how the sampling is done. 
+//! - Input attachments. The fastest but also most restrictive access to images. Must be integrated
+//!   in a render pass. Can only give access to the same pixel as the one you're processing.
+//! 
+
 use std::cmp;
 use std::ops::BitOr;
 use format::Format;
 use vk;
 
-/// Describes a single descriptor.
+/// Contains the exact description of a single descriptor.
+///
+/// > **Note**: You are free to fill a `DescriptorDesc` struct the way you want, but its validity
+/// > will be checked when you create a pipeline layout, a descriptor set, or when you try to bind
+/// > a descriptor set.
+// TODO: add example
 #[derive(Debug, Copy, Clone)]
 pub struct DescriptorDesc {
     /// Describes the content and layout of each array element of a descriptor.
     pub ty: DescriptorDescTy,
 
-    /// How many array elements this descriptor is made of.
+    /// How many array elements this descriptor is made of. The value 0 is invalid and may trigger
+    /// a panic depending on the situation.
     pub array_count: u32,
 
     /// Which shader stages are going to access this descriptor.
@@ -31,8 +71,9 @@ pub struct DescriptorDesc {
 impl DescriptorDesc {
     /// Checks whether we are a superset of another descriptor.
     ///
-    /// This means that either the descriptor is the same, or it is the same but with a larger
-    /// array elements count, or it is the same with more shader stages.
+    /// Returns true if `self` is the same descriptor as `other`, or if `self` is the same as
+    /// `other` but with a larger array elements count and/or more shader stages.
+    // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
         self.ty.is_superset_of(&other.ty) &&
@@ -40,10 +81,11 @@ impl DescriptorDesc {
         (!self.readonly || other.readonly)
     }
 
-    /// Builds a `DescriptorDesc` that is the union of `self` and `other`.
+    /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
     ///
     /// The returned value will be a superset of both `self` and `other`.
     // TODO: Result instead of Option
+    // TODO: add example
     #[inline]
     pub fn union(&self, other: &DescriptorDesc) -> Option<DescriptorDesc> {
         if self.ty != other.ty { return None; }
@@ -66,11 +108,18 @@ pub enum DescriptorDescTy {
     TexelBuffer {
         /// If `true`, this describes a storage texel buffer.
         storage: bool,
+
         /// The format of the content, or `None` if the format is unknown. Depending on the
-        /// context, it may be invalid to have a `None` value here.
+        /// context, it may be invalid to have a `None` value here. If the format is `Some`, only
+        /// buffer views that have this exact format can be attached to this descriptor.
         format: Option<Format>,
     },
-    InputAttachment { multisampled: bool, array_layers: DescriptorImageDescArray },
+    InputAttachment {
+        /// If `true`, the input attachment is multisampled. Only multisampled images can be
+        /// attached to this descriptor.
+        multisampled: bool,
+        array_layers: DescriptorImageDescArray,
+    },
     Buffer(DescriptorBufferDesc),
 }
 
@@ -78,6 +127,7 @@ impl DescriptorDescTy {
     /// Returns the type of descriptor.
     ///
     /// Returns `None` if there's not enough info to determine the type.
+    // TODO: add example
     pub fn ty(&self) -> Option<DescriptorType> {
         Some(match *self {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,
@@ -104,6 +154,7 @@ impl DescriptorDescTy {
     }
 
     /// Checks whether we are a superset of another descriptor type.
+    // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDescTy) -> bool {
         match (*self, *other) {
@@ -157,19 +208,26 @@ impl DescriptorDescTy {
     }
 }
 
+/// Additional description for descriptors that contain images.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DescriptorImageDesc {
+    /// If `true`, the image can be sampled by the shader. Only images that were created with the
+    /// `sampled` usage can be attached to the descriptor.
     pub sampled: bool,
+    /// The kind of image: one-dimensional, two-dimensional, three-dimensional, or cube.
     pub dimensions: DescriptorImageDescDimensions,
-    /// The format of the image, or `None` if the format is unknown.
+    /// The format of the image, or `None` if the format is unknown. If `Some`, only images with
+    /// exactly that format can be attached.
     pub format: Option<Format>,
     /// True if the image is multisampled.
     pub multisampled: bool,
+    /// Whether the descriptor contains one or more array layers of an image.
     pub array_layers: DescriptorImageDescArray,
 }
 
 impl DescriptorImageDesc {
     /// Checks whether we are a superset of another image.
+    // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorImageDesc) -> bool {
         if self.dimensions != other.dimensions {
@@ -205,12 +263,14 @@ impl DescriptorImageDesc {
     }
 }
 
+// TODO: documentation
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescriptorImageDescArray {
     NonArrayed,
     Arrayed { max_layers: Option<u32> }
 }
 
+// TODO: documentation
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescriptorImageDescDimensions {
     OneDimensional,
@@ -219,6 +279,7 @@ pub enum DescriptorImageDescDimensions {
     Cube,
 }
 
+// TODO: documentation
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DescriptorBufferDesc {
     pub dynamic: Option<bool>,
@@ -227,6 +288,8 @@ pub struct DescriptorBufferDesc {
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.
+///
+/// This is mostly the same as a `DescriptorDescTy` but with less precise information.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DescriptorType {
@@ -244,6 +307,7 @@ pub enum DescriptorType {
 }
 
 /// Describes which shader stages have access to a descriptor.
+// TODO: add example with BitOr
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStages {
     /// `True` means that the descriptor will be used by the vertex shader.
@@ -262,6 +326,7 @@ pub struct ShaderStages {
 
 impl ShaderStages {
     /// Creates a `ShaderStages` struct will all stages set to `true`.
+    // TODO: add example
     #[inline]
     pub fn all() -> ShaderStages {
         ShaderStages {
@@ -275,6 +340,7 @@ impl ShaderStages {
     }
 
     /// Creates a `ShaderStages` struct will all stages set to `false`.
+    // TODO: add example
     #[inline]
     pub fn none() -> ShaderStages {
         ShaderStages {
@@ -287,7 +353,8 @@ impl ShaderStages {
         }
     }
 
-    /// Creates a `ShaderStages` struct will all graphics stages set to `true`.
+    /// Creates a `ShaderStages` struct with all graphics stages set to `true`.
+    // TODO: add example
     #[inline]
     pub fn all_graphics() -> ShaderStages {
         ShaderStages {
@@ -300,7 +367,8 @@ impl ShaderStages {
         }
     }
 
-    /// Creates a `ShaderStages` struct will the compute stage set to `true`.
+    /// Creates a `ShaderStages` struct with the compute stage set to `true`.
+    // TODO: add example
     #[inline]
     pub fn compute() -> ShaderStages {
         ShaderStages {
@@ -314,6 +382,7 @@ impl ShaderStages {
     }
 
     /// Checks whether we have more stages enabled than `other`.
+    // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &ShaderStages) -> bool {
         (self.vertex || !other.vertex) &&
