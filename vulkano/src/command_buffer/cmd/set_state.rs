@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::DynamicState;
 use command_buffer::cmd::CommandsList;
 use device::Device;
@@ -54,7 +54,7 @@ impl<L> CmdSetState<L> where L: CommandsList {
 
 unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         let mut builder = self.previous.append(builder);
 
         assert_eq!(self.device.internal_object(), builder.device.internal_object());

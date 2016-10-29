@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 use buffer::BufferInner;
 use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::StatesManager;
 use command_buffer::SubmitInfo;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
@@ -90,7 +90,7 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for UpdateCommand<'d, L, B, D>
           L: CommandsList,
           D: Copy + 'static,
 {
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         let builder = self.previous.append(builder);
 
         let size = self.buffer.size();

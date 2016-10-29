@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::cmd::CommandsList;
 use device::Device;
 use pipeline::ComputePipeline;
@@ -80,7 +80,7 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
 
 impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         let mut builder = self.previous.append(builder);
 
         assert_eq!(self.device.internal_object(), builder.device.internal_object());

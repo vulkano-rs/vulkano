@@ -12,7 +12,7 @@ use std::iter;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::StatesManager;
@@ -172,7 +172,7 @@ pub unsafe trait CommandsList {
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         // TODO: temporary body until all the impls implement this function
         unimplemented!()
     }
@@ -212,7 +212,7 @@ pub unsafe trait CommandsList {
 
 unsafe impl CommandsList for Box<CommandsList> {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         (**self).append(builder)
     }
 

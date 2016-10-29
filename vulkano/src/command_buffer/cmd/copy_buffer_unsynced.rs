@@ -12,7 +12,7 @@ use std::error;
 use std::fmt;
 
 use buffer::Buffer;
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::cmd::CommandsList;
 use VulkanObject;
 use VulkanPointers;
@@ -90,7 +90,7 @@ unsafe impl<L, S, D> CommandsList for CmdCopyBufferUnsynced<L, S, D>
     where L: CommandsList, S: Buffer, D: Buffer
 {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         let builder = self.previous.append(builder);
 
         assert_eq!(self.source.inner().buffer.device().internal_object(),

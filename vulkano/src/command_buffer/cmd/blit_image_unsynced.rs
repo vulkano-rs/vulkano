@@ -11,7 +11,7 @@ use std::error;
 use std::fmt;
 use smallvec::SmallVec;
 
-use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferPrototype;
 use command_buffer::cmd::CommandsList;
 use format::FormatTy;
 use image::Image;
@@ -170,7 +170,7 @@ impl<L, S, D> CmdBlitImageUnsynced<L, S, D>
     where L: CommandsList, S: Image, D: Image
 {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferBuilder<'a>) -> CommandBufferBuilder<'a> {
+    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
         let builder = self.previous.append(builder);
 
         assert_eq!(self.source.inner().device().internal_object(),

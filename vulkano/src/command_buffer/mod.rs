@@ -115,7 +115,7 @@ impl Default for DynamicState {
 }
 
 /// Opaque struct that contains a command buffer in construction.
-pub struct CommandBufferBuilder<'a> {
+pub struct CommandBufferPrototype<'a> {
     device: Arc<Device>,
     command_buffer: Option<vk::CommandBuffer>,
     current_state: DynamicState,
