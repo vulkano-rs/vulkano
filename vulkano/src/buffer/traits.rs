@@ -21,6 +21,8 @@ use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
 
+use VulkanObject;
+
 /// Trait for objects that represent either a buffer or a slice of a buffer.
 pub unsafe trait Buffer {
     /// Returns the inner information about this buffer.
@@ -113,6 +115,47 @@ unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
 pub unsafe trait TrackedBuffer<States = StatesManager>: Buffer {
+    /// Returns true if an access to `self` (as defined by `self_offset`, `self_size` and
+    /// `self_write`) shouldn't execute at the same time as an access to `other` (as defined by
+    /// `other_offset`, `other_size` and `other_write`).
+    ///
+    /// Returns false if they can be executed simultaneously.
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
+                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+                        -> bool
+    {
+        // TODO: should we really provide a default implementation?
+
+        debug_assert!(self_size <= self.size());
+
+        if self.inner().buffer.internal_object() != other.inner().buffer.internal_object() {
+            return false;
+        }
+
+        if !self_write && !other_write {
+            return false;
+        }
+
+        let self_offset = self_offset + self.inner().offset;
+        let other_offset = other_offset + other.inner().offset;
+
+        if self_offset < other_offset && self_offset + self_size <= other_offset {
+            return false;
+        }
+
+        if other_offset < self_offset && other_offset + other_size <= self_offset {
+            return false;
+        }
+
+        true
+    }
+
+    /// Two resources that conflict with each other should return the same key.
+    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+        // TODO: this dummy impl is a quick hack to not modify all the code
+        unimplemented!()
+    }
+
     /// Returns a new state that corresponds to the moment after a slice of the buffer has been
     /// used in the pipeline. The parameters indicate in which way it has been used.
     ///
@@ -184,6 +227,15 @@ pub struct TrackedBufferSubmitInfos {
 
 unsafe impl<B: ?Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> {
     #[inline]
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
+                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+                        -> bool
+    {
+        (**self).conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
+                                  other_size, other_write)
+    }
+
+    #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)
                   -> Option<TrackedBufferPipelineBarrierRequest>
@@ -206,6 +258,15 @@ unsafe impl<B: ?Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> 
 }
 
 unsafe impl<'a, B: ?Sized, S> TrackedBuffer<S> for &'a B where B: TrackedBuffer<S> + 'a {
+    #[inline]
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
+                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+                        -> bool
+    {
+        (**self).conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
+                                  other_size, other_write)
+    }
+
     #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize,
                   size: usize, write: bool, stage: PipelineStages, access: AccessFlagBits)

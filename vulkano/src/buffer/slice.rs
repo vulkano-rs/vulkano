@@ -173,6 +173,17 @@ unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 
 
 unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: TrackedBuffer<S> {
     #[inline]
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
+                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+                        -> bool
+    {
+        let self_offset = self.offset;
+        debug_assert!(self_size <= self.size);
+        self.resource.conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
+                                       other_size, other_write)
+    }
+
+    #[inline]
     fn transition(&self, states: &mut S, num_command: usize, offset: usize, size: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
                   -> Option<TrackedBufferPipelineBarrierRequest>
