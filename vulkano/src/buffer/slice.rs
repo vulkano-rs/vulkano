@@ -215,9 +215,8 @@ unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: Tra
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                           -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &S, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                        -> TrackedBufferSubmitInfos
     {
         self.resource.on_submit(states, queue, fence)
     }

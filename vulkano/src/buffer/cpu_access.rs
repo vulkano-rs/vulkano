@@ -471,9 +471,8 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
         barrier
     }
 
-    unsafe fn on_submit<F>(&self, state: &StatesManager, queue: &Arc<Queue>, fence: F)
-                    -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    unsafe fn on_submit(&self, state: &StatesManager, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                        -> TrackedBufferSubmitInfos
     {
         // FIXME: implement correctly
 

@@ -174,8 +174,7 @@ pub unsafe trait TrackedBuffer<States = StatesManager>: Buffer {
     fn finish(&self, in_s: &mut States, out: &mut States) -> Option<TrackedBufferPipelineBarrierRequest>;
 
     /// Called right before the command buffer is submitted.
-    unsafe fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>;
+    unsafe fn on_submit(&self, states: &States, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>) -> TrackedBufferSubmitInfos;
 }
 
 /// Requests that a pipeline barrier is created.
@@ -249,9 +248,8 @@ unsafe impl<B: ?Sized, S> TrackedBuffer<S> for Arc<B> where B: TrackedBuffer<S> 
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                           -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &S, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                        -> TrackedBufferSubmitInfos
     {
         (**self).on_submit(states, queue, fence)
     }
@@ -281,9 +279,8 @@ unsafe impl<'a, B: ?Sized, S> TrackedBuffer<S> for &'a B where B: TrackedBuffer<
     }
 
     #[inline]
-    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                           -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    unsafe fn on_submit(&self, states: &S, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                        -> TrackedBufferSubmitInfos
     {
         (**self).on_submit(states, queue, fence)
     }
