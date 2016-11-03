@@ -12,6 +12,7 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
+use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
 use command_buffer::CommandsList;
@@ -39,7 +40,7 @@ pub struct CmdUpdateBufferUnsynced<'a, L, B, D: ?Sized>
 }
 
 impl<'a, L, B, D: ?Sized> CmdUpdateBufferUnsynced<'a, L, B, D>
-    where B: Buffer,
+    where B: TrackedBuffer,
           L: CommandsList + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
 {
@@ -85,7 +86,7 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBufferUnsynced<'a, L, B, D>
 }
 
 unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBufferUnsynced<'d, L, B, D>
-    where B: Buffer,
+    where B: TrackedBuffer,
           L: CommandsList,
           D: Copy + 'static,
 {
@@ -96,12 +97,14 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBufferUnsynced<'d, L,
         assert_eq!(self.buffer.inner().buffer.device().internal_object(),
                    builder.device().internal_object());
 
+        builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true);
+
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
                 vk.CmdUpdateBuffer(cmd, self.buffer_handle, self.offset, self.size,
-                                self.data as *const D as *const _);
+                                   self.data as *const D as *const _);
             }
         }));
     }

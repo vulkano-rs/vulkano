@@ -11,7 +11,7 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
-use buffer::Buffer;
+use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
@@ -22,7 +22,7 @@ use vk;
 /// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
 /// another.
 pub struct CmdCopyBufferUnsynced<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     // Parent commands list.
     previous: L,
@@ -36,7 +36,7 @@ pub struct CmdCopyBufferUnsynced<L, S, D>
 }
 
 impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     /// Builds a new command.
     ///
@@ -72,7 +72,11 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
 
         let size = cmp::min(source.size(), destination.size());
 
-        // FIXME: check overlap between source and dest
+        if source.conflicts_buffer(0, size, false, &destination, 0, size, true) {
+            return Err(CmdCopyBufferUnsyncedError::OverlappingRanges);
+        } else {
+            debug_assert!(!destination.conflicts_buffer(0, size, true, &source, 0, size, false));
+        }
 
         Ok(CmdCopyBufferUnsynced {
             previous: previous,
@@ -88,7 +92,7 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
 }
 
 unsafe impl<L, S, D> CommandsList for CmdCopyBufferUnsynced<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -96,6 +100,9 @@ unsafe impl<L, S, D> CommandsList for CmdCopyBufferUnsynced<L, S, D>
 
         assert_eq!(self.source.inner().buffer.device().internal_object(),
                    builder.device().internal_object());
+
+        builder.add_buffer_transition(&self.source, 0, self.size as usize, false);
+        builder.add_buffer_transition(&self.destination, 0, self.size as usize, true);
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
