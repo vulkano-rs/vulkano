@@ -177,7 +177,7 @@ impl<L, S, D> CmdBlitImageUnsynced<L, S, D>
         assert_eq!(self.source.inner().device().internal_object(),
                    builder.device().internal_object());
 
-        builder.add_command(Box::new(move |raw| {
+        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();

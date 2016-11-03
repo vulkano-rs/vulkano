@@ -96,7 +96,7 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBufferUnsynced<'d, L,
         assert_eq!(self.buffer.inner().buffer.device().internal_object(),
                    builder.device().internal_object());
 
-        builder.add_command(Box::new(move |raw| {
+        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();

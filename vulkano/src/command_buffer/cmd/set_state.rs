@@ -60,7 +60,7 @@ unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
 
         assert_eq!(self.device.internal_object(), builder.device().internal_object());
 
-        builder.add_command(Box::new(move |raw| {
+        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();

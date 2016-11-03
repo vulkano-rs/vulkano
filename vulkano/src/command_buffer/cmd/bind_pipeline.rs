@@ -86,7 +86,7 @@ impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
 
         assert_eq!(self.device.internal_object(), builder.device().internal_object());
 
-        builder.add_command(Box::new(move |raw| {
+        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             // Returning now if the pipeline object is already bound.
             // Note that we need to perform this check after validating the device, otherwise the
             // pipeline ID could match by mistake.

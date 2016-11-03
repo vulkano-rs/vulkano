@@ -46,6 +46,7 @@ pub use self::cmd::PrimaryCbBuilder;
 pub use self::cmd::CommandBuffer;
 pub use self::cmd::CommandsList;
 pub use self::cmd::CommandsListSink;
+pub use self::cmd::CommandsListSinkCaller;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
@@ -67,6 +68,7 @@ pub mod cmd;
 pub mod pool;
 pub mod sys;
 
+mod cb;
 mod states_manager;
 mod submit;
 

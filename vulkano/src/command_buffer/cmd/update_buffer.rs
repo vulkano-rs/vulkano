@@ -7,15 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-use std::mem;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::BufferInner;
 use buffer::TrackedBuffer;
 use buffer::TrackedBufferPipelineBarrierRequest;
-use command_buffer::RawCommandBufferPrototype;
 use command_buffer::StatesManager;
 use command_buffer::SubmitInfo;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
@@ -30,8 +26,6 @@ use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::Fence;
 use sync::PipelineStages;
-use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.

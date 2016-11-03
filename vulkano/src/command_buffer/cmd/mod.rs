@@ -256,9 +256,18 @@ pub trait CommandsListSink<'a> {
 
     /// Note that the lifetime means that we hold a reference to the content of
     /// the commands list in that closure.
-    fn add_command(&mut self, Box<FnOnce(&mut RawCommandBufferPrototype<'a>) + 'a>);
+    fn add_command(&mut self, Box<CommandsListSinkCaller<'a> + 'a>);
     /*fn add_buffer_transition(&mut self /*, ... */);
     fn add_image_transition(&mut self /*, ... */);*/
+}
+
+pub trait CommandsListSinkCaller<'a> {
+    fn call(self: Box<Self>, &mut RawCommandBufferPrototype<'a>);
+}
+impl<'a, T> CommandsListSinkCaller<'a> for T where T: FnOnce(&mut RawCommandBufferPrototype<'a>) -> () + 'a {
+    fn call(self: Box<Self>, proto: &mut RawCommandBufferPrototype<'a>) {
+        self(proto);
+    }
 }
 
 pub unsafe trait CommandsListConcrete: CommandsList {
