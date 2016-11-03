@@ -389,7 +389,7 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
     {
         let mut rest_infos = self.rest.on_submit(states, queue, &mut fence);
 
-        let first_infos = self.first.image().on_submit(states, queue, fence);
+        let first_infos = self.first.image().on_submit(states, queue, &mut fence);
         if let Some(s) = first_infos.pre_semaphore { rest_infos.semaphores_wait.push(s); }
         if let Some(s) = first_infos.post_semaphore { rest_infos.semaphores_signal.push(s); }
         if let Some(rq) = first_infos.pre_barrier {

@@ -130,9 +130,8 @@ pub unsafe trait TrackedImage<States = StatesManager>: Image {
 
     /// Called right before the command buffer is submitted.
     // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>;
+    fn on_submit(&self, states: &States, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                 -> TrackedImageSubmitInfos;
 }
 
 unsafe impl<I: ?Sized, S> TrackedImage<S> for Arc<I> where I: TrackedImage<S> {
@@ -154,9 +153,8 @@ unsafe impl<I: ?Sized, S> TrackedImage<S> for Arc<I> where I: TrackedImage<S> {
     }
 
     #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    fn on_submit(&self, states: &S, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                 -> TrackedImageSubmitInfos
     {
         (**self).on_submit(states, queue, fence)
     }
@@ -181,9 +179,8 @@ unsafe impl<'a, I: ?Sized + 'a, S> TrackedImage<S> for &'a I where I: TrackedIma
     }
 
     #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    fn on_submit(&self, states: &S, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                 -> TrackedImageSubmitInfos
     {
         (**self).on_submit(states, queue, fence)
     }

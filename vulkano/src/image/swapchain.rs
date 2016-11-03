@@ -254,8 +254,8 @@ unsafe impl TrackedImage<StatesManager> for SwapchainImage {
         Some(transition)
     }
 
-    fn on_submit<F>(&self, _: &StatesManager, queue: &Arc<Queue>, fence: F) -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
+    fn on_submit(&self, _: &StatesManager, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
+                 -> TrackedImageSubmitInfos
     {
         TrackedImageSubmitInfos {
             pre_semaphore: None,        // FIXME:

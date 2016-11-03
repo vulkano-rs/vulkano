@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use buffer::TrackedBuffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::CommandsList;
@@ -24,6 +25,8 @@ use device::Device;
 use framebuffer::RenderPass;
 use framebuffer::Subpass;
 use framebuffer::traits::Framebuffer;
+use image::Layout;
+use image::TrackedImage;
 
 use OomError;
 use VulkanObject;
@@ -224,9 +227,22 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
         f.call(self.0)
     }
 
-    /*#[inline]
-    fn add_buffer_transition(&mut self) {}
+    #[inline]
+    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
+                             write: bool)
+    {
+    }
 
     #[inline]
-    fn add_image_transition(&mut self) {}*/
+    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
+                            first_mipmap: u32, num_mipmaps: u32, layout: Layout)
+    {
+    }
+
+    #[inline]
+    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
+                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                                         layout: Layout)
+    {
+    }
 }

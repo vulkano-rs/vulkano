@@ -28,6 +28,8 @@ use device::Queue;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
+use image::Layout;
+use image::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -257,8 +259,19 @@ pub trait CommandsListSink<'a> {
     /// Note that the lifetime means that we hold a reference to the content of
     /// the commands list in that closure.
     fn add_command(&mut self, Box<CommandsListSinkCaller<'a> + 'a>);
-    /*fn add_buffer_transition(&mut self /*, ... */);
-    fn add_image_transition(&mut self /*, ... */);*/
+
+    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
+                             write: bool);
+
+    ///
+    ///
+    /// If necessary, you must transition the image to the `layout`.
+    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
+                            first_mipmap: u32, num_mipmaps: u32, layout: Layout);
+
+    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
+                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                                         layout: Layout);
 }
 
 pub trait CommandsListSinkCaller<'a> {
