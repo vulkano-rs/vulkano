@@ -45,6 +45,7 @@ pub use self::states_manager::StatesManager;
 pub use self::cmd::PrimaryCbBuilder;
 pub use self::cmd::CommandBuffer;
 pub use self::cmd::CommandsList;
+pub use self::cmd::CommandsListSink;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
@@ -114,8 +115,9 @@ impl Default for DynamicState {
     }
 }
 
-/// Opaque struct that contains a command buffer in construction.
-pub struct CommandBufferPrototype<'a> {
+/// Opaque struct that contains a command buffer in construction. You cannot create a
+/// `RawCommandBufferPrototype` yourself.
+pub struct RawCommandBufferPrototype<'a> {
     device: Arc<Device>,
     command_buffer: Option<vk::CommandBuffer>,
     current_state: DynamicState,

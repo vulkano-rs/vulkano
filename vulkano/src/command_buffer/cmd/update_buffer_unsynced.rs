@@ -12,9 +12,10 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use command_buffer::CommandBufferPrototype;
+use command_buffer::RawCommandBufferPrototype;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
-use command_buffer::cmd::CommandsList;
+use command_buffer::CommandsList;
+use command_buffer::CommandsListSink;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -89,20 +90,20 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBufferUnsynced<'d, L,
           D: Copy + 'static,
 {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
-        let builder = self.previous.append(builder);
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.previous.append(builder);
 
         assert_eq!(self.buffer.inner().buffer.device().internal_object(),
-                   builder.device.internal_object());
+                   builder.device().internal_object());
 
-        unsafe {
-            let vk = builder.device.pointers();
-            let cmd = builder.command_buffer.clone().take().unwrap();
-            vk.CmdUpdateBuffer(cmd, self.buffer_handle, self.offset, self.size,
-                               self.data as *const D as *const _);
-        }
-
-        builder
+        builder.add_command(Box::new(move |raw| {
+            unsafe {
+                let vk = raw.device.pointers();
+                let cmd = raw.command_buffer.clone().take().unwrap();
+                vk.CmdUpdateBuffer(cmd, self.buffer_handle, self.offset, self.size,
+                                self.data as *const D as *const _);
+            }
+        }));
     }
 }
 

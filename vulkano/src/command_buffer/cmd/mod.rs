@@ -12,7 +12,7 @@ use std::iter;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
-use command_buffer::CommandBufferPrototype;
+use command_buffer::RawCommandBufferPrototype;
 use command_buffer::DynamicState;
 use command_buffer::pool::CommandPool;
 use command_buffer::StatesManager;
@@ -58,6 +58,9 @@ pub mod update_buffer;
 mod update_buffer_unsynced;
 
 /// A list of commands that can be turned into a command buffer.
+///
+/// This is just a naked list of commands. It stores buffers, images, etc. but the list of commands
+/// itself is not a Vulkan object.
 pub unsafe trait CommandsList {
     /// Adds a command that writes the content of a buffer.
     ///
@@ -172,7 +175,7 @@ pub unsafe trait CommandsList {
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         // TODO: temporary body until all the impls implement this function
         unimplemented!()
     }
@@ -212,7 +215,7 @@ pub unsafe trait CommandsList {
 
 unsafe impl CommandsList for Box<CommandsList> {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         (**self).append(builder)
     }
 
@@ -245,6 +248,17 @@ unsafe impl CommandsList for Box<CommandsList> {
     fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
         (**self).is_graphics_pipeline_bound(pipeline)
     }
+}
+
+/// Output of the "append" method. The lifetime corresponds to the CommandsList.
+pub trait CommandsListSink<'a> {
+    fn device(&self) -> &Arc<Device>;
+
+    /// Note that the lifetime means that we hold a reference to the content of
+    /// the commands list in that closure.
+    fn add_command(&mut self, Box<FnOnce(&mut RawCommandBufferPrototype<'a>) + 'a>);
+    /*fn add_buffer_transition(&mut self /*, ... */);
+    fn add_image_transition(&mut self /*, ... */);*/
 }
 
 pub unsafe trait CommandsListConcrete: CommandsList {

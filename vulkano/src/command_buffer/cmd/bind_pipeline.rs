@@ -9,8 +9,9 @@
 
 use std::sync::Arc;
 
-use command_buffer::CommandBufferPrototype;
-use command_buffer::cmd::CommandsList;
+use command_buffer::RawCommandBufferPrototype;
+use command_buffer::CommandsList;
+use command_buffer::CommandsListSink;
 use device::Device;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -80,40 +81,40 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
 
 impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
-        let mut builder = self.previous.append(builder);
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device.internal_object());
+        assert_eq!(self.device.internal_object(), builder.device().internal_object());
 
-        // Returning now if the pipeline object is already bound.
-        // Note that we need to perform this check after validating the device, otherwise the
-        // pipeline ID could match by mistake.
-        match self.pipeline_ty {
-            vk::PIPELINE_BIND_POINT_GRAPHICS => {
-                if builder.bound_graphics_pipeline == self.raw_pipeline {
-                    return builder;
-                } else {
-                    builder.bound_graphics_pipeline = self.raw_pipeline;
-                }
-            },
-            vk::PIPELINE_BIND_POINT_COMPUTE => {
-                if builder.bound_compute_pipeline == self.raw_pipeline {
-                    return builder;
-                } else {
-                    builder.bound_compute_pipeline = self.raw_pipeline;
-                }
-            },
-            _ => unreachable!()
-        }
+        builder.add_command(Box::new(move |raw| {
+            // Returning now if the pipeline object is already bound.
+            // Note that we need to perform this check after validating the device, otherwise the
+            // pipeline ID could match by mistake.
+            match self.pipeline_ty {
+                vk::PIPELINE_BIND_POINT_GRAPHICS => {
+                    if raw.bound_graphics_pipeline == self.raw_pipeline {
+                        return;
+                    } else {
+                        raw.bound_graphics_pipeline = self.raw_pipeline;
+                    }
+                },
+                vk::PIPELINE_BIND_POINT_COMPUTE => {
+                    if raw.bound_compute_pipeline == self.raw_pipeline {
+                        return;
+                    } else {
+                        raw.bound_compute_pipeline = self.raw_pipeline;
+                    }
+                },
+                _ => unreachable!()
+            }
 
-        // Binding for real.
-        unsafe {
-            let vk = builder.device.pointers();
-            let cmd = builder.command_buffer.clone().take().unwrap();
-            vk.CmdBindPipeline(cmd, self.pipeline_ty, self.raw_pipeline);
-        }
-
-        builder
+            // Binding for real.
+            unsafe {
+                let vk = raw.device.pointers();
+                let cmd = raw.command_buffer.clone().take().unwrap();
+                vk.CmdBindPipeline(cmd, self.pipeline_ty, self.raw_pipeline);
+            }
+        }));
     }
 }
 

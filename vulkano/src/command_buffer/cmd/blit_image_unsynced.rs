@@ -11,8 +11,9 @@ use std::error;
 use std::fmt;
 use smallvec::SmallVec;
 
-use command_buffer::CommandBufferPrototype;
-use command_buffer::cmd::CommandsList;
+use command_buffer::RawCommandBufferPrototype;
+use command_buffer::CommandsList;
+use command_buffer::CommandsListSink;
 use format::FormatTy;
 use image::Image;
 use image::Layout;
@@ -170,21 +171,21 @@ impl<L, S, D> CmdBlitImageUnsynced<L, S, D>
     where L: CommandsList, S: Image, D: Image
 {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
-        let builder = self.previous.append(builder);
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.previous.append(builder);
 
         assert_eq!(self.source.inner().device().internal_object(),
-                   builder.device.internal_object());
+                   builder.device().internal_object());
 
-        unsafe {
-            let vk = builder.device.pointers();
-            let cmd = builder.command_buffer.clone().take().unwrap();
-            vk.CmdBlitImage(cmd, self.source_raw, self.source_layout, self.destination_raw,
-                            self.destination_layout, self.regions.len() as u32,
-                            self.regions.as_ptr(), self.filter);
-        }
-
-        builder
+        builder.add_command(Box::new(move |raw| {
+            unsafe {
+                let vk = raw.device.pointers();
+                let cmd = raw.command_buffer.clone().take().unwrap();
+                vk.CmdBlitImage(cmd, self.source_raw, self.source_layout, self.destination_raw,
+                                self.destination_layout, self.regions.len() as u32,
+                                self.regions.as_ptr(), self.filter);
+            }
+        }));
     }
 }
 

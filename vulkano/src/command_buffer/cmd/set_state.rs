@@ -10,9 +10,10 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::CommandBufferPrototype;
+use command_buffer::RawCommandBufferPrototype;
 use command_buffer::DynamicState;
-use command_buffer::cmd::CommandsList;
+use command_buffer::CommandsList;
+use command_buffer::CommandsListSink;
 use device::Device;
 use VulkanObject;
 use VulkanPointers;
@@ -54,35 +55,35 @@ impl<L> CmdSetState<L> where L: CommandsList {
 
 unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
     #[inline]
-    fn append<'a>(&'a self, builder: CommandBufferPrototype<'a>) -> CommandBufferPrototype<'a> {
-        let mut builder = self.previous.append(builder);
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device.internal_object());
+        assert_eq!(self.device.internal_object(), builder.device().internal_object());
 
-        unsafe {
-            let vk = builder.device.pointers();
-            let cmd = builder.command_buffer.clone().take().unwrap();
+        builder.add_command(Box::new(move |raw| {
+            unsafe {
+                let vk = raw.device.pointers();
+                let cmd = raw.command_buffer.clone().take().unwrap();
 
-            if let Some(line_width) = self.dynamic_state.line_width {
-                if builder.current_state.line_width != Some(line_width) {
-                    vk.CmdSetLineWidth(cmd, line_width);
-                    builder.current_state.line_width = Some(line_width);
+                if let Some(line_width) = self.dynamic_state.line_width {
+                    if raw.current_state.line_width != Some(line_width) {
+                        vk.CmdSetLineWidth(cmd, line_width);
+                        raw.current_state.line_width = Some(line_width);
+                    }
+                }
+
+                if let Some(ref viewports) = self.dynamic_state.viewports {
+                    // TODO: cache state
+                    let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
+                    vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
+                }
+
+                if let Some(ref scissors) = self.dynamic_state.scissors {
+                    // TODO: cache state
+                    let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
+                    vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
                 }
             }
-
-            if let Some(ref viewports) = self.dynamic_state.viewports {
-                // TODO: cache state
-                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
-            }
-
-            if let Some(ref scissors) = self.dynamic_state.scissors {
-                // TODO: cache state
-                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
-            }
-        }
-
-        builder
+        }));
     }
 }
