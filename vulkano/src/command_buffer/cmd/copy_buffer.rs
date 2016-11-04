@@ -21,7 +21,7 @@ use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
 /// another.
-pub struct CmdCopyBufferUnsynced<L, S, D>
+pub struct CmdCopyBuffer<L, S, D>
     where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     // Parent commands list.
@@ -35,7 +35,7 @@ pub struct CmdCopyBufferUnsynced<L, S, D>
     size: vk::DeviceSize,
 }
 
-impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
+impl<L, S, D> CmdCopyBuffer<L, S, D>
     where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     /// Builds a new command.
@@ -46,8 +46,9 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
     /// # Panic
     ///
     /// - Panics if the source and destination were not created with the same device.
-    pub unsafe fn new(previous: L, source: S, destination: D)
-                      -> Result<CmdCopyBufferUnsynced<L, S, D>, CmdCopyBufferUnsyncedError>
+    // FIXME: type safety
+    pub fn new(previous: L, source: S, destination: D)
+               -> Result<CmdCopyBuffer<L, S, D>, CmdCopyBufferError>
     {
         // TODO:
         //assert!(previous.is_outside_render_pass());     // TODO: error
@@ -57,7 +58,7 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
         let (source_raw, src_offset) = {
             let inner = source.inner();
             if !inner.buffer.usage_transfer_src() {
-                return Err(CmdCopyBufferUnsyncedError::SourceMissingTransferUsage);
+                return Err(CmdCopyBufferError::SourceMissingTransferUsage);
             }
             (inner.buffer.internal_object(), inner.offset)
         };
@@ -65,7 +66,7 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
         let (destination_raw, dst_offset) = {
             let inner = destination.inner();
             if !inner.buffer.usage_transfer_dest() {
-                return Err(CmdCopyBufferUnsyncedError::DestinationMissingTransferUsage);
+                return Err(CmdCopyBufferError::DestinationMissingTransferUsage);
             }
             (inner.buffer.internal_object(), inner.offset)
         };
@@ -73,12 +74,12 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
         let size = cmp::min(source.size(), destination.size());
 
         if source.conflicts_buffer(0, size, false, &destination, 0, size, true) {
-            return Err(CmdCopyBufferUnsyncedError::OverlappingRanges);
+            return Err(CmdCopyBufferError::OverlappingRanges);
         } else {
             debug_assert!(!destination.conflicts_buffer(0, size, true, &source, 0, size, false));
         }
 
-        Ok(CmdCopyBufferUnsynced {
+        Ok(CmdCopyBuffer {
             previous: previous,
             source: source,
             source_raw: source_raw,
@@ -91,7 +92,7 @@ impl<L, S, D> CmdCopyBufferUnsynced<L, S, D>
     }
 }
 
-unsafe impl<L, S, D> CommandsList for CmdCopyBufferUnsynced<L, S, D>
+unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
     where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
 {
     #[inline]
@@ -119,9 +120,9 @@ unsafe impl<L, S, D> CommandsList for CmdCopyBufferUnsynced<L, S, D>
     }
 }
 
-/// Error that can happen when creating a `CmdCopyBufferUnsynced`.
+/// Error that can happen when creating a `CmdCopyBuffer`.
 #[derive(Debug, Copy, Clone)]
-pub enum CmdCopyBufferUnsyncedError {
+pub enum CmdCopyBufferError {
     /// The source buffer is missing the transfer source usage.
     SourceMissingTransferUsage,
     /// The destination buffer is missing the transfer destination usage.
@@ -130,24 +131,24 @@ pub enum CmdCopyBufferUnsyncedError {
     OverlappingRanges,
 }
 
-impl error::Error for CmdCopyBufferUnsyncedError {
+impl error::Error for CmdCopyBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdCopyBufferUnsyncedError::SourceMissingTransferUsage => {
+            CmdCopyBufferError::SourceMissingTransferUsage => {
                 "the source buffer is missing the transfer source usage"
             },
-            CmdCopyBufferUnsyncedError::DestinationMissingTransferUsage => {
+            CmdCopyBufferError::DestinationMissingTransferUsage => {
                 "the destination buffer is missing the transfer destination usage"
             },
-            CmdCopyBufferUnsyncedError::OverlappingRanges => {
+            CmdCopyBufferError::OverlappingRanges => {
                 "the source and destination are overlapping"
             },
         }
     }
 }
 
-impl fmt::Display for CmdCopyBufferUnsyncedError {
+impl fmt::Display for CmdCopyBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "{}", error::Error::description(self))

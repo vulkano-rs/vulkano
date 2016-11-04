@@ -40,7 +40,7 @@ use vk;
 pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
-pub use self::copy_buffer_unsynced::{CmdCopyBufferUnsynced, CmdCopyBufferUnsyncedError};
+pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 pub use self::set_state::{CmdSetState};
@@ -48,7 +48,7 @@ pub use self::update_buffer_unsynced::{CmdUpdateBufferUnsynced, CmdUpdateBufferU
 
 mod bind_pipeline;
 mod blit_image_unsynced;
-mod copy_buffer_unsynced;
+mod copy_buffer;
 pub mod dispatch;
 pub mod draw;
 pub mod empty;
@@ -73,6 +73,16 @@ pub unsafe trait CommandsList {
         where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
         update_buffer::UpdateCommand::new(self, buffer, data)
+    }
+
+    /// Adds a command that copies the content of a buffer to another.
+    #[inline]
+    fn copy_buffer<S, D>(self, source: S, destination: D)
+                         -> Result<CmdCopyBuffer<Self, S, D>, CmdCopyBufferError>
+        where Self: Sized + CommandsListPossibleOutsideRenderPass,
+              S: TrackedBuffer, D: TrackedBuffer
+    {
+        copy_buffer::CmdCopyBuffer::new(self, source, destination)
     }
 
     /// Adds a command that writes the content of a buffer.
