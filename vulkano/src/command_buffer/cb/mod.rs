@@ -184,7 +184,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
         };
 
         try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
-        
+
         {
             let mut builder = RawCommandBufferPrototype {
                 device: device.clone(),
@@ -198,6 +198,8 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
 
             list.append(&mut Sink(&mut builder, &device));
         };
+
+        try!(check_errors(vk.EndCommandBuffer(cmd)));
 
         Ok(UnsyncedCommandBuffer {
             device: device.clone(),
