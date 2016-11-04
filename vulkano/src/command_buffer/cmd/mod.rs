@@ -44,7 +44,7 @@ pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::empty::PrimaryCb;
 pub use self::empty::PrimaryCbBuilder;
 pub use self::set_state::{CmdSetState};
-pub use self::update_buffer_unsynced::{CmdUpdateBufferUnsynced, CmdUpdateBufferUnsyncedError};
+pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
 mod bind_pipeline;
 mod blit_image_unsynced;
@@ -56,8 +56,7 @@ pub mod execute;
 pub mod fill_buffer;
 pub mod render_pass;
 mod set_state;
-pub mod update_buffer;
-mod update_buffer_unsynced;
+mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
 ///
@@ -69,10 +68,10 @@ pub unsafe trait CommandsList {
     /// After this command is executed, the content of `buffer` will become `data`.
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
-                                       -> update_buffer::UpdateCommand<'a, Self, B, D>
+                                       -> Result<CmdUpdateBuffer<'a, Self, B, D>, CmdUpdateBufferError>
         where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
     {
-        update_buffer::UpdateCommand::new(self, buffer, data)
+        CmdUpdateBuffer::new(self, buffer, data)
     }
 
     /// Adds a command that copies the content of a buffer to another.
@@ -82,7 +81,7 @@ pub unsafe trait CommandsList {
         where Self: Sized + CommandsListPossibleOutsideRenderPass,
               S: TrackedBuffer, D: TrackedBuffer
     {
-        copy_buffer::CmdCopyBuffer::new(self, source, destination)
+        CmdCopyBuffer::new(self, source, destination)
     }
 
     /// Adds a command that writes the content of a buffer.
