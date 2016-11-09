@@ -42,7 +42,7 @@
 // struct. The restrictions are enforced only in the public types.
 
 pub use self::states_manager::StatesManager;
-pub use self::cmd::PrimaryCbBuilder;
+pub use self::cmd::empty;
 pub use self::cmd::CommandBuffer;
 pub use self::cmd::CommandsList;
 pub use self::cmd::CommandsListSink;

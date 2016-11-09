@@ -41,8 +41,7 @@ pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
-pub use self::empty::PrimaryCb;
-pub use self::empty::PrimaryCbBuilder;
+pub use self::empty::{empty, EmptyCommandsList};
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
@@ -51,7 +50,7 @@ mod blit_image_unsynced;
 mod copy_buffer;
 pub mod dispatch;
 pub mod draw;
-pub mod empty;
+mod empty;
 pub mod execute;
 pub mod fill_buffer;
 pub mod render_pass;
