@@ -58,7 +58,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             for num in 0 .. desc.num_sets() {
                 layouts.push(match desc.provided_set_layout(num) {
                     Some(l) => {
-                        assert_eq!(&**l.device() as *const Device, &**device as *const Device);
+                        assert_eq!(l.device().internal_object(), device.internal_object());
                         l
                     },
                     None => {
