@@ -122,6 +122,9 @@ pub unsafe trait PipelineLayoutDesc {
     /// Contrary to the descriptors, a push constants range can't be empty.
     ///
     /// Returns `None` if out of range.
+    ///
+    /// Each bit of `stages` must only be present in a single push constants range of the
+    /// description.
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange>;
 
     /// Builds the union of this layout and another.

@@ -112,8 +112,24 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             out
         };
 
-        // FIXME: validity: > Any two elements of pPushConstantRanges must not include the same stage in stageFlags
-        // I don't even know what that means
+        // Each bit of `stageFlags` must only be present in a single push constants range.
+        // We check that with a debug_assert because it's supposed to be enforced by the
+        // `PipelineLayoutDesc`.
+        debug_assert!({
+            let mut stages = 0;
+            let mut outcome = true;
+            for pc in push_constants.iter() {
+                if (stages & pc.stageFlags) != 0 {
+                    outcome = false;
+                    break;
+                }
+                stages &= pc.stageFlags;
+            }
+            outcome
+        });
+
+        // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device doesn't
+        //        have tess shaders enabled
 
         // Build the final object.
         let layout = unsafe {
