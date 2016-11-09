@@ -74,6 +74,7 @@ impl DescriptorDesc {
     /// Returns true if `self` is the same descriptor as `other`, or if `self` is the same as
     /// `other` but with a larger array elements count and/or more shader stages.
     // TODO: add example
+    // TODO: return Result instead of bool
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
         self.ty.is_superset_of(&other.ty) &&

@@ -7,7 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::sync::Arc;
+
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
@@ -232,6 +234,7 @@ pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc
 {
     /// Returns true if `self` is a superset of `Other`.
+    // TODO: return a Result instead of a bool
     fn is_superset_of(&self, &Other) -> bool;
 }
 
@@ -239,27 +242,28 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
     where T: PipelineLayoutDesc, U: PipelineLayoutDesc
 {
     fn is_superset_of(&self, other: &U) -> bool {
-        /*let mut other_descriptor_sets = other.descriptors_desc();
+        for set_num in 0 .. cmp::max(self.num_sets(), other.num_sets()) {
+            let other_num_bindings = other.num_bindings_in_set(set_num).unwrap_or(0);
 
-        for my_set in self.descriptors_desc() {
-            let mut other_set = match other_descriptor_sets.next() {
-                None => return false,
-                Some(s) => s,
-            };
+            if self.num_bindings_in_set(set_num).unwrap_or(0) < other_num_bindings {
+                return false;
+            }
 
-            for my_desc in my_set {
-                let other_desc = match other_set.next() {
-                    None => return false,
-                    Some(d) => d,
-                };
-
-                if !my_desc.is_superset_of(&other_desc) {
-                    return false;
+            for desc_num in 0 .. other_num_bindings {
+                match (self.descriptor(set_num, desc_num), other.descriptor(set_num, desc_num)) {
+                    (Some(mine), Some(other)) => {
+                        if !mine.is_superset_of(&other) {
+                            return false;
+                        }
+                    },
+                    (None, Some(_)) => return false,
+                    _ => ()
                 }
             }
-        }*/
+        }
 
-        // FIXME: 
+        // FIXME: check push constants
+
         true
     }
 }
