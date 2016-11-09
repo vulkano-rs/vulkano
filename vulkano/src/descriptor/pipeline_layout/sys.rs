@@ -29,10 +29,8 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
 
-/// Low-level struct that represents the layout of the resources available to your shaders.
-///
-/// Despite its name, this type is technically not unsafe. However it serves the same purpose
-/// in the API as other types whose names start with `Unsafe`.
+/// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
+/// descriptor sets and push constants available to your shaders 
 pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
@@ -42,6 +40,11 @@ pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
 
 impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     /// Creates a new `PipelineLayout`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if one of the layout returned by `provided_set_layout()` belongs to a different
+    ///   device than the one passed as parameter.
     #[inline]
     pub fn new(device: &Arc<Device>, desc: L)
                -> Result<PipelineLayout<L>, PipelineLayoutCreationError>
@@ -49,11 +52,15 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
         let vk = device.pointers();
         let limits = device.physical_device().limits();
 
+        // Building the list of `UnsafeDescriptorSetLayout` objects.
         let layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
             for num in 0 .. desc.num_sets() {
                 layouts.push(match desc.provided_set_layout(num) {
-                    Some(l) => l,
+                    Some(l) => {
+                        assert_eq!(l.device().internal_object(), device.internal_object());
+                        l
+                    },
                     None => {
                         let sets_iter = 0 .. desc.num_bindings_in_set(num).unwrap_or(0);
                         let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
@@ -64,11 +71,10 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             layouts
         };
 
+        // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
         let layouts_ids = layouts.iter().map(|l| {
-                                    assert_eq!(&**l.device() as *const Device,
-                                               &**device as *const Device);
-                                    l.internal_object()
-                                 }).collect::<SmallVec<[_; 16]>>();
+            l.internal_object()
+        }).collect::<SmallVec<[_; 16]>>();
 
         // FIXME: must also check per-descriptor-type limits (eg. max uniform buffer descriptors)
 
@@ -76,6 +82,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             return Err(PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded);
         }
 
+        // Builds a list of `vkPushConstantRange` that describe the push constants.
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
@@ -105,6 +112,26 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             out
         };
 
+        // Each bit of `stageFlags` must only be present in a single push constants range.
+        // We check that with a debug_assert because it's supposed to be enforced by the
+        // `PipelineLayoutDesc`.
+        debug_assert!({
+            let mut stages = 0;
+            let mut outcome = true;
+            for pc in push_constants.iter() {
+                if (stages & pc.stageFlags) != 0 {
+                    outcome = false;
+                    break;
+                }
+                stages &= pc.stageFlags;
+            }
+            outcome
+        });
+
+        // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device doesn't
+        //        have tess shaders enabled
+
+        // Build the final object.
         let layout = unsafe {
             let infos = vk::PipelineLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -128,6 +155,14 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             layouts: layouts,
             desc: desc,
         })
+    }
+}
+
+impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
+    /// Returns the description of the pipeline layout.
+    #[inline]
+    pub fn desc(&self) -> &L {
+        &self.desc
     }
 }
 

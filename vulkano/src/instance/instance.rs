@@ -33,6 +33,53 @@ use instance::InstanceExtensions;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
+///
+/// See the documentation of [the `instance` module](index.html) for an introduction about
+/// Vulkan instances.
+///
+/// # Extensions and application infos
+///
+/// Please check the documentation of [the `instance` module](index.html).
+///
+/// # Layers
+///
+/// When creating an `Instance`, you have the possibility to pass a list of **layers** that will
+/// be activated on the newly-created instance. The list of available layers can be retrieved by
+/// calling [the `layers_list` function](fn.layers_list.html).
+///
+/// A layer is a component that will hook and potentially modify the Vulkan function calls.
+/// For example, activating a layer could add a frames-per-second counter on the screen, or it
+/// could send informations to a debugger that will debug your application.
+///
+/// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
+/// > and Linux layers can be installed by third party installers or by package managers and can
+/// > also be activated by setting the value of the `VK_INSTANCE_LAYERS` environment variable
+/// > before starting the program. See the documentation of the official Vulkan loader for these
+/// > platforms.
+///
+/// > **Note**: In practice, the most common use of layers right now is for debugging purposes.
+/// > To do so, you are encouraged to set the `VK_INSTANCE_LAYERS` environment variable on Windows
+/// > or Linux instead of modifying the source code of your program. For example:
+/// > `export VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump` on Linux if you installed the Vulkan SDK
+/// > will print the list of raw Vulkan function calls.
+///
+/// ## Example
+///
+/// ```ignore
+/// // FIXME: this example doesn't run because of ownership problems ; Instance::new() needs a tweak
+/// use vulkano::instance;
+/// use vulkano::instance::Instance;
+/// use vulkano::instance::InstanceExtensions;
+///
+/// // For the sake of the example, we activate all the layers that contain the word "foo" in their
+/// // description.
+/// let layers = instance::layers_list().unwrap()
+///     .filter(|l| l.description().contains("foo"))
+///     .map(|l| l.name());
+///
+/// let instance = Instance::new(None, &InstanceExtensions::none(), layers).unwrap();
+/// ```
+// TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
     instance: vk::Instance,
     //alloc: Option<Box<Alloc + Send + Sync>>,
@@ -44,6 +91,21 @@ pub struct Instance {
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
+    ///
+    /// See the documentation of `Instance` or of [the `instance` module](index.html) for more
+    /// details.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    ///
+    /// let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+    ///     Ok(i) => i,
+    ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
+    /// };
+    /// ```
     ///
     /// # Panic
     ///
@@ -220,6 +282,19 @@ impl Instance {
     }*/
 
     /// Returns the list of extensions that have been loaded.
+    ///
+    /// This list is equal to what was passed to `Instance::new()`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    ///
+    /// let extensions = InstanceExtensions::supported_by_core().unwrap();
+    /// let instance = Instance::new(None, &extensions, None).unwrap();
+    /// assert_eq!(instance.loaded_extensions(), &extensions);
+    /// ```
     #[inline]
     pub fn loaded_extensions(&self) -> &InstanceExtensions {
         &self.extensions
@@ -268,6 +343,7 @@ impl Drop for Instance {
 }
 
 /// Information that can be given to the Vulkan driver so that it can identify your application.
+// TODO: better documentation for struct and methods
 #[derive(Debug, Clone)]
 pub struct ApplicationInfo<'a> {
     /// Name of the application.
@@ -401,6 +477,23 @@ struct PhysicalDeviceInfos {
 ///
 /// This struct simply contains a pointer to an instance and a number representing the physical
 /// device. You are therefore encouraged to pass this around by value instead of by reference.
+///
+/// # Example
+///
+/// ```no_run
+/// # use vulkano::instance::Instance;
+/// # use vulkano::instance::InstanceExtensions;
+/// use vulkano::instance::PhysicalDevice;
+///
+/// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+/// for physical_device in PhysicalDevice::enumerate(&instance) {
+///     print_infos(physical_device);
+/// }
+///
+/// fn print_infos(dev: PhysicalDevice) {
+///     println!("Name: {}", dev.name());
+/// }
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct PhysicalDevice<'a> {
     instance: &'a Arc<Instance>,
@@ -409,6 +502,19 @@ pub struct PhysicalDevice<'a> {
 
 impl<'a> PhysicalDevice<'a> {
     /// Returns an iterator that enumerates the physical devices available.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::instance::Instance;
+    /// # use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// for physical_device in PhysicalDevice::enumerate(&instance) {
+    ///     println!("Available device: {}", physical_device.name());
+    /// }
+    /// ```
     #[inline]
     pub fn enumerate(instance: &'a Arc<Instance>) -> PhysicalDevicesIter<'a> {
         PhysicalDevicesIter {
@@ -420,6 +526,17 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns a physical device from its index. Returns `None` if out of range.
     ///
     /// Indices range from 0 to the number of devices.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
+    /// ```
     #[inline]
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
@@ -433,6 +550,17 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns the instance corresponding to this physical device.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// fn do_something(physical_device: PhysicalDevice) {
+    ///     let _loaded_extensions = physical_device.instance().loaded_extensions();
+    ///     // ... 
+    /// }
+    /// ```
     #[inline]
     pub fn instance(&self) -> &'a Arc<Instance> {
         &self.instance
@@ -458,6 +586,20 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns the type of the device.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::instance::Instance;
+    /// # use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// for physical_device in PhysicalDevice::enumerate(&instance) {
+    ///     println!("Available device: {} (type: {:?})",
+    ///               physical_device.name(), physical_device.ty());
+    /// }
+    /// ```
     #[inline]
     pub fn ty(&self) -> PhysicalDeviceType {
         match self.instance.physical_devices[self.device].properties.deviceType {

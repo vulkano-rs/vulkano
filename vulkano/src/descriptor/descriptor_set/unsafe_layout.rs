@@ -47,6 +47,9 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
                 None => return None
             };
 
+            // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
+            //        doesn't have tess shaders enabled
+
             Some(vk::DescriptorSetLayoutBinding {
                 binding: binding as u32,
                 descriptorType: desc.ty.ty().unwrap() /* TODO: shouldn't panic */ as u32,

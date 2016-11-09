@@ -7,7 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::sync::Arc;
+
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
@@ -120,7 +122,9 @@ pub unsafe trait PipelineLayoutDesc {
     /// Contrary to the descriptors, a push constants range can't be empty.
     ///
     /// Returns `None` if out of range.
-    // TODO: better return value
+    ///
+    /// Each bit of `stages` must only be present in a single push constants range of the
+    /// description.
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange>;
 
     /// Builds the union of this layout and another.
@@ -130,6 +134,8 @@ pub unsafe trait PipelineLayoutDesc {
     }
 
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
+    ///
+    /// > **Note**: This is just a shortcut for `PipelineLayout::new`.
     #[inline]
     fn build(self, device: &Arc<Device>)
              -> Result<PipelineLayout<Self>, PipelineLayoutCreationError>
@@ -145,6 +151,33 @@ pub struct PipelineLayoutDescPcRange {
     pub offset: usize,
     pub size: usize,
     pub stages: ShaderStages,
+}
+
+unsafe impl<'a, T: ?Sized> PipelineLayoutDesc for &'a T where T: 'a + PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        (**self).num_sets()
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        (**self).num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        (**self).descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        (**self).num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        (**self).push_constants_range(num)
+    }
 }
 
 unsafe impl<T: ?Sized> PipelineLayoutDesc for Box<T> where T: PipelineLayoutDesc {
@@ -182,6 +215,13 @@ pub unsafe trait PipelineLayoutDescNames: PipelineLayoutDesc {
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)>;
 }
 
+unsafe impl<'a, T: ?Sized> PipelineLayoutDescNames for &'a T where T: 'a + PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        (**self).descriptor_by_name(name)
+    }
+}
+
 unsafe impl<T: ?Sized> PipelineLayoutDescNames for Box<T> where T: PipelineLayoutDescNames {
     #[inline]
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
@@ -197,6 +237,7 @@ pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc
 {
     /// Returns true if `self` is a superset of `Other`.
+    // TODO: return a Result instead of a bool
     fn is_superset_of(&self, &Other) -> bool;
 }
 
@@ -204,27 +245,28 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
     where T: PipelineLayoutDesc, U: PipelineLayoutDesc
 {
     fn is_superset_of(&self, other: &U) -> bool {
-        /*let mut other_descriptor_sets = other.descriptors_desc();
+        for set_num in 0 .. cmp::max(self.num_sets(), other.num_sets()) {
+            let other_num_bindings = other.num_bindings_in_set(set_num).unwrap_or(0);
 
-        for my_set in self.descriptors_desc() {
-            let mut other_set = match other_descriptor_sets.next() {
-                None => return false,
-                Some(s) => s,
-            };
+            if self.num_bindings_in_set(set_num).unwrap_or(0) < other_num_bindings {
+                return false;
+            }
 
-            for my_desc in my_set {
-                let other_desc = match other_set.next() {
-                    None => return false,
-                    Some(d) => d,
-                };
-
-                if !my_desc.is_superset_of(&other_desc) {
-                    return false;
+            for desc_num in 0 .. other_num_bindings {
+                match (self.descriptor(set_num, desc_num), other.descriptor(set_num, desc_num)) {
+                    (Some(mine), Some(other)) => {
+                        if !mine.is_superset_of(&other) {
+                            return false;
+                        }
+                    },
+                    (None, Some(_)) => return false,
+                    _ => ()
                 }
             }
-        }*/
+        }
 
-        // FIXME: 
+        // FIXME: check push constants
+
         true
     }
 }

@@ -15,6 +15,10 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
+/// Contains the union of two pipeline layout description.
+///
+/// If `A` and `B` both implement `PipelineLayoutDesc`, then this struct also implements
+/// `PipelineLayoutDesc` and will correspond to the union of the `A` object and the `B` object.
 pub struct PipelineLayoutDescUnion<A, B> {
     a: A,
     b: B,
@@ -68,13 +72,61 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
 
     #[inline]
     fn num_push_constants_ranges(&self) -> usize {
-        // FIXME: wrong
-        0
+        // We simply call `push_constants_range` repeatidely to determine when it is over.
+        // TODO: consider caching this 
+        (self.a.num_push_constants_ranges() ..).filter(|&n| {
+            self.push_constants_range(n).is_none()
+        }).next().unwrap()
     }
 
+    // TODO: needs tests
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        // FIXME:
+        // The strategy here is that we return the same ranges as `self.a`, except that if there
+        // happens to be a range with a similar stage in `self.b` then we adjust the offset and
+        // size of the range coming from `self.a` to include the range of `self.b`.
+        //
+        // After all the ranges of `self.a` have been returned, we return the ones from `self.b`
+        // that don't intersect with any range of `self.a`.
+
+        if let Some(mut pc) = self.a.push_constants_range(num) {
+            // We try to find the ranges in `self.b` that share the same stages as us.
+            for n in 0 .. self.b.num_push_constants_ranges() {
+                let other_pc = self.b.push_constants_range(n).unwrap();
+
+                if other_pc.stages.intersects(&pc.stages) {
+                    if other_pc.offset < pc.offset {
+                        pc.size += pc.offset - other_pc.offset;
+                        pc.size = cmp::max(pc.size, other_pc.size);
+                        pc.offset = other_pc.offset;
+
+                    } else if other_pc.offset > pc.offset {
+                        pc.size = cmp::max(pc.size, other_pc.size + (other_pc.offset - pc.offset));
+                    }
+                }
+            }
+
+            return Some(pc);
+        }
+
+        let mut num = num - self.a.num_push_constants_ranges();
+        'outer_loop: for b_r in 0 .. self.b.num_push_constants_ranges() {
+            let pc = self.b.push_constants_range(b_r).unwrap();
+
+            for n in 0 .. self.a.num_push_constants_ranges() {
+                let other_pc = self.a.push_constants_range(n).unwrap();
+                if other_pc.stages.intersects(&pc.stages) {
+                    continue 'outer_loop;
+                }
+            }
+            
+            if num == 0 {
+                return Some(pc);
+            } else {
+                num -= 1;
+            }
+        }
+        
         None
     }
 }

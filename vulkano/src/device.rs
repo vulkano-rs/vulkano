@@ -126,7 +126,7 @@ pub struct Device {
     physical_device: usize,
     device: vk::Device,
     vk: vk::DevicePointers,
-    standard_pool: Mutex<Option<Weak<StdMemoryPool>>>,      // TODO: use Weak::new() instead
+    standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
@@ -154,10 +154,7 @@ impl Device {
     ///
     /// # Panic
     ///
-    /// - Panics if one of the requested features is not supported by the physical device.
     /// - Panics if one of the queue families doesn't belong to the given device.
-    /// - Panics if you request more queues from a family than available.
-    /// - Panics if one of the priorities is outside of the `[0.0 ; 1.0]` range.
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
@@ -168,7 +165,9 @@ impl Device {
     {
         let queue_families = queue_families.into_iter();
 
-        assert!(phys.supported_features().superset_of(&requested_features));
+        if !phys.supported_features().superset_of(&requested_features) {
+            return Err(DeviceCreationError::UnsupportedFeatures);
+        }
 
         let vk_i = phys.instance().pointers();
 
@@ -203,13 +202,17 @@ impl Device {
                 // checking the parameters
                 assert_eq!(queue_family.physical_device().internal_object(),
                            phys.internal_object());
-                assert!(priority >= 0.0 && priority <= 1.0);
+                if priority < 0.0 || priority > 1.0 {
+                    return Err(DeviceCreationError::PriorityOutOfRange);
+                }
 
                 // adding to `queues` and `output_queues`
                 if let Some(q) = queues.iter_mut().find(|q| q.0 == queue_family.id()) {
                     output_queues.push((queue_family.id(), q.1.len() as u32));
                     q.1.push(priority);
-                    assert!(q.1.len() < queue_family.queues_count());
+                    if q.1.len() >= queue_family.queues_count() {
+                        return Err(DeviceCreationError::TooManyQueuesForFamily);
+                    }
                     continue;
                 }
                 queues.push((queue_family.id(), vec![priority]));
@@ -276,7 +279,7 @@ impl Device {
             physical_device: phys.index(),
             device: device,
             vk: vk,
-            standard_pool: Mutex::new(None),
+            standard_pool: Mutex::new(Weak::new()),
             standard_command_pools: Mutex::new(Default::default()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
@@ -345,13 +348,13 @@ impl Device {
     pub fn standard_pool(me: &Arc<Self>) -> Arc<StdMemoryPool> {
         let mut pool = me.standard_pool.lock().unwrap();
 
-        if let Some(p) = pool.as_ref().and_then(|w| w.upgrade()) {
+        if let Some(p) = pool.upgrade() {
             return p;
         }
 
         // The weak pointer is empty, so we create the pool.
         let new_pool = StdMemoryPool::new(me);
-        *pool = Some(Arc::downgrade(&new_pool));
+        *pool = Arc::downgrade(&new_pool);
         new_pool
     }
 
@@ -466,7 +469,12 @@ pub enum DeviceCreationError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
-    // FIXME: other values
+    /// Tried to create too many queues for a given family.
+    TooManyQueuesForFamily,
+    /// Some of the requested features are unsupported by the physical device.
+    UnsupportedFeatures,
+    /// The priority of one of the queues is out of the [0.0; 1.0] range.
+    PriorityOutOfRange,
 }
 
 impl error::Error for DeviceCreationError {
@@ -474,7 +482,18 @@ impl error::Error for DeviceCreationError {
     fn description(&self) -> &str {
         match *self {
             DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-            DeviceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
+            DeviceCreationError::OutOfDeviceMemory => {
+                "no memory available on the graphical device"
+            },
+            DeviceCreationError::TooManyQueuesForFamily => {
+                "tried to create too many queues for a given family"
+            },
+            DeviceCreationError::UnsupportedFeatures => {
+                "some of the requested features are unsupported by the physical device"
+            },
+            DeviceCreationError::PriorityOutOfRange => {
+                "the priority of one of the queues is out of the [0.0; 1.0] range"
+            },
         }
     }
 }
@@ -563,10 +582,79 @@ unsafe impl SynchronizedVulkanObject for Queue {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use device::Device;
+    use device::DeviceCreationError;
+    use device::DeviceExtensions;
+    use features::Features;
+    use instance;
 
     #[test]
     fn one_ref() {
         let (mut device, _) = gfx_dev_and_queue!();
         assert!(Arc::get_mut(&mut device).is_some());
+    }
+
+    #[test]
+    fn too_many_queues() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+        let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
+
+        match Device::new(&physical, &Features::none(), &DeviceExtensions::none(), queues) {
+            Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn unsupposed_features() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+
+        let features = Features::all();
+        // In the unlikely situation where the device supports everything, we ignore the test.
+        if physical.supported_features().superset_of(&features) {
+            return;
+        }
+
+        match Device::new(&physical, &features, &DeviceExtensions::none(), Some((family, 1.0))) {
+            Err(DeviceCreationError::UnsupportedFeatures) => return,     // Success
+            _ => panic!()
+        };
+    }
+
+    #[test]
+    fn priority_out_of_range() {
+        let instance = instance!();
+        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return
+        };
+
+        let family = physical.queue_families().next().unwrap();
+
+        match Device::new(&physical, &Features::none(),
+                          &DeviceExtensions::none(), Some((family, 1.4)))
+        {
+            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
+            _ => panic!()
+        };
+
+        match Device::new(&physical, &Features::none(),
+                          &DeviceExtensions::none(), Some((family, -0.2)))
+        {
+            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
+            _ => panic!()
+        };
     }
 }

@@ -23,6 +23,11 @@
 //! // This is a descriptor that contains a texture.
 //! layout(set = 0, binding = 0) uniform sampler2D u_texture;
 //!
+//! // This is a descriptor that contains a buffer.
+//! layout(set = 0, binding = 1) uniform struct {
+//!     int data[128];
+//! } u_buffer;
+//!
 //! layout(push_constant) uniform PushConstants {
 //!     // This is a push constant.
 //!     float opacity;
@@ -33,6 +38,7 @@
 //!
 //! void main() {
 //!     f_output.rgb = texture(u_texture, v_tex_coords).rgb;
+//!     if (u_buffer.data[12] == 5) { f_output.rgb *= 2.0; }
 //!     f_output.a = push_constants.opacity;
 //! }
 //! ```
@@ -42,26 +48,34 @@
 //! In order to read the content of a buffer or an image from a shader, that buffer or image
 //! must be put in a *descriptor*. Each descriptor contains one buffer or one image alongside with
 //! the way that it can be accessed. A descriptor can also be an array, in which case it contains
-//! multiple buffers or images with the same layout.
+//! multiple buffers or images that all have the same layout.
 //!
 //! Descriptors are grouped in what is called *descriptor sets*. In Vulkan you don't bind
 //! individual descriptors one by one, but you create then bind descriptor sets one by one. You are
 //! therefore encouraged to put descriptors that are often used together in the same set.
 //!
-//! In order to pass descriptors to your shaders, you first have to create descriptor sets. To do
-//! so, the easiest way is to use the `simple_descriptor_set!` macro.
+//! # Example
+//!
+//! > **Note**: This section describes the simple way to bind resources. There are more optimized
+//! > ways.
+//!
+//! There are two steps to give access to a resource in a shader: creating the descriptor set, and
+//! passing the descriptor sets when drawing.
+//!
+//! ## Creating a descriptor set
 //!
 //! ```ignore
+//! // Creates a set that corresponds to the shader above.
+//! // Note that the value `0` must match the set number.
 //! let set0 = simple_descriptor_set!(&graphics_pipeline, 0, {
-//!     buffer1: &my_buffer1,
-//!     buffer2: &my_buffer2,
-//!     image1: &my_image,
-//! });
-//! 
-//! let set1 = simple_descriptor_set!(&graphics_pipeline, 1, {
-//!     buffer3: &my_buffer3,
+//!     u_texture: &my_buffer1,
+//!     u_buffer: &my_buffer2,
 //! });
 //! ```
+//!
+//! ## Passing the descriptor set when drawing
+//!
+//! TODO: write
 //!
 //! # When drawing
 //!

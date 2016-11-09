@@ -47,7 +47,10 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
         let mut file_output = File::create(&dest.join("shaders").join(shader))
                                                         .expect("failed to open shader output");
 
-        let content = glsl_to_spirv::compile(&shader_content, ty).unwrap();
+        let content = match glsl_to_spirv::compile(&shader_content, ty) {
+            Ok(compiled) => compiled,
+            Err(message) => panic!("{}\nfailed to compile shader", message),
+        };
         let output = reflect("Shader", content).unwrap();
         write!(file_output, "{}", output).unwrap();
     }
