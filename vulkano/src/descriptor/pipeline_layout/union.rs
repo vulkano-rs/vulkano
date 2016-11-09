@@ -15,6 +15,10 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
+/// Contains the union of two pipeline layout description.
+///
+/// If `A` and `B` both implement `PipelineLayoutDesc`, then this struct also implements
+/// `PipelineLayoutDesc` and will correspond to the union of the `A` object and the `B` object.
 pub struct PipelineLayoutDescUnion<A, B> {
     a: A,
     b: B,
@@ -75,6 +79,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
         }).next().unwrap()
     }
 
+    // TODO: needs tests
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         // The strategy here is that we return the same ranges as `self.a`, except that if there
