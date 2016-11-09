@@ -491,7 +491,7 @@ impl GeometryShaderExecutionMode {
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleStrip) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleFan) => true,
             (GeometryShaderExecutionMode::TrianglesWithAdjacency,
-             PrimitiveTopology::TriangleListWithAdjancecy) => true,
+             PrimitiveTopology::TriangleListWithAdjacency) => true,
             (GeometryShaderExecutionMode::TrianglesWithAdjacency,
              PrimitiveTopology::TriangleStripWithAdjacency) => true,
             _ => false,

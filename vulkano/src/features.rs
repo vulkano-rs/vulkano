@@ -58,6 +58,18 @@ macro_rules! features {
                 }
             }
 
+            /// Builds a `Features` object with all values to true.
+            ///
+            /// > **Note**: This function is used for testing purposes, and is probably useless in
+            /// > a real code.
+            pub fn all() -> Features {
+                Features {
+                    $(
+                        $name: true,
+                    )+
+                }
+            }
+
             /// Returns true if `self` is a superset of the parameter.
             ///
             /// That is, for each feature of the parameter that is true, the corresponding value

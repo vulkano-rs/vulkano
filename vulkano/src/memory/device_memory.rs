@@ -26,6 +26,20 @@ use check_errors;
 use vk;
 
 /// Represents memory that has been allocated.
+///
+/// The destructor of `DeviceMemory` automatically frees the memory.
+///
+/// # Example
+///
+/// ```no_run
+/// use vulkano::memory::DeviceMemory;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+/// let mem_ty = device.physical_device().memory_types().next().unwrap();
+/// 
+/// // Allocates 1kB of memory.
+/// let memory = DeviceMemory::alloc(&device, mem_ty, 1024).unwrap();
+/// ```
 #[derive(Debug)]
 pub struct DeviceMemory<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     memory: vk::DeviceMemory,
@@ -46,8 +60,9 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     ///
     // TODO: VK_ERROR_TOO_MANY_OBJECTS error
+    // TODO: remove that `D` generic and use `Arc<Device>`
     #[inline]
-    pub fn alloc(device: &D, memory_type: &MemoryType, size: usize)
+    pub fn alloc(device: &D, memory_type: MemoryType, size: usize)
                  -> Result<DeviceMemory<D>, OomError>
         where D: Clone
     {
@@ -90,7 +105,7 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     /// - Panics if the memory type is not host-visible.
     ///
-    pub fn alloc_and_map(device: &D, memory_type: &MemoryType, size: usize)
+    pub fn alloc_and_map(device: &D, memory_type: MemoryType, size: usize)
                          -> Result<MappedDeviceMemory<D>, OomError>
         where D: Clone
     {
@@ -156,6 +171,34 @@ impl<D> Drop for DeviceMemory<D> where D: SafeDeref<Target = Device> {
 }
 
 /// Represents memory that has been allocated and mapped in CPU accessible space.
+///
+/// Can be obtained with `DeviceMemory::alloc_and_map`. The function will panic if the memory type
+/// is not host-accessible.
+///
+/// In order to access the content of the allocated memory, you can use the `read_write` method.
+/// This method returns a guard object that derefs to the content. 
+///
+/// # Example
+///
+/// ```no_run
+/// use vulkano::memory::DeviceMemory;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+/// // The memory type must be mappable. 
+/// let mem_ty = device.physical_device().memory_types()
+///                     .filter(|t| t.is_host_visible())
+///                     .next().unwrap();    // Vk specs guarantee that this can't fail
+///
+/// // Allocates 1kB of memory.
+/// let memory = DeviceMemory::alloc_and_map(&device, mem_ty, 1024).unwrap();
+///
+/// // Get access to the content. Note that this is very unsafe for two reasons: 1) the content is
+/// // uninitialized, and 2) the access is unsynchronized.
+/// unsafe {
+///     let mut content = memory.read_write::<[u8]>(0 .. 1024);
+///     content[12] = 54;       // `content` derefs to a `&[u8]` or a `&mut [u8]`
+/// }
+/// ```
 #[derive(Debug)]
 pub struct MappedDeviceMemory<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     memory: DeviceMemory<D>,
@@ -165,13 +208,18 @@ pub struct MappedDeviceMemory<D = Arc<Device>> where D: SafeDeref<Target = Devic
 
 impl<D> MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// Returns the underlying `DeviceMemory`.
-    // TODO: impl AsRef instead
+    // TODO: impl AsRef instead?
     #[inline]
     pub fn memory(&self) -> &DeviceMemory<D> {
         &self.memory
     }
 
     /// Gives access to the content of the memory.
+    ///
+    /// This function takes care of calling `vkInvalidateMappedMemoryRanges` and
+    /// `vkFlushMappedMemoryRanges` on the given range. You are therefore encouraged to use the
+    /// smallest range as possible, and to not call this function multiple times in a row for
+    /// several small changes.
     ///
     /// # Safety
     ///
@@ -225,6 +273,8 @@ impl<D> Drop for MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {
 }
 
 /// Object that can be used to read or write the content of a `MappedDeviceMemory`.
+///
+/// This object derefs to the content, just like a `MutexGuard` for example.
 pub struct CpuAccess<'a, T: ?Sized + 'a, D = Arc<Device>> where D: SafeDeref<Target = Device> + 'a {
     pointer: *mut T,
     mem: &'a MappedDeviceMemory<D>,
@@ -233,7 +283,12 @@ pub struct CpuAccess<'a, T: ?Sized + 'a, D = Arc<Device>> where D: SafeDeref<Tar
 }
 
 impl<'a, T: ?Sized + 'a, D: 'a> CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
-    /// Makes a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
+    /// Builds a new `CpuAccess` to access a sub-part of the current `CpuAccess`.
+    ///
+    /// This function is unstable. Don't use it directly.
+    // TODO: unsafe?
+    // TODO: decide what to do with this
+    #[doc(hidden)]
     #[inline]
     pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U, D>
         where F: FnOnce(*mut T) -> *mut U
@@ -247,8 +302,10 @@ impl<'a, T: ?Sized + 'a, D: 'a> CpuAccess<'a, T, D> where D: SafeDeref<Target = 
     }
 }
 
-unsafe impl<'a, T: ?Sized + 'a, D: 'a> Send for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {}
-unsafe impl<'a, T: ?Sized + 'a, D: 'a> Sync for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {}
+unsafe impl<'a, T: ?Sized + 'a, D: 'a> Send for CpuAccess<'a, T, D>
+    where D: SafeDeref<Target = Device> {}
+unsafe impl<'a, T: ?Sized + 'a, D: 'a> Sync for CpuAccess<'a, T, D>
+    where D: SafeDeref<Target = Device> {}
 
 impl<'a, T: ?Sized + 'a, D: 'a> Deref for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
     type Target = T;
@@ -259,7 +316,9 @@ impl<'a, T: ?Sized + 'a, D: 'a> Deref for CpuAccess<'a, T, D> where D: SafeDeref
     }
 }
 
-impl<'a, T: ?Sized + 'a, D: 'a> DerefMut for CpuAccess<'a, T, D> where D: SafeDeref<Target = Device> {
+impl<'a, T: ?Sized + 'a, D: 'a> DerefMut for CpuAccess<'a, T, D>
+    where D: SafeDeref<Target = Device>
+{
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.pointer }
@@ -299,7 +358,7 @@ mod tests {
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().next().unwrap();
-        let _ = DeviceMemory::alloc(&device, &mem_ty, 256).unwrap();
+        let _ = DeviceMemory::alloc(&device, mem_ty, 256).unwrap();
     }
 
     #[test]
@@ -307,7 +366,7 @@ mod tests {
     fn zero_size() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().next().unwrap();
-        let _ = DeviceMemory::alloc(&device, &mem_ty, 0);
+        let _ = DeviceMemory::alloc(&device, mem_ty, 0);
     }
 
     #[test]
@@ -317,7 +376,7 @@ mod tests {
         let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
                            .next().unwrap();
     
-        match DeviceMemory::alloc(&device, &mem_ty, 0xffffffffffffffff) {
+        match DeviceMemory::alloc(&device, mem_ty, 0xffffffffffffffff) {
             Err(OomError::OutOfDeviceMemory) => (),
             _ => panic!()
         }
@@ -333,7 +392,7 @@ mod tests {
         let mut allocs = Vec::new();
     
         for _ in 0 .. 4 {
-            match DeviceMemory::alloc(&device, &mem_ty, heap_size / 3) {
+            match DeviceMemory::alloc(&device, mem_ty, heap_size / 3) {
                 Err(OomError::OutOfDeviceMemory) => return,     // test succeeded
                 Ok(a) => allocs.push(a),
                 _ => ()

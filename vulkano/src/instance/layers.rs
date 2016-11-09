@@ -22,16 +22,41 @@ use instance::loader::LoadingError;
 use version::Version;
 
 /// Queries the list of layers that are available when creating an instance.
+///
+/// On success, this function returns an iterator that produces
+/// [`LayerProperties`](struct.LayerProperties.html) objects. In order to enable a layer, you need
+/// to pass its name (returned by `LayerProperties::name()`) when creating the
+/// [`Instance`](struct.Instance.html).
+///
+/// This function returns an error if it failed to load the Vulkan library. 
+///
+/// > **Note**: It is possible that one of the layers enumerated here is no longer available when
+/// > you create the `Instance`. This will lead to an error when calling `Instance::new`. The
+/// > author isn't aware of any situation where this would happen, but it is theoretically possible
+/// > according to the specifications.
+///
+/// # Example
+///
+/// ```no_run
+/// use vulkano::instance;
+///
+/// for layer in instance::layers_list().unwrap() {
+///     println!("Available layer: {}", layer.name());
+/// }
+/// ```
 pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     unsafe {
         let entry_points = try!(loader::entry_points());
 
         let mut num = 0;
-        try!(check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())));
+        try!(check_errors({
+            entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())
+        }));
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
-        try!(check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num,
-                                                                        layers.as_mut_ptr())));
+        try!(check_errors({
+            entry_points.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
+        }));
         layers.set_len(num as usize);
 
         Ok(LayersIterator {
@@ -40,31 +65,81 @@ pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     }
 }
 
-/// Properties of an available layer.
+/// Properties of a layer.
 pub struct LayerProperties {
     props: vk::LayerProperties,
 }
 
 impl LayerProperties {
     /// Returns the name of the layer.
+    ///
+    /// If you want to enable this layer on an instance, you need to pass this value to
+    /// `Instance::new`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance;
+    ///
+    /// for layer in instance::layers_list().unwrap() {
+    ///     println!("Layer name: {}", layer.name());
+    /// }
+    /// ```
     #[inline]
     pub fn name(&self) -> &str {
         unsafe { CStr::from_ptr(self.props.layerName.as_ptr()).to_str().unwrap() }
     }
 
     /// Returns a description of the layer.
+    ///
+    /// This description is chosen by the layer itself.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance;
+    ///
+    /// for layer in instance::layers_list().unwrap() {
+    ///     println!("Layer description: {}", layer.description());
+    /// }
+    /// ```
     #[inline]
     pub fn description(&self) -> &str {
         unsafe { CStr::from_ptr(self.props.description.as_ptr()).to_str().unwrap() }
     }
 
     /// Returns the version of Vulkan supported by this layer.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance;
+    /// use vulkano::instance::Version;
+    ///
+    /// for layer in instance::layers_list().unwrap() {
+    ///     if layer.vulkan_version() >= (Version { major: 2, minor: 0, patch: 0 }) {
+    ///         println!("Layer {} requires Vulkan 2.0", layer.name());
+    ///     }
+    /// }
+    /// ```
     #[inline]
     pub fn vulkan_version(&self) -> Version {
         Version::from_vulkan_version(self.props.specVersion)
     }
 
     /// Returns an implementation-specific version number for this layer.
+    ///
+    /// The number is chosen by the layer itself. It can be used for bug reports for example.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance;
+    ///
+    /// for layer in instance::layers_list().unwrap() {
+    ///     println!("Layer {} - Version: {}", layer.name(), layer.implementation_version());
+    /// }
+    /// ```
     #[inline]
     pub fn implementation_version(&self) -> u32 {
         self.props.implementationVersion
@@ -159,7 +234,11 @@ mod tests {
 
     #[test]
     fn layers_list() {
-        let mut list = instance::layers_list().unwrap();
+        let mut list = match instance::layers_list() {
+            Ok(l) => l,
+            Err(_) => return
+        };
+
         while let Some(_) = list.next() {}
     }
 }
