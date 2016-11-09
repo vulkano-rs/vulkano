@@ -393,6 +393,18 @@ impl ShaderStages {
         (self.fragment || !other.fragment) &&
         (self.compute || !other.compute)
     }
+
+    /// Checks whether any of the stages in `self` are also present in `other`.
+    // TODO: add example
+    #[inline]
+    pub fn intersects(&self, other: &ShaderStages) -> bool {
+        (self.vertex && other.vertex) ||
+        (self.tessellation_control && other.tessellation_control) ||
+        (self.tessellation_evaluation && other.tessellation_evaluation) ||
+        (self.geometry && other.geometry) ||
+        (self.fragment && other.fragment) ||
+        (self.compute && other.compute)
+    }
 }
 
 impl BitOr for ShaderStages {
