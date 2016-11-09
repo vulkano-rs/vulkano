@@ -173,18 +173,6 @@ pub unsafe trait CommandsList {
         draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)
     }
 
-    /// Turns the commands list into a command buffer that can be submitted.
-    #[inline]
-    fn build(self) -> CommandBuffer<Self::Output> where Self: Sized + CommandsListConcrete {
-        CommandsListConcrete::build(self)
-    }
-
-    /// Builds a boxed command buffer object.
-    #[inline]
-    fn abstract_build(self) -> CommandBuffer where Self: Sized + CommandsListAbstract {
-        CommandsListAbstract::abstract_build(self)
-    }
-
     /// Appends this list of commands at the end of a command buffer in construction.
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         // TODO: temporary body until all the impls implement this function
@@ -194,33 +182,39 @@ pub unsafe trait CommandsList {
     /// Returns true if the command buffer can be built. This function should always return true,
     /// except when we're building a primary command buffer that is inside a render pass.
     // TODO: remove function
+    #[deprecated]
     fn buildable_state(&self) -> bool { unimplemented!() }
 
     /// Returns the number of commands in the commands list.
     ///
     /// Note that multiple actual commands may count for just 1.
     // TODO: remove function
+    #[deprecated]
     fn num_commands(&self) -> usize { unimplemented!() }
 
     /// Checks whether the command can be executed on the given queue family.
     // TODO: error type?
     // TODO: remove function
+    #[deprecated]
     fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> { unimplemented!() }
 
     /// Extracts the object that contains the states of all the resources of the commands list.
     ///
     /// Panics if the states were already extracted.
     // TODO: remove function
+    #[deprecated]
     fn extract_states(&mut self) -> StatesManager { unimplemented!() }
 
     /// Returns true if the given compute pipeline is currently binded in the commands list.
     // TODO: better API?
     // TODO: remove function
+    #[deprecated]
     fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool { unimplemented!() }
 
     /// Returns true if the given graphics pipeline is currently binded in the commands list.
     // TODO: better API?
     // TODO: remove function
+    #[deprecated]
     fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool { unimplemented!() }
 }
 
@@ -228,36 +222,6 @@ unsafe impl CommandsList for Box<CommandsList> {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         (**self).append(builder)
-    }
-
-    #[inline]
-    fn buildable_state(&self) -> bool {
-        (**self).buildable_state()
-    }
-
-    #[inline]
-    fn num_commands(&self) -> usize {
-        (**self).num_commands()
-    }
-
-    #[inline]
-    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> {
-        (**self).check_queue_validity(queue)
-    }
-
-    #[inline]
-    fn extract_states(&mut self) -> StatesManager {
-        (**self).extract_states()
-    }
-
-    #[inline]
-    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
-        (**self).is_compute_pipeline_bound(pipeline)
-    }
-
-    #[inline]
-    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
-        (**self).is_graphics_pipeline_bound(pipeline)
     }
 }
 
@@ -292,6 +256,7 @@ impl<'a, T> CommandsListSinkCaller<'a> for T where T: FnOnce(&mut RawCommandBuff
     }
 }
 
+#[deprecated]
 pub unsafe trait CommandsListConcrete: CommandsList {
     type Pool: CommandPool;
     /// The type of the command buffer that will be generated.
@@ -310,6 +275,7 @@ pub unsafe trait CommandsListConcrete: CommandsList {
     ///   command buffer builder.
     ///
     /// This function doesn't check that `buildable_state` returns true.
+    #[deprecated]
     unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
                               additional_elements: F, barriers: I,
                               final_barrier: PipelineBarrierBuilder) -> Self::Output
@@ -318,6 +284,7 @@ pub unsafe trait CommandsListConcrete: CommandsList {
 
     /// Turns the commands list into a command buffer that can be submitted.
     // This function isn't inline because `raw_build` implementations usually are inline.
+    #[deprecated]
     fn build(mut self) -> CommandBuffer<Self::Output> where Self: Sized {
         assert!(self.buildable_state(), "Tried to build a command buffer still inside a \
                                          render pass");
@@ -333,25 +300,6 @@ pub unsafe trait CommandsListConcrete: CommandsList {
         CommandBuffer {
             states: states_out,
             commands: output,
-        }
-    }
-}
-
-pub unsafe trait CommandsListAbstract: CommandsList {
-    /// Turns the commands list into a command buffer that can be submitted.
-    fn abstract_build(self) -> CommandBuffer where Self: Sized;
-}
-
-unsafe impl<C> CommandsListAbstract for C
-    where C: CommandsListConcrete, <C as CommandsListConcrete>::Output: 'static
-{
-    #[inline]
-    fn abstract_build(self) -> CommandBuffer {
-        let tmp = CommandsListConcrete::build(self);
-
-        CommandBuffer {
-            states: tmp.states,
-            commands: Box::new(tmp.commands) as Box<_>,
         }
     }
 }
@@ -392,18 +340,23 @@ pub unsafe trait CommandsListPossibleInsideRenderPass {
     //fn current_subpass(&self) -> Subpass<&Self::RenderPass>;
 }
 
+#[deprecated]
 pub unsafe trait CommandsListOutput<S = StatesManager> {
     /// Returns the inner object.
     // TODO: crappy API
+    #[deprecated]
     fn inner(&self) -> vk::CommandBuffer;
 
     /// Returns the device this object belongs to.
+    #[deprecated]
     fn device(&self) -> &Arc<Device>;
 
+    #[deprecated]
     unsafe fn on_submit(&self, states: &S, queue: &Arc<Queue>,
                         fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo;
 }
 
+#[deprecated]
 pub struct CommandBuffer<C = Box<CommandsListOutput>> {
     states: StatesManager,
     commands: C,
