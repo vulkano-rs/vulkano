@@ -43,6 +43,7 @@ pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::empty::{empty, EmptyCommandsList};
+pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
@@ -55,6 +56,7 @@ pub mod draw;
 mod empty;
 pub mod execute;
 pub mod fill_buffer;
+mod push_constants;
 pub mod render_pass;
 mod set_state;
 mod update_buffer;
