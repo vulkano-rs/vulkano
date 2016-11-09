@@ -26,8 +26,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds at the end of it a command that binds a pipeline layout and descriptor
-/// sets at the end of it.
+/// Wraps around a commands list and adds at the end of it a command that binds descriptor sets.
 pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
     // Parent commands list.
     previous: L,
@@ -35,12 +34,13 @@ pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
     pipeline_ty: vk::PipelineBindPoint,
     // The raw pipeline object to bind.
     raw_pipeline_layout: vk::PipelineLayout,
-    // The raw sets to bind.
+    // The raw sets to bind. Array where each element is a tuple of the first set to bind and the
+    // sets to bind.
     raw_sets: SmallVec<[(u32, SmallVec<[vk::DescriptorSet; 8]>); 4]>,
     // The device of the pipeline object, so that we can compare it with the command buffer's
     // device.
     device: Arc<Device>,
-    // The sets to bind. Unused, but we need to keep it alive.
+    // The sets to bind. Unused, but we need to keep them alive.
     sets: S,
     // The pipeline layout. Unused, but we need to keep it alive.
     pipeline_layout: P,
@@ -49,6 +49,12 @@ pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
 impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     where L: CommandsList, S: DescriptorSetsCollection, P: PipelineLayoutRef
 {
+    /// Builds the command.
+    ///
+    /// If `graphics` is true, the sets will be bound to the graphics slot. If false, they will be
+    /// bound to the compute slot.
+    ///
+    /// Returns an error if the sets are not compatible with the pipeline layout.
     #[inline]
     pub fn new(previous: L, graphics: bool, pipeline_layout: P, sets: S)
                -> Result<CmdBindDescriptorSets<L, S, P>, CmdBindDescriptorSetsError> 
@@ -108,7 +114,7 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P> where L: CommandsList {
                 for &(first_set, ref sets) in self.raw_sets.iter() {
                     vk.CmdBindDescriptorSets(cmd, self.pipeline_ty, self.raw_pipeline_layout,
                                             first_set, sets.len() as u32, sets.as_ptr(),
-                                            0, ptr::null());        // TODO: not supported
+                                            0, ptr::null());        // TODO: dynamic offset not supported
                 }
             }
         }));
