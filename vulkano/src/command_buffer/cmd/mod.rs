@@ -48,6 +48,7 @@ pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::end_render_pass::CmdEndRenderPass;
+pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
 pub use self::next_subpass::CmdNextSubpass;
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
@@ -65,7 +66,7 @@ mod draw;
 mod empty;
 mod end_render_pass;
 pub mod execute;
-pub mod fill_buffer;
+mod fill_buffer;
 mod next_subpass;
 mod push_constants;
 mod set_state;
@@ -99,10 +100,11 @@ pub unsafe trait CommandsList {
 
     /// Adds a command that writes the content of a buffer.
     #[inline]
-    fn fill_buffer<B>(self, buffer: B, data: u32) -> fill_buffer::FillCommand<Self, B>
+    fn fill_buffer<B>(self, buffer: B, data: u32)
+                      -> Result<CmdFillBuffer<Self, B>, CmdFillBufferError>
         where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer
     {
-        fill_buffer::FillCommand::new(self, buffer, data)
+        CmdFillBuffer::new(self, buffer, data)
     }
 
     /// Adds a command that executes a secondary command buffer.
