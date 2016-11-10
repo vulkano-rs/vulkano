@@ -37,6 +37,7 @@ use pipeline::vertex::Source;
 use sync::Fence;
 use vk;
 
+pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
 pub use self::bind_descriptor_sets::{CmdBindDescriptorSets, CmdBindDescriptorSetsError};
 pub use self::bind_pipeline::CmdBindPipeline;
@@ -50,6 +51,7 @@ pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
+mod begin_render_pass;
 mod bind_descriptor_sets;
 mod bind_index_buffer;
 mod bind_pipeline;
@@ -141,11 +143,11 @@ pub unsafe trait CommandsList {
     /// You must call this before you can add draw commands.
     #[inline]
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
-                               -> render_pass::BeginRenderPassCommand<Self, F::RenderPass, F>
-        where Self: Sized + CommandsListPossibleOutsideRenderPass,
-              F: TrackedFramebuffer, F::RenderPass: RenderPass + RenderPassClearValues<C>
+                               -> CmdBeginRenderPass<Self, F::RenderPass, F>
+        where Self: Sized, F: TrackedFramebuffer,
+              F::RenderPass: RenderPass + RenderPassClearValues<C>
     {
-        render_pass::BeginRenderPassCommand::new(self, framebuffer, secondary, clear_values)
+        CmdBeginRenderPass::new(self, framebuffer, secondary, clear_values)
     }
 
     /// Adds a command that jumps to the next subpass of the current render pass.
