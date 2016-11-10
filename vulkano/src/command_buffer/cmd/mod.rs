@@ -47,6 +47,7 @@ pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedEr
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
+pub use self::next_subpass::CmdNextSubpass;
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
@@ -63,6 +64,7 @@ mod draw;
 mod empty;
 pub mod execute;
 pub mod fill_buffer;
+mod next_subpass;
 mod push_constants;
 pub mod render_pass;
 mod set_state;
@@ -152,10 +154,10 @@ pub unsafe trait CommandsList {
 
     /// Adds a command that jumps to the next subpass of the current render pass.
     #[inline]
-    fn next_subpass(self, secondary: bool) -> render_pass::NextSubpassCommand<Self>
-        where Self: Sized + CommandsListPossibleInsideRenderPass
+    fn next_subpass(self, secondary: bool) -> CmdNextSubpass<Self>
+        where Self: Sized
     {
-        render_pass::NextSubpassCommand::new(self, secondary)
+        CmdNextSubpass::new(self, secondary)
     }
 
     /// Adds a command that ends the current render pass.
