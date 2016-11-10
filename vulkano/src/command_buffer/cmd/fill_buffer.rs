@@ -53,6 +53,9 @@ impl<L, B> CmdFillBuffer<L, B>
 
         let (buffer_handle, offset) = {
             let BufferInner { buffer: buffer_inner, offset } = buffer.inner();
+            if !buffer_inner.usage_transfer_dest() {
+                return Err(CmdFillBufferError::BufferMissingUsage);
+            }
             if offset % 4 != 0 {
                 return Err(CmdFillBufferError::WrongAlignment);
             }
@@ -96,6 +99,8 @@ unsafe impl<L, B> CommandsList for CmdFillBuffer<L, B>
 /// Error that can happen when creating a `CmdFillBuffer`.
 #[derive(Debug, Copy, Clone)]
 pub enum CmdFillBufferError {
+    /// The "transfer destination" usage must be enabled on the buffer.
+    BufferMissingUsage,
     /// The data or size must be 4-bytes aligned.
     WrongAlignment,
 }
@@ -104,6 +109,9 @@ impl error::Error for CmdFillBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            CmdFillBufferError::BufferMissingUsage => {
+                "the transfer destination usage must be enabled on the buffer"
+            },
             CmdFillBufferError::WrongAlignment => {
                 "the offset or size are not aligned to 4 bytes"
             },

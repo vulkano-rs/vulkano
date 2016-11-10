@@ -60,6 +60,9 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
 
         let (buffer_handle, offset) = {
             let BufferInner { buffer: buffer_inner, offset } = buffer.inner();
+            if !buffer_inner.usage_transfer_dest() {
+                return Err(CmdUpdateBufferError::BufferMissingUsage);
+            }
             if offset % 4 != 0 {
                 return Err(CmdUpdateBufferError::WrongAlignment);
             }
@@ -125,6 +128,8 @@ unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
 /// Error that can happen when creating a `CmdUpdateBuffer`.
 #[derive(Debug, Copy, Clone)]
 pub enum CmdUpdateBufferError {
+    /// The "transfer destination" usage must be enabled on the buffer.
+    BufferMissingUsage,
     /// The data or size must be 4-bytes aligned.
     WrongAlignment,
     /// The data must not be larger than 64k bytes.
@@ -135,6 +140,9 @@ impl error::Error for CmdUpdateBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            CmdUpdateBufferError::BufferMissingUsage => {
+                "the transfer destination usage must be enabled on the buffer"
+            },
             CmdUpdateBufferError::WrongAlignment => {
                 "the offset or size are not aligned to 4 bytes"
             },
