@@ -75,7 +75,7 @@ mod update_buffer;
 
 /// A list of commands that can be turned into a command buffer.
 ///
-/// This is just a naked list of commands. It stores buffers, images, etc. but the list of commands
+/// This is just a naked list of commands. It holds buffers, images, etc. but the list of commands
 /// itself is not a Vulkan object.
 pub unsafe trait CommandsList {
     /// Adds a command that writes the content of a buffer.
@@ -211,6 +211,14 @@ pub unsafe trait CommandsList {
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
+    ///
+    /// The `CommandsListSink` typically represents a command buffer being constructed.
+    /// The `append` method must call the methods of that `CommandsListSink` in order to add
+    /// elements at the end of the command buffer being constructed. The `CommandsListSink` can
+    /// also typically be a filter around another `CommandsListSink`.
+    ///
+    /// The lifetime of the `CommandsListSink` is the same as the lifetime of `&self`. This means
+    /// that the commands you pass to the sink can borrow `self`.
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>);
 }
 
@@ -221,32 +229,58 @@ unsafe impl CommandsList for Box<CommandsList> {
     }
 }
 
-/// Output of the "append" method. The lifetime corresponds to the CommandsList.
+/// Output of the "append" method. The lifetime corresponds to a borrow of the commands list.
+///
+/// A `CommandsListSink` typically represents a command buffer being constructed. The various
+/// methods add elements at the end of that command buffer.
 pub trait CommandsListSink<'a> {
+    /// Returns the device of the sink. Used by the commands in the commands list to make sure that
+    /// their buffer, images, etc. belong to the same device as the sink.
     fn device(&self) -> &Arc<Device>;
 
+    /// Requests that a command must be executed.
+    ///
     /// Note that the lifetime means that we hold a reference to the content of
     /// the commands list in that closure.
     fn add_command(&mut self, Box<CommandsListSinkCaller<'a> + 'a>);
 
+    /// Requests that a buffer must be transitionned to a given state.
+    ///
+    /// The parameters are the buffer, and its offset and size, plus a `write` boolean that is
+    /// `true` if the buffer must be transitionned to a writable state or `false` if it must be
+    /// transitionned to a readable state.
     fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
                              write: bool);
 
-    ///
+    /// Requests that an image must be transitionned to a given state.
     ///
     /// If necessary, you must transition the image to the `layout`.
     fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, layout: Layout);
+                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout);
 
+    /// Notifies the sink that an image has been transitionned by one of the previous commands
+    /// added with `add_command`.
+    ///
+    /// The sink doesn't need to perform any operation when this method is called, but should
+    /// modify its internal state in order to keep track of the state of that image.
     fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
                                          layout: Layout);
 }
 
+/// This trait is equivalent to `FnOnce(&mut RawCommandBufferPrototype<'a>)`. It is necessary
+/// because Rust doesn't permit you to call a `Box<FnOnce>`.
+///
+/// > **Note**: This trait will most likely be removed if Rust fixes that problem with
+/// > `Box<FnOnce>`.
 pub trait CommandsListSinkCaller<'a> {
+    /// Consumes a `Box<CommandsListSinkCaller>` and call it on the parameter.
     fn call(self: Box<Self>, &mut RawCommandBufferPrototype<'a>);
 }
-impl<'a, T> CommandsListSinkCaller<'a> for T where T: FnOnce(&mut RawCommandBufferPrototype<'a>) -> () + 'a {
+
+impl<'a, T> CommandsListSinkCaller<'a> for T
+    where T: FnOnce(&mut RawCommandBufferPrototype<'a>) -> () + 'a
+{
     fn call(self: Box<Self>, proto: &mut RawCommandBufferPrototype<'a>) {
         self(proto);
     }

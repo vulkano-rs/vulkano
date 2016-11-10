@@ -231,21 +231,18 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
-                             write: bool)
+    fn add_buffer_transition(&mut self, _: &TrackedBuffer, _: usize, _: usize, _: bool) {
+    }
+
+    #[inline]
+    fn add_image_transition(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32, _: u32,
+                            _: bool, _: Layout)
     {
     }
 
     #[inline]
-    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, layout: Layout)
-    {
-    }
-
-    #[inline]
-    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
-                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                                         layout: Layout)
+    fn add_image_transition_notification(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32,
+                                         _: u32, _: Layout)
     {
     }
 }
