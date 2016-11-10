@@ -33,8 +33,8 @@ use vulkano_win::VkSurfaceBuild;
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::command_buffer;
 use vulkano::command_buffer::DynamicState;
-use vulkano::command_buffer::PrimaryCbBuilder;
 use vulkano::command_buffer::CommandsList;
 use vulkano::command_buffer::Submit;
 use vulkano::command_buffer::Submission;
@@ -379,7 +379,7 @@ fn main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer = PrimaryCbBuilder::new(&device, queue.family())
+        let command_buffer = command_buffer::empty()
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
@@ -394,7 +394,7 @@ fn main() {
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-            .draw(pipeline.clone(), &DynamicState::none(), &vertex_buffer, (), &())
+            .draw(pipeline.clone(), DynamicState::none(), &vertex_buffer, (), &())
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
@@ -402,7 +402,7 @@ fn main() {
             .end_render_pass()
 
             // Finish building the command buffer by calling `build`.
-            .build();
+            .build(&device, queue.family());
 
         // Now all we need to do is submit the command buffer to the queue.
         submissions.push(command_buffer.submit(&queue).unwrap());
