@@ -244,11 +244,10 @@ unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        /*sink.add_image_transition(&self.image, self.first_layer, self.num_layers,
+        // FIXME: adjust layers & mipmaps with the view's parameters
+        sink.add_image_transition(&self.image.image(), self.first_layer, self.num_layers,
                                   self.first_mipmap, self.num_mipmaps, self.write,
-                                  self.layout);*/
-                                  // TODO:
-        unimplemented!()
+                                  self.layout);
     }
 }
 
