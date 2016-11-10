@@ -118,7 +118,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 0       // FIXME:
             }}
 
-            fn push_constants_range(&self, num: usize) -> Option<(usize, usize, ShaderStages)> {{
+            fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {{
                 None
             }}
         }}
