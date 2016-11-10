@@ -68,7 +68,6 @@ pub mod execute;
 pub mod fill_buffer;
 mod next_subpass;
 mod push_constants;
-pub mod render_pass;
 mod set_state;
 mod update_buffer;
 
