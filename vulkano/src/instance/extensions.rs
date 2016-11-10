@@ -28,6 +28,9 @@ macro_rules! extensions {
             $(
                 pub $ext: bool,
             )*
+			
+			/// Helper for future extensibility.
+			pub _hidden: Hidden,
         }
 
         impl $sname {
@@ -36,6 +39,7 @@ macro_rules! extensions {
             pub fn none() -> $sname {
                 $sname {
                     $($ext: false,)*
+					_hidden: Hidden(())
                 }
             }
 
@@ -53,6 +57,7 @@ macro_rules! extensions {
                     $(
                         $ext: self.$ext && other.$ext,
                     )*
+					_hidden: Hidden(())
                 }
             }
         }
@@ -196,6 +201,10 @@ impl From<Error> for SupportedExtensionsError {
         }
     }
 }
+
+/// Non-constructible helper for future extensibility of extension structs.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Hidden(());
 
 #[cfg(test)]
 mod tests {
