@@ -65,7 +65,7 @@ pub mod dispatch;
 mod draw;
 mod empty;
 mod end_render_pass;
-pub mod execute;
+//pub mod execute;      // TODO: reenable when the concept of a command buffer is well defined
 mod fill_buffer;
 mod next_subpass;
 mod push_constants;
@@ -107,7 +107,8 @@ pub unsafe trait CommandsList {
         CmdFillBuffer::new(self, buffer, data)
     }
 
-    /// Adds a command that executes a secondary command buffer.
+    // TODO: reenable
+    /*/// Adds a command that executes a secondary command buffer.
     ///
     /// When you create a command buffer, you have the possibility to create either a primary
     /// command buffer or a secondary command buffer. Secondary command buffers can't be executed
@@ -120,7 +121,7 @@ pub unsafe trait CommandsList {
         where Self: Sized, Cb: CommandsListOutput       /* FIXME: */
     {
         execute::ExecuteCommand::new(self, command_buffer)
-    }
+    }*/
 
     /// Adds a command that executes a compute shader.
     ///
