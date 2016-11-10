@@ -382,7 +382,7 @@ unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
     }
 }
 
-pub unsafe trait TrackedImageView<States>: ImageView {
+pub unsafe trait TrackedImageView<States = StatesManager>: ImageView {
     type Image: TrackedImage<States>;
 
     fn image(&self) -> &Self::Image;
