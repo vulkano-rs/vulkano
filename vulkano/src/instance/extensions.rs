@@ -42,7 +42,7 @@ macro_rules! extensions {
             pub fn none() -> $sname {
                 $sname {
                     $($ext: false,)*
-					_unbuildable: Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
 
@@ -60,7 +60,7 @@ macro_rules! extensions {
                     $(
                         $ext: self.$ext && other.$ext,
                     )*
-					_unbuildable: Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
         }
