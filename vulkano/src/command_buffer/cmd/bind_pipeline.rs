@@ -79,6 +79,14 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     }
 }
 
+impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
+    /// Returns the device the pipeline is assocated with.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {

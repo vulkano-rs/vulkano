@@ -18,6 +18,7 @@ use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindPipeline;
 use command_buffer::cmd::CmdBindVertexBuffers;
 use command_buffer::cmd::CmdPushConstants;
+use command_buffer::cmd::CmdSetState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
@@ -42,7 +43,9 @@ pub struct CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
     previous: CmdBindVertexBuffers<
                 CmdPushConstants<
                     CmdBindDescriptorSets<
-                        CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>,
+                        CmdSetState<
+                            CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>
+                        >,
                         S, Arc<GraphicsPipeline<Pv, Pl, Prp>>
                     >,
                     Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>
@@ -62,16 +65,20 @@ impl<L, V, Pv, Pl, Prp, S, Pc> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
 {
     /// See the documentation of the `draw` method.
     pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-               dynamic: &DynamicState, vertices: V, sets: S, push_constants: Pc)
+               dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc)
                -> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
         let (_, vertex_count, instance_count) = pipeline.vertex_definition().decode(&vertices);
 
         let previous = CmdBindPipeline::bind_graphics_pipeline(previous, pipeline.clone());
+        let device = previous.device().clone();
+        let previous = CmdSetState::new(previous, device, dynamic);
         let previous = CmdBindDescriptorSets::new(previous, true, pipeline.clone(), sets).unwrap() /* TODO: error */;
         let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants).unwrap() /* TODO: error */;
         let previous = CmdBindVertexBuffers::new(previous, pipeline.vertex_definition(), vertices);
+
+        // TODO: check that dynamic state is not missing some elements required by the pipeline
 
         CmdDraw {
             previous: previous,

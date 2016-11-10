@@ -172,9 +172,9 @@ pub unsafe trait CommandsList {
     /// Can only be used from inside a render pass.
     #[inline]
     fn draw<Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-                                       dynamic: &DynamicState, vertices: V, sets: S,
-                                       push_constants: Pc)
-                                       -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
+                                   dynamic: DynamicState, vertices: V, sets: S,
+                                   push_constants: Pc)
+                                   -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
         where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection, Pv: Source<V>
     {
