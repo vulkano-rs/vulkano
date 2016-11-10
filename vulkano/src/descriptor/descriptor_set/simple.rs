@@ -13,6 +13,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferViewRef;
 use buffer::TrackedBuffer;
+use command_buffer::cmd::CommandsListSink;
 use command_buffer::SubmitInfo;
 use command_buffer::sys::PipelineBarrierBuilder;
 use descriptor::descriptor_set::DescriptorSet;
@@ -69,6 +70,11 @@ unsafe impl<R> DescriptorSet for SimpleDescriptorSet<R> {
 unsafe impl<R, S> TrackedDescriptorSet<S> for SimpleDescriptorSet<R>
     where R: SimpleDescriptorSetResourcesCollection<S>
 {
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        self.resources.add_transition(sink)
+    }
+
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
@@ -201,6 +207,9 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
 
 /// Internal trait related to the `SimpleDescriptorSet` system.
 pub unsafe trait SimpleDescriptorSetResourcesCollection<States> {
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>);
+
     /// Extracts the states relevant to the buffers and images contained in the descriptor set.
     /// Then transitions them to the right state.
     // TODO: must return a Result if multiple elements conflict with one another
@@ -215,6 +224,10 @@ pub unsafe trait SimpleDescriptorSetResourcesCollection<States> {
 }
 
 unsafe impl<S> SimpleDescriptorSetResourcesCollection<S> for () {
+    #[inline]
+    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {
+    }
+
     #[inline]
     unsafe fn transition(&self, _: &mut S, _: usize) -> (usize, PipelineBarrierBuilder) {
         (0, PipelineBarrierBuilder::new())
@@ -244,6 +257,11 @@ pub struct SimpleDescriptorSetBuf<B> {
 unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBuf<B>
     where B: TrackedBuffer<S>
 {
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        unimplemented!()
+    }
+
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
@@ -290,6 +308,11 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptorSetBufView<V>
     where V: BufferViewRef, V::Buffer: TrackedBuffer<S>
 {
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        unimplemented!()
+    }
+
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
@@ -343,6 +366,11 @@ unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
     where I: TrackedImageView<S>
 {
     #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        unimplemented!()
+    }
+
+    #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                          -> (usize, PipelineBarrierBuilder)
     {
@@ -385,6 +413,12 @@ unsafe impl<S, A, B> SimpleDescriptorSetResourcesCollection<S> for (A, B)
     where A: SimpleDescriptorSetResourcesCollection<S>,
           B: SimpleDescriptorSetResourcesCollection<S>
 {
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        self.0.add_transition(sink);
+        self.1.add_transition(sink);
+    }
+
     #[inline]
     unsafe fn transition(&self, states: &mut S, num_command: usize)
                             -> (usize, PipelineBarrierBuilder)
