@@ -28,9 +28,12 @@ macro_rules! extensions {
             $(
                 pub $ext: bool,
             )*
-			
-			/// Helper for future extensibility.
-			pub _hidden: Hidden,
+            
+            /// This field ensures that an instance of this `Extensions` struct
+            /// can only be created through Vulkano functions and the update
+            /// syntax. This way, extensions can be added to Vulkano without
+            /// breaking existing code.
+            pub _unbuildable: Unbuildable,
         }
 
         impl $sname {
@@ -39,7 +42,7 @@ macro_rules! extensions {
             pub fn none() -> $sname {
                 $sname {
                     $($ext: false,)*
-					_hidden: Hidden(())
+					_unbuildable: Unbuildable(())
                 }
             }
 
@@ -57,7 +60,7 @@ macro_rules! extensions {
                     $(
                         $ext: self.$ext && other.$ext,
                     )*
-					_hidden: Hidden(())
+					_unbuildable: Unbuildable(())
                 }
             }
         }
@@ -202,9 +205,11 @@ impl From<Error> for SupportedExtensionsError {
     }
 }
 
-/// Non-constructible helper for future extensibility of extension structs.
+/// This helper type can only be instantiated inside this module.
+/// See `*Extensions::_unbuildable`.
+#[doc(hidden)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Hidden(());
+pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
