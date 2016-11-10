@@ -64,7 +64,9 @@ impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
     }
 }
 
-impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl> where L: CommandsList, Pl: PipelineLayoutRef {
+unsafe impl<L, Pc, Pl> CommandsList for CmdPushConstants<L, Pc, Pl>
+    where L: CommandsList, Pl: PipelineLayoutRef
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);

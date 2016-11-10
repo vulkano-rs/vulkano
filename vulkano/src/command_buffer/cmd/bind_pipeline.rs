@@ -79,7 +79,7 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     }
 }
 
-impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
+unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);

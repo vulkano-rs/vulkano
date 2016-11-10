@@ -64,7 +64,7 @@ impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
     }
 }
 
-impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
+unsafe impl<L, B> CommandsList for CmdBindVertexBuffers<L, B> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);

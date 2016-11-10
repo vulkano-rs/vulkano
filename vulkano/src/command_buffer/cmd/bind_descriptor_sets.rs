@@ -99,7 +99,7 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     }
 }
 
-impl<L, S, P> CmdBindDescriptorSets<L, S, P> where L: CommandsList {
+unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);

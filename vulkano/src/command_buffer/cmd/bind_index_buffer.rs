@@ -69,7 +69,9 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
     }
 }
 
-impl<L, B> CmdBindIndexBuffer<L, B> where L: CommandsList, B: TrackedBuffer {
+unsafe impl<L, B> CommandsList for CmdBindIndexBuffer<L, B>
+    where L: CommandsList, B: TrackedBuffer
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);

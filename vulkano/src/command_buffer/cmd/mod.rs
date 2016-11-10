@@ -44,6 +44,7 @@ pub use self::bind_vertex_buffers::CmdBindVertexBuffers;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
+pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
@@ -56,7 +57,7 @@ mod bind_vertex_buffers;
 mod blit_image_unsynced;
 mod copy_buffer;
 pub mod dispatch;
-pub mod draw;
+mod draw;
 mod empty;
 pub mod execute;
 pub mod fill_buffer;
@@ -170,14 +171,14 @@ pub unsafe trait CommandsList {
     ///
     /// Can only be used from inside a render pass.
     #[inline]
-    fn draw<'a, Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
+    fn draw<Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
                                        dynamic: &DynamicState, vertices: V, sets: S,
-                                       push_constants: &'a Pc)
-                                       -> draw::DrawCommand<'a, Self, V, Pv, Pl, Prp, S, Pc>
+                                       push_constants: Pc)
+                                       -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
         where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
-              S: TrackedDescriptorSetsCollection, Pc: 'a, Pv: Source<V>
+              S: TrackedDescriptorSetsCollection, Pv: Source<V>
     {
-        draw::DrawCommand::regular(self, pipeline, dynamic, vertices, sets, push_constants)
+        CmdDraw::new(self, pipeline, dynamic, vertices, sets, push_constants)
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
