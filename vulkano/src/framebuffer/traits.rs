@@ -9,10 +9,7 @@
 
 use std::sync::Arc;
 
-use command_buffer::SubmitInfo;
-use command_buffer::StatesManager;
-use command_buffer::sys::PipelineBarrierBuilder;
-use device::Queue;
+use command_buffer::cmd::CommandsListSink;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
@@ -21,7 +18,6 @@ use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
-use sync::Fence;
 use sync::PipelineStages;
 
 use vk;
@@ -67,43 +63,14 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-pub unsafe trait TrackedFramebuffer<States = StatesManager>: Framebuffer {
-    /// Extracts the states of the framebuffer's attachments from `states`.
-    ///
-    /// The return values contains:
-    ///
-    /// - A state object that contains the transitionned states of the framebuffer's attachments.
-    /// - The number of command after which the pipeline barrier (the last element of the tuple)
-    ///   must happen.
-    /// - A pipeline barrier that transitions the attachments to the correct state.
-    ///
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder);
-
-    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
-
-    unsafe fn on_submit(&self, states: &States, q: &Arc<Queue>,
-                        f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo;
+pub unsafe trait TrackedFramebuffer: Framebuffer {
+    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
 }
 
-unsafe impl<States, T> TrackedFramebuffer<States> for Arc<T> where T: TrackedFramebuffer<States> {
+unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
     #[inline]
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder)
-    {
-        (**self).transition(states, num_command)
-    }
-
-    #[inline]
-    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder {
-        (**self).finish(in_s, out)
-    }
-
-    #[inline]
-    unsafe fn on_submit(&self, states: &States, q: &Arc<Queue>,
-                        f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
-    {
-        (**self).on_submit(states, q, f)
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        (**self).add_transition(sink);
     }
 }
 
