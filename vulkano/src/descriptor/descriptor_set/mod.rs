@@ -18,6 +18,7 @@ use device::Queue;
 use sync::Fence;
 
 pub use self::collection::DescriptorSetsCollection;
+pub use self::collection::TrackedDescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
 pub use self::simple::*;
 pub use self::sys::UnsafeDescriptorSet;

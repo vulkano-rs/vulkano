@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use descriptor::descriptor_set::DescriptorSetsCollection;
+use descriptor::descriptor_set::TrackedDescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutSetsCompatible;
 use device::Device;
@@ -45,7 +45,7 @@ pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
 }
 
 impl<L, S, P> CmdBindDescriptorSets<L, S, P>
-    where L: CommandsList, S: DescriptorSetsCollection, P: PipelineLayoutRef
+    where L: CommandsList, S: TrackedDescriptorSetsCollection, P: PipelineLayoutRef
 {
     /// Builds the command.
     ///
@@ -97,12 +97,16 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     }
 }
 
-unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P> where L: CommandsList {
+unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P>
+    where L: CommandsList, S: TrackedDescriptorSetsCollection
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
         assert_eq!(self.device.internal_object(), builder.device().internal_object());
+
+        self.sets.add_transition(builder);
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
