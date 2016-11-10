@@ -7,25 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use std::sync::Arc;
 use std::ops::Range;
 use std::ptr;
 use smallvec::SmallVec;
 
-use command_buffer::StatesManager;
-use command_buffer::SubmitInfo;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use device::Device;
-use device::Queue;
 use format::ClearValue;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
-use instance::QueueFamily;
-use sync::Fence;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -57,7 +51,7 @@ impl<L, F> CmdBeginRenderPass<L, F::RenderPass, F>
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
-    pub fn new<C>(mut previous: L, framebuffer: F, secondary: bool, clear_values: C)
+    pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
                   -> CmdBeginRenderPass<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {

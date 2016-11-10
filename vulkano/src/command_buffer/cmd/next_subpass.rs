@@ -7,26 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::sync::Arc;
-use std::ops::Range;
-use std::ptr;
-use smallvec::SmallVec;
-
-use command_buffer::StatesManager;
-use command_buffer::SubmitInfo;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use device::Device;
-use device::Queue;
-use format::ClearValue;
-use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::RenderPass;
-use framebuffer::RenderPassClearValues;
-use instance::QueueFamily;
-use sync::Fence;
-use VulkanObject;
 use VulkanPointers;
 use vk;
 

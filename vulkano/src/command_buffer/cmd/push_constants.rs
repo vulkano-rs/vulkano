@@ -9,22 +9,16 @@
 
 use std::error;
 use std::fmt;
-use std::ptr;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 use device::Device;
-use pipeline::ComputePipeline;
-use pipeline::GraphicsPipeline;
 use VulkanObject;
 use VulkanPointers;
-use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that updates push constants.
 pub struct CmdPushConstants<L, Pc, Pl> where L: CommandsList {

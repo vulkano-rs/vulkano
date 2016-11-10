@@ -10,8 +10,6 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::TrackedBuffer;
-use buffer::TypedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;

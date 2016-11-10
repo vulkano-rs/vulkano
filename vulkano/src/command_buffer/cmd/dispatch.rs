@@ -7,33 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
-use command_buffer::DynamicState;
-use command_buffer::StatesManager;
-use command_buffer::SubmitInfo;
 use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindPipeline;
-use command_buffer::cmd::CmdBindVertexBuffers;
 use command_buffer::cmd::CmdPushConstants;
-use command_buffer::cmd::CmdSetState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use descriptor::PipelineLayoutRef;
-use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
-use device::Device;
-use device::Queue;
-use instance::QueueFamily;
 use pipeline::ComputePipeline;
-use pipeline::vertex::Source;
-use sync::Fence;
-use VulkanObject;
 use VulkanPointers;
-use vk;
 
 /// Wraps around a commands list and adds a dispatch command at the end of it.
 pub struct CmdDispatch<L, Pl, S, Pc>

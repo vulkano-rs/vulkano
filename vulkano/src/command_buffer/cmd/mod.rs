@@ -7,35 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
-use std::iter;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::DynamicState;
-use command_buffer::pool::CommandPool;
-use command_buffer::StatesManager;
-use command_buffer::SubmitInfo;
-use command_buffer::SubmitBuilder;
-use command_buffer::Submit;
-use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBufferBuilder;
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
-use device::Queue;
 use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
 use image::TrackedImage;
-use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
-use sync::Fence;
-use vk;
 
 pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
