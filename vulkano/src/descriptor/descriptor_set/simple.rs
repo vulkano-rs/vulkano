@@ -259,6 +259,7 @@ unsafe impl<B, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        // TODO: sink.add_buffer_transition(&self.buffer, 0, self.buffer.size(), self.write);
         unimplemented!()
     }
 
@@ -310,6 +311,7 @@ unsafe impl<V, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        // TODO: sink.add_buffer_transition(&self.view.buffer(), 0, self.view.buffer().size(), self.write);
         unimplemented!()
     }
 
@@ -367,6 +369,9 @@ unsafe impl<I, S> SimpleDescriptorSetResourcesCollection<S> for SimpleDescriptor
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        // TODO: sink.add_image_transition(&self.image, self.first_layer, self.num_layers,
+        //                                 self.first_mipmap, self.num_mipmaps, self.write,
+        //                                 self.layout);
         unimplemented!()
     }
 
