@@ -45,6 +45,7 @@ pub use self::bind_vertex_buffers::CmdBindVertexBuffers;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
+pub use self::dispatch::CmdDispatch;
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::end_render_pass::CmdEndRenderPass;
@@ -61,7 +62,7 @@ mod bind_pipeline;
 mod bind_vertex_buffers;
 mod blit_image_unsynced;
 mod copy_buffer;
-pub mod dispatch;
+mod dispatch;
 mod draw;
 mod empty;
 mod end_render_pass;
@@ -131,13 +132,13 @@ pub unsafe trait CommandsList {
     /// The `pipeline` is the compute pipeline that will be executed, and the sets and push
     /// constants will be accessible to all the invocations.
     #[inline]
-    fn dispatch<'a, Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
-                               dimensions: [u32; 3], push_constants: &'a Pc)
-                               -> dispatch::DispatchCommand<'a, Self, Pl, S, Pc>
-        where Self: Sized + CommandsList + CommandsListPossibleOutsideRenderPass, Pl: PipelineLayoutRef,
-              S: TrackedDescriptorSetsCollection, Pc: 'a
+    fn dispatch<Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
+                           dimensions: [u32; 3], push_constants: Pc)
+                           -> CmdDispatch<Self, Pl, S, Pc>
+        where Self: Sized + CommandsList, Pl: PipelineLayoutRef,
+              S: TrackedDescriptorSetsCollection
     {
-        dispatch::DispatchCommand::new(self, pipeline, sets, dimensions, push_constants)
+        CmdDispatch::new(self, pipeline, sets, dimensions, push_constants)
     }
 
     /// Adds a command that starts a render pass.
