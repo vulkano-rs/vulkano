@@ -47,6 +47,7 @@ pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedEr
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
+pub use self::end_render_pass::CmdEndRenderPass;
 pub use self::next_subpass::CmdNextSubpass;
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
@@ -62,6 +63,7 @@ mod copy_buffer;
 pub mod dispatch;
 mod draw;
 mod empty;
+mod end_render_pass;
 pub mod execute;
 pub mod fill_buffer;
 mod next_subpass;
@@ -165,10 +167,10 @@ pub unsafe trait CommandsList {
     /// This must be called after you went through all the subpasses and before you can build
     /// the command buffer or add further commands.
     #[inline]
-    fn end_render_pass(self) -> render_pass::EndRenderPassCommand<Self>
-        where Self: Sized + CommandsListPossibleInsideRenderPass
+    fn end_render_pass(self) -> CmdEndRenderPass<Self>
+        where Self: Sized
     {
-        render_pass::EndRenderPassCommand::new(self)
+        CmdEndRenderPass::new(self)
     }
 
     /// Adds a command that draws.
