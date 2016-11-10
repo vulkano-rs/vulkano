@@ -50,6 +50,7 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
 
         {
             let inner = buffer.inner();
+            assert!(inner.buffer.usage_index_buffer());     // TODO: error
             device = inner.buffer.device().clone();
             raw_buffer = inner.buffer.internal_object();
             offset = inner.offset as vk::DeviceSize;
