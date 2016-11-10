@@ -109,7 +109,9 @@ impl<L, F> CmdBeginRenderPass<L, F::RenderPass, F>
     }
 }
 
-unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
+unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
+    where L: CommandsList, F: TrackedFramebuffer
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
@@ -118,6 +120,8 @@ unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F> where L: Com
 
         debug_assert!(self.rect[0].start <= self.rect[0].end);
         debug_assert!(self.rect[1].start <= self.rect[1].end);
+
+        self.framebuffer.add_transition(builder);
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
