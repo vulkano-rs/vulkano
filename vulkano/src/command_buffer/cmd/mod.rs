@@ -37,6 +37,7 @@ pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::end_render_pass::CmdEndRenderPass;
 pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
+pub use self::join::CommandsListJoin;
 pub use self::next_subpass::CmdNextSubpass;
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
@@ -55,6 +56,7 @@ mod empty;
 mod end_render_pass;
 //pub mod execute;      // TODO: reenable when the concept of a command buffer is well defined
 mod fill_buffer;
+mod join;
 mod next_subpass;
 mod push_constants;
 mod set_state;
@@ -195,6 +197,12 @@ pub unsafe trait CommandsList {
               Pv: Source<V>
     {
         CmdDraw::new(self, pipeline, dynamic, vertices, sets, push_constants)
+    }
+
+    /// Appends another list at the end of this one.
+    #[inline]
+    fn join<L>(self, other: L) -> CommandsListJoin<Self, L> where Self: Sized, L: CommandsList {
+        CommandsListJoin::new(self, other)
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
