@@ -37,6 +37,7 @@ use pipeline::vertex::Source;
 use sync::Fence;
 use vk;
 
+pub use self::bind_index_buffer::CmdBindIndexBuffer;
 pub use self::bind_descriptor_sets::{CmdBindDescriptorSets, CmdBindDescriptorSetsError};
 pub use self::bind_pipeline::CmdBindPipeline;
 pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
@@ -48,6 +49,7 @@ pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
 mod bind_descriptor_sets;
+mod bind_index_buffer;
 mod bind_pipeline;
 mod blit_image_unsynced;
 mod copy_buffer;

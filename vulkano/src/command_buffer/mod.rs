@@ -125,6 +125,7 @@ pub struct RawCommandBufferPrototype<'a> {
     current_state: DynamicState,
     bound_graphics_pipeline: vk::Pipeline,
     bound_compute_pipeline: vk::Pipeline,
+    bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
     resources_states: StatesManager,
     marker: PhantomData<&'a ()>,
 }

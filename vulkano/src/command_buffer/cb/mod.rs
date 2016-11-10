@@ -192,6 +192,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
                 current_state: DynamicState::none(),
                 bound_graphics_pipeline: 0,
                 bound_compute_pipeline: 0,
+                bound_index_buffer: (0, 0, 0),
                 resources_states: StatesManager::new(),
                 marker: PhantomData,
             };
