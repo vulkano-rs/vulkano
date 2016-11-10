@@ -50,6 +50,8 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
 
         {
             let inner = buffer.inner();
+            debug_assert!(inner.offset < inner.buffer.size());
+            // TODO: check > The sum of offset and the address of the range of VkDeviceMemory object that is backing buffer, must be a multiple of the type indicated by indexType
             assert!(inner.buffer.usage_index_buffer());     // TODO: error
             device = inner.buffer.device().clone();
             raw_buffer = inner.buffer.internal_object();
