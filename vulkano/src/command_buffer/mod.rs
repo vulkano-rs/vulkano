@@ -43,7 +43,6 @@
 
 pub use self::states_manager::StatesManager;
 pub use self::cmd::empty;
-pub use self::cmd::CommandBuffer;
 pub use self::cmd::CommandsList;
 pub use self::cmd::CommandsListSink;
 pub use self::cmd::CommandsListSinkCaller;
