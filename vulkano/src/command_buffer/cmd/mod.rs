@@ -80,7 +80,14 @@ mod update_buffer;
 pub unsafe trait CommandsList {
     /// Adds a command that writes the content of a buffer.
     ///
-    /// After this command is executed, the content of `buffer` will become `data`.
+    /// After this command is executed, the content of `buffer` will become `data`. If `data` is
+    /// smaller than `buffer`, then only the beginning of `buffer` will be modified and the rest
+    /// will be left untouched. If `buffer` is smaller than `data`, `buffer` will be entirely
+    /// written and no error is generated.
+    ///
+    /// This command is limited to 64kB (65536 bytes) of data and should only be used for small
+    /// amounts of data. For large amounts of data, you are encouraged to write the data to a
+    /// buffer and use `copy_buffer` instead.
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
                                        -> Result<CmdUpdateBuffer<'a, Self, B, D>, CmdUpdateBufferError>
@@ -90,6 +97,9 @@ pub unsafe trait CommandsList {
     }
 
     /// Adds a command that copies the content of a buffer to another.
+    ///
+    /// If `source` is smaller than `destination`, only the beginning of `destination` will be
+    /// modified.
     #[inline]
     fn copy_buffer<S, D>(self, source: S, destination: D)
                          -> Result<CmdCopyBuffer<Self, S, D>, CmdCopyBufferError>
@@ -100,6 +110,14 @@ pub unsafe trait CommandsList {
     }
 
     /// Adds a command that writes the content of a buffer.
+    ///
+    /// This function is similar to the `memset` function in C. The `data` parameter is a number
+    /// that will be repeatidely written through the entire buffer.
+    ///
+    /// > **Note**: This function is technically safe because buffers can only contain integers or
+    /// > floating point numbers, which are always valid whatever their memory representation is.
+    /// > But unless your buffer actually contains only 32-bits integers, you are encouraged to use
+    /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     #[inline]
     fn fill_buffer<B>(self, buffer: B, data: u32)
                       -> Result<CmdFillBuffer<Self, B>, CmdFillBufferError>
@@ -184,8 +202,10 @@ pub unsafe trait CommandsList {
                                    dynamic: DynamicState, vertices: V, sets: S,
                                    push_constants: Pc)
                                    -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
-        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
-              S: TrackedDescriptorSetsCollection, Pv: Source<V>
+        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass,
+              Pl: PipelineLayoutRef,
+              S: TrackedDescriptorSetsCollection,
+              Pv: Source<V>
     {
         CmdDraw::new(self, pipeline, dynamic, vertices, sets, push_constants)
     }
