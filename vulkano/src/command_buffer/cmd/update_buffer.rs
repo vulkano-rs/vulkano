@@ -17,6 +17,8 @@ use command_buffer::RawCommandBufferPrototype;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -100,7 +102,12 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBuffer<'d, L, B, D>
         assert_eq!(self.buffer.inner().buffer.device().internal_object(),
                    builder.device().internal_object());
 
-        builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true);
+        {
+            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
+            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true,
+                                          stages, access);
+        }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {

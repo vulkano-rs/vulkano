@@ -27,6 +27,8 @@ use framebuffer::Subpass;
 use framebuffer::traits::Framebuffer;
 use image::Layout;
 use image::TrackedImage;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 use OomError;
 use VulkanObject;
@@ -231,18 +233,20 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, _: &TrackedBuffer, _: usize, _: usize, _: bool) {
+    fn add_buffer_transition(&mut self, _: &TrackedBuffer, _: usize, _: usize, _: bool,
+                             _: PipelineStages, _: AccessFlagBits)
+    {
     }
 
     #[inline]
     fn add_image_transition(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32, _: u32,
-                            _: bool, _: Layout)
+                            _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
     }
 
     #[inline]
     fn add_image_transition_notification(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32,
-                                         _: u32, _: Layout)
+                                         _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
     }
 }

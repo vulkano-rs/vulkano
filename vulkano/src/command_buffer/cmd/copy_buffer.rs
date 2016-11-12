@@ -15,6 +15,8 @@ use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -102,8 +104,19 @@ unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
         assert_eq!(self.source.inner().buffer.device().internal_object(),
                    builder.device().internal_object());
 
-        builder.add_buffer_transition(&self.source, 0, self.size as usize, false);
-        builder.add_buffer_transition(&self.destination, 0, self.size as usize, true);
+        {
+            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
+            let access = AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.source, 0, self.size as usize, false,
+                                          stages, access);
+        }
+        
+        {
+            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
+            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.destination, 0, self.size as usize, true,
+                                          stages, access);
+        }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {

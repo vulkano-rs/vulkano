@@ -24,6 +24,8 @@ use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
 use image::traits::TrackedImageView;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 use Error;
 use OomError;
@@ -289,8 +291,24 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
 
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        // TODO: "wrong" values
+        let stages = PipelineStages {
+            color_attachment_output: true,
+            late_fragment_tests: true,
+            .. PipelineStages::none()
+        };
+        
+        let access = AccessFlagBits {
+            color_attachment_read: true,
+            color_attachment_write: true,
+            depth_stencil_attachment_read: true,
+            depth_stencil_attachment_write: true,
+            .. AccessFlagBits::none()
+        };
+
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(&self.first.image(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */);
+        sink.add_image_transition(&self.first.image(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
+                                  stages, access);
         self.rest.add_transition(sink);
     }
 }

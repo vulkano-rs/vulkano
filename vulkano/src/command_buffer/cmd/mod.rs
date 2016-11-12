@@ -23,6 +23,8 @@ use image::TrackedImage;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 
 pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
@@ -245,13 +247,14 @@ pub trait CommandsListSink<'a> {
     /// `true` if the buffer must be transitionned to a writable state or `false` if it must be
     /// transitionned to a readable state.
     fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
-                             write: bool);
+                             write: bool, stages: PipelineStages, access: AccessFlagBits);
 
     /// Requests that an image must be transitionned to a given state.
     ///
     /// If necessary, you must transition the image to the `layout`.
     fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout);
+                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
+                            stages: PipelineStages, access: AccessFlagBits);
 
     /// Notifies the sink that an image has been transitionned by one of the previous commands
     /// added with `add_command`.
@@ -260,7 +263,8 @@ pub trait CommandsListSink<'a> {
     /// modify its internal state in order to keep track of the state of that image.
     fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                                         layout: Layout);
+                                         layout: Layout, stages: PipelineStages,
+                                         access: AccessFlagBits);
 }
 
 /// This trait is equivalent to `FnOnce(&mut RawCommandBufferPrototype<'a>)`. It is necessary

@@ -16,6 +16,8 @@ use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use device::Device;
 use pipeline::input_assembly::Index;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -78,7 +80,12 @@ unsafe impl<L, B> CommandsList for CmdBindIndexBuffer<L, B>
 
         assert_eq!(self.device.internal_object(), builder.device().internal_object());
 
-        builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), false);
+        {
+            let stages = PipelineStages { vertex_input: true, .. PipelineStages::none() };
+            let access = AccessFlagBits { index_read: true, .. AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), false,
+                                          stages, access);
+        }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             let params = (self.raw_buffer, self.offset, self.index_type);
