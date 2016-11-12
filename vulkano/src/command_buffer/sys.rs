@@ -38,7 +38,6 @@ use smallvec::SmallVec;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use buffer::TrackedBufferPipelineBarrierRequest;
 use buffer::sys::UnsafeBuffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
@@ -1208,7 +1207,7 @@ impl PipelineBarrierBuilder {
         });
     }
 
-    pub unsafe fn add_buffer_barrier_request<B>(&mut self, buffer: &B,
+    /*pub unsafe fn add_buffer_barrier_request<B>(&mut self, buffer: &B,
                                                 request: TrackedBufferPipelineBarrierRequest)
         where B: Buffer
     {
@@ -1244,7 +1243,7 @@ impl PipelineBarrierBuilder {
                 size: (memory_barrier.size + size) as vk::DeviceSize,
             });
         }
-    }
+    }*/
 
     pub unsafe fn add_image_barrier_request<I>(&mut self, image: &I,
                                                request: TrackedImagePipelineBarrierRequest)
