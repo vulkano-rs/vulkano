@@ -55,7 +55,6 @@ use framebuffer::traits::Framebuffer;
 use image::Image;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
-use image::traits::TrackedImagePipelineBarrierRequest;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::IndexType;
@@ -1243,7 +1242,7 @@ impl PipelineBarrierBuilder {
                 size: (memory_barrier.size + size) as vk::DeviceSize,
             });
         }
-    }*/
+    }
 
     pub unsafe fn add_image_barrier_request<I>(&mut self, image: &I,
                                                request: TrackedImagePipelineBarrierRequest)
@@ -1293,7 +1292,7 @@ impl PipelineBarrierBuilder {
                 },
             });
         }
-    }
+    }*/
 
     /// Adds a buffer memory barrier. This means that all the memory writes to the given buffer by
     /// the given source stages for the given source accesses must be visible by the given dest

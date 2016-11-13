@@ -11,9 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 
-use command_buffer::StatesManager;
 use command_buffer::Submission;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -23,9 +21,6 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::TrackedImagePipelineBarrierRequest;
-use image::traits::TrackedImagePipelineMemoryBarrierRequest;
-use image::traits::TrackedImageSubmitInfos;
 use image::traits::TrackedImage;
 use image::traits::TrackedImageView;
 use image::sys::Layout;
@@ -33,7 +28,6 @@ use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
 use sync::AccessFlagBits;
-use sync::Fence;
 use sync::PipelineStages;
 
 use OomError;
@@ -177,96 +171,10 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-unsafe impl TrackedImage<StatesManager> for SwapchainImage {
-    fn transition(&self, states: &mut StatesManager, num_command: usize, _: u32, _: u32,
-                  _: u32, _: u32, _: bool, layout: Layout, stage: PipelineStages,
-                  access: AccessFlagBits) -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        let default = SwapchainImageCbState {
-            stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
-            access: AccessFlagBits { memory_read: true, .. AccessFlagBits::none() },
-            command_num: 0,
-            layout: Layout::PresentSrc,
-        };
-
-        let new_state = SwapchainImageCbState {
-            stages: stage,
-            access: access,
-            command_num: num_command,
-            layout: layout,
-        };
-
-        let mut state = states.image_or(&self.image, 0, || default);
-
-        let transition = TrackedImagePipelineBarrierRequest {
-            after_command_num: state.command_num,
-            source_stage: state.stages,
-            destination_stages: stage,
-            by_region: true,
-            memory_barrier: Some(TrackedImagePipelineMemoryBarrierRequest {
-                first_mipmap: 0,
-                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
-                first_layer: 0,
-                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
-
-                old_layout: state.layout,
-                new_layout: layout,
-
-                source_access: state.access,
-                destination_access: access,
-            })
-        };
-
-        *state = new_state;
-        Some(transition)
-    }
-
-    fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
-              -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        let state: SwapchainImageCbState = in_s.remove_image(&self.image, 0).unwrap();
-
-        let transition = TrackedImagePipelineBarrierRequest {
-            after_command_num: state.command_num,
-            source_stage: state.stages,
-            destination_stages: PipelineStages {
-                bottom_of_pipe: true,
-                .. PipelineStages::none()
-            },
-            by_region: true,
-            memory_barrier: Some(TrackedImagePipelineMemoryBarrierRequest {
-                first_mipmap: 0,
-                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
-                first_layer: 0,
-                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
-
-                old_layout: state.layout,
-                new_layout: Layout::PresentSrc,
-
-                source_access: state.access,
-                destination_access: AccessFlagBits {
-                    memory_read: true,
-                    .. AccessFlagBits::none()
-                },
-            })
-        };
-
-        Some(transition)
-    }
-
-    fn on_submit(&self, _: &StatesManager, queue: &Arc<Queue>, fence: &mut FnMut() -> Arc<Fence>)
-                 -> TrackedImageSubmitInfos
-    {
-        TrackedImageSubmitInfos {
-            pre_semaphore: None,        // FIXME:
-            post_semaphore: None,       // FIXME:
-            pre_barrier: None,          // FIXME: transition from undefined at first usage
-            post_barrier: None,
-        }
-    }
+unsafe impl TrackedImage for SwapchainImage {
 }
 
-unsafe impl TrackedImageView<StatesManager> for SwapchainImage {
+unsafe impl TrackedImageView for SwapchainImage {
     type Image = SwapchainImage;
 
     #[inline]
