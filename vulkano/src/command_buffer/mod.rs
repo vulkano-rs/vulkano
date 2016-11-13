@@ -41,7 +41,6 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::states_manager::StatesManager;
 pub use self::cmd::empty;
 pub use self::cmd::CommandsList;
 pub use self::cmd::CommandsListSink;
@@ -68,7 +67,6 @@ pub mod pool;
 pub mod sys;
 
 mod cb;
-mod states_manager;
 mod submit;
 
 #[repr(C)]
@@ -125,7 +123,6 @@ pub struct RawCommandBufferPrototype<'a> {
     bound_graphics_pipeline: vk::Pipeline,
     bound_compute_pipeline: vk::Pipeline,
     bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
-    resources_states: StatesManager,
     marker: PhantomData<&'a ()>,
 }
 

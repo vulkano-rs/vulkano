@@ -20,7 +20,6 @@ use command_buffer::CommandsListSink;
 use command_buffer::CommandsListSinkCaller;
 use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
-use command_buffer::StatesManager;
 use device::Device;
 use framebuffer::EmptySinglePassRenderPass;
 use framebuffer::RenderPass;
@@ -209,7 +208,6 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
                 bound_graphics_pipeline: 0,
                 bound_compute_pipeline: 0,
                 bound_index_buffer: (0, 0, 0),
-                resources_states: StatesManager::new(),
                 marker: PhantomData,
             };
 
