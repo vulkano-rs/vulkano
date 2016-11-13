@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
+
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
@@ -26,14 +29,14 @@ pub struct CmdNextSubpass<L> where L: CommandsList {
 impl<L> CmdNextSubpass<L> where L: CommandsList {
     /// See the documentation of the `next_subpass` method.
     #[inline]
-    pub fn new(previous: L, secondary: bool) -> CmdNextSubpass<L> {
+    pub fn new(previous: L, secondary: bool) -> Result<CmdNextSubpass<L>, CmdNextSubpassError> {
         // TODO: check that we're in a render pass and that the next subpass is correct
 
-        CmdNextSubpass {
+        Ok(CmdNextSubpass {
             previous: previous,
             contents: if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
                       else { vk::SUBPASS_CONTENTS_INLINE },
-        }
+        })
     }
 }
 
@@ -50,5 +53,30 @@ unsafe impl<L> CommandsList for CmdNextSubpass<L> where L: CommandsList {
                 vk.CmdNextSubpass(cmd, self.contents);
             }
         }));
+    }
+}
+
+/// Error that can happen when creating a `CmdNextSubpass`.
+#[derive(Debug, Copy, Clone)]
+pub enum CmdNextSubpassError {
+    /// It's not possible to go to the next subpass if none are remaining.
+    NoSubpassRemaining,
+}
+
+impl error::Error for CmdNextSubpassError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CmdNextSubpassError::NoSubpassRemaining => {
+                "it's not possible to go to the next subpass if none are remaining"
+            },
+        }
+    }
+}
+
+impl fmt::Display for CmdNextSubpassError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }

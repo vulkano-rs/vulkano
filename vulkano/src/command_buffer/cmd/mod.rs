@@ -37,10 +37,10 @@ pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::dispatch::CmdDispatch;
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
-pub use self::end_render_pass::CmdEndRenderPass;
+pub use self::end_render_pass::{CmdEndRenderPass, CmdEndRenderPassError};
 pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
 pub use self::join::CommandsListJoin;
-pub use self::next_subpass::CmdNextSubpass;
+pub use self::next_subpass::{CmdNextSubpass, CmdNextSubpassError};
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
@@ -168,7 +168,7 @@ pub unsafe trait CommandsList {
 
     /// Adds a command that jumps to the next subpass of the current render pass.
     #[inline]
-    fn next_subpass(self, secondary: bool) -> CmdNextSubpass<Self>
+    fn next_subpass(self, secondary: bool) -> Result<CmdNextSubpass<Self>, CmdNextSubpassError>
         where Self: Sized
     {
         CmdNextSubpass::new(self, secondary)
@@ -179,7 +179,7 @@ pub unsafe trait CommandsList {
     /// This must be called after you went through all the subpasses and before you can build
     /// the command buffer or add further commands.
     #[inline]
-    fn end_render_pass(self) -> CmdEndRenderPass<Self>
+    fn end_render_pass(self) -> Result<CmdEndRenderPass<Self>, CmdEndRenderPassError>
         where Self: Sized
     {
         CmdEndRenderPass::new(self)

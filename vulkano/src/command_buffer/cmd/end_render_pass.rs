@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
+
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
@@ -23,12 +26,12 @@ pub struct CmdEndRenderPass<L> where L: CommandsList {
 impl<L> CmdEndRenderPass<L> where L: CommandsList {
     /// See the documentation of the `end_render_pass` method.
     #[inline]
-    pub fn new(previous: L) -> CmdEndRenderPass<L> {
+    pub fn new(previous: L) -> Result<CmdEndRenderPass<L>, CmdEndRenderPassError> {
         // TODO: check that we're in a render pass and that the next subpass is correct
 
-        CmdEndRenderPass {
+        Ok(CmdEndRenderPass {
             previous: previous,
-        }
+        })
     }
 }
 
@@ -44,5 +47,30 @@ unsafe impl<L> CommandsList for CmdEndRenderPass<L> where L: CommandsList {
                 vk.CmdEndRenderPass(cmd);
             }
         }));
+    }
+}
+
+/// Error that can happen when creating a `CmdEndRenderPass`.
+#[derive(Debug, Copy, Clone)]
+pub enum CmdEndRenderPassError {
+    /// It's not possible to end the render pass before you went over all the subpasses.
+    SubpassesRemaining,
+}
+
+impl error::Error for CmdEndRenderPassError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CmdEndRenderPassError::SubpassesRemaining => {
+                "it's not possible to end the render pass before you went over all the subpasses"
+            },
+        }
+    }
+}
+
+impl fmt::Display for CmdEndRenderPassError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
