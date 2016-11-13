@@ -49,9 +49,9 @@ use descriptor::descriptor::ShaderStages;
 use device::Device;
 use format::ClearValue;
 use format::FormatTy;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
+use framebuffer::RenderPassSys;
 use framebuffer::Subpass;
-use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer;
 use image::Image;
 use image::sys::Layout;
@@ -88,7 +88,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Creates a new builder.
     pub fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
                      -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -117,7 +117,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     pub unsafe fn already_allocated<R, F>(pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
                                           -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let device = pool.device().clone();
         let vk = device.pointers();
@@ -141,7 +141,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let (rp, sp) = if let Kind::SecondaryRenderPass { ref subpass, .. } = kind {
-            (subpass.render_pass().inner().internal_object(), subpass.index())
+            (subpass.render_pass().sys().internal_object(), subpass.index())
         } else {
             (0, 0)
         };
@@ -715,7 +715,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// - The render pass and the framebuffer must be compatible.
     /// - The clear values must be valid for the attachments.
     ///
-    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: &UnsafeRenderPass,
+    pub unsafe fn begin_render_pass<I, F>(&mut self, render_pass: RenderPassSys,
                                           framebuffer: &F, clear_values: I,
                                           rect: [Range<u32>; 2], secondary: bool)
         where I: Iterator<Item = ClearValue>,

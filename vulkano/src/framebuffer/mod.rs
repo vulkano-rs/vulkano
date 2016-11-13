@@ -13,7 +13,7 @@
 //!
 //! There are two concepts in Vulkan:
 //! 
-//! - A `RenderPass` is a collection of one or multiples passes called subpasses. Each subpass
+//! - A `RenderPassRef` is a collection of one or multiples passes called subpasses. Each subpass
 //!   contains the format and dimensions of the attachments that are part of the subpass. The
 //!   render pass only defines the layout of the rendering process.
 //! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
@@ -24,12 +24,12 @@
 //!
 //! # Render passes
 //!
-//! In vulkano, a render pass is any object that implements the `RenderPass` trait.
+//! In vulkano, a render pass is any object that implements the `RenderPassRef` trait.
 //!
-//! You can create a render pass by creating a `UnsafeRenderPass` object. But as its name tells,
+//! You can create a render pass by creating a `RenderPass` object. But as its name tells,
 //! it is unsafe because a lot of safety checks aren't performed.
 //!
-//! Instead you are encouraged to use a safe wrapper around an `UnsafeRenderPass`.
+//! Instead you are encouraged to use a safe wrapper around an `RenderPass`.
 //! There are two ways to do this:   TODO add more ways
 //!
 //! - Creating an instance of an `EmptySinglePassRenderPass`, which describes a render pass with no
@@ -62,17 +62,18 @@
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
 //! The slightly tricky part is that the type that contains the list of attachments depends on
-//! the trait implementation of `RenderPass`. For example if you use an
+//! the trait implementation of `RenderPassRef`. For example if you use an
 //! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
 //!
 
 pub use self::empty::EmptySinglePassRenderPass;
 pub use self::framebuffer::StdFramebuffer;
 pub use self::framebuffer::FramebufferCreationError;
-pub use self::sys::UnsafeRenderPass;
+pub use self::sys::RenderPass;
+pub use self::sys::RenderPassSys;
 pub use self::sys::RenderPassCreationError;
 pub use self::traits::Framebuffer;
-pub use self::traits::RenderPass;
+pub use self::traits::RenderPassRef;
 pub use self::traits::RenderPassDesc;
 pub use self::traits::RenderPassAttachmentsList;
 pub use self::traits::RenderPassClearValues;

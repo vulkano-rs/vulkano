@@ -138,7 +138,7 @@ unsafe impl<Cb, L> CommandsListConcrete for ExecuteCommand<Cb, L>
 unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L>
     where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass + CommandsList
 {
-    type RenderPass = L::RenderPass;
+    type RenderPassRef = L::RenderPassRef;
 
     #[inline]
     fn current_subpass_num(&self) -> u32 {
@@ -152,7 +152,7 @@ unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L
     }
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         self.previous.render_pass()
     }
 }

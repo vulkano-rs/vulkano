@@ -25,7 +25,7 @@ use device::Device;
 use device::Queue;
 use format::ClearValue;
 use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use instance::QueueFamily;
 use sync::Fence;
@@ -33,7 +33,7 @@ use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommand<L, Rp, F>
-    where L: CommandsList, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsList, Rp: RenderPassRef, F: TrackedFramebuffer
 {
     // Parent commands list.
     previous: L,
@@ -51,14 +51,14 @@ pub struct BeginRenderPassCommand<L, Rp, F>
     barrier: PipelineBarrierBuilder,
 }
 
-impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
+impl<L, F> BeginRenderPassCommand<L, F::RenderPassRef, F>
     where L: CommandsList + CommandsListPossibleOutsideRenderPass, F: TrackedFramebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(mut previous: L, framebuffer: F, secondary: bool, clear_values: C)
-                  -> BeginRenderPassCommand<L, F::RenderPass, F>
-        where F::RenderPass: RenderPassClearValues<C>
+                  -> BeginRenderPassCommand<L, F::RenderPassRef, F>
+        where F::RenderPassRef: RenderPassClearValues<C>
     {
         assert!(previous.is_outside_render_pass());
 
@@ -88,7 +88,7 @@ impl<L, F> BeginRenderPassCommand<L, F::RenderPass, F>
 }
 
 unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
-    where L: CommandsList, Rp: RenderPass, Fb: TrackedFramebuffer
+    where L: CommandsList, Rp: RenderPassRef, Fb: TrackedFramebuffer
 {
     #[inline]
     fn num_commands(&self) -> usize {
@@ -127,7 +127,7 @@ unsafe impl<L, Rp, Fb> CommandsList for BeginRenderPassCommand<L, Rp, Fb>
 }
 
 unsafe impl<L, Rp, Fb> CommandsListConcrete for BeginRenderPassCommand<L, Rp, Fb>
-    where L: CommandsListConcrete, Rp: RenderPass, Fb: TrackedFramebuffer
+    where L: CommandsListConcrete, Rp: RenderPassRef, Fb: TrackedFramebuffer
 {
     type Pool = L::Pool;
     type Output = BeginRenderPassCommandCb<L::Output, Rp, Fb>;
@@ -153,8 +153,8 @@ unsafe impl<L, Rp, Fb> CommandsListConcrete for BeginRenderPassCommand<L, Rp, Fb
                                                                              .chain(barriers);
 
         let parent = self.previous.raw_build(in_s, out, |cb| {
-            cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.inner())
-                                               .unwrap_or(my_framebuffer.render_pass().inner()),
+            cb.begin_render_pass(my_render_pass.as_ref().map(|rp| rp.sys())
+                                               .unwrap_or(my_framebuffer.render_pass().sys()),
                                  &my_framebuffer, my_clear_values.into_iter(),
                                  my_rect, my_secondary);
             additional_elements(cb);
@@ -169,9 +169,9 @@ unsafe impl<L, Rp, Fb> CommandsListConcrete for BeginRenderPassCommand<L, Rp, Fb
 }
 
 unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCommand<L, Rp, F>
-    where L: CommandsList, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsList, Rp: RenderPassRef, F: TrackedFramebuffer
 {
-    type RenderPass = Rp;
+    type RenderPassRef = Rp;
 
     #[inline]
     fn current_subpass_num(&self) -> u32 {
@@ -184,7 +184,7 @@ unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCo
     }
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         if let Some(ref rp) = self.render_pass {
             rp
         } else {
@@ -196,7 +196,7 @@ unsafe impl<L, Rp, F> CommandsListPossibleInsideRenderPass for BeginRenderPassCo
 
 /// Wraps around a command buffer and adds an update buffer command at the end of it.
 pub struct BeginRenderPassCommandCb<L, Rp, F>
-    where L: CommandsListOutput, Rp: RenderPass, F: TrackedFramebuffer
+    where L: CommandsListOutput, Rp: RenderPassRef, F: TrackedFramebuffer
 {
     // The previous commands.
     previous: L,
@@ -205,7 +205,7 @@ pub struct BeginRenderPassCommandCb<L, Rp, F>
 }
 
 unsafe impl<L, Rp, Fb> CommandsListOutput for BeginRenderPassCommandCb<L, Rp, Fb>
-    where L: CommandsListOutput, Rp: RenderPass, Fb: TrackedFramebuffer
+    where L: CommandsListOutput, Rp: RenderPassRef, Fb: TrackedFramebuffer
 {
     #[inline]
     fn inner(&self) -> vk::CommandBuffer {
@@ -334,7 +334,7 @@ unsafe impl<L> CommandsListConcrete for NextSubpassCommand<L>
 unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
     where L: CommandsList + CommandsListPossibleInsideRenderPass
 {
-    type RenderPass = L::RenderPass;
+    type RenderPassRef = L::RenderPassRef;
 
     #[inline]
     fn current_subpass_num(&self) -> u32 {
@@ -347,7 +347,7 @@ unsafe impl<L> CommandsListPossibleInsideRenderPass for NextSubpassCommand<L>
     }
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         self.previous.render_pass()
     }
 }

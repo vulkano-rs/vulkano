@@ -16,7 +16,8 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassRef;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
@@ -30,7 +31,7 @@ use check_errors;
 use vk;
 
 /// Defines the layout of multiple subpasses.
-pub struct UnsafeRenderPass {
+pub struct RenderPass {
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
 
@@ -41,7 +42,7 @@ pub struct UnsafeRenderPass {
     granularity: Mutex<Option<[u32; 2]>>,
 }
 
-impl UnsafeRenderPass {
+impl RenderPass {
     /// Builds a new renderpass.
     ///
     /// # Safety
@@ -59,7 +60,7 @@ impl UnsafeRenderPass {
     ///
     pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
                                   pass_dependencies: Id)
-                                  -> Result<UnsafeRenderPass, RenderPassCreationError>
+                                  -> Result<RenderPass, RenderPassCreationError>
         where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
               Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
               Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
@@ -267,7 +268,7 @@ impl UnsafeRenderPass {
             output
         };
 
-        Ok(UnsafeRenderPass {
+        Ok(RenderPass {
             device: device.clone(),
             renderpass: renderpass,
             granularity: Mutex::new(None),
@@ -305,29 +306,42 @@ impl UnsafeRenderPass {
     }
 }
 
-unsafe impl VulkanObject for UnsafeRenderPass {
-    type Object = vk::RenderPass;
+unsafe impl RenderPassRef for RenderPass {
+    #[inline]
+    fn sys(&self) -> RenderPassSys {
+        RenderPassSys(&self.renderpass)
+    }
 
     #[inline]
-    fn internal_object(&self) -> vk::RenderPass {
-        self.renderpass
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    #[inline]
+    fn desc(&self) -> &RenderPassDesc {
+        unimplemented!()        // FIXME:
     }
 }
 
-unsafe impl RenderPass for UnsafeRenderPass {
-    #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
-        self
-    }
-}
-
-impl Drop for UnsafeRenderPass {
+impl Drop for RenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
             vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassSys<'a>(&'a vk::RenderPass);
+
+unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
+    type Object = vk::RenderPass;
+
+    #[inline]
+    fn internal_object(&self) -> vk::RenderPass {
+        *self.0
     }
 }
 

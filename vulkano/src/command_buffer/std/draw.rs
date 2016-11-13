@@ -244,7 +244,7 @@ unsafe impl<'a, L, V, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass f
     where L: CommandsList + CommandsListPossibleInsideRenderPass, Pl: PipelineLayoutRef,
           S: TrackedDescriptorSetsCollection, Pc: 'a
 {
-    type RenderPass = L::RenderPass;
+    type RenderPassRef = L::RenderPassRef;
 
     #[inline]
     fn current_subpass_num(&self) -> u32 {
@@ -257,7 +257,7 @@ unsafe impl<'a, L, V, Pv, Pl, Prp, S, Pc> CommandsListPossibleInsideRenderPass f
     }
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         self.previous.render_pass()
     }
 }
