@@ -53,19 +53,15 @@ pub use self::submit::SubmitChain;
 use std::sync::Arc;
 use std::marker::PhantomData;
 
-use command_buffer::sys::PipelineBarrierBuilder;
 use device::Device;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
-use sync::PipelineStages;
-use sync::Semaphore;
 
 use vk;
 
 pub mod cb;
 pub mod cmd;
 pub mod pool;
-pub mod sys;
 
 mod submit;
 
@@ -124,31 +120,4 @@ pub struct RawCommandBufferPrototype<'a> {
     bound_compute_pipeline: vk::Pipeline,
     bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
     marker: PhantomData<&'a ()>,
-}
-
-/// Information about how the submitting function should synchronize the submission.
-// TODO: rework that design? move to std?
-pub struct SubmitInfo {
-    /// List of semaphores to wait upon before the command buffer starts execution.
-    pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
-    /// List of semaphores to signal after the command buffer has finished.
-    pub semaphores_signal: Vec<Arc<Semaphore>>,
-    /// Pipeline barrier to execute on the queue and immediately before the command buffer.
-    /// Ignored if empty.
-    pub pre_pipeline_barrier: PipelineBarrierBuilder,
-    /// Pipeline barrier to execute on the queue and immediately after the command buffer.
-    /// Ignored if empty.
-    pub post_pipeline_barrier: PipelineBarrierBuilder,
-}
-
-impl SubmitInfo {
-    #[inline]
-    pub fn empty() -> SubmitInfo {
-        SubmitInfo {
-            semaphores_wait: Vec::new(),
-            semaphores_signal: Vec::new(),
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
-        }
-    }
 }
