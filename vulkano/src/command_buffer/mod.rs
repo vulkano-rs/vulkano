@@ -62,11 +62,11 @@ use sync::Semaphore;
 
 use vk;
 
+pub mod cb;
 pub mod cmd;
 pub mod pool;
 pub mod sys;
 
-mod cb;
 mod submit;
 
 #[repr(C)]

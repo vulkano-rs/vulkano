@@ -231,6 +231,17 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     }
 }
 
+unsafe impl<L, P> VulkanObject for UnsyncedCommandBuffer<L, P>
+    where P: CommandPool
+{
+    type Object = vk::CommandBuffer;
+
+    #[inline]
+    fn internal_object(&self) -> vk::CommandBuffer {
+        self.cmd
+    }
+}
+
 // Helper object for UnsyncedCommandBuffer. Implementation detail.
 struct Sink<'a>(&'a mut RawCommandBufferPrototype<'a>, &'a Arc<Device>);
 impl<'a> CommandsListSink<'a> for Sink<'a> {
