@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
+use command_buffer::cb::CommandsListBuildPrimaryPool;
 use command_buffer::cb::Flags;
 use command_buffer::cb::Kind;
 use command_buffer::cb::UnsyncedCommandBuffer;
@@ -33,8 +34,13 @@ pub struct AutobarriersCommandBuffer<L, P> where P: CommandPool {
     inner: UnsyncedCommandBuffer<WrappedCommandsList<L>, P>
 }
 
-impl<L, P> AutobarriersCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
-    pub fn primary(list: L, pool: P) -> Result<AutobarriersCommandBuffer<L, P>, OomError> {
+impl<L, P> CommandsListBuildPrimaryPool<L, P> for AutobarriersCommandBuffer<L, P>
+    where L: CommandsList, P: CommandPool
+{
+    fn build_primary_with_pool(pool: P, list: L)
+                               -> Result<AutobarriersCommandBuffer<L, P>, OomError>
+        where Self: Sized
+    {
         let kind = Kind::primary();
         let flags = Flags::SimultaneousUse;
 

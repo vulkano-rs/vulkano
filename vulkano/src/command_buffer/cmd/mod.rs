@@ -10,6 +10,8 @@
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
+use command_buffer::cb::CommandsListBuildPrimary;
+use command_buffer::cb::CommandsListBuildPrimaryPool;
 use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::SecondaryCommandBuffer;
@@ -21,11 +23,13 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
 use image::TrackedImage;
+use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
+use OomError;
 
 pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
@@ -206,6 +210,23 @@ pub unsafe trait CommandsList {
     #[inline]
     fn join<L>(self, other: L) -> CommandsListJoin<Self, L> where Self: Sized, L: CommandsList {
         CommandsListJoin::new(self, other)
+    }
+
+    /// Builds the list as a primary command buffer.
+    #[inline]
+    fn build_primary<C, P>(self, device: &Arc<Device>, queue_family: QueueFamily)
+                           -> Result<C, OomError>
+        where C: CommandsListBuildPrimary<Self>, Self: Sized
+    {
+        CommandsListBuildPrimary::build_primary(device, queue_family, self)
+    }
+
+    /// Builds the list as a primary command buffer and with the given pool.
+    #[inline]
+    fn build_primary_with_pool<C, P>(self, pool: P) -> Result<C, OomError>
+        where C: CommandsListBuildPrimaryPool<Self, P>, Self: Sized
+    {
+        CommandsListBuildPrimaryPool::build_primary_with_pool(pool, self)
     }
 
     /// Appends this list of commands at the end of a command buffer in construction.
