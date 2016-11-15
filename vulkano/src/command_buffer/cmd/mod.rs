@@ -198,7 +198,7 @@ pub unsafe trait CommandsList {
                                    dynamic: DynamicState, vertices: V, sets: S,
                                    push_constants: Pc)
                                    -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
-        where Self: Sized + CommandsList + CommandsListPossibleInsideRenderPass,
+        where Self: Sized + CommandsList,
               Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection,
               Pv: Source<V>
@@ -214,8 +214,8 @@ pub unsafe trait CommandsList {
 
     /// Builds the list as a primary command buffer.
     #[inline]
-    fn build_primary<C, P>(self, device: &Arc<Device>, queue_family: QueueFamily)
-                           -> Result<C, OomError>
+    fn build_primary<C>(self, device: &Arc<Device>, queue_family: QueueFamily)
+                        -> Result<C, OomError>
         where C: CommandsListBuildPrimary<Self>, Self: Sized
     {
         CommandsListBuildPrimary::build_primary(device, queue_family, self)

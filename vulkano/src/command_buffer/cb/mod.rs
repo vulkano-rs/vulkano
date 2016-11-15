@@ -13,6 +13,7 @@ use device::Device;
 use instance::QueueFamily;
 use OomError;
 
+pub use self::autobarriers::AutobarriersCommandBuffer;
 pub use self::unsynced::Flags;
 pub use self::unsynced::Kind;
 pub use self::unsynced::UnsyncedCommandBuffer;

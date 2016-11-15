@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error::Error;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
@@ -15,11 +16,14 @@ use command_buffer::cb::Flags;
 use command_buffer::cb::Kind;
 use command_buffer::cb::UnsyncedCommandBuffer;
 use command_buffer::pool::CommandPool;
+use command_buffer::submit::Submit;
+use command_buffer::submit::SubmitBuilder;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use command_buffer::CommandsListSinkCaller;
 use command_buffer::SecondaryCommandBuffer;
 use device::Device;
+use device::Queue;
 use image::Layout;
 use image::TrackedImage;
 use sync::AccessFlagBits;
@@ -51,6 +55,22 @@ impl<L, P> CommandsListBuildPrimaryPool<L, P> for AutobarriersCommandBuffer<L, P
         Ok(AutobarriersCommandBuffer {
             inner: cmd,
         })
+    }
+}
+
+unsafe impl<L, P> Submit for AutobarriersCommandBuffer<L, P>
+    where L: CommandsList, P: CommandPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
+    {
+        // FIXME: totally unsynchronized here
+        Ok(base.add_command_buffer(&self.inner))
     }
 }
 
