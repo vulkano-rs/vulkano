@@ -174,8 +174,7 @@ impl {name} {{
     #[allow(unsafe_code)]
     pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>)
                 -> Result<{name}, ::vulkano::OomError>
-    {{
-"#,
+    {{"#,
                                  name = name));
 
         // checking whether each required capability is enabled in the vulkan device
@@ -219,8 +218,7 @@ impl {name} {{
             Ok({name} {{
                 shader: try!(::vulkano::pipeline::shader::ShaderModule::{method}(device.clone(), &data))
             }})
-        }}
-"#,
+        }}"#,
                                  name = name,
                                  method = method,
                                  output_data = output_data));
