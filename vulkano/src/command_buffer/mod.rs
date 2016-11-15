@@ -110,6 +110,16 @@ impl Default for DynamicState {
     }
 }
 
+pub unsafe trait SecondaryCommandBuffer {
+    // TODO: crappy API
+    fn inner(&self) -> vk::CommandBuffer;
+
+    // TODO: necessary only because inner() has a bad return type
+    fn device(&self) -> &Arc<Device>;
+
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>);
+}
+
 /// Opaque struct that contains a command buffer in construction. You cannot create a
 /// `RawCommandBufferPrototype` yourself.
 pub struct RawCommandBufferPrototype<'a> {

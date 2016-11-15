@@ -10,8 +10,9 @@
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
-use command_buffer::RawCommandBufferPrototype;
 use command_buffer::DynamicState;
+use command_buffer::RawCommandBufferPrototype;
+use command_buffer::SecondaryCommandBuffer;
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
@@ -38,6 +39,7 @@ pub use self::dispatch::CmdDispatch;
 pub use self::draw::CmdDraw;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::end_render_pass::{CmdEndRenderPass, CmdEndRenderPassError};
+pub use self::execute::CmdExecuteCommands;
 pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
 pub use self::join::CommandsListJoin;
 pub use self::next_subpass::{CmdNextSubpass, CmdNextSubpassError};
@@ -56,7 +58,7 @@ mod dispatch;
 mod draw;
 mod empty;
 mod end_render_pass;
-//pub mod execute;      // TODO: reenable when the concept of a command buffer is well defined
+mod execute;
 mod fill_buffer;
 mod join;
 mod next_subpass;
@@ -117,8 +119,7 @@ pub unsafe trait CommandsList {
         CmdFillBuffer::new(self, buffer, data)
     }
 
-    // TODO: reenable
-    /*/// Adds a command that executes a secondary command buffer.
+    /// Adds a command that executes a secondary command buffer.
     ///
     /// When you create a command buffer, you have the possibility to create either a primary
     /// command buffer or a secondary command buffer. Secondary command buffers can't be executed
@@ -127,11 +128,11 @@ pub unsafe trait CommandsList {
     /// A secondary command buffer can't execute another secondary command buffer. The only way
     /// you can use `execute` is to make a primary command buffer call a secondary command buffer.
     #[inline]
-    fn execute<Cb>(self, command_buffer: Cb) -> execute::ExecuteCommand<Cb, Self>
-        where Self: Sized, Cb: CommandsListOutput       /* FIXME: */
+    fn execute_commands<Cb>(self, command_buffer: Cb) -> CmdExecuteCommands<Cb, Self>
+        where Self: Sized, Cb: SecondaryCommandBuffer
     {
-        execute::ExecuteCommand::new(self, command_buffer)
-    }*/
+        CmdExecuteCommands::new(self, command_buffer)
+    }
 
     /// Adds a command that executes a compute shader.
     ///
@@ -216,6 +217,14 @@ pub unsafe trait CommandsList {
     ///
     /// The lifetime of the `CommandsListSink` is the same as the lifetime of `&self`. This means
     /// that the commands you pass to the sink can borrow `self`.
+    ///
+    /// # Safety
+    ///
+    /// It is important for safety that `append` always returns the same commands.
+    ///
+    /// > **Note**: For example, in the case secondary command buffers this function is called once
+    /// > when the secondary command buffer is created, and once again every time the secondary
+    /// > command buffer is used. All the calls must match in order for the behavior to be safe.
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>);
 }
 

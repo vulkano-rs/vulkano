@@ -229,6 +229,23 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
             commands_list: list,
         })
     }
+
+    /// Returns the device used to create this command buffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    /// Returns the list of commands of this command buffer.
+    ///
+    /// > **Note**: It is important that this getter is not used to modify the list of commands
+    /// > with interior mutability so that `append` returns something different. Doing so is
+    /// > unsafe. However this function is not unsafe, because this corner case is already covered
+    /// > by the unsafetiness of the `CommandsList` trait.
+    #[inline]
+    pub fn commands_list(&self) -> &L {
+        &self.commands_list
+    }
 }
 
 unsafe impl<L, P> VulkanObject for UnsyncedCommandBuffer<L, P>

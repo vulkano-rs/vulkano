@@ -10,187 +10,113 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::StatesManager;
-use command_buffer::SubmitInfo;
-use command_buffer::cmd::CommandsListPossibleInsideRenderPass;
-use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
+use buffer::TrackedBuffer;
+use command_buffer::RawCommandBufferPrototype;
+use command_buffer::SecondaryCommandBuffer;
 use command_buffer::cmd::CommandsList;
-use command_buffer::cmd::CommandsListConcrete;
-use command_buffer::cmd::CommandsListOutput;
-use command_buffer::sys::PipelineBarrierBuilder;
-use command_buffer::sys::UnsafeCommandBufferBuilder;
+use command_buffer::cmd::CommandsListSink;
+use command_buffer::cmd::CommandsListSinkCaller;
 use device::Device;
-use device::Queue;
-use instance::QueueFamily;
-use sync::Fence;
+use image::Layout;
+use image::TrackedImage;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
+use VulkanObject;
+use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds a command at the end of it that executes a secondary
 /// command buffer.
-pub struct ExecuteCommand<Cb, L> where Cb: CommandsListOutput, L: CommandsList {
+pub struct CmdExecuteCommands<Cb, L> where Cb: SecondaryCommandBuffer, L: CommandsList {
     // Parent commands list.
     previous: L,
+    // Raw list of command buffers to execute.
+    raw_list: SmallVec<[vk::CommandBuffer; 4]>,
     // Command buffer to execute.
     command_buffer: Cb,
 }
 
-impl<Cb, L> ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsList
+impl<Cb, L> CmdExecuteCommands<Cb, L>
+    where Cb: SecondaryCommandBuffer, L: CommandsList
 {
-    /// See the documentation of the `execute` method.
+    /// See the documentation of the `execute_commands` method.
     #[inline]
-    pub fn new(previous: L, command_buffer: Cb) -> ExecuteCommand<Cb, L> {
-        // FIXME: check that the number of subpasses is correct
+    pub fn new(previous: L, command_buffer: Cb) -> CmdExecuteCommands<Cb, L> {
+        // FIXME: most checks are missing
 
-        ExecuteCommand {
+        let raw_list = {
+            let mut l = SmallVec::new();
+            l.push(command_buffer.inner());
+            l
+        };
+
+        CmdExecuteCommands {
             previous: previous,
+            raw_list: raw_list,
             command_buffer: command_buffer,
         }
     }
 }
 
-// TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
-unsafe impl<Cb, L> CommandsList for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsList
+// TODO: specialize the trait so that multiple calls to `execute` are grouped together?
+unsafe impl<Cb, L> CommandsList for CmdExecuteCommands<Cb, L>
+    where Cb: SecondaryCommandBuffer, L: CommandsList
 {
     #[inline]
-    fn num_commands(&self) -> usize {
-        self.previous.num_commands() + 1
-    }
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.previous.append(builder);
 
-    #[inline]
-    fn check_queue_validity(&self, queue: QueueFamily) -> Result<(), ()> {
-        // FIXME: check the secondary cb's queue validity
-        self.previous.check_queue_validity(queue)
-    }
+        assert_eq!(self.command_buffer.device().internal_object(),
+                   builder.device().internal_object());
 
-    #[inline]
-    fn buildable_state(&self) -> bool {
-        self.previous.buildable_state()
-    }
+        self.command_buffer.append(&mut FilterOutCommands(builder, self.command_buffer.device()));
 
-    #[inline]
-    fn extract_states(&mut self) -> StatesManager {
-        self.previous.extract_states()
-    }
-
-    #[inline]
-    fn is_compute_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
-        // Bindings are always invalidated after a execute command ends.
-        false
-    }
-
-    #[inline]
-    fn is_graphics_pipeline_bound(&self, pipeline: vk::Pipeline) -> bool {
-        // Bindings are always invalidated after a execute command ends.
-        false
-    }
-}
-
-// TODO: specialize `execute()` so that multiple calls to `execute` are grouped together 
-unsafe impl<Cb, L> CommandsListConcrete for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListConcrete
-{
-    type Pool = L::Pool;
-    type Output = ExecuteCommandCb<Cb, L::Output>;
-
-    unsafe fn raw_build<I, F>(self, in_s: &mut StatesManager, out: &mut StatesManager,
-                              additional_elements: F, barriers: I,
-                              final_barrier: PipelineBarrierBuilder) -> Self::Output
-        where F: FnOnce(&mut UnsafeCommandBufferBuilder<L::Pool>),
-              I: Iterator<Item = (usize, PipelineBarrierBuilder)>
-    {
-        // We split the barriers in two: those to apply after our command, and those to
-        // transfer to the parent so that they are applied before our command.
-
-        let my_command_num = self.num_commands();
-
-        // The transitions to apply immediately after our command.
-        let mut transitions_to_apply = PipelineBarrierBuilder::new();
-
-        // The barriers to transfer to the parent.
-        let barriers = barriers.filter_map(|(after_command_num, barrier)| {
-            if after_command_num >= my_command_num || !transitions_to_apply.is_empty() {
-                transitions_to_apply.merge(barrier);
-                None
-            } else {
-                Some((after_command_num, barrier))
+        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
+            unsafe {
+                let vk = raw.device.pointers();
+                let cmd = raw.command_buffer.clone().take().unwrap();
+                
+                vk.CmdExecuteCommands(cmd, self.raw_list.len() as u32, self.raw_list.as_ptr());
             }
-        }).collect::<SmallVec<[_; 8]>>();
-
-        // Passing to the parent.
-        let parent = {
-            let local_cb_to_exec = self.command_buffer.inner();
-            self.previous.raw_build(in_s, out, |cb| {
-                cb.execute_commands(Some(local_cb_to_exec));
-                cb.pipeline_barrier(transitions_to_apply);
-                additional_elements(cb);
-            }, barriers.into_iter(), final_barrier)
-        };
-
-        ExecuteCommandCb {
-            previous: parent,
-            command_buffer: self.command_buffer,
-        }
+        }));
     }
 }
 
-unsafe impl<Cb, L> CommandsListPossibleInsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleInsideRenderPass + CommandsList
-{
-    type RenderPass = L::RenderPass;
+struct FilterOutCommands<'a, 'c: 'a>(&'a mut CommandsListSink<'c>, &'a Arc<Device>);
 
-    #[inline]
-    fn current_subpass_num(&self) -> u32 {
-        self.previous.current_subpass_num()
-    }
-
-    #[inline]
-    fn secondary_subpass(&self) -> bool {
-        debug_assert!(self.previous.secondary_subpass());
-        true
-    }
-
-    #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
-        self.previous.render_pass()
-    }
-}
-
-unsafe impl<Cb, L> CommandsListPossibleOutsideRenderPass for ExecuteCommand<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListPossibleOutsideRenderPass + CommandsList
-{
-    #[inline]
-    fn is_outside_render_pass(&self) -> bool {
-        self.previous.is_outside_render_pass()
-    }
-}
-
-/// Wraps around a command buffer and adds an execute command at the end of it.
-pub struct ExecuteCommandCb<Cb, L> where Cb: CommandsListOutput, L: CommandsListOutput {
-    // The previous commands.
-    previous: L,
-    // The secondary command buffer to execute.
-    command_buffer: Cb,
-}
-
-unsafe impl<Cb, L> CommandsListOutput for ExecuteCommandCb<Cb, L>
-    where Cb: CommandsListOutput, L: CommandsListOutput
-{
-    #[inline]
-    fn inner(&self) -> vk::CommandBuffer {
-        self.previous.inner()
-    }
-
+impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.previous.device()
+        self.1
     }
 
     #[inline]
-    unsafe fn on_submit(&self, states: &StatesManager, queue: &Arc<Queue>,
-                        fence: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
+    fn add_command(&mut self, _: Box<CommandsListSinkCaller<'c> + 'c>) {
+    }
+
+    #[inline]
+    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
+                             write: bool, stages: PipelineStages, access: AccessFlagBits)
     {
-        self.previous.on_submit(states, queue, fence)
+        self.0.add_buffer_transition(buffer, offset, size, write, stages, access)
+    }
+
+    #[inline]
+    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
+                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
+                            stages: PipelineStages, access: AccessFlagBits)
+    {
+        self.0.add_image_transition(image, first_layer, num_layers, first_mipmap, num_mipmaps,
+                                    write, layout, stages, access)
+    }
+
+    #[inline]
+    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
+                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                                         layout: Layout, stages: PipelineStages,
+                                         access: AccessFlagBits)
+    {
+        self.0.add_image_transition_notification(image, first_layer, num_layers, first_mipmap,
+                                                 num_mipmaps, layout, stages, access)
     }
 }

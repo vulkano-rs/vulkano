@@ -17,11 +17,14 @@ use command_buffer::pool::CommandPool;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use command_buffer::CommandsListSinkCaller;
+use command_buffer::SecondaryCommandBuffer;
 use device::Device;
 use image::Layout;
 use image::TrackedImage;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
+use VulkanObject;
+use vk;
 
 use OomError;
 
@@ -42,6 +45,26 @@ impl<L, P> AutobarriersCommandBuffer<L, P> where L: CommandsList, P: CommandPool
         Ok(AutobarriersCommandBuffer {
             inner: cmd,
         })
+    }
+}
+
+// TODO: we're not necessarily a secondary command buffer
+unsafe impl<L, P> SecondaryCommandBuffer for AutobarriersCommandBuffer<L, P>
+    where L: CommandsList, P: CommandPool
+{
+    #[inline]
+    fn inner(&self) -> vk::CommandBuffer {
+        self.inner.internal_object()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+
+    #[inline]
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
+        self.inner.commands_list().append(builder);
     }
 }
 
