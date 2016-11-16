@@ -49,7 +49,8 @@ impl<L, P> CommandsListBuildPrimaryPool<L, P> for AutobarriersCommandBuffer<L, P
         let flags = Flags::SimultaneousUse;
 
         let cmd = unsafe {
-            try!(UnsyncedCommandBuffer::new(WrappedCommandsList(list), pool, kind, flags))
+            let device = pool.device().clone();
+            try!(UnsyncedCommandBuffer::new(WrappedCommandsList(list, device), pool, kind, flags))
         };
 
         Ok(AutobarriersCommandBuffer {
@@ -94,17 +95,14 @@ unsafe impl<L, P> SecondaryCommandBuffer for AutobarriersCommandBuffer<L, P>
     }
 }
 
-struct WrappedCommandsList<L>(L);
+struct WrappedCommandsList<L>(L, Arc<Device>);
 unsafe impl<L> CommandsList for WrappedCommandsList<L> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        /*let device = pool.device().clone();
-
         self.0.append(&mut Sink {
             output: builder,
-            device: &device,
-        });*/
-        unimplemented!()
+            device: &self.1,
+        });
     }
 }
 
