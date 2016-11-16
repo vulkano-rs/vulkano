@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
+use buffer::TypedBuffer;
 use command_buffer::cb::CommandsListBuildPrimary;
 use command_buffer::cb::CommandsListBuildPrimaryPool;
 use command_buffer::DynamicState;
@@ -26,6 +27,7 @@ use image::TrackedImage;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
+use pipeline::input_assembly::Index;
 use pipeline::vertex::Source;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -41,6 +43,7 @@ pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedEr
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::dispatch::CmdDispatch;
 pub use self::draw::CmdDraw;
+pub use self::draw_indexed::CmdDrawIndexed;
 pub use self::empty::{empty, EmptyCommandsList};
 pub use self::end_render_pass::{CmdEndRenderPass, CmdEndRenderPassError};
 pub use self::execute::CmdExecuteCommands;
@@ -60,6 +63,7 @@ mod blit_image_unsynced;
 mod copy_buffer;
 mod dispatch;
 mod draw;
+mod draw_indexed;
 mod empty;
 mod end_render_pass;
 mod execute;
@@ -204,6 +208,24 @@ pub unsafe trait CommandsList {
               Pv: Source<V>
     {
         CmdDraw::new(self, pipeline, dynamic, vertices, sets, push_constants)
+    }
+
+    /// Adds a command that draws with an index buffer.
+    ///
+    /// Can only be used from inside a render pass.
+    #[inline]
+    fn draw_indexed<Pv, Pl, Prp, S, Pc, V, Ib, I>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
+                                               dynamic: DynamicState, vertices: V, indices: Ib,
+                                               sets: S, push_constants: Pc)
+                                               -> CmdDrawIndexed<Self, V, Ib, Pv, Pl, Prp, S, Pc>
+        where Self: Sized + CommandsList,
+              Pl: PipelineLayoutRef,
+              S: TrackedDescriptorSetsCollection,
+              Pv: Source<V>,
+              Ib: TrackedBuffer + TypedBuffer<Content = [I]>,
+              I: Index + 'static
+    {
+        CmdDrawIndexed::new(self, pipeline, dynamic, vertices, indices, sets, push_constants)
     }
 
     /// Appends another list at the end of this one.
