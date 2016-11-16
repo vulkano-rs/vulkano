@@ -41,6 +41,7 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
+pub use self::barrier::PipelineBarrierBuilder;
 pub use self::cmd::empty;
 pub use self::cmd::CommandsList;
 pub use self::cmd::CommandsListSink;
@@ -63,6 +64,7 @@ pub mod cb;
 pub mod cmd;
 pub mod pool;
 
+mod barrier;
 mod submit;
 
 #[repr(C)]
