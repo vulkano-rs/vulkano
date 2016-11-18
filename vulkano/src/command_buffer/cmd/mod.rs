@@ -42,8 +42,8 @@ pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};
 pub use self::clear_attachments::CmdClearAttachments;
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
-pub use self::dispatch::CmdDispatch;
-pub use self::dispatch_indirect::CmdDispatchIndirect;
+pub use self::dispatch::{CmdDispatch, CmdDispatchError};
+pub use self::dispatch_indirect::{CmdDispatchIndirect, CmdDispatchIndirectError};
 pub use self::draw::CmdDraw;
 pub use self::draw_indexed::CmdDrawIndexed;
 pub use self::empty::{empty, EmptyCommandsList};
@@ -156,7 +156,7 @@ pub unsafe trait CommandsList {
     #[inline]
     fn dispatch<Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
                            dimensions: [u32; 3], push_constants: Pc)
-                           -> CmdDispatch<Self, Pl, S, Pc>
+                           -> Result<CmdDispatch<Self, Pl, S, Pc>, CmdDispatchError>
         where Self: Sized + CommandsList, Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection
     {

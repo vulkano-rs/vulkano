@@ -7,14 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::mem;
 use std::sync::Arc;
 
 use buffer::TrackedBuffer;
 use buffer::TypedBuffer;
 use command_buffer::cmd::CmdBindDescriptorSets;
+use command_buffer::cmd::CmdBindDescriptorSetsError;
 use command_buffer::cmd::CmdBindPipeline;
 use command_buffer::cmd::CmdPushConstants;
+use command_buffer::cmd::CmdPushConstantsError;
 use command_buffer::DispatchIndirectCommand;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
@@ -54,29 +58,35 @@ impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
     /// This function is unsafe because the values in the buffer must be less or equal than
     /// `VkPhysicalDeviceLimits::maxComputeWorkGroupCount`.
     pub unsafe fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, push_constants: Pc,
-                      buffer: B) -> CmdDispatchIndirect<L, B, Pl, S, Pc>
+                      buffer: B)
+                      -> Result<CmdDispatchIndirect<L, B, Pl, S, Pc>, CmdDispatchIndirectError>
         where B: TypedBuffer<Content = DispatchIndirectCommand>
     {
         let previous = CmdBindPipeline::bind_compute_pipeline(previous, pipeline.clone());
         let device = previous.device().clone();
-        let previous = CmdBindDescriptorSets::new(previous, false, pipeline.clone(), sets).unwrap() /* TODO: error */;
-        let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants).unwrap() /* TODO: error */;
+        let previous = CmdBindDescriptorSets::new(previous, false, pipeline.clone(), sets)?;
+        let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants)?;
 
         let (raw_buffer, raw_offset) = {
             let inner = buffer.inner();
+
             if !inner.buffer.usage_indirect_buffer() {
-                panic!()        // TODO: error
+                return Err(CmdDispatchIndirectError::MissingBufferUsage);
             }
-            assert_eq!(inner.offset % 4, 0);
+
+            if inner.offset % 4 != 0 {
+                return Err(CmdDispatchIndirectError::WrongAlignment);
+            }
+
             (inner.buffer.internal_object(), inner.offset as vk::DeviceSize)
         };
 
-        CmdDispatchIndirect {
+        Ok(CmdDispatchIndirect {
             previous: previous,
             raw_buffer: raw_buffer,
             raw_offset: raw_offset,
             buffer: buffer,
-        }
+        })
     }
 }
 
@@ -103,5 +113,69 @@ unsafe impl<L, B, Pl, S, Pc> CommandsList for CmdDispatchIndirect<L, B, Pl, S, P
                 vk.CmdDispatchIndirect(cmd, self.raw_buffer, self.raw_offset);
             }
         }));
+    }
+}
+
+/// Error that can happen when creating a `CmdDispatch`.
+#[derive(Debug, Copy, Clone)]
+pub enum CmdDispatchIndirectError {
+    /// The buffer must have the "indirect" usage.
+    MissingBufferUsage,
+    /// The buffer must be 4-bytes-aligned.
+    WrongAlignment,
+    /// Error while binding descriptor sets.
+    BindDescriptorSetsError(CmdBindDescriptorSetsError),
+    /// Error while setting push constants.
+    PushConstantsError(CmdPushConstantsError),
+}
+
+impl From<CmdBindDescriptorSetsError> for CmdDispatchIndirectError {
+    #[inline]
+    fn from(err: CmdBindDescriptorSetsError) -> CmdDispatchIndirectError {
+        CmdDispatchIndirectError::BindDescriptorSetsError(err)
+    }
+}
+
+impl From<CmdPushConstantsError> for CmdDispatchIndirectError {
+    #[inline]
+    fn from(err: CmdPushConstantsError) -> CmdDispatchIndirectError {
+        CmdDispatchIndirectError::PushConstantsError(err)
+    }
+}
+
+impl error::Error for CmdDispatchIndirectError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CmdDispatchIndirectError::MissingBufferUsage => {
+                "the buffer must have the indirect usage."
+            },
+            CmdDispatchIndirectError::WrongAlignment => {
+                "the buffer must be 4-bytes-aligned"
+            },
+            CmdDispatchIndirectError::BindDescriptorSetsError(_) => {
+                "error while binding descriptor sets"
+            },
+            CmdDispatchIndirectError::PushConstantsError(_) => {
+                "error while setting push constants"
+            },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CmdDispatchIndirectError::MissingBufferUsage => None,
+            CmdDispatchIndirectError::WrongAlignment => None,
+            CmdDispatchIndirectError::BindDescriptorSetsError(ref err) => Some(err),
+            CmdDispatchIndirectError::PushConstantsError(ref err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for CmdDispatchIndirectError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
