@@ -38,13 +38,8 @@ use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use buffer::traits::TrackedBuffer;
-use buffer::traits::TrackedBufferSubmitInfos;
-use buffer::traits::TrackedBufferPipelineBarrierRequest;
-use buffer::traits::TrackedBufferPipelineMemoryBarrierRequest;
-use command_buffer::StatesManager;
 use command_buffer::Submission;
 use device::Device;
-use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
@@ -54,11 +49,11 @@ use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::FenceWaitError;
 use sync::Sharing;
-use sync::Fence;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
 use OomError;
+use VulkanObject;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
@@ -342,7 +337,12 @@ unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
 unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
-    fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
+    #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+        self.inner.internal_object()
+    }
+
+    /*fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
                   write: bool, stage: PipelineStages, access: AccessFlagBits)
                   -> Option<TrackedBufferPipelineBarrierRequest>
     {
@@ -469,21 +469,7 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
         });
 
         barrier
-    }
-
-    unsafe fn on_submit<F>(&self, state: &StatesManager, queue: &Arc<Queue>, fence: F)
-                    -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
-    {
-        // FIXME: implement correctly
-
-        TrackedBufferSubmitInfos {
-            pre_semaphore: None,
-            post_semaphore: None,
-            pre_barrier: None,
-            post_barrier: None,
-        }
-    }
+    }*/
 }
 
 pub struct CpuAccessibleBufferClState {

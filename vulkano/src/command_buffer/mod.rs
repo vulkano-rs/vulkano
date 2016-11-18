@@ -41,27 +41,30 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::states_manager::StatesManager;
-pub use self::std::PrimaryCbBuilder;
-pub use self::std::CommandBuffer;
-pub use self::std::CommandsList;
+pub use self::barrier::PipelineBarrierBuilder;
+pub use self::cmd::empty;
+pub use self::cmd::CommandsList;
+pub use self::cmd::CommandsListSink;
+pub use self::cmd::CommandsListSinkCaller;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitChain;
 
 use std::sync::Arc;
-use command_buffer::sys::PipelineBarrierBuilder;
+use std::marker::PhantomData;
+
+use device::Device;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
-use sync::PipelineStages;
-use sync::Semaphore;
 
+use vk;
+
+pub mod cb;
+pub mod cmd;
 pub mod pool;
-pub mod std;
-pub mod sys;
 
-mod states_manager;
+mod barrier;
 mod submit;
 
 #[repr(C)]
@@ -81,6 +84,14 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DispatchIndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
 }
 
 /// The dynamic state to use for a draw command.
@@ -109,29 +120,24 @@ impl Default for DynamicState {
     }
 }
 
-/// Information about how the submitting function should synchronize the submission.
-// TODO: rework that design? move to std?
-pub struct SubmitInfo {
-    /// List of semaphores to wait upon before the command buffer starts execution.
-    pub semaphores_wait: Vec<(Arc<Semaphore>, PipelineStages)>,
-    /// List of semaphores to signal after the command buffer has finished.
-    pub semaphores_signal: Vec<Arc<Semaphore>>,
-    /// Pipeline barrier to execute on the queue and immediately before the command buffer.
-    /// Ignored if empty.
-    pub pre_pipeline_barrier: PipelineBarrierBuilder,
-    /// Pipeline barrier to execute on the queue and immediately after the command buffer.
-    /// Ignored if empty.
-    pub post_pipeline_barrier: PipelineBarrierBuilder,
+pub unsafe trait SecondaryCommandBuffer {
+    // TODO: crappy API
+    fn inner(&self) -> vk::CommandBuffer;
+
+    // TODO: necessary only because inner() has a bad return type
+    fn device(&self) -> &Arc<Device>;
+
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>);
 }
 
-impl SubmitInfo {
-    #[inline]
-    pub fn empty() -> SubmitInfo {
-        SubmitInfo {
-            semaphores_wait: Vec::new(),
-            semaphores_signal: Vec::new(),
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
-        }
-    }
+/// Opaque struct that contains a command buffer in construction. You cannot create a
+/// `RawCommandBufferPrototype` yourself.
+pub struct RawCommandBufferPrototype<'a> {
+    device: Arc<Device>,
+    command_buffer: Option<vk::CommandBuffer>,
+    current_state: DynamicState,
+    bound_graphics_pipeline: vk::Pipeline,
+    bound_compute_pipeline: vk::Pipeline,
+    bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
+    marker: PhantomData<&'a ()>,
 }

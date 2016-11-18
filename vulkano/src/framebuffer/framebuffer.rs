@@ -14,11 +14,8 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use command_buffer::SubmitInfo;
-use command_buffer::StatesManager;
-use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::cmd::CommandsListSink;
 use device::Device;
-use device::Queue;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
@@ -26,10 +23,8 @@ use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
-use image::traits::TrackedImage;
 use image::traits::TrackedImageView;
 use sync::AccessFlagBits;
-use sync::Fence;
 use sync::PipelineStages;
 
 use Error;
@@ -63,7 +58,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
                    attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
-              A: AttachmentsList<StatesManager>        // TODO: use another trait in order to be generic over the states
+              A: AttachmentsList
     {
         let device = render_pass.inner().device().clone();
 
@@ -219,30 +214,16 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A, S> TrackedFramebuffer<S> for StdFramebuffer<Rp, A>
-    where Rp: RenderPass, A: AttachmentsList<S>
+unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
+    where Rp: RenderPass, A: AttachmentsList
 {
     #[inline]
-    unsafe fn transition(&self, states: &mut S, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder)
-    {
-        self.resources.transition(states, num_command)
-    }
-
-    #[inline]
-    fn finish(&self, in_s: &mut S, out: &mut S) -> PipelineBarrierBuilder {
-        self.resources.finish(in_s, out)
-    }
-
-    #[inline]
-    unsafe fn on_submit(&self, states: &S, q: &Arc<Queue>,
-                        mut f: &mut FnMut() -> Arc<Fence>) -> SubmitInfo
-    {
-        self.resources.on_submit(states, q, &mut f)
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        self.resources.add_transition(sink);
     }
 }
 
-pub unsafe trait AttachmentsList<States> {
+pub unsafe trait AttachmentsList {
     /// Returns the raw handles of the image views of this list.
     // TODO: better return type
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView>;
@@ -255,19 +236,12 @@ pub unsafe trait AttachmentsList<States> {
     /// should return 128x256x1.
     fn min_dimensions(&self) -> Option<[u32; 3]>;
 
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder);
-
-    fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
-
-    // TODO: take &mut FnMut() -> Arc<Fence>
-    unsafe fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>;
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>);
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct EmptyAttachmentsList;
-unsafe impl<States> AttachmentsList<States> for EmptyAttachmentsList {
+unsafe impl AttachmentsList for EmptyAttachmentsList {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
         vec![]
@@ -279,29 +253,15 @@ unsafe impl<States> AttachmentsList<States> for EmptyAttachmentsList {
     }
 
     #[inline]
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder)
-    {
-        (0, PipelineBarrierBuilder::new())
-    }
-
-    #[inline]
-    fn finish(&self, _: &mut States, _: &mut States) -> PipelineBarrierBuilder {
-        PipelineBarrierBuilder::new()
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, _: &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
-    {
-        SubmitInfo::empty()
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
     }
 }
 
 pub struct List<A, R> { pub first: A, pub rest: R }
-unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
-    where A: TrackedImageView<States>,
-          R: AttachmentsList<States>
+
+unsafe impl<A, R> AttachmentsList for List<A, R>
+    where A: TrackedImageView,
+          R: AttachmentsList
 {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
@@ -330,76 +290,26 @@ unsafe impl<States, A, R> AttachmentsList<States> for List<A, R>
     }
 
     #[inline]
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder)
-    {
-        let (mut rest_cmd, mut rest_barrier) = self.rest.transition(states, num_command);
-        debug_assert!(rest_cmd <= num_command);
-
-        let barrier = { 
-            // FIXME: depth-stencil and general layouts
-            let layout = Layout::ColorAttachmentOptimal;
-
-            let stages = PipelineStages {
-                color_attachment_output: true,
-                late_fragment_tests: true,
-                ..PipelineStages::none()
-            };
-
-            let access = AccessFlagBits {
-                color_attachment_read: true,
-                color_attachment_write: true,
-                depth_stencil_attachment_read: true,
-                depth_stencil_attachment_write: true,
-                .. AccessFlagBits::none()
-            };
-
-            self.first.image().transition(states, num_command, 0, 1,
-                                          0, 1 /* FIXME: */, true, layout, stages, access)
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        // TODO: "wrong" values
+        let stages = PipelineStages {
+            color_attachment_output: true,
+            late_fragment_tests: true,
+            .. PipelineStages::none()
+        };
+        
+        let access = AccessFlagBits {
+            color_attachment_read: true,
+            color_attachment_write: true,
+            depth_stencil_attachment_read: true,
+            depth_stencil_attachment_write: true,
+            .. AccessFlagBits::none()
         };
 
-        if let Some(barrier) = barrier {
-            debug_assert!(barrier.after_command_num <= num_command);
-            rest_cmd = cmp::max(rest_cmd, barrier.after_command_num);
-
-            rest_barrier.add_image_barrier_request(self.first.image(), barrier); 
-        }
-
-        (rest_cmd, rest_barrier)
-    }
-
-    #[inline]
-    fn finish(&self, in_states: &mut States, out_states: &mut States) -> PipelineBarrierBuilder {
-        let first_barrier = self.first.image().finish(in_states, out_states);
-        let mut rest_barrier = self.rest.finish(in_states, out_states);
-
-        if let Some(barrier) = first_barrier {
-            unsafe {
-                rest_barrier.add_image_barrier_request(self.first.image(), barrier);
-            }
-        }
-
-        rest_barrier
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, mut fence: F)
-                           -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>
-    {
-        let mut rest_infos = self.rest.on_submit(states, queue, &mut fence);
-
-        let first_infos = self.first.image().on_submit(states, queue, fence);
-        if let Some(s) = first_infos.pre_semaphore { rest_infos.semaphores_wait.push(s); }
-        if let Some(s) = first_infos.post_semaphore { rest_infos.semaphores_signal.push(s); }
-        if let Some(rq) = first_infos.pre_barrier {
-            rest_infos.pre_pipeline_barrier.add_image_barrier_request(self.first.image(), rq);
-        }
-        if let Some(rq) = first_infos.post_barrier {
-            rest_infos.post_pipeline_barrier.add_image_barrier_request(self.first.image(), rq);
-        }
-
-        rest_infos
+        // FIXME: adjust layers & mipmaps with the view's parameters
+        sink.add_image_transition(&self.first.image(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
+                                  stages, access);
+        self.rest.add_transition(sink);
     }
 }
 

@@ -310,13 +310,13 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSetsCompatible<U> for T
 
 /// Traits that allow determining whether 
 // TODO: require a trait on Pc
-pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>: PipelineLayoutRef {
+pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>: PipelineLayoutDesc {
     /// Returns true if `Pc` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Pc) -> bool;
 }
 
 unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutPushConstantsCompatible<U> for T
-    where T: PipelineLayoutRef
+    where T: PipelineLayoutDesc
 {
     fn is_compatible(&self, _: &U) -> bool {
         // FIXME:

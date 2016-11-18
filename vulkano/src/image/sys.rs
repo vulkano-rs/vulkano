@@ -609,6 +609,52 @@ impl UnsafeImage {
     pub fn supports_blit_destination(&self) -> bool {
         (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
     }
+
+    /// Returns true if the image can be sampled with a linear filtering.
+    #[inline]
+    pub fn supports_linear_filtering(&self) -> bool {
+        (self.format_features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_src(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_dest(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_sampled(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_storage(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_color_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transient_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_input_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    }
 }
 
 unsafe impl VulkanObject for UnsafeImage {

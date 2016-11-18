@@ -72,9 +72,6 @@ pub use self::traits::Buffer;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBuffer;
 pub use self::traits::TrackedBuffer;
-pub use self::traits::TrackedBufferPipelineBarrierRequest;
-pub use self::traits::TrackedBufferPipelineMemoryBarrierRequest;
-pub use self::traits::TrackedBufferSubmitInfos;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
 

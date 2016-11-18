@@ -9,8 +9,6 @@
 
 use std::sync::Arc;
 
-use command_buffer::StatesManager;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::PossibleFloatFormatDesc;
@@ -25,10 +23,6 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
-use sync::Fence;
-use sync::Semaphore;
 
 /// Trait for types that represent images.
 pub unsafe trait Image {
@@ -108,135 +102,13 @@ unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
 /// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
 /// represented by the `CommandListState` associated type of this trait. You can make multiple
 /// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedImage<States = StatesManager>: Image {
-    /// Returns a new state that corresponds to the moment after a slice of the image has been
-    /// used in the pipeline. The parameters indicate in which way it has been used.
-    ///
-    /// If the transition should result in a pipeline barrier, then it must be returned by this
-    /// function.
-    // TODO: what should be the behavior if `num_command` is equal to the `num_command` of a
-    // previous transition?
-    fn transition(&self, states: &mut States, num_command: usize, first_mipmap: u32,
-                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<TrackedImagePipelineBarrierRequest>;
-
-    /// Function called when the command buffer builder is turned into a real command buffer.
-    ///
-    /// This function can return an additional pipeline barrier that will be applied at the end
-    /// of the command buffer.
-    fn finish(&self, in_s: &mut States, out: &mut States)
-              -> Option<TrackedImagePipelineBarrierRequest>;
-
-    /// Called right before the command buffer is submitted.
-    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<F>(&self, states: &States, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>;
+pub unsafe trait TrackedImage: Image {
 }
 
-unsafe impl<I: ?Sized, S> TrackedImage<S> for Arc<I> where I: TrackedImage<S> {
-    #[inline]
-    fn transition(&self, states: &mut S, num_command: usize, first_mipmap: u32,
-                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        (**self).transition(states, num_command, first_mipmap, num_mipmaps, first_layer, num_layers,
-                            write, layout, stage, access)
-    }
-
-    #[inline]
-    fn finish(&self, in_s: &mut S, out: &mut S)
-              -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        (**self).finish(in_s, out)
-    }
-
-    #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
-    {
-        (**self).on_submit(states, queue, fence)
-    }
+unsafe impl<I: ?Sized> TrackedImage for Arc<I> where I: TrackedImage {
 }
 
-unsafe impl<'a, I: ?Sized + 'a, S> TrackedImage<S> for &'a I where I: TrackedImage<S> {
-    #[inline]
-    fn transition(&self, states: &mut S, num_command: usize, first_mipmap: u32,
-                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        (**self).transition(states, num_command, first_mipmap, num_mipmaps, first_layer, num_layers,
-                            write, layout, stage, access)
-    }
-
-    #[inline]
-    fn finish(&self, in_s: &mut S, out: &mut S)
-              -> Option<TrackedImagePipelineBarrierRequest>
-    {
-        (**self).finish(in_s, out)
-    }
-
-    #[inline]
-    fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                    -> TrackedImageSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
-    {
-        (**self).on_submit(states, queue, fence)
-    }
-}
-
-/// Requests that a pipeline barrier is created.
-pub struct TrackedImagePipelineBarrierRequest {
-    /// The number of the command after which the barrier should be placed. Must usually match
-    /// the number that was passed to the previous call to `transition`, or 0 if the image hasn't
-    /// been used yet.
-    pub after_command_num: usize,
-
-    /// The source pipeline stages of the transition.
-    pub source_stage: PipelineStages,
-
-    /// The destination pipeline stages of the transition.
-    pub destination_stages: PipelineStages,
-
-    /// If true, the pipeliner barrier is by region.
-    pub by_region: bool,
-
-    /// An optional memory barrier. See the docs of `TrackedImagePipelineMemoryBarrierRequest`.
-    pub memory_barrier: Option<TrackedImagePipelineMemoryBarrierRequest>,
-}
-
-/// Requests that a memory barrier is created as part of the pipeline barrier.
-///
-/// By default, a pipeline barrier only guarantees that the source operations are executed before
-/// the destination operations, but it doesn't make memory writes made by source operations visible
-/// to the destination operations. In order to make so, you have to add a memory barrier.
-///
-/// The memory barrier always concerns the image that is currently being processed. You can't add
-/// a memory barrier that concerns another resource.
-pub struct TrackedImagePipelineMemoryBarrierRequest {
-    pub first_mipmap: u32,
-    pub num_mipmaps: u32,
-    pub first_layer: u32,
-    pub num_layers: u32,
-
-    pub old_layout: Layout,
-    pub new_layout: Layout,
-
-    /// Source accesses.
-    pub source_access: AccessFlagBits,
-    /// Destination accesses.
-    pub destination_access: AccessFlagBits,
-}
-
-pub struct TrackedImageSubmitInfos {
-    pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
-    pub post_semaphore: Option<Arc<Semaphore>>,
-    pub pre_barrier: Option<TrackedImagePipelineBarrierRequest>,
-    pub post_barrier: Option<TrackedImagePipelineBarrierRequest>,
+unsafe impl<'a, I: ?Sized + 'a> TrackedImage for &'a I where I: TrackedImage {
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
@@ -385,13 +257,13 @@ unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
     }
 }
 
-pub unsafe trait TrackedImageView<States>: ImageView {
-    type Image: TrackedImage<States>;
+pub unsafe trait TrackedImageView: ImageView {
+    type Image: TrackedImage;
 
     fn image(&self) -> &Self::Image;
 }
 
-unsafe impl<'a, S, T: ?Sized + 'a> TrackedImageView<S> for &'a T where T: TrackedImageView<S> {
+unsafe impl<'a, T: ?Sized + 'a> TrackedImageView for &'a T where T: TrackedImageView {
     type Image = T::Image;
 
     #[inline]
@@ -400,7 +272,7 @@ unsafe impl<'a, S, T: ?Sized + 'a> TrackedImageView<S> for &'a T where T: Tracke
     }
 }
 
-unsafe impl<S, T: ?Sized> TrackedImageView<S> for Arc<T> where T: TrackedImageView<S> {
+unsafe impl<T: ?Sized> TrackedImageView for Arc<T> where T: TrackedImageView {
     type Image = T::Image;
 
     #[inline]

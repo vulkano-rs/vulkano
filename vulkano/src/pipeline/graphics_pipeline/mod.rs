@@ -909,6 +909,12 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     pub fn vertex_definition(&self) -> &Mv {
         &self.vertex_definition
     }
+
+    /// Returns the device used to create this pipeline.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>

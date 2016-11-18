@@ -9,14 +9,11 @@
 
 use std::sync::Arc;
 
-use command_buffer::SubmitInfo;
-use command_buffer::StatesManager;
-use command_buffer::sys::PipelineBarrierBuilder;
+use command_buffer::cmd::CommandsListSink;
 use descriptor::descriptor::DescriptorDesc;
-use device::Queue;
-use sync::Fence;
 
 pub use self::collection::DescriptorSetsCollection;
+pub use self::collection::TrackedDescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
 pub use self::simple::*;
 pub use self::sys::UnsafeDescriptorSet;
@@ -64,19 +61,6 @@ pub unsafe trait DescriptorSetDesc {
 // TODO: re-read docs
 /// Extension trait for descriptor sets so that it can be used with the standard commands list
 /// interface.
-pub unsafe trait TrackedDescriptorSet<States = StatesManager>: DescriptorSet {
-    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
-    /// Then transitions them to the right state.
-    unsafe fn transition(&self, states: &mut States, num_command: usize)
-                         -> (usize, PipelineBarrierBuilder);
-
-    /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
-    /// state hasn't been extracted must be have `finished()` called on them as well.
-    ///
-    /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(&self, in_s: &mut States, out: &mut States) -> PipelineBarrierBuilder;
-
-    // TODO: write docs
-    unsafe fn on_submit<F>(&self, &States, queue: &Arc<Queue>, fence: F) -> SubmitInfo
-        where F: FnMut() -> Arc<Fence>;
+pub unsafe trait TrackedDescriptorSet: DescriptorSet {
+    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
 }

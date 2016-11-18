@@ -15,8 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use smallvec::SmallVec;
 
+use command_buffer::cb::UnsyncedCommandBuffer;
 use command_buffer::pool::CommandPool;
-use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::Queue;
 use sync::Fence;
@@ -262,8 +262,8 @@ impl<'a> SubmitBuilder<'a> {
     /// that builds this `SubmitBuilder`. Consequently keeping the `Submit` object alive is enough
     /// to guarantee that the command buffer is kept alive as well.
     #[inline]
-    pub fn add_command_buffer<P>(self, command_buffer: &'a UnsafeCommandBuffer<P>)
-                                 -> SubmitBuilder<'a>
+    pub fn add_command_buffer<L, P>(self, command_buffer: &'a UnsyncedCommandBuffer<L, P>)
+                                    -> SubmitBuilder<'a>
         where P: CommandPool
     {
         self.add_command_buffer_raw(command_buffer.internal_object())

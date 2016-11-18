@@ -10,19 +10,11 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
-use std::sync::Arc;
 
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use buffer::traits::TrackedBuffer;
-use buffer::traits::TrackedBufferPipelineBarrierRequest;
-use buffer::traits::TrackedBufferSubmitInfos;
-use device::Queue;
-
-use sync::AccessFlagBits;
-use sync::Fence;
-use sync::PipelineStages;
 
 /// A subpart of a buffer.
 ///
@@ -171,44 +163,23 @@ unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, B, S> TrackedBuffer<S> for BufferSlice<T, B> where B: TrackedBuffer<S> {
+unsafe impl<T: ?Sized, B> TrackedBuffer for BufferSlice<T, B> where B: TrackedBuffer {
     #[inline]
-    fn transition(&self, states: &mut S, num_command: usize, offset: usize, size: usize,
-                  write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<TrackedBufferPipelineBarrierRequest>
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
+                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+                        -> bool
     {
-        debug_assert!(size < self.size);
-        let mut rq = self.resource.transition(states, num_command, offset + self.offset,
-                                              size, write, stage, access);
-
-        if let Some(ref mut rq) = rq {
-            if let Some(ref mut mb) = rq.memory_barrier {
-                mb.offset -= self.offset as isize;
-            }
-        }
-
-        rq
+        let self_offset = self.offset + self_offset;
+        debug_assert!(self_size + self_offset <= self.size);
+        self.resource.conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
+                                       other_size, other_write)
     }
 
     #[inline]
-    fn finish(&self, in_s: &mut S, out: &mut S) -> Option<TrackedBufferPipelineBarrierRequest> {
-        let mut rq = self.resource.finish(in_s, out);
-
-        if let Some(ref mut rq) = rq {
-            if let Some(ref mut mb) = rq.memory_barrier {
-                mb.offset -= self.offset as isize;
-            }
-        }
-
-        rq
-    }
-
-    #[inline]
-    unsafe fn on_submit<F>(&self, states: &S, queue: &Arc<Queue>, fence: F)
-                           -> TrackedBufferSubmitInfos
-        where F: FnOnce() -> Arc<Fence>
-    {
-        self.resource.on_submit(states, queue, fence)
+    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+        let self_offset = self.offset + self_offset;
+        debug_assert!(self_size + self_offset <= self.size);
+        self.resource.conflict_key(self_offset, self_size, self_write)
     }
 }
 
