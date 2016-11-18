@@ -43,6 +43,7 @@ pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedEr
 pub use self::clear_attachments::CmdClearAttachments;
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::dispatch::CmdDispatch;
+pub use self::dispatch_indirect::CmdDispatchIndirect;
 pub use self::draw::CmdDraw;
 pub use self::draw_indexed::CmdDrawIndexed;
 pub use self::empty::{empty, EmptyCommandsList};
@@ -64,6 +65,7 @@ mod blit_image_unsynced;
 mod clear_attachments;
 mod copy_buffer;
 mod dispatch;
+mod dispatch_indirect;
 mod draw;
 mod draw_indexed;
 mod empty;

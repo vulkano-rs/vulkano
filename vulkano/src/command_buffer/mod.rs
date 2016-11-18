@@ -86,6 +86,14 @@ pub struct DrawIndexedIndirectCommand {
     pub first_instance: u32,
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DispatchIndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
+}
+
 /// The dynamic state to use for a draw command.
 #[derive(Debug, Clone)]
 pub struct DynamicState {
