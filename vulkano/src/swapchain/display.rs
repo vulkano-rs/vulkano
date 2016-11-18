@@ -34,6 +34,7 @@ use vk;
 
 /// ?
 // TODO: plane capabilities
+// TODO: store properties in the instance?
 pub struct DisplayPlane {
     instance: Arc<Instance>,
     physical_device: usize,
@@ -110,6 +111,12 @@ impl DisplayPlane {
     #[inline]
     pub fn physical_device(&self) -> PhysicalDevice {
         PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    }
+
+    /// Returns the index of the plane.
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.index
     }
 
     /// Returns true if this plane supports the given display.

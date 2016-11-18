@@ -56,8 +56,7 @@ impl Surface {
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, SurfaceCreationError>
     {
-        unimplemented!()        // TODO:
-        /*if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
+        if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
             return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
         }
 
@@ -74,14 +73,14 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 displayMode: display_mode.internal_object(),
-                planeIndex: plane.index,
-                planeStackIndex: plane.properties.currentStackIndex,
+                planeIndex: plane.index(),
+                planeStackIndex: 0, // FIXME: plane.properties.currentStackIndex,
                 transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,      // TODO: let user choose
                 globalAlpha: 0.0,       // TODO: let user choose
                 alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,       // TODO: let user choose
                 imageExtent: vk::Extent2D {     // TODO: let user choose
-                    width: display_mode.parameters.visibleRegion.width,
-                    height: display_mode.parameters.visibleRegion.height,
+                    width: display_mode.visible_region()[0],
+                    height: display_mode.visible_region()[1],
                 },
             };
 
@@ -94,7 +93,8 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
-        }))*/
+            has_swapchain: AtomicBool::new(false),
+        }))
     }
 
     /// Creates a `Surface` from a Win32 window.
