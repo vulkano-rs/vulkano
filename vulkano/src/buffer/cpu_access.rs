@@ -37,7 +37,6 @@ use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use buffer::traits::TrackedBuffer;
 use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
@@ -326,17 +325,7 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
             offset: 0,
         }
     }
-}
 
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
-{
-    type Content = T;
-}
-
-unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
-{
     #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
         self.inner.internal_object()
@@ -470,6 +459,12 @@ unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
 
         barrier
     }*/
+}
+
+unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type Content = T;
 }
 
 pub struct CpuAccessibleBufferClState {

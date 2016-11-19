@@ -10,7 +10,7 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use command_buffer::cb::CommandsListBuildPrimaryPool;
 use command_buffer::cb::Flags;
 use command_buffer::cb::Kind;
@@ -124,7 +124,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, _: &TrackedBuffer, _: usize, _: usize, _: bool,
+    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool,
                              _: PipelineStages, _: AccessFlagBits)
     {
     }

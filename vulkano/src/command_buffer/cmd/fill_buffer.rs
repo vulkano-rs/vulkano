@@ -12,7 +12,6 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
 use command_buffer::CommandsList;
@@ -42,7 +41,7 @@ pub struct CmdFillBuffer<L, B>
 }
 
 impl<L, B> CmdFillBuffer<L, B>
-    where B: TrackedBuffer,
+    where B: Buffer,
           L: CommandsList + CommandsListPossibleOutsideRenderPass
 {
     /// Builds a command that writes data to a buffer.
@@ -76,7 +75,7 @@ impl<L, B> CmdFillBuffer<L, B>
 }
 
 unsafe impl<L, B> CommandsList for CmdFillBuffer<L, B>
-    where B: TrackedBuffer,
+    where B: Buffer,
           L: CommandsList,
 {
     #[inline]

@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferViewRef;
-use buffer::TrackedBuffer;
 use command_buffer::cmd::CommandsListSink;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::TrackedDescriptorSet;
@@ -153,7 +152,7 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: TrackedBuffer, L: PipelineLayoutRef
+    where T: Buffer, L: PipelineLayoutRef
 {
     type Out = (R, SimpleDescriptorSetBuf<T>);
 
@@ -201,7 +200,7 @@ pub struct SimpleDescriptorSetBuf<B> {
 }
 
 unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
-    where B: TrackedBuffer
+    where B: Buffer
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -232,7 +231,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 }
 
 unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
-    where V: BufferViewRef, V::Buffer: TrackedBuffer
+    where V: BufferViewRef, V::Buffer: Buffer
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {

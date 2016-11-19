@@ -71,7 +71,6 @@ pub use self::sys::Usage as BufferUsage;
 pub use self::traits::Buffer;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBuffer;
-pub use self::traits::TrackedBuffer;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
 

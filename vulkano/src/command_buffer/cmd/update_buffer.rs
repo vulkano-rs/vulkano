@@ -12,7 +12,6 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use buffer::TrackedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
 use command_buffer::CommandsList;
@@ -42,7 +41,7 @@ pub struct CmdUpdateBuffer<'a, L, B, D: ?Sized>
 }
 
 impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
-    where B: TrackedBuffer,
+    where B: Buffer,
           L: CommandsList + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
 {
@@ -91,7 +90,7 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
 }
 
 unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBuffer<'d, L, B, D>
-    where B: TrackedBuffer,
+    where B: Buffer,
           L: CommandsList,
           D: Copy + 'static,
 {

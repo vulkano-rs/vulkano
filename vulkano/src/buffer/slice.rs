@@ -14,7 +14,6 @@ use std::ops::Range;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use buffer::traits::TrackedBuffer;
 
 /// A subpart of a buffer.
 ///
@@ -157,13 +156,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     fn size(&self) -> usize {
         self.size
     }
-}
 
-unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
-    type Content = T;
-}
-
-unsafe impl<T: ?Sized, B> TrackedBuffer for BufferSlice<T, B> where B: TrackedBuffer {
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
                         other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
@@ -181,6 +174,10 @@ unsafe impl<T: ?Sized, B> TrackedBuffer for BufferSlice<T, B> where B: TrackedBu
         debug_assert!(self_size + self_offset <= self.size);
         self.resource.conflict_key(self_offset, self_size, self_write)
     }
+}
+
+unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
+    type Content = T;
 }
 
 impl<T: ?Sized, B> From<B> for BufferSlice<T, B>

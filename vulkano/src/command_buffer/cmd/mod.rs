@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use buffer::TypedBuffer;
 use command_buffer::cb::CommandsListBuildPrimary;
 use command_buffer::cb::CommandsListBuildPrimaryPool;
@@ -96,7 +96,7 @@ pub unsafe trait CommandsList {
     #[inline]
     fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
                                        -> Result<CmdUpdateBuffer<'a, Self, B, D>, CmdUpdateBufferError>
-        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer, D: Copy + 'static
+        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: Buffer, D: Copy + 'static
     {
         CmdUpdateBuffer::new(self, buffer, data)
     }
@@ -109,7 +109,7 @@ pub unsafe trait CommandsList {
     fn copy_buffer<S, D>(self, source: S, destination: D)
                          -> Result<CmdCopyBuffer<Self, S, D>, CmdCopyBufferError>
         where Self: Sized + CommandsListPossibleOutsideRenderPass,
-              S: TrackedBuffer, D: TrackedBuffer
+              S: Buffer, D: Buffer
     {
         CmdCopyBuffer::new(self, source, destination)
     }
@@ -126,7 +126,7 @@ pub unsafe trait CommandsList {
     #[inline]
     fn fill_buffer<B>(self, buffer: B, data: u32)
                       -> Result<CmdFillBuffer<Self, B>, CmdFillBufferError>
-        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: TrackedBuffer
+        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: Buffer
     {
         CmdFillBuffer::new(self, buffer, data)
     }
@@ -226,7 +226,7 @@ pub unsafe trait CommandsList {
               Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection,
               Pv: Source<V>,
-              Ib: TrackedBuffer + TypedBuffer<Content = [I]>,
+              Ib: Buffer + TypedBuffer<Content = [I]>,
               I: Index + 'static
     {
         CmdDrawIndexed::new(self, pipeline, dynamic, vertices, indices, sets, push_constants)
@@ -302,7 +302,7 @@ pub trait CommandsListSink<'a> {
     /// The parameters are the buffer, and its offset and size, plus a `write` boolean that is
     /// `true` if the buffer must be transitionned to a writable state or `false` if it must be
     /// transitionned to a readable state.
-    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
+    fn add_buffer_transition(&mut self, buffer: &Buffer, offset: usize, size: usize,
                              write: bool, stages: PipelineStages, access: AccessFlagBits);
 
     /// Requests that an image must be transitionned to a given state.

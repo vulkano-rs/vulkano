@@ -12,7 +12,7 @@ use std::fmt;
 use std::mem;
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use buffer::TypedBuffer;
 use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindDescriptorSetsError;
@@ -91,7 +91,7 @@ impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
 }
 
 unsafe impl<L, B, Pl, S, Pc> CommandsList for CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, B: TrackedBuffer,
+    where L: CommandsList, B: Buffer,
           Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
 {
     #[inline]

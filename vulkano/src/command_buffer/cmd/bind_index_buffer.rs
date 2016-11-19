@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use buffer::TypedBuffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
@@ -40,7 +40,7 @@ pub struct CmdBindIndexBuffer<L, B> where L: CommandsList {
 
 impl<L, B, I> CmdBindIndexBuffer<L, B>
     where L: CommandsList,
-          B: TrackedBuffer + TypedBuffer<Content = [I]>,
+          B: Buffer + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// Builds the command.
@@ -72,7 +72,7 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
 }
 
 unsafe impl<L, B> CommandsList for CmdBindIndexBuffer<L, B>
-    where L: CommandsList, B: TrackedBuffer
+    where L: CommandsList, B: Buffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {

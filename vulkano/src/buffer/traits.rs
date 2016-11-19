@@ -66,48 +66,7 @@ pub unsafe trait Buffer {
     {
         BufferSlice::from(self)
     }
-}
 
-/// Inner information about a buffer.
-#[derive(Copy, Clone, Debug)]
-pub struct BufferInner<'a> {
-    /// The underlying buffer object.
-    pub buffer: &'a UnsafeBuffer,
-    /// The offset in bytes from the start of the underlying buffer object to the start of the
-    /// buffer we're describing.
-    pub offset: usize,
-}
-
-unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
-    #[inline]
-    fn inner(&self) -> BufferInner {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        (**self).size()
-    }
-}
-
-unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
-    #[inline]
-    fn inner(&self) -> BufferInner {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        (**self).size()
-    }
-}
-
-/// Extension trait for `Buffer`. Types that implement this can be used in a `StdCommandBuffer`.
-///
-/// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
-/// represented by the `CommandListState` associated type of this trait. You can make multiple
-/// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedBuffer: Buffer {
     /// Returns true if an access to `self` (as defined by `self_offset`, `self_size` and
     /// `self_write`) shouldn't execute at the same time as an access to `other` (as defined by
     /// `other_offset`, `other_size` and `other_write`).
@@ -144,10 +103,33 @@ pub unsafe trait TrackedBuffer: Buffer {
     }
 
     /// Two resources that conflict with each other should return the same key.
-    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64;
+    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+        // FIXME: remove implementation
+        unimplemented!()
+    }
 }
 
-unsafe impl<B: ?Sized> TrackedBuffer for Arc<B> where B: TrackedBuffer {
+/// Inner information about a buffer.
+#[derive(Copy, Clone, Debug)]
+pub struct BufferInner<'a> {
+    /// The underlying buffer object.
+    pub buffer: &'a UnsafeBuffer,
+    /// The offset in bytes from the start of the underlying buffer object to the start of the
+    /// buffer we're describing.
+    pub offset: usize,
+}
+
+unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
                         other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
@@ -163,7 +145,17 @@ unsafe impl<B: ?Sized> TrackedBuffer for Arc<B> where B: TrackedBuffer {
     }
 }
 
-unsafe impl<'a, B: ?Sized> TrackedBuffer for &'a B where B: TrackedBuffer + 'a {
+unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        (**self).size()
+    }
+
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
                         other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)

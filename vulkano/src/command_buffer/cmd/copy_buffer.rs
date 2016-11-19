@@ -11,7 +11,7 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
@@ -24,7 +24,7 @@ use vk;
 /// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
 /// another.
 pub struct CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
+    where L: CommandsList, S: Buffer, D: Buffer
 {
     // Parent commands list.
     previous: L,
@@ -38,7 +38,7 @@ pub struct CmdCopyBuffer<L, S, D>
 }
 
 impl<L, S, D> CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
+    where L: CommandsList, S: Buffer, D: Buffer
 {
     /// Builds a new command.
     ///
@@ -95,7 +95,7 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
 }
 
 unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: TrackedBuffer, D: TrackedBuffer
+    where L: CommandsList, S: Buffer, D: Buffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {

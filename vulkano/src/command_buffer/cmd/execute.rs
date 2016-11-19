@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::SecondaryCommandBuffer;
 use command_buffer::cmd::CommandsList;
@@ -95,7 +95,7 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, buffer: &TrackedBuffer, offset: usize, size: usize,
+    fn add_buffer_transition(&mut self, buffer: &Buffer, offset: usize, size: usize,
                              write: bool, stages: PipelineStages, access: AccessFlagBits)
     {
         self.0.add_buffer_transition(buffer, offset, size, write, stages, access)

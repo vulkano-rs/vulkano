@@ -12,7 +12,7 @@ use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::CommandsList;
@@ -273,7 +273,7 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, _: &TrackedBuffer, _: usize, _: usize, _: bool,
+    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool,
                              _: PipelineStages, _: AccessFlagBits)
     {
     }

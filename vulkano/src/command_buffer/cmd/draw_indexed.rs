@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::TrackedBuffer;
+use buffer::Buffer;
 use buffer::TypedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::cmd::CmdBindDescriptorSets;
@@ -61,7 +61,7 @@ impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, P
     where L: CommandsList,
           Pl: PipelineLayoutRef,
           S: TrackedDescriptorSetsCollection,
-          Ib: TrackedBuffer + TypedBuffer<Content = [I]>,
+          Ib: Buffer + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// See the documentation of the `draw` method.
@@ -96,7 +96,7 @@ impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, P
 
 unsafe impl<L, V, Ib, Pv, Pl, Prp, S, Pc> CommandsList for CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
     where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection,
-          Ib: TrackedBuffer
+          Ib: Buffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
