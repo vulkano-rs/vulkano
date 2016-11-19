@@ -97,20 +97,6 @@ unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
     }
 }
 
-/// Extension trait for `Image`. Types that implement this can be used in a `StdCommandBuffer`.
-///
-/// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
-/// represented by the `CommandListState` associated type of this trait. You can make multiple
-/// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedImage: Image {
-}
-
-unsafe impl<I: ?Sized> TrackedImage for Arc<I> where I: TrackedImage {
-}
-
-unsafe impl<'a, I: ?Sized + 'a> TrackedImage for &'a I where I: TrackedImage {
-}
-
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
 /// given image.
 // TODO: isn't that for image views instead?
@@ -254,30 +240,6 @@ unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
     #[inline]
     fn can_be_sampled(&self, sampler: &Sampler) -> bool {
         (**self).can_be_sampled(sampler)
-    }
-}
-
-pub unsafe trait TrackedImageView: ImageView {
-    type Image: TrackedImage;
-
-    fn image(&self) -> &Self::Image;
-}
-
-unsafe impl<'a, T: ?Sized + 'a> TrackedImageView for &'a T where T: TrackedImageView {
-    type Image = T::Image;
-
-    #[inline]
-    fn image(&self) -> &Self::Image {
-        (**self).image()
-    }
-}
-
-unsafe impl<T: ?Sized> TrackedImageView for Arc<T> where T: TrackedImageView {
-    type Image = T::Image;
-
-    #[inline]
-    fn image(&self) -> &Self::Image {
-        (**self).image()
     }
 }
 

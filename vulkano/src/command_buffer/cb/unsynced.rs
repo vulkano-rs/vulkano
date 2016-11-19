@@ -27,7 +27,7 @@ use framebuffer::StdFramebuffer;
 use framebuffer::Subpass;
 use framebuffer::traits::Framebuffer;
 use image::Layout;
-use image::TrackedImage;
+use image::Image;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -279,13 +279,13 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
     }
 
     #[inline]
-    fn add_image_transition(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32, _: u32,
+    fn add_image_transition(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32,
                             _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
     }
 
     #[inline]
-    fn add_image_transition_notification(&mut self, _: &TrackedImage, _: u32, _: u32, _: u32,
+    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32,
                                          _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
     }

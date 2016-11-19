@@ -18,7 +18,7 @@ use command_buffer::cmd::CommandsListSink;
 use command_buffer::cmd::CommandsListSinkCaller;
 use device::Device;
 use image::Layout;
-use image::TrackedImage;
+use image::Image;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use VulkanObject;
@@ -102,7 +102,7 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
+    fn add_image_transition(&mut self, image: &Image, first_layer: u32, num_layers: u32,
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
                             stages: PipelineStages, access: AccessFlagBits)
     {
@@ -111,7 +111,7 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
+    fn add_image_transition_notification(&mut self, image: &Image, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
                                          layout: Layout, stages: PipelineStages,
                                          access: AccessFlagBits)

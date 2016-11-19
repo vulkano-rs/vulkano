@@ -23,7 +23,7 @@ use framebuffer::traits::TrackedFramebuffer;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
-use image::TrackedImage;
+use image::Image;
 use instance::QueueFamily;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -308,7 +308,7 @@ pub trait CommandsListSink<'a> {
     /// Requests that an image must be transitionned to a given state.
     ///
     /// If necessary, you must transition the image to the `layout`.
-    fn add_image_transition(&mut self, image: &TrackedImage, first_layer: u32, num_layers: u32,
+    fn add_image_transition(&mut self, image: &Image, first_layer: u32, num_layers: u32,
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
                             stages: PipelineStages, access: AccessFlagBits);
 
@@ -317,7 +317,7 @@ pub trait CommandsListSink<'a> {
     ///
     /// The sink doesn't need to perform any operation when this method is called, but should
     /// modify its internal state in order to keep track of the state of that image.
-    fn add_image_transition_notification(&mut self, image: &TrackedImage, first_layer: u32,
+    fn add_image_transition_notification(&mut self, image: &Image, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
                                          layout: Layout, stages: PipelineStages,
                                          access: AccessFlagBits);

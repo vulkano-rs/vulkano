@@ -55,8 +55,6 @@ pub use self::sys::Layout;
 pub use self::sys::Usage;
 pub use self::traits::Image;
 pub use self::traits::ImageView;
-pub use self::traits::TrackedImage;
-pub use self::traits::TrackedImageView;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private

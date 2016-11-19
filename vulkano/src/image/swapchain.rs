@@ -21,8 +21,6 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::TrackedImage;
-use image::traits::TrackedImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -168,18 +166,6 @@ unsafe impl ImageView for SwapchainImage {
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
-    }
-}
-
-unsafe impl TrackedImage for SwapchainImage {
-}
-
-unsafe impl TrackedImageView for SwapchainImage {
-    type Image = SwapchainImage;
-
-    #[inline]
-    fn image(&self) -> &SwapchainImage {
-        self
     }
 }
 

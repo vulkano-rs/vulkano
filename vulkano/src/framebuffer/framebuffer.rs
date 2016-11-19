@@ -23,7 +23,7 @@ use framebuffer::UnsafeRenderPass;
 use framebuffer::traits::Framebuffer as FramebufferTrait;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
-use image::traits::TrackedImageView;
+use image::traits::ImageView;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -260,7 +260,7 @@ unsafe impl AttachmentsList for EmptyAttachmentsList {
 pub struct List<A, R> { pub first: A, pub rest: R }
 
 unsafe impl<A, R> AttachmentsList for List<A, R>
-    where A: TrackedImageView,
+    where A: ImageView,
           R: AttachmentsList
 {
     #[inline]
@@ -307,7 +307,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(&self.first.image(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
+        sink.add_image_transition(&self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
                                   stages, access);
         self.rest.add_transition(sink);
     }

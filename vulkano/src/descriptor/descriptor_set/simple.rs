@@ -19,7 +19,7 @@ use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::sys::UnsafeDescriptorSet;
 use descriptor::descriptor_set::sys::DescriptorWrite;
 use descriptor::pipeline_layout::PipelineLayoutRef;
-use image::TrackedImageView;
+use image::ImageView;
 use image::sys::Layout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -268,7 +268,7 @@ pub struct SimpleDescriptorSetImg<I> {
 }
 
 unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
-    where I: TrackedImageView
+    where I: ImageView
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -288,7 +288,7 @@ unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(&self.image.image(), self.first_layer, self.num_layers,
+        sink.add_image_transition(&self.image.parent(), self.first_layer, self.num_layers,
                                   self.first_mipmap, self.num_mipmaps, self.write,
                                   self.layout, stages, access);
     }
