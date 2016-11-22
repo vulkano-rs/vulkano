@@ -515,7 +515,7 @@ mod tests {
     use device::Queue;
     use framebuffer::framebuffer::EmptyAttachmentsList;
     use framebuffer::EmptySinglePassRenderPass;
-    use framebuffer::StdFramebuffer;
+    use framebuffer::Framebuffer;
     use sync::Fence;
     use sync::PipelineStages;
     use sync::Semaphore;
@@ -540,7 +540,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let pool = Device::standard_command_pool(&device, queue.family());
-        let kind = Kind::Primary::<EmptySinglePassRenderPass, StdFramebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>;
+        let kind = Kind::Primary::<EmptySinglePassRenderPass, Framebuffer<EmptySinglePassRenderPass, EmptyAttachmentsList>>;
 
         let cb = UnsafeCommandBufferBuilder::new(pool, kind, Flags::OneTimeSubmit).unwrap();
         let cb = Basic { inner: cb.build().unwrap() };

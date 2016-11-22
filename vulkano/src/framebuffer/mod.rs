@@ -67,7 +67,7 @@
 //!
 
 pub use self::empty::EmptySinglePassRenderPass;
-pub use self::framebuffer::StdFramebuffer;
+pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::sys::RenderPass;
 pub use self::sys::RenderPassSys;

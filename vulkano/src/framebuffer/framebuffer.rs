@@ -40,7 +40,7 @@ use vk;
 /// A framebuffer can be used alongside with any other render pass object as long as it is
 /// compatible with the render pass that his framebuffer was created with. You can determine
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
-pub struct StdFramebuffer<Rp, A> {
+pub struct Framebuffer<Rp, A> {
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,
@@ -48,12 +48,12 @@ pub struct StdFramebuffer<Rp, A> {
     resources: A,
 }
 
-impl<Rp, A> StdFramebuffer<Rp, A> {
+impl<Rp, A> Framebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
-                   attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
+                   attachments: Ia) -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPassRef + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
@@ -122,7 +122,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
             output
         };
 
-        Ok(Arc::new(StdFramebuffer {
+        Ok(Arc::new(Framebuffer {
             device: device,
             render_pass: render_pass,
             framebuffer: framebuffer,
@@ -177,7 +177,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A>
+unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
     where Rp: RenderPassRef, A: AttachmentsList
 {
     type RenderPassRef = Rp;
@@ -198,7 +198,7 @@ unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A>
     }
 }
 
-unsafe impl<Rp, A> VulkanObject for StdFramebuffer<Rp, A> {
+unsafe impl<Rp, A> VulkanObject for Framebuffer<Rp, A> {
     type Object = vk::Framebuffer;
 
     #[inline]
@@ -207,7 +207,7 @@ unsafe impl<Rp, A> VulkanObject for StdFramebuffer<Rp, A> {
     }
 }
 
-impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
+impl<Rp, A> Drop for Framebuffer<Rp, A> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -448,7 +448,7 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use format::R8G8B8A8Unorm;
-    use framebuffer::StdFramebuffer;
+    use framebuffer::Framebuffer;
     use framebuffer::FramebufferCreationError;
     use image::attachment::AttachmentImage;
 
@@ -480,7 +480,7 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let _ = StdFramebuffer::new(&render_pass, [1024, 768, 1], example::AList {
+        let _ = Framebuffer::new(&render_pass, [1024, 768, 1], example::AList {
             color: image.clone()
         }).unwrap();
     }
@@ -496,7 +496,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
-        match StdFramebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
+        match Framebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }
@@ -513,7 +513,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
-        match StdFramebuffer::new(&render_pass, [600, 600, 1], alist) {
+        match Framebuffer::new(&render_pass, [600, 600, 1], alist) {
             Err(FramebufferCreationError::AttachmentTooSmall) => (),
             _ => panic!()
         }
