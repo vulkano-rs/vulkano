@@ -22,7 +22,7 @@ use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
 use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
 use image::Image;
@@ -174,9 +174,9 @@ pub unsafe trait CommandsList {
     /// You must call this before you can add draw commands.
     #[inline]
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
-                               -> CmdBeginRenderPass<Self, F::RenderPass, F>
+                               -> CmdBeginRenderPass<Self, F::RenderPassRef, F>
         where Self: Sized, F: TrackedFramebuffer,
-              F::RenderPass: RenderPass + RenderPassClearValues<C>
+              F::RenderPassRef: RenderPassRef + RenderPassClearValues<C>
     {
         CmdBeginRenderPass::new(self, framebuffer, secondary, clear_values)
     }
@@ -369,7 +369,7 @@ pub unsafe trait CommandsListPossibleOutsideRenderPass {
 /// a render pass. If it is implemented, then we maybe are but that's not sure.
 // TODO: make all return values optional, since we're possibly not in a render pass
 pub unsafe trait CommandsListPossibleInsideRenderPass {
-    type RenderPass: RenderPass;
+    type RenderPassRef: RenderPassRef;
 
     /// Returns the number of the subpass we're in. The value is 0-indexed, so immediately after
     /// calling `begin_render_pass` the value will be `0`.
@@ -383,7 +383,7 @@ pub unsafe trait CommandsListPossibleInsideRenderPass {
 
     /// Returns the description of the render pass we're in.
     // TODO: return a trait object instead?
-    fn render_pass(&self) -> &Self::RenderPass;
+    fn render_pass(&self) -> &Self::RenderPassRef;
 
-    //fn current_subpass(&self) -> Subpass<&Self::RenderPass>;
+    //fn current_subpass(&self) -> Subpass<&Self::RenderPassRef>;
 }

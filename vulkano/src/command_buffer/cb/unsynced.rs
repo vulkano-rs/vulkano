@@ -22,7 +22,7 @@ use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use device::Device;
 use framebuffer::EmptySinglePassRenderPass;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::StdFramebuffer;
 use framebuffer::Subpass;
 use framebuffer::traits::Framebuffer;
@@ -114,7 +114,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     /// Creates a new builder.
     pub unsafe fn new<R, F>(list: L, pool: P, kind: Kind<R, F>, flags: Flags)
                             -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -143,7 +143,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     pub unsafe fn already_allocated<R, F>(list: L, pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
                                           -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: Framebuffer
     {
         let device = pool.device().clone();
         let vk = device.pointers();

@@ -25,7 +25,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
@@ -150,7 +150,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
-    where Rp: RenderPass + RenderPassDesc
+    where Rp: RenderPassRef + RenderPassDesc
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -292,7 +292,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
+    where L: PipelineLayoutRef, Rp: RenderPassRef + RenderPassDesc
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
@@ -928,7 +928,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPass + RenderPassDesc
+    where Rp: RenderPassRef + RenderPassDesc
 {
     /// Returns the render pass used in the constructor.
     #[inline]

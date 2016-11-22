@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
@@ -314,7 +314,7 @@ unsafe impl VulkanObject for UnsafeRenderPass {
     }
 }
 
-unsafe impl RenderPass for UnsafeRenderPass {
+unsafe impl RenderPassRef for UnsafeRenderPass {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         self

@@ -18,7 +18,7 @@ use command_buffer::CommandsListSink;
 use device::Device;
 use format::ClearValue;
 use framebuffer::traits::TrackedFramebuffer;
-use framebuffer::RenderPass;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use VulkanObject;
 use VulkanPointers;
@@ -46,14 +46,14 @@ pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
     framebuffer: F,
 }
 
-impl<L, F> CmdBeginRenderPass<L, F::RenderPass, F>
+impl<L, F> CmdBeginRenderPass<L, F::RenderPassRef, F>
     where L: CommandsList, F: TrackedFramebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<L, F::RenderPass, F>
-        where F::RenderPass: RenderPassClearValues<C>
+                  -> CmdBeginRenderPass<L, F::RenderPassRef, F>
+        where F::RenderPassRef: RenderPassClearValues<C>
     {
         let raw_render_pass = framebuffer.render_pass().inner().internal_object();
         let device = framebuffer.render_pass().inner().device().clone();

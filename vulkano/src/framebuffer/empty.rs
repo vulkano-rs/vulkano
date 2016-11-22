@@ -16,7 +16,7 @@ use format::ClearValue;
 use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::UnsafeRenderPass;
 use framebuffer::sys::RenderPassCreationError;
-use framebuffer::traits::RenderPass;
+use framebuffer::traits::RenderPassRef;
 use framebuffer::traits::RenderPassDesc;
 use framebuffer::traits::RenderPassAttachmentsList;
 use framebuffer::traits::RenderPassClearValues;
@@ -24,7 +24,7 @@ use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
 
-/// Implementation of `RenderPass` with no attachment at all and a single pass.
+/// Implementation of `RenderPassRef` with no attachment at all and a single pass.
 ///
 /// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
 /// be `()`.
@@ -64,7 +64,7 @@ impl EmptySinglePassRenderPass {
     }
 }
 
-unsafe impl RenderPass for EmptySinglePassRenderPass {
+unsafe impl RenderPassRef for EmptySinglePassRenderPass {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         &self.render_pass

@@ -25,20 +25,20 @@ use vk;
 use VulkanObject;
 
 pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
-    type RenderPass: RenderPass;
+    type RenderPassRef: RenderPassRef;
 
     /// Returns the render pass this framebuffer belongs to.
-    fn render_pass(&self) -> &Self::RenderPass;
+    fn render_pass(&self) -> &Self::RenderPassRef;
 
     /// Returns the width, height and number of layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
 }
 
 unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
-    type RenderPass = F::RenderPass;
+    type RenderPassRef = F::RenderPassRef;
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         (**self).render_pass()
     }
 
@@ -49,10 +49,10 @@ unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
 }
 
 unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
-    type RenderPass = F::RenderPass;
+    type RenderPassRef = F::RenderPassRef;
 
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
+    fn render_pass(&self) -> &Self::RenderPassRef {
         (**self).render_pass()
     }
 
@@ -83,7 +83,7 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
 /// - `render_pass` has to return the same `UnsafeRenderPass` every time.
 /// - `num_subpasses` has to return a correct value.
 ///
-pub unsafe trait RenderPass {
+pub unsafe trait RenderPassRef {
     /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
     fn inner(&self) -> &UnsafeRenderPass;
 
@@ -93,14 +93,14 @@ pub unsafe trait RenderPass {
     }
 }
 
-unsafe impl<T> RenderPass for Arc<T> where T: RenderPass {
+unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         (**self).inner()
     }
 }
 
-unsafe impl<'a, T: ?Sized> RenderPass for &'a T where T: RenderPass {
+unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     #[inline]
     fn inner(&self) -> &UnsafeRenderPass {
         (**self).inner()
@@ -305,7 +305,7 @@ unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
     }
 }
 
-/// Extension trait for `RenderPass`. Defines which types are allowed as an attachments list.
+/// Extension trait for `RenderPassRef`. Defines which types are allowed as an attachments list.
 ///
 /// # Safety
 ///
@@ -318,7 +318,7 @@ unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
 /// - That the attachments use identity components swizzling.
 /// TODO: more stuff with aliasing
 ///
-pub unsafe trait RenderPassAttachmentsList<A>: RenderPass {
+pub unsafe trait RenderPassAttachmentsList<A>: RenderPassRef {
     /// Decodes a `A` into a list of attachments.
     ///
     /// Returns an error if one of the attachments is wrong.
@@ -343,14 +343,14 @@ unsafe impl<'a, A, Rp> RenderPassAttachmentsList<A> for &'a Rp
     }
 }
 
-/// Extension trait for `RenderPass`. Defines which types are allowed as a list of clear values.
+/// Extension trait for `RenderPassRef`. Defines which types are allowed as a list of clear values.
 ///
 /// # Safety
 ///
 /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
 /// matches the attachment.
 ///
-pub unsafe trait RenderPassClearValues<C>: RenderPass {
+pub unsafe trait RenderPassClearValues<C>: RenderPassRef {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
@@ -381,14 +381,14 @@ unsafe impl<'a, C, Rp> RenderPassClearValues<C> for &'a Rp where Rp: RenderPassC
     }
 }
 
-/// Extension trait for `RenderPass` that checks whether a subpass of this render pass accepts
+/// Extension trait for `RenderPassRef` that checks whether a subpass of this render pass accepts
 /// the output of a fragment shader.
 ///
-/// The trait is automatically implemented for all type that implement `RenderPass` and
+/// The trait is automatically implemented for all type that implement `RenderPassRef` and
 /// `RenderPassDesc`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
-pub unsafe trait RenderPassSubpassInterface<Other>: RenderPass where Other: ShaderInterfaceDef {
+pub unsafe trait RenderPassSubpassInterface<Other>: RenderPassRef where Other: ShaderInterfaceDef {
     /// Returns `true` if this subpass is compatible with the fragment output definition.
     /// Also returns `false` if the subpass is out of range.
     // TODO: return proper error
@@ -396,7 +396,7 @@ pub unsafe trait RenderPassSubpassInterface<Other>: RenderPass where Other: Shad
 }
 
 unsafe impl<A, B> RenderPassSubpassInterface<B> for A
-    where A: RenderPass + RenderPassDesc, B: ShaderInterfaceDef
+    where A: RenderPassRef + RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
         let pass_descr = match (0 .. self.num_subpasses()).map(|p| RenderPassDesc::subpass(self, p).unwrap()).skip(subpass as usize).next() {
@@ -427,11 +427,11 @@ unsafe impl<A, B> RenderPassSubpassInterface<B> for A
 /// Trait implemented on render pass objects to check whether they are compatible
 /// with another render pass.
 ///
-/// The trait is automatically implemented for all type that implement `RenderPass`.
+/// The trait is automatically implemented for all type that implement `RenderPassRef`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait RenderPassCompatible<Other>: RenderPass where Other: RenderPass {
+pub unsafe trait RenderPassCompatible<Other>: RenderPassRef where Other: RenderPassRef {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     // TODO: return proper error
@@ -439,7 +439,7 @@ pub unsafe trait RenderPassCompatible<Other>: RenderPass where Other: RenderPass
 }
 
 unsafe impl<A, B> RenderPassCompatible<B> for A
-    where A: RenderPass, B: RenderPass
+    where A: RenderPassRef, B: RenderPassRef
 {
     fn is_compatible_with(&self, other: &Arc<B>) -> bool {
         // FIXME:
@@ -612,7 +612,7 @@ pub enum LoadOp {
     DontCare = vk::ATTACHMENT_LOAD_OP_DONT_CARE,
 }
 
-/// Represents a subpass within a `RenderPass` object.
+/// Represents a subpass within a `RenderPassRef` object.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
@@ -624,7 +624,7 @@ pub struct Subpass<L> {
     subpass_id: u32,
 }
 
-impl<L> Subpass<L> where L: RenderPass + RenderPassDesc {
+impl<L> Subpass<L> where L: RenderPassRef + RenderPassDesc {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
