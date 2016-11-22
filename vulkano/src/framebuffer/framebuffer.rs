@@ -137,7 +137,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
         where R: RenderPassRef, Rp: RenderPassRef
     {
-        self.render_pass.is_compatible_with(render_pass)
+        self.render_pass.desc().is_compatible_with(render_pass.desc())
     }
 
     /// Returns the width, height and layers of this framebuffer.

@@ -543,19 +543,19 @@ unsafe impl<A, B> RenderPassSubpassInterface<B> for A
 /// Trait implemented on render pass objects to check whether they are compatible
 /// with another render pass.
 ///
-/// The trait is automatically implemented for all type that implement `RenderPassRef`.
+/// The trait is automatically implemented for all type that implement `RenderPassDesc`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait RenderPassCompatible<Other>: RenderPassRef where Other: RenderPassRef {
+pub unsafe trait RenderPassCompatible<Other: ?Sized>: RenderPassDesc where Other: RenderPassDesc {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     // TODO: return proper error
     fn is_compatible_with(&self, other: &Other) -> bool;
 }
 
-unsafe impl<A, B> RenderPassCompatible<B> for A
-    where A: RenderPassRef, B: RenderPassRef
+unsafe impl<A, B: ?Sized> RenderPassCompatible<B> for A
+    where A: RenderPassDesc, B: RenderPassDesc
 {
     fn is_compatible_with(&self, other: &B) -> bool {
         // FIXME:
