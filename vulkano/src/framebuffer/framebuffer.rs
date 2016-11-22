@@ -180,6 +180,11 @@ impl<Rp, A> Framebuffer<Rp, A> {
 unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
     where Rp: RenderPassRef, A: AttachmentsList
 {
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        FramebufferSys(&self.framebuffer)
+    }
+
     type RenderPassRef = Rp;
 
     #[inline]
@@ -198,15 +203,6 @@ unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
     }
 }
 
-unsafe impl<Rp, A> VulkanObject for Framebuffer<Rp, A> {
-    type Object = vk::Framebuffer;
-
-    #[inline]
-    fn internal_object(&self) -> vk::Framebuffer {
-        self.framebuffer
-    }
-}
-
 impl<Rp, A> Drop for Framebuffer<Rp, A> {
     #[inline]
     fn drop(&mut self) {
@@ -214,6 +210,19 @@ impl<Rp, A> Drop for Framebuffer<Rp, A> {
             let vk = self.device.pointers();
             vk.DestroyFramebuffer(self.device.internal_object(), self.framebuffer, ptr::null());
         }
+    }
+}
+
+/// Opaque struct that represents a framebuffer without a template parameter.
+#[derive(Debug, Copy, Clone)]
+pub struct FramebufferSys<'a>(&'a vk::Framebuffer);
+
+unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
+    type Object = vk::Framebuffer;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Framebuffer {
+        *self.0
     }
 }
 

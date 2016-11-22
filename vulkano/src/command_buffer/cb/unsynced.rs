@@ -175,7 +175,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
         let framebuffer = if let Kind::SecondaryRenderPass { ref subpass, framebuffer: Some(ref framebuffer) } = kind {
             // TODO: restore check
             //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
-            framebuffer.internal_object()
+            framebuffer.inner().internal_object()
         } else {
             0
         };

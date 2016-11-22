@@ -14,8 +14,9 @@ use device::Device;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
-use framebuffer::RenderPassSys;
 use framebuffer::FramebufferCreationError;
+use framebuffer::FramebufferSys;
+use framebuffer::RenderPassSys;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
@@ -23,11 +24,11 @@ use sync::PipelineStages;
 
 use vk;
 
-use VulkanObject;
+pub unsafe trait FramebufferRef {
+    /// Returns the underlying framebuffer. Used by vulkano's internals.
+    fn inner(&self) -> FramebufferSys;
 
-pub unsafe trait FramebufferRef: VulkanObject<Object = vk::Framebuffer> {
     type RenderPassRef: RenderPassRef;
-
     /// Returns the render pass this framebuffer belongs to.
     fn render_pass(&self) -> &Self::RenderPassRef;
 
@@ -38,6 +39,11 @@ pub unsafe trait FramebufferRef: VulkanObject<Object = vk::Framebuffer> {
 }
 
 unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        (**self).inner()
+    }
+
     type RenderPassRef = F::RenderPassRef;
 
     #[inline]
@@ -57,6 +63,11 @@ unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
 }
 
 unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        (**self).inner()
+    }
+
     type RenderPassRef = F::RenderPassRef;
 
     #[inline]

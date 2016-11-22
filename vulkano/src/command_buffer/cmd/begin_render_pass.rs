@@ -57,7 +57,7 @@ impl<L, F> CmdBeginRenderPass<L, F::RenderPassRef, F>
     {
         let raw_render_pass = framebuffer.render_pass().inner().internal_object();
         let device = framebuffer.render_pass().device().clone();
-        let raw_framebuffer = framebuffer.internal_object();
+        let raw_framebuffer = framebuffer.inner().internal_object();
 
         let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
                                       .map(|clear_value|
