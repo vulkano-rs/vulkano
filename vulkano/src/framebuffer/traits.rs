@@ -13,7 +13,7 @@ use command_buffer::cmd::CommandsListSink;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
-use framebuffer::UnsafeRenderPass;
+use framebuffer::RenderPass;
 use framebuffer::FramebufferCreationError;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
@@ -80,12 +80,12 @@ unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
 ///
 /// This trait is unsafe because:
 ///
-/// - `render_pass` has to return the same `UnsafeRenderPass` every time.
+/// - `render_pass` has to return the same `RenderPass` every time.
 /// - `num_subpasses` has to return a correct value.
 ///
 pub unsafe trait RenderPassRef {
-    /// Returns the underlying `UnsafeRenderPass`. Used by vulkano's internals.
-    fn inner(&self) -> &UnsafeRenderPass;
+    /// Returns the underlying `RenderPass`. Used by vulkano's internals.
+    fn inner(&self) -> &RenderPass;
 
     #[inline]
     fn subpass(&self, index: u32) -> Option<Subpass<&Self>> where Self: RenderPassDesc {
@@ -95,14 +95,14 @@ pub unsafe trait RenderPassRef {
 
 unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
     #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &RenderPass {
         (**self).inner()
     }
 }
 
 unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
+    fn inner(&self) -> &RenderPass {
         (**self).inner()
     }
 }
@@ -491,7 +491,7 @@ impl LayoutAttachmentDescription {
 ///
 /// # Restrictions
 ///
-/// All these restrictions are checked when the `UnsafeRenderPass` object is created.
+/// All these restrictions are checked when the `RenderPass` object is created.
 /// TODO: that's not the case ^
 ///
 /// - The number of color attachments must be less than the limit of the physical device.

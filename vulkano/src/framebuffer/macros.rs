@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
+/// Builds a `CustomRenderPass` object that provides a safe wrapper around `RenderPass`.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -30,7 +30,7 @@ macro_rules! single_pass_renderpass {
     }
 }
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
+/// Builds a `CustomRenderPass` object that provides a safe wrapper around `RenderPass`.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
@@ -58,7 +58,7 @@ macro_rules! ordered_passes_renderpass {
         use std::sync::Arc;
         use $crate::device::Device;
         use $crate::format::ClearValue;
-        use $crate::framebuffer::UnsafeRenderPass;
+        use $crate::framebuffer::RenderPass;
         use $crate::framebuffer::RenderPassRef;
         use $crate::framebuffer::RenderPassDesc;
         use $crate::framebuffer::RenderPassClearValues;
@@ -82,7 +82,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         pub struct CustomRenderPass {
-            render_pass: UnsafeRenderPass,
+            render_pass: RenderPass,
             formats: Formats,
         }
 
@@ -97,7 +97,7 @@ macro_rules! ordered_passes_renderpass {
                     let subpasses = (0 .. num_subpasses()).map(|p| subpass(p).unwrap());
                     let deps = (0 .. num_dependencies()).map(|p| dependency(p).unwrap());
                     // TODO: shouldn't collect
-                    UnsafeRenderPass::new(device, atch.collect::<Vec<_>>().into_iter(),
+                    RenderPass::new(device, atch.collect::<Vec<_>>().into_iter(),
                                           subpasses.collect::<Vec<_>>().into_iter(),
                                           deps.collect::<Vec<_>>().into_iter())
                 });
@@ -119,7 +119,7 @@ macro_rules! ordered_passes_renderpass {
         #[allow(unsafe_code)]
         unsafe impl RenderPassRef for CustomRenderPass {
             #[inline]
-            fn inner(&self) -> &UnsafeRenderPass {
+            fn inner(&self) -> &RenderPass {
                 &self.render_pass
             }
         }
