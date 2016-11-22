@@ -21,6 +21,7 @@ pub use parse::ParseError;
 pub use glsl_to_spirv::ShaderType;
 
 mod descriptor_sets;
+mod entry_point;
 mod enums;
 mod parse;
 mod structs;
@@ -46,7 +47,10 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
         let mut file_output = File::create(&dest.join("shaders").join(shader))
                                                         .expect("failed to open shader output");
 
-        let content = glsl_to_spirv::compile(&shader_content, ty).unwrap();
+        let content = match glsl_to_spirv::compile(&shader_content, ty) {
+            Ok(compiled) => compiled,
+            Err(message) => panic!("{}\nfailed to compile shader", message),
+        };
         let output = reflect("Shader", content).unwrap();
         write!(file_output, "{}", output).unwrap();
     }
@@ -65,6 +69,41 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     println!("{:#?}", doc);
 
     let mut output = String::new();
+    output.push_str(r#"
+        #[allow(unused_imports)]
+        use std::sync::Arc;
+        #[allow(unused_imports)]
+        use std::vec::IntoIter as VecIntoIter;
+
+        #[allow(unused_imports)]
+        use vulkano::device::Device;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorDescTy;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::ShaderStages;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::DescriptorSet;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayout;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::UnsafePipelineLayout;
+    "#);
 
     {
         // contains the data that was passed as input to this function
@@ -81,20 +120,21 @@ pub struct {name} {{
 impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
+    #[allow(unsafe_code)]
     pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>)
                 -> Result<{name}, ::vulkano::OomError>
     {{
 
         "#, name = name));
 
-        // checking whether each required capability is supported by the vulkan implementation
+        // checking whether each required capability is enabled in the vulkan device
         for i in doc.instructions.iter() {
             if let &parse::Instruction::Capability(ref cap) = i {
                 if let Some(cap) = capability_name(cap) {
                     output.push_str(&format!(r#"
                         if !device.enabled_features().{cap} {{
-                            panic!("capability {{:?}} not supported", "{cap}")  // FIXME: error
-                            //return Err(CapabilityNotSupported);
+                            panic!("capability {{:?}} not enabled", "{cap}")  // FIXME: error
+                            //return Err(CapabilityNotEnabled);
                         }}"#, cap = cap));
                 }
             }
@@ -106,7 +146,7 @@ impl {name} {{
             let data = [{spirv_data}];
 
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device.clone(), &data))
             }})
         }}
     }}
@@ -120,9 +160,12 @@ impl {name} {{
         "#, name = name, spirv_data = spirv_data));
 
         // writing one method for each entry point of this module
+        let mut outside_impl = String::new();
         for instruction in doc.instructions.iter() {
             if let &parse::Instruction::EntryPoint { .. } = instruction {
-                output.push_str(&write_entry_point(&doc, instruction));
+                let (outside, entry_point) = entry_point::write_entry_point(&doc, instruction);
+                output.push_str(&entry_point);
+                outside_impl.push_str(&outside);
             }
         }
 
@@ -130,6 +173,8 @@ impl {name} {{
         output.push_str(&format!(r#"
 }}
         "#));
+
+        output.push_str(&outside_impl);
 
         // struct definitions
         output.push_str("pub mod ty {");
@@ -163,186 +208,79 @@ impl From<ParseError> for Error {
     }
 }
 
-fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> String {
-    let (execution, ep_name, interface) = match instruction {
-        &parse::Instruction::EntryPoint { ref execution, id, ref name, ref interface } => {
-            (execution, name, interface)
-        },
-        _ => unreachable!()
-    };
-
-    let (ty, f_call) = match *execution {
-        enums::ExecutionModel::ExecutionModelVertex => {
-            let mut input_types = Vec::new();
-            let mut attributes = Vec::new();
-
-            // TODO: sort types by location
-
-            for interface in interface.iter() {
-                for i in doc.instructions.iter() {
-                    match i {
-                        &parse::Instruction::Variable { result_type_id, result_id,
-                                    storage_class: enums::StorageClass::StorageClassInput, .. }
-                                    if &result_id == interface =>
-                        {
-                            if is_builtin(doc, result_id) {
-                                continue;
-                            }
-
-                            input_types.push(type_from_id(doc, result_type_id));
-                            let name = name_from_id(doc, result_id);
-                            let loc = match location_decoration(doc, result_id) {
-                                Some(l) => l,
-                                None => panic!("vertex attribute `{}` is missing a location", name)
-                            };
-                            attributes.push((loc, name));
-                        },
-                        _ => ()
-                    }
-                }
-            }
-
-            let input = {
-                let input = input_types.join(", ");
-                if input.is_empty() { input } else { input + "," }
-            };
-
-            let attributes = attributes.iter().map(|&(loc, ref name)| {
-                format!("({}, ::std::borrow::Cow::Borrowed(\"{}\"))", loc, name)
-            }).collect::<Vec<_>>().join(", ");
-
-            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<({input}), Layout>",
-                            input = input);
-            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout, vec![{}])", attributes);
-            (t, f)
-        },
-
-        enums::ExecutionModel::ExecutionModelTessellationControl => {
-            (format!("::vulkano::pipeline::shader::TessControlShaderEntryPoint"), String::new())
-        },
-
-        enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            (format!("::vulkano::pipeline::shader::TessEvaluationShaderEntryPoint"), String::new())
-        },
-
-        enums::ExecutionModel::ExecutionModelGeometry => {
-            (format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint"), String::new())
-        },
-
-        enums::ExecutionModel::ExecutionModelFragment => {
-            let mut output_types = Vec::new();
-
-            for interface in interface.iter() {
-                for i in doc.instructions.iter() {
-                    match i {
-                        &parse::Instruction::Variable { result_type_id, result_id,
-                                    storage_class: enums::StorageClass::StorageClassOutput, .. }
-                                    if &result_id == interface =>
-                        {
-                            output_types.push(type_from_id(doc, result_type_id));
-                        },
-                        _ => ()
-                    }
-                }
-            }
-
-            let output = {
-                let output = output_types.join(", ");
-                if output.is_empty() { output } else { output + "," }
-            };
-
-            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<({output}), Layout>",
-                            output = output);
-            (t, format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
-        },
-
-        enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::pipeline::shader::ComputeShaderEntryPoint<Layout>"),
-             format!("compute_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), Layout)"))
-        },
-
-        enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
-    };
-
-    format!(r#"
-    /// Returns a logical struct describing the entry point named `{ep_name}`.
-    #[inline]
-    pub fn {ep_name}_entry_point(&self) -> {ty} {{
-        unsafe {{
-            #[allow(dead_code)]
-            static NAME: [u8; {ep_name_lenp1}] = [{encoded_ep_name}, 0];     // "{ep_name}"
-            self.shader.{f_call}
-        }}
-    }}
-            "#, ep_name = ep_name, ep_name_lenp1 = ep_name.chars().count() + 1, ty = ty,
-                encoded_ep_name = ep_name.chars().map(|c| (c as u32).to_string())
-                                         .collect::<Vec<String>>().join(", "),
-                f_call = f_call)
-}
-
-// TODO: struct definitions don't use this function, so irrelevant elements should be removed
-fn type_from_id(doc: &parse::Spirv, searched: u32) -> String {
+/// Returns the vulkano `Format` and number of occupied locations from an id.
+///
+/// If `ignore_first_array` is true, the function expects the outermost instruction to be
+/// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
+/// panic.
+fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -> (String, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
-            &parse::Instruction::TypeVoid { result_id } if result_id == searched => {
-                return "()".to_owned()
-            },
-            &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                return "bool".to_owned()
-            },
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
-                return "i32".to_owned()
+                assert!(!ignore_first_array);
+                return (match (width, signedness) {
+                    (8, true) => "R8Sint",
+                    (8, false) => "R8Uint",
+                    (16, true) => "R16Sint",
+                    (16, false) => "R16Uint",
+                    (32, true) => "R32Sint",
+                    (32, false) => "R32Uint",
+                    (64, true) => "R64Sint",
+                    (64, false) => "R64Uint",
+                    _ => panic!()
+                }.to_owned(), 1);
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                return "f32".to_owned()
+                assert!(!ignore_first_array);
+                return (match width {
+                    32 => "R32Sfloat",
+                    64 => "R64Sfloat",
+                    _ => panic!()
+                }.to_owned(), 1);
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
-                let t = type_from_id(doc, component_id);
-                return format!("[{}; {}]", t, count);
+                assert!(!ignore_first_array);
+                let (format, sz) = format_from_id(doc, component_id, false);
+                assert!(format.starts_with("R32"));
+                assert_eq!(sz, 1);
+                let format = if count == 1 {
+                    format
+                } else if count == 2 {
+                    format!("R32G32{}", &format[3..])
+                } else if count == 3 {
+                    format!("R32G32B32{}", &format[3..])
+                } else if count == 4 {
+                    format!("R32G32B32A32{}", &format[3..])
+                } else {
+                    panic!("Found vector type with more than 4 elements")
+                };
+                return (format, sz);
             },
             &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
-                // FIXME: row-major or column-major
-                let t = type_from_id(doc, column_type_id);
-                return format!("[{}; {}]", t, column_count);
-            },
-            &parse::Instruction::TypeImage { result_id, sampled_type_id, ref dim, depth, arrayed, ms, sampled, ref format, ref access } if result_id == searched => {
-                return format!("{}{}Texture{:?}{}{:?}",
-                    if ms { "Multisample" } else { "" },
-                    if depth == Some(true) { "Depth" } else { "" },
-                    dim,
-                    if arrayed { "Array" } else { "" },
-                    format);
-            },
-            &parse::Instruction::TypeSampledImage { result_id, image_type_id } if result_id == searched => {
-                return type_from_id(doc, image_type_id);
+                assert!(!ignore_first_array);
+                let (format, sz) = format_from_id(doc, column_type_id, false);
+                return (format, sz * column_count as usize);
             },
             &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
-                let t = type_from_id(doc, type_id);
+                if ignore_first_array {
+                    return format_from_id(doc, type_id, false);
+                }
+
+                let (format, sz) = format_from_id(doc, type_id, false);
                 let len = doc.instructions.iter().filter_map(|e| {
                     match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
                 }).next().expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                return format!("[{}; {}]", t, len);       // FIXME:
-            },
-            &parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
-                let t = type_from_id(doc, type_id);
-                return format!("[{}]", t);
-            },
-            &parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == searched => {
-                let name = name_from_id(doc, result_id);
-                return name;
-            },
-            &parse::Instruction::TypeOpaque { result_id, ref name } if result_id == searched => {
-                return "<opaque>".to_owned();
+                return (format, sz * len as usize);
             },
             &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
-                return type_from_id(doc, type_id);
+                return format_from_id(doc, type_id, ignore_first_array);
             },
             _ => ()
         }
     }
 
-    panic!("Type #{} not found", searched)
+    panic!("Type #{} not found or invalid", searched)
 }
 
 fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
@@ -398,6 +336,35 @@ fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
                                            .. } if target_id == id =>
             {
                 return true;
+            },
+            parse::Instruction::MemberDecorate { target_id,
+                                                 decoration: enums::Decoration::DecorationBuiltIn,
+                                                 .. } if target_id == id =>
+            {
+                return true;
+            },
+            _ => ()
+        }
+    }
+
+    for instruction in &doc.instructions {
+        match *instruction {
+            parse::Instruction::Variable { result_type_id, result_id, .. } if result_id == id => {
+                return is_builtin(doc, result_type_id);
+            },
+            parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
+                return is_builtin(doc, type_id);
+            },
+            parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == id => {
+                for &mem in member_types {
+                    if is_builtin(doc, mem) { return true; }
+                }
+            },
+            parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
+                return is_builtin(doc, type_id);
             },
             _ => ()
         }

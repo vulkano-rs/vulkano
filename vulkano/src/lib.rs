@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Safe and rich Rust wrapper around the Vulkan API.
 //! 
 //! # Brief summary of Vulkan
 //!
@@ -17,23 +18,24 @@
 //!   (eg. a graphics card, a CPU implementation, multiple graphics card working together, etc.).
 //!   Physical devices can be enumerated from an instance with `PhysicalDevice::enumerate()`.
 //!
-//! - Once you have chosen a physical device to use, you must a `Device` object from it. The
-//!   `Device` is another very important object, as it represents an open channel of
-//!   communicaton with the physical device.
+//! - Once you have chosen a physical device to use, you can a `Device` object from it. The
+//!   `Device` is the most important object of Vulkan, as it represents an open channel of
+//!   communicaton with a physical device.
 //!
 //! - `Buffer`s and `Image`s can be used to store data on memory accessible from the GPU (or
 //!   Vulkan implementation). Buffers are usually used to store vertices, lights, etc. or
 //!   arbitrary data, while images are used to store textures or multi-dimensional data.
 //!
-//! - In order to show something on the screen, you need a `Swapchain`. A `Swapchain` contains a
-//!   special `Image` that corresponds to the content of the window or the monitor. When you
-//!   *present* a swapchain, the content of that special image is shown on the screen.
+//! - In order to show something on the screen, you need a `Swapchain`. A `Swapchain` contains
+//!   special `Image`s that correspond to the content of the window or the monitor. When you
+//!   *present* a swapchain, the content of one of these special images is shown on the screen.
 //!
 //! - `ComputePipeline`s and `GraphicsPipeline`s describe the way the GPU must perform a certain
 //!   operation. `Shader`s are programs that the GPU will execute as part of a pipeline.
+//!   Descriptors can be used to access the content of buffers or images from within shaders.
 //!
-//! - `RenderPass`es and `Framebuffer`s describe on which attachments the implementation must draw
-//!   on. They are only used for graphical operations.
+//! - For graphical operations, `RenderPass`es and `Framebuffer`s describe on which images the
+//!   implementation must draw upon.
 //!
 //! - In order to ask the GPU to do something, you must create a `CommandBuffer`. A `CommandBuffer`
 //!   contains a list of commands that the GPU must perform. This can include copies between
@@ -47,10 +49,12 @@
 #![allow(unused_variables)]     // TODO: remove
 
 extern crate crossbeam;
+extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
 extern crate shared_library;
 extern crate smallvec;
+extern crate vk_sys as vk;
 
 #[macro_use]
 mod tests;
@@ -60,53 +64,30 @@ mod version;
 
 pub mod buffer;
 pub mod command_buffer;
-pub mod descriptor_set;
+pub mod descriptor;
 pub mod device;
 pub mod format;
+#[macro_use]
 pub mod framebuffer;
 pub mod image;
 pub mod instance;
 pub mod memory;
 pub mod pipeline;
-//pub mod query;
+pub mod query;
 pub mod sampler;
 pub mod swapchain;
 pub mod sync;
 
 use std::error;
 use std::fmt;
-use std::mem;
-use std::path::Path;
+use std::ops::Deref;
+use std::sync::Arc;
 use std::sync::MutexGuard;
 
-mod vk {
-    #![allow(dead_code)]
-    #![allow(non_upper_case_globals)]
-    #![allow(non_snake_case)]
-    #![allow(non_camel_case_types)]
-    include!(concat!(env!("OUT_DIR"), "/vk_bindings.rs"));
-}
-
-lazy_static! {
-    static ref VK_LIB: shared_library::dynamic_library::DynamicLibrary = {
-        #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
-        #[cfg(unix)] fn get_path() -> &'static Path { Path::new("libvulkan-1.so") }
-        let path = get_path();
-        shared_library::dynamic_library::DynamicLibrary::open(Some(path)).unwrap()
-    };
-
-    static ref VK_STATIC: vk::Static = {
-        vk::Static::load(|name| unsafe {
-            VK_LIB.symbol(name.to_str().unwrap()).unwrap()      // TODO: error handling
-        })
-    };
-
-    static ref VK_ENTRY: vk::EntryPoints = {
-        vk::EntryPoints::load(|name| unsafe {
-            mem::transmute(VK_STATIC.GetInstanceProcAddr(0, name.as_ptr()))
-        })
-    };
-}
+/// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
+pub unsafe trait SafeDeref: Deref {}
+unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
+unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
 
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
@@ -124,21 +105,6 @@ pub unsafe trait SynchronizedVulkanObject {
 
     /// Returns a reference to the object.
     fn internal_object_guard(&self) -> MutexGuard<Self::Object>;
-}
-
-// TODO: remove eventually
-// https://github.com/rust-lang/rust/issues/29328
-pub unsafe trait VulkanObjectU64 { fn internal_object(&self) -> u64; }
-unsafe impl<T> VulkanObjectU64 for T where T: VulkanObject<Object = u64> {
-    #[inline]
-    fn internal_object(&self) -> u64 { VulkanObject::internal_object(self) }
-}
-// TODO: remove eventually
-// https://github.com/rust-lang/rust/issues/29328
-pub unsafe trait VulkanObjectUsize { fn internal_object(&self) -> usize; }
-unsafe impl<T> VulkanObjectUsize for T where T: VulkanObject<Object = usize> {
-    #[inline]
-    fn internal_object(&self) -> usize { VulkanObject::internal_object(self) }
 }
 
 /// Gives access to the Vulkan function pointers stored in this object.

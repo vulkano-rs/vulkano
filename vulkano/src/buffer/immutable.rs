@@ -28,6 +28,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
+use buffer::sys::BufferCreationError;
+use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::AccessRange;
@@ -37,17 +39,20 @@ use buffer::traits::TypedBuffer;
 use command_buffer::Submission;
 use device::Device;
 use instance::QueueFamily;
-use memory::DeviceMemory;
+use memory::pool::AllocLayout;
+use memory::pool::MemoryPool;
+use memory::pool::MemoryPoolAlloc;
+use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 use OomError;
 
 /// Buffer that is written once then read for as long as it is alive.
-pub struct ImmutableBuffer<T: ?Sized> {
+pub struct ImmutableBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Inner content.
     inner: UnsafeBuffer,
 
-    memory: DeviceMemory,
+    memory: A::Alloc,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -76,7 +81,7 @@ impl<T> ImmutableBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<ImmutableBuffer<T>>, OomError>
+                      -> Result<Arc<ImmutableBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
@@ -106,7 +111,12 @@ impl<T: ?Sized> ImmutableBuffer<T> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeBuffer::new(device, size, &usage, sharing))
+            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+                Ok(b) => b,
+                Err(BufferCreationError::OomError(err)) => return Err(err),
+                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
+                                                // errors can't happen
+            }
         };
 
         let mem_ty = {
@@ -118,11 +128,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             device_local.chain(any).next().unwrap()
         };
 
-        // note: alignment doesn't need to be checked because allocating memory is guaranteed to
-        //       fulfill any alignment requirement
-
-        let mem = try!(DeviceMemory::alloc(device, &mem_ty, mem_reqs.size));
-        try!(buffer.bind_memory(&mem, 0));
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        try!(buffer.bind_memory(mem.memory(), mem.offset()));
 
         Ok(Arc::new(ImmutableBuffer {
             inner: buffer,
@@ -133,7 +142,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             marker: PhantomData,
         }))
     }
+}
 
+impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -150,9 +161,11 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     }
 }
 
-unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     #[inline]
-    fn inner_buffer(&self) -> &UnsafeBuffer {
+    fn inner(&self) -> &UnsafeBuffer {
         &self.inner
     }
     
@@ -192,7 +205,7 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + S
         };
 
         if write {
-            assert!(self.started_reading.load(Ordering::AcqRel) == false);
+            assert!(self.started_reading.load(Ordering::Acquire) == false);
         }
 
         let dependency = {
@@ -207,9 +220,9 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + S
         let dependency = dependency.and_then(|d| d.upgrade());
 
         if write {
-            assert!(self.started_reading.load(Ordering::AcqRel) == false);
+            assert!(self.started_reading.load(Ordering::Acquire) == false);
         } else {        
-            self.started_reading.store(true, Ordering::AcqRel);
+            self.started_reading.store(true, Ordering::Release);
         }
 
         GpuAccessResult {
@@ -224,6 +237,8 @@ unsafe impl<T: ?Sized> Buffer for ImmutableBuffer<T> where T: 'static + Send + S
     }
 }
 
-unsafe impl<T: ?Sized> TypedBuffer for ImmutableBuffer<T> where T: 'static + Send + Sync {
+unsafe impl<T: ?Sized, A> TypedBuffer for ImmutableBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
     type Content = T;
 }

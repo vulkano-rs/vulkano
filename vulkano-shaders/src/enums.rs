@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+
 use parse::ParseError;
 
 macro_rules! enumeration {

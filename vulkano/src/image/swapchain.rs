@@ -14,21 +14,49 @@ use std::sync::Mutex;
 use std::sync::Weak;
 
 use command_buffer::Submission;
+use device::Queue;
+use format::ClearValue;
 use format::Format;
+use format::FormatDesc;
+use image::Dimensions;
+use image::ViewType;
 use image::traits::AccessRange;
+use image::traits::CommandBufferState;
+use image::traits::CommandListState;
 use image::traits::GpuAccessResult;
 use image::traits::Image;
+use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::PipelineBarrierRequest;
+use image::traits::PipelineMemoryBarrierRequest;
+use image::traits::SubmitInfos;
+use image::traits::TrackedImage;
 use image::traits::Transition;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
+use sync::AccessFlagBits;
+use sync::Fence;
+use sync::PipelineStages;
 use sync::Semaphore;
 
 use OomError;
 
+/// An image that is part of a swapchain.
+///
+/// Creating a `SwapchainImage` is automatically done when creating a swapchain.
+///
+/// A swapchain image is special in the sense that it can only be used after being acquired by
+/// calling the `acquire` method on the swapchain. You have no way to know in advance which
+/// swapchain image is going to be acquired, so you should keep all of them alive.
+///
+/// After a swapchain image has been acquired, you are free to perform all the usual operations
+/// on it. When you are done you can then *present* the image (by calling the corresponding
+/// method on the swapchain), which will have the effect of showing the content of the image to
+/// the screen. Once an image has been presented, it can no longer be used unless it is acquired
+/// again.
 // TODO: #[derive(Debug)] (needs https://github.com/aturon/crossbeam/issues/62)
 pub struct SwapchainImage {
     image: UnsafeImage,
@@ -46,10 +74,13 @@ struct Guarded {
 }
 
 impl SwapchainImage {
+    /// Builds a `SwapchainImage` from raw components.
+    ///
+    /// This is an internal method that you shouldn't call.
     pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
-        let view = try!(UnsafeImageView::new(&image, 0 .. 1, 0 .. 1));
+        let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1));
 
         Ok(Arc::new(SwapchainImage {
             image: image,
@@ -72,11 +103,24 @@ impl SwapchainImage {
         let dims = self.image.dimensions();
         [dims.width(), dims.height()]
     }
+
+    /// Returns the format of the image.
+    // TODO: return `ColorFormat` or something like this instead, for stronger typing
+    #[inline]
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
+    /// Returns the swapchain this image belongs to.
+    #[inline]
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
+        &self.swapchain
+    }
 }
 
 unsafe impl Image for SwapchainImage {
     #[inline]
-    fn inner_image(&self) -> &UnsafeImage {
+    fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
@@ -117,7 +161,8 @@ unsafe impl Image for SwapchainImage {
         let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
         let dependency = dependency.and_then(|d| d.upgrade());
 
-        let signal = Semaphore::new(submission.queue().device()).unwrap();
+        // TODO: use try!()? - Mixthos
+        let signal = Semaphore::new(submission.queue().device().clone());
         let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
 
         if guarded.present_layout {
@@ -154,6 +199,14 @@ unsafe impl Image for SwapchainImage {
     }
 }
 
+unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage
+{
+    #[inline]
+    fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
+        Some(self.format.decode_clear_value(value))
+    }
+}
+
 unsafe impl<P> ImageContent<P> for SwapchainImage {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -173,12 +226,18 @@ unsafe impl ImageView for SwapchainImage {
     }
 
     #[inline]
+    fn dimensions(&self) -> Dimensions {
+        let dims = self.image.dimensions();
+        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+    }
+
+    #[inline]
     fn blocks(&self) -> Vec<(u32, u32)> {
         vec![(0, 0)]
     }
 
     #[inline]
-    fn inner_view(&self) -> &UnsafeImageView {
+    fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
 
@@ -205,5 +264,110 @@ unsafe impl ImageView for SwapchainImage {
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+unsafe impl TrackedImage for SwapchainImage {
+    type CommandListState = SwapchainImageCbState;
+    type FinishedState = SwapchainImageFinishedState;
+
+    fn initial_state(&self) -> SwapchainImageCbState {
+        SwapchainImageCbState {
+            stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
+            access: AccessFlagBits { memory_read: true, .. AccessFlagBits::none() },
+            command_num: 0,
+            layout: Layout::PresentSrc,
+        }
+    }
+}
+
+pub struct SwapchainImageCbState {
+    stages: PipelineStages,
+    access: AccessFlagBits,
+    command_num: usize,
+    layout: Layout,
+}
+
+/// Trait for objects that represent the state of a slice of the image in a list of commands.
+impl CommandListState for SwapchainImageCbState {
+    type FinishedState = SwapchainImageFinishedState;
+
+    fn transition(self, num_command: usize, _: &UnsafeImage, _: u32, _: u32, _: u32, _: u32,
+                  _: bool, layout: Layout, stage: PipelineStages, access: AccessFlagBits)
+                  -> (Self, Option<PipelineBarrierRequest>)
+    {
+        let new_state = SwapchainImageCbState {
+            stages: stage,
+            access: access,
+            command_num: num_command,
+            layout: layout,
+        };
+
+        let transition = PipelineBarrierRequest {
+            after_command_num: self.command_num,
+            source_stage: self.stages,
+            destination_stages: stage,
+            by_region: true,
+            memory_barrier: Some(PipelineMemoryBarrierRequest {
+                first_mipmap: 0,
+                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
+                first_layer: 0,
+                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
+
+                old_layout: self.layout,
+                new_layout: layout,
+
+                source_access: self.access,
+                destination_access: access,
+            })
+        };
+
+        (new_state, Some(transition))
+    }
+
+    fn finish(self) -> (SwapchainImageFinishedState, Option<PipelineBarrierRequest>) {
+        let finished = SwapchainImageFinishedState;
+
+        let transition = PipelineBarrierRequest {
+            after_command_num: self.command_num,
+            source_stage: self.stages,
+            destination_stages: PipelineStages {
+                bottom_of_pipe: true,
+                .. PipelineStages::none()
+            },
+            by_region: true,
+            memory_barrier: Some(PipelineMemoryBarrierRequest {
+                first_mipmap: 0,
+                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
+                first_layer: 0,
+                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
+
+                old_layout: self.layout,
+                new_layout: Layout::PresentSrc,
+
+                source_access: self.access,
+                destination_access: AccessFlagBits {
+                    memory_read: true,
+                    .. AccessFlagBits::none()
+                },
+            })
+        };
+
+        (finished, Some(transition))
+    }
+}
+
+pub struct SwapchainImageFinishedState;
+
+impl CommandBufferState for SwapchainImageFinishedState {
+    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
+        where I: Image, F: FnOnce() -> Arc<Fence>
+    {
+        SubmitInfos {
+            pre_semaphore: None,        // FIXME:
+            post_semaphore: None,       // FIXME:
+            pre_barrier: None,          // FIXME: transition from undefined at first usage
+            post_barrier: None,
+        }
     }
 }

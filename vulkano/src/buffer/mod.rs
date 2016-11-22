@@ -11,62 +11,97 @@
 //!
 //! All buffers are guaranteed to be accessible from the GPU.
 //!
-//! The `Buffer` struct has two template parameters:
+//! # High-level wrappers
 //!
-//! - `T` is the type of data that is contained in the buffer. It can be a struct
-//!   (eg. `Foo`), an array (eg. `[u16; 1024]` or `[Foo; 1024]`), or an unsized array (eg. `[u16]`).
+//! The low level implementation of a buffer is `UnsafeBuffer`. However, the vulkano library
+//! provides high-level wrappers around that type that are specialized depending on the way you
+//! are going to use it:
 //!
-//! - `M` is the object that provides memory and handles synchronization for the buffer.
-//!   If the `CpuAccessible` and/or `CpuWriteAccessible` traits are implemented on `M`, then you
-//!   can access the buffer's content from your program.
+//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be directly
+//!   written by your application.
+//! - `DeviceLocalBuffer` designates a buffer located in video memory and whose content can't be
+//!   written by your application. Accessing this buffer from the GPU is usually faster than the
+//!   `CpuAccessBuffer`.
+//! - `ImmutableBuffer` designates a buffer in video memory and whose content can only be
+//!   written once. Compared to `DeviceLocalBuffer`, this buffer requires less processing on the
+//!   CPU because we don't need to keep track of the reads and writes.
 //!
+//! If you have data that is modified at every single frame, you are encouraged to use a
+//! `CpuAccessibleBuffer`. If you have data that is very rarely modified, you are encouraged to
+//! use an `ImmutableBuffer` or a `DeviceLocalBuffer` instead.
 //!
-//! # Strong typing
-//! 
-//! All buffers take a template parameter that indicates their content.
-//! 
-//! # Memory
-//! 
-//! Creating a buffer requires passing an object that will be used by this library to provide
-//! memory to the buffer.
-//! 
-//! All accesses to the memory are done through the `Buffer` object.
-//! 
-//! TODO: proof read this section
+//! If you just want to get started, you can use the `CpuAccessibleBuffer` everywhere, as it is
+//! the most flexible type of buffer.
+//!
+//! # Buffers usage
+//!
+//! When you create a buffer object, you have to specify its *usage*. In other words, you have to
+//! specify the way it is going to be used. Trying to use a buffer in a way that wasn't specified
+//! when you created it will result in an error.
+//!
+//! You can use buffers for the following purposes:
+//!
+//! - Can contain arbitrary data that can be transferred from/to other buffers and images.
+//! - Can be read and modified from a shader.
+//! - Can be used as a source of vertices and indices.
+//! - Can be used as a source of list of models for draw indirect commands.
+//!
+//! Accessing a buffer from a shader can be done in the following ways:
+//!
+//! - As a uniform buffer. Uniform buffers are read-only.
+//! - As a storage buffer. Storage buffers can be read and written.
+//! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the
+//!   GPU and can be for example normalized.
+//! - As a storage texel buffer. Additionnally, some data formats can be modified with atomic
+//!   operations.
+//!
+//! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
+//! for how to create a buffer view.
 //!
 use std::marker::PhantomData;
-use std::error;
-use std::fmt;
 use std::mem;
-use std::ptr;
+use std::ops::Range;
 use std::sync::Arc;
 
-use format::Data as FormatData;
-
-use Error;
-use OomError;
-use VulkanObject;
-use VulkanPointers;
-use check_errors;
-use vk;
-
-pub use self::sys::Usage;
+pub use self::cpu_access::CpuAccessibleBuffer;
+pub use self::device_local::DeviceLocalBuffer;
+pub use self::immutable::ImmutableBuffer;
+pub use self::sys::BufferCreationError;
+pub use self::sys::Usage as BufferUsage;
 pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
+pub use self::view::BufferView;
 
 pub mod cpu_access;
+pub mod device_local;
 pub mod immutable;
 pub mod sys;
 pub mod traits;
+pub mod view;
 
 /// A subpart of a buffer.
 ///
-/// This object doesn't correspond to any Vulkan object. It exists for the programmer's
-/// convenience.
+/// This object doesn't correspond to any Vulkan object. It exists for API convenience.
 ///
 /// # Example
 ///
-/// TODO: example
+/// Creating a slice:
+///
+/// ```no_run
+/// use vulkano::buffer::BufferSlice;
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
+///                                                         unsafe { std::mem::uninitialized() };
+/// let _slice = BufferSlice::from(&buffer);
+/// ```
+///
+/// Selecting a slice of a buffer that contains `[T]`:
+///
+/// ```no_run
+/// use vulkano::buffer::BufferSlice;
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
+///                                                         unsafe { std::mem::uninitialized() };
+/// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
+/// ```
 ///
 #[derive(Clone)]
 pub struct BufferSlice<'a, T: ?Sized, B: 'a> {
@@ -93,6 +128,43 @@ impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    /// Builds a slice that contains an element from inside the buffer.
+    ///
+    /// This method builds an object that represents a slice of the buffer. No actual operation
+    /// is performed.
+    ///
+    /// # Example
+    ///
+    /// TODO
+    ///
+    /// # Safety
+    ///
+    /// The object whose reference is passed to the closure is uninitialized. Therefore you
+    /// **must not** access the content of the object.
+    ///
+    /// You **must** return a reference to an element from the parameter. The closure **must not**
+    /// panic.
+    #[inline]
+    pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<'a, R, B>
+        where F: for<'r> FnOnce(&'r T) -> &'r R
+        // TODO: bounds on R
+    {
+        let data: &T = mem::zeroed();
+        let result = f(data);
+        let size = mem::size_of_val(result);
+        let result = result as *const R as *const () as usize;
+
+        assert!(result <= self.size());
+        assert!(result + size <= self.size());
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + result,
+            size: size,
+        }
+    }
 }
 
 impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
@@ -100,6 +172,36 @@ impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
     #[inline]
     pub fn len(&self) -> usize {
         self.size() / mem::size_of::<T>()
+    }
+
+    /// Reduces the slice to just one element of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn index(self, index: usize) -> Option<BufferSlice<'a, T, B>> {
+        if index >= self.len() { return None; }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + index * mem::size_of::<T>(),
+            size: mem::size_of::<T>(),
+        })
+    }
+
+    /// Reduces the slice to just a range of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<'a, [T], B>> {
+        if range.end > self.len() { return None; }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + range.start * mem::size_of::<T>(),
+            size: (range.end - range.start) * mem::size_of::<T>(),
+        })
     }
 }
 
@@ -131,135 +233,14 @@ impl<'a, T, B: 'a> From<BufferSlice<'a, T, B>> for BufferSlice<'a, [T], B>
     }
 }
 
-/// Represents a way for the GPU to interpret buffer data.
-///
-/// Note that a buffer view is only required for some operations. For example using a buffer as a
-/// uniform buffer doesn't require creating a `BufferView`.
-pub struct BufferView<T, B> where B: Buffer {
-    view: vk::BufferView,
-    buffer: Arc<B>,
-    marker: PhantomData<T>,
-}
-
-impl<T, B> BufferView<T, B> where B: TypedBuffer {
-    /// Builds a new buffer view.
-    ///
-    /// The format of the view will be automatically determined by the `T` parameter.
-    ///
-    /// The buffer must have been created with either the `uniform_texel_buffer` or
-    /// the `storage_texel_buffer` usage or an error will occur.
-    ///
-    // FIXME: how to handle the fact that eg. `u8` can be either Unorm or Uint?
-    pub fn new<'a, S>(buffer: S) -> Result<Arc<BufferView<T, B>>, BufferViewCreationError>
-        where S: Into<BufferSlice<'a, [T], B>>, B: 'static, T: FormatData + 'static
-    {
-        let buffer = buffer.into();
-        let device = buffer.resource.inner_buffer().device();
-        let format = T::ty();
-
-        if !buffer.buffer().inner_buffer().usage_uniform_texel_buffer() &&
-           !buffer.buffer().inner_buffer().usage_storage_texel_buffer()
-        {
-            return Err(BufferViewCreationError::WrongBufferUsage);
-        }
-
-        // TODO: check that format is supported? or check only when the view is used?
-
-        let infos = vk::BufferViewCreateInfo {
-            sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0,   // reserved,
-            buffer: buffer.resource.inner_buffer().internal_object(),
-            format: format as u32,
-            offset: buffer.offset as u64,
-            range: buffer.size as u64,
-        };
-
-        let view = unsafe {
-            let vk = device.pointers();
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
-                                                  ptr::null(), &mut output)));
-            output
-        };
-
-        Ok(Arc::new(BufferView {
-            view: view,
-            buffer: buffer.resource.clone(),
-            marker: PhantomData,
-        }))
-    }
-}
-
-unsafe impl<T, B> VulkanObject for BufferView<T, B> where B: Buffer {
-    type Object = vk::BufferView;
-
-    #[inline]
-    fn internal_object(&self) -> vk::BufferView {
-        self.view
-    }
-}
-
-impl<T, B> Drop for BufferView<T, B> where B: Buffer {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let vk = self.buffer.inner_buffer().device().pointers();
-            vk.DestroyBufferView(self.buffer.inner_buffer().device().internal_object(), self.view,
-                                 ptr::null());
-        }
-    }
-}
-
-/// Error that can happen when creating a buffer view.
-#[derive(Debug, Copy, Clone)]
-pub enum BufferViewCreationError {
-    /// Out of memory.
-    OomError(OomError),
-
-    /// The buffer was not creating with one of the `storage_texel_buffer` or
-    /// `uniform_texel_buffer` usages.
-    WrongBufferUsage,
-}
-
-impl error::Error for BufferViewCreationError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
-            BufferViewCreationError::WrongBufferUsage => "the buffer is missing correct usage \
-                                                          flags",
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            BufferViewCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for BufferViewCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
-    }
-}
-
-impl From<OomError> for BufferViewCreationError {
-    #[inline]
-    fn from(err: OomError) -> BufferViewCreationError {
-        BufferViewCreationError::OomError(err)
-    }
-}
-
-impl From<Error> for BufferViewCreationError {
-    #[inline]
-    fn from(err: Error) -> BufferViewCreationError {
-        OomError::from(err).into()
-    }
+/// Takes a `BufferSlice` that points to a struct, and returns a `BufferSlice` that points to
+/// a specific field of that struct.
+#[macro_export]
+macro_rules! buffer_slice_field {
+    ($slice:expr, $field:ident) => (
+        // TODO: add #[allow(unsafe_code)] when that's allowed
+        unsafe { $slice.slice_custom(|s| &s.$field) }
+    )
 }
 
 #[cfg(test)]
@@ -288,27 +269,5 @@ mod tests {
                                           DeviceLocal, &queue).unwrap();
         assert_eq!(b.len(), 12);
         assert_eq!(b.size(), 12 * mem::size_of::<i16>());
-    }
-
-    #[test]
-    fn view_create() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::all(), DeviceLocal,
-                                              &queue).unwrap();
-        let _ = BufferView::new(&buffer).unwrap();
-    }
-
-    #[test]
-    fn view_wrong_usage() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let buffer = Buffer::<[i8], _>::array(&device, 128, &Usage::none(), DeviceLocal,
-                                              &queue).unwrap();
-
-        match BufferView::new(&buffer) {
-            Err(BufferViewCreationError::WrongBufferUsage) => (),
-            _ => panic!()
-        }
     }*/
 }

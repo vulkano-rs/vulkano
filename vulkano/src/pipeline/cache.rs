@@ -14,10 +14,13 @@
 //! 
 //! You can create either an empty cache or a cache from some initial data. Whenever you create a
 //! graphics or compute pipeline, you have the possibility to pass a reference to that cache.
+//! TODO: ^ that's not the case yet
 //! The Vulkan implementation will then look in the cache for an existing entry, or add one if it
 //! doesn't exist.
 //! 
-//! Once that is done, you can extract the data from the cache and store it.
+//! Once that is done, you can extract the data from the cache and store it. See the documentation
+//! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
+//! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
 //!
 use std::mem;
 use std::ptr;
@@ -32,16 +35,53 @@ use check_errors;
 use vk;
 
 /// Opaque cache that contains pipeline objects.
+///
+/// See [the documentation of the module](index.html) for more info.
 pub struct PipelineCache {
     device: Arc<Device>,
     cache: vk::PipelineCache,
 }
 
 impl PipelineCache {
-    /// Builds a new pipeline cache from existing data.
+    /// Builds a new pipeline cache from existing data. The data must have been previously obtained
+    /// with [`get_data`](#method.get_data).
     ///
-    /// The data must have been previously obtained with `get_data`.
-    // TODO: is that unsafe? is it safe to pass garbage data?
+    /// The data passed to this function will most likely be blindly trusted by the Vulkan
+    /// implementation. Therefore you can easily crash your application or the system by passing
+    /// wrong data. Hence why this function is unsafe.
+    ///
+    /// # Example
+    ///
+    /// This example loads a cache from a file, if it exists.
+    /// See [`get_data`](#method.get_data) for how to store the data in a file.
+    /// TODO: there's a header in the cached data that must be checked ; talk about this
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::device::Device;
+    /// use std::fs::File;
+    /// use std::io::Read;
+    /// use vulkano::pipeline::cache::PipelineCache;
+    /// # let device: Arc<Device> = return;
+    ///
+    /// let data = {
+    ///     let file = File::open("pipeline_cache.bin");
+    ///     if let Ok(mut file) = file {
+    ///         let mut data = Vec::new();
+    ///         if let Ok(_) = file.read_to_end(&mut data) {
+    ///             Some(data)
+    ///         } else { None }
+    ///     } else { None }
+    /// };
+    ///
+    /// let cache = if let Some(data) = data {
+    ///     // This is unsafe because there is no way to be sure that the file contains valid data.
+    ///     unsafe { PipelineCache::with_data(&device, &data).unwrap() }
+    /// } else {
+    ///     PipelineCache::empty(&device).unwrap()
+    /// };
+    /// ```
+    #[inline]
     pub unsafe fn with_data(device: &Arc<Device>, initial_data: &[u8])
                             -> Result<Arc<PipelineCache>, OomError>
     {
@@ -49,10 +89,22 @@ impl PipelineCache {
     }
 
     /// Builds a new empty pipeline cache.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::device::Device;
+    /// use vulkano::pipeline::cache::PipelineCache;
+    /// # let device: Arc<Device> = return;
+    /// let cache = PipelineCache::empty(&device).unwrap();
+    /// ```
+    #[inline]
     pub fn empty(device: &Arc<Device>) -> Result<Arc<PipelineCache>, OomError> {
         unsafe { PipelineCache::new_impl(device, None) }
     }
 
+    // Actual implementation of the constructor.
     unsafe fn new_impl(device: &Arc<Device>, initial_data: Option<&[u8]>)
                        -> Result<Arc<PipelineCache>, OomError>
     {
@@ -81,11 +133,14 @@ impl PipelineCache {
 
     /// Merges other pipeline caches into this one.
     ///
+    /// It is `self` that is modified here. The pipeline caches passed as parameter are untouched.
+    ///
     /// # Panic
     ///
-    /// - Panicks if `self` is included in the list of other pipelines.
+    /// - Panics if `self` is included in the list of other pipelines.
     ///
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
+    // TODO: write example
     pub fn merge<'a, I>(&self, pipelines: I) -> Result<(), OomError>
         where I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>
     {
@@ -106,7 +161,32 @@ impl PipelineCache {
 
     /// Obtains the data from the cache.
     ///
-    /// This data can be stored and then reloaded and passed to `PipelineCache::new`.
+    /// This data can be stored and then reloaded and passed to `PipelineCache::with_data`.
+    ///
+    /// # Example
+    ///
+    /// This example stores the data of a pipeline cache on the disk.
+    /// See [`with_data`](#method.with_data) for how to reload it.
+    ///
+    /// ```
+    /// use std::fs;
+    /// use std::fs::File;
+    /// use std::io::Write;
+    /// # use std::sync::Arc;
+    /// # use vulkano::pipeline::cache::PipelineCache;
+    ///
+    /// # let cache: Arc<PipelineCache> = return;
+    /// // If an error happens (eg. no permission for the file) we simply skip storing the cache.
+    /// if let Ok(data) = cache.get_data() {
+    ///     if let Ok(mut file) = File::create("pipeline_cache.bin.tmp") {
+    ///         if let Ok(_) = file.write_all(&data) {
+    ///             let _ = fs::rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
+    ///         } else {
+    ///             let _ = fs::remove_file("pipeline_cache.bin.tmp");
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub fn get_data(&self) -> Result<Vec<u8>, OomError> {
         unsafe {
             let vk = self.device.pointers();

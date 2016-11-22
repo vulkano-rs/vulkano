@@ -42,20 +42,38 @@ impl InputAssembly {
 /// Describes how vertices must be grouped together to form primitives.
 ///
 /// Note that some topologies don't support primitive restart.
-#[derive(Copy, Clone, Debug)]
-#[repr(u32)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PrimitiveTopology {
-    PointList = vk::PRIMITIVE_TOPOLOGY_POINT_LIST,
-    LineList = vk::PRIMITIVE_TOPOLOGY_LINE_LIST,
-    LineStrip = vk::PRIMITIVE_TOPOLOGY_LINE_STRIP,
-    TriangleList = vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-    TriangleStrip = vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-    TriangleFan = vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
-    LineListWithAdjacency = vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
-    LineStripWithAdjacency = vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
-    TriangleListWithAdjancecy = vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
-    TriangleStripWithAdjacency = vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
-    PatchList = vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
+    PointList,
+    LineList,
+    LineStrip,
+    TriangleList,
+    TriangleStrip,
+    TriangleFan,
+    LineListWithAdjacency,
+    LineStripWithAdjacency,
+    TriangleListWithAdjacency,
+    TriangleStripWithAdjacency,
+    PatchList { vertices_per_patch: u32 },
+}
+
+impl Into<vk::PrimitiveTopology> for PrimitiveTopology {
+    #[inline]
+    fn into(self) -> vk::PrimitiveTopology {
+        match self {
+            PrimitiveTopology::PointList => vk::PRIMITIVE_TOPOLOGY_POINT_LIST,
+            PrimitiveTopology::LineList => vk::PRIMITIVE_TOPOLOGY_LINE_LIST,
+            PrimitiveTopology::LineStrip => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP,
+            PrimitiveTopology::TriangleList => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            PrimitiveTopology::TriangleStrip => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+            PrimitiveTopology::TriangleFan => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+            PrimitiveTopology::LineListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
+            PrimitiveTopology::LineStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
+            PrimitiveTopology::TriangleListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
+            PrimitiveTopology::TriangleStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
+            PrimitiveTopology::PatchList { .. } => vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
+        }
+    }
 }
 
 impl PrimitiveTopology {

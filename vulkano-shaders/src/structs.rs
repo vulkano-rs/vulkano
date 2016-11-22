@@ -33,13 +33,17 @@ pub fn write_structs(doc: &parse::Spirv) -> String {
 fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     let name = ::name_from_id(doc, struct_id);
 
+    // Strings of each member definition.
     let mut members_defs = Vec::with_capacity(members.len());
+    // Padding structs will be named `_paddingN` where `N` is determined by this variable.
+    let mut next_padding_num = 0;
 
     // Contains the offset of the next field.
     // Equals to `None` if there's a runtime-sized field in there.
     let mut current_rust_offset = Some(0);
 
     for (num, &member) in members.iter().enumerate() {
+        // Compute infos about the member.
         let (ty, rust_size, rust_align) = type_from_id(doc, member);
         let member_name = ::member_name_from_id(doc, struct_id, num as u32);
 
@@ -49,6 +53,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             return String::new();
         }
 
+        // Finding offset of the current member, as requested by the SPIR-V code.
         let spirv_offset = doc.instructions.iter().filter_map(|i| {
             match *i {
                 parse::Instruction::MemberDecorate { target_id, member,
@@ -62,8 +67,14 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             };
 
             None
-        }).next().expect(&format!("Struct member `{}` of `{}` is missing an `Offset` decoration",
-                                  member_name, name)) as usize;
+        }).next();
+
+        // Some structs don't have `Offset` decorations, in the case they are used as local
+        // variables only. Ignoring these.
+        let spirv_offset = match spirv_offset {
+            Some(o) => o as usize,
+            None => return String::new()
+        };
 
         // We need to add a dummy field if necessary.
         {
@@ -78,7 +89,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
 
             if spirv_offset != *current_rust_offset {
                 let diff = spirv_offset.checked_sub(*current_rust_offset).unwrap();
-                members_defs.push(format!("_dummy: [u8; {}]", diff));       // FIXME: fix name if there are multiple dummies
+                let padding_num = next_padding_num; next_padding_num += 1;
+                members_defs.push(format!("pub _dummy{}: [u8; {}]", padding_num, diff));
                 *current_rust_offset += diff;
             }
         }
@@ -90,7 +102,45 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("pub {name}: {ty}", name = member_name, ty = ty));
+        members_defs.push(format!("pub {name}: {ty} /* offset: {offset} */",
+                                  name = member_name, ty = ty, offset = spirv_offset));
+    }
+
+    // Try determine the total size of the struct in order to add padding at the end of the struct.
+    let spirv_req_total_size = doc.instructions.iter().filter_map(|i| {
+        match *i {
+            parse::Instruction::Decorate { target_id,
+                                           decoration: enums::Decoration::DecorationArrayStride,
+                                           ref params } =>
+            {
+                for inst in doc.instructions.iter() {
+                    match *inst {
+                        parse::Instruction::TypeArray { result_id, type_id, .. }
+                            if result_id == target_id && type_id == struct_id =>
+                        {
+                            return Some(params[0]);
+                        },
+                        parse::Instruction::TypeRuntimeArray { result_id, type_id }
+                            if result_id == target_id && type_id == struct_id =>
+                        {
+                            return Some(params[0]);
+                        },
+                        _ => ()
+                    }
+                }
+
+                None
+            },
+            _ => None
+        }
+    }).fold(None, |a, b| if let Some(a) = a { assert_eq!(a, b); Some(a) } else { Some(b) });
+
+    // Adding the final padding members.
+    if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
+        let diff = req_size.checked_sub(cur_size as u32).unwrap();
+        if diff >= 1 {
+            members_defs.push(format!("pub _dummy{}: [u8; {}]", next_padding_num, diff));
+        }
     }
 
     // We can only derive common traits if there's no unsized member in the struct.
@@ -101,8 +151,8 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     };
 
     format!("#[repr(C)]\n{derive}\
-             pub struct {name} {{\n\t{members}\n}}\n",
-            derive = derive, name = name, members = members_defs.join(",\n\t"))
+             pub struct {name} {{\n\t{members}\n}} /* total_size: {t:?} */\n",
+            derive = derive, name = name, members = members_defs.join(",\n\t"), t = spirv_req_total_size)
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
@@ -129,15 +179,69 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, us
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                return ("bool".to_owned(), Some(mem::size_of::<bool>()), mem::align_of::<bool>())
+                #[repr(C)] struct Foo { data: bool, after: u8 }
+                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                return ("bool".to_owned(), Some(size), mem::align_of::<Foo>())
             },
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
-                // FIXME: width
-                return ("i32".to_owned(), Some(mem::size_of::<i32>()), mem::align_of::<i32>())
+                match (width, signedness) {
+                    (8, true) => {
+                        #[repr(C)] struct Foo { data: i8, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i8".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (8, false) => {
+                        #[repr(C)] struct Foo { data: u8, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u8".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (16, true) => {
+                        #[repr(C)] struct Foo { data: i16, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i16".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (16, false) => {
+                        #[repr(C)] struct Foo { data: u16, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u16".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (32, true) => {
+                        #[repr(C)] struct Foo { data: i32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (32, false) => {
+                        #[repr(C)] struct Foo { data: u32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (64, true) => {
+                        #[repr(C)] struct Foo { data: i64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("i64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    (64, false) => {
+                        #[repr(C)] struct Foo { data: u64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("u64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    _ => panic!("No Rust equivalent for an integer of width {}", width)
+                }
             },
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                // FIXME: width
-                return ("f32".to_owned(), Some(mem::size_of::<f32>()), mem::align_of::<f32>())
+                match width {
+                    32 => {
+                        #[repr(C)] struct Foo { data: f32, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("f32".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    64 => {
+                        #[repr(C)] struct Foo { data: f64, after: u8 }
+                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
+                        return ("f64".to_owned(), Some(size), mem::align_of::<Foo>())
+                    },
+                    _ => panic!("No Rust equivalent for a floating-point of width {}", width)
+                }
             },
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());

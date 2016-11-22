@@ -7,24 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::mem;
 use std::ptr;
+use std::slice;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-//use alloc::Alloc;
+use instance::loader;
+use instance::loader::LoadingError;
 use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
 use vk;
-use VK_ENTRY;
-use VK_STATIC;
 
 use features::Features;
 use version::Version;
@@ -32,28 +33,116 @@ use instance::InstanceExtensions;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
+///
+/// See the documentation of [the `instance` module](index.html) for an introduction about
+/// Vulkan instances.
+///
+/// # Extensions and application infos
+///
+/// Please check the documentation of [the `instance` module](index.html).
+///
+/// # Layers
+///
+/// When creating an `Instance`, you have the possibility to pass a list of **layers** that will
+/// be activated on the newly-created instance. The list of available layers can be retrieved by
+/// calling [the `layers_list` function](fn.layers_list.html).
+///
+/// A layer is a component that will hook and potentially modify the Vulkan function calls.
+/// For example, activating a layer could add a frames-per-second counter on the screen, or it
+/// could send informations to a debugger that will debug your application.
+///
+/// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
+/// > and Linux layers can be installed by third party installers or by package managers and can
+/// > also be activated by setting the value of the `VK_INSTANCE_LAYERS` environment variable
+/// > before starting the program. See the documentation of the official Vulkan loader for these
+/// > platforms.
+///
+/// > **Note**: In practice, the most common use of layers right now is for debugging purposes.
+/// > To do so, you are encouraged to set the `VK_INSTANCE_LAYERS` environment variable on Windows
+/// > or Linux instead of modifying the source code of your program. For example:
+/// > `export VK_INSTANCE_LAYERS=VK_LAYER_LUNARG_api_dump` on Linux if you installed the Vulkan SDK
+/// > will print the list of raw Vulkan function calls.
+///
+/// ## Example
+///
+/// ```ignore
+/// // FIXME: this example doesn't run because of ownership problems ; Instance::new() needs a tweak
+/// use vulkano::instance;
+/// use vulkano::instance::Instance;
+/// use vulkano::instance::InstanceExtensions;
+///
+/// // For the sake of the example, we activate all the layers that contain the word "foo" in their
+/// // description.
+/// let layers = instance::layers_list().unwrap()
+///     .filter(|l| l.description().contains("foo"))
+///     .map(|l| l.name());
+///
+/// let instance = Instance::new(None, &InstanceExtensions::none(), layers).unwrap();
+/// ```
+// TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
     instance: vk::Instance,
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
     extensions: InstanceExtensions,
+    layers: SmallVec<[CString; 16]>,
 }
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
+    ///
+    /// See the documentation of `Instance` or of [the `instance` module](index.html) for more
+    /// details.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    ///
+    /// let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+    ///     Ok(i) => i,
+    ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
+    /// };
+    /// ```
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the version numbers passed in `ApplicationInfo` are too large can't be
+    ///   converted into a Vulkan version number.
+    /// - Panics if the application name or engine name contain a null character.
+    // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
     pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
                       layers: L) -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>
     {
+        let layers = layers.into_iter().map(|&layer| {
+            CString::new(layer).unwrap()
+        }).collect::<SmallVec<[_; 16]>>();
+
+        Instance::new_inner(app_infos, extensions, layers)
+    }
+
+    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
+                 layers: SmallVec<[CString; 16]>) -> Result<Arc<Instance>, InstanceCreationError>
+    {
+        // TODO: For now there are still buggy drivers that will segfault if you don't pass any
+        //       appinfos. Therefore for now we ensure that it can't be `None`.
+        let def = Default::default();
+        let app_infos = match app_infos {
+            Some(a) => Some(a),
+            None => Some(&def)
+        };
+
         // Building the CStrings from the `str`s within `app_infos`.
         // They need to be created ahead of time, since we pass pointers to them.
         let app_infos_strings = if let Some(app_infos) = app_infos {
             Some((
-                CString::new(app_infos.application_name).unwrap(),
-                CString::new(app_infos.engine_name).unwrap()
+                app_infos.application_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
+                app_infos.engine_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap())
             ))
         } else {
             None
@@ -64,22 +153,19 @@ impl Instance {
             Some(vk::ApplicationInfo {
                 sType: vk::STRUCTURE_TYPE_APPLICATION_INFO,
                 pNext: ptr::null(),
-                pApplicationName: app_infos_strings.as_ref().unwrap().0.as_ptr(),
-                applicationVersion: app_infos.application_version,
-                pEngineName: app_infos_strings.as_ref().unwrap().1.as_ptr(),
-                engineVersion: app_infos.engine_version,
-                apiVersion: Version { major: 1, minor: 0, patch: 0 }.into_vulkan_version(), // TODO: 
+                pApplicationName: app_infos_strings.as_ref().unwrap().0.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+                applicationVersion: app_infos.application_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
+                pEngineName: app_infos_strings.as_ref().unwrap().1.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+                engineVersion: app_infos.engine_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
+                apiVersion: Version { major: 1, minor: 0, patch: 0 }.into_vulkan_version(),      // TODO:
             })
 
         } else {
             None
         };
 
-        let layers = layers.into_iter().map(|&layer| {
-            // FIXME: check whether each layer is supported
-            CString::new(layer).unwrap()
-        }).collect::<SmallVec<[_; 16]>>();
-        let layers = layers.iter().map(|layer| {
+        // FIXME: check whether each layer is supported
+        let layers_ptr = layers.iter().map(|layer| {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -87,6 +173,8 @@ impl Instance {
         let extensions_list = extensions_list.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
+
+        let entry_points = try!(loader::entry_points());
 
         // Creating the Vulkan instance.
         let instance = unsafe {
@@ -100,20 +188,23 @@ impl Instance {
                 } else {
                     ptr::null()
                 },
-                enabledLayerCount: layers.len() as u32,
-                ppEnabledLayerNames: layers.as_ptr(),
+                enabledLayerCount: layers_ptr.len() as u32,
+                ppEnabledLayerNames: layers_ptr.as_ptr(),
                 enabledExtensionCount: extensions_list.len() as u32,
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
-            try!(check_errors(VK_ENTRY.CreateInstance(&infos, ptr::null(), &mut output)));
+            try!(check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output)));
             output
         };
 
         // Loading the function pointers of the newly-created instance.
-        let vk = vk::InstancePointers::load(|name| unsafe {
-            mem::transmute(VK_STATIC.GetInstanceProcAddr(instance, name.as_ptr()))
-        });
+        let vk = {
+            let f = loader::static_functions().unwrap();        // TODO: return proper error
+            vk::InstancePointers::load(|name| unsafe {
+                mem::transmute(f.GetInstanceProcAddr(instance, name.as_ptr()))
+            })
+        };
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
@@ -178,6 +269,7 @@ impl Instance {
             physical_devices: physical_devices,
             vk: vk,
             extensions: extensions.clone(),
+            layers: layers,
         }))
     }
 
@@ -190,9 +282,29 @@ impl Instance {
     }*/
 
     /// Returns the list of extensions that have been loaded.
+    ///
+    /// This list is equal to what was passed to `Instance::new()`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    ///
+    /// let extensions = InstanceExtensions::supported_by_core().unwrap();
+    /// let instance = Instance::new(None, &extensions, None).unwrap();
+    /// assert_eq!(instance.loaded_extensions(), &extensions);
+    /// ```
     #[inline]
     pub fn loaded_extensions(&self) -> &InstanceExtensions {
         &self.extensions
+    }
+
+    /// Returns the list of layers requested when creating this instance.
+    #[doc(hidden)]
+    #[inline]
+    pub fn loaded_layers(&self) -> slice::Iter<CString> {
+        self.layers.iter()
     }
 }
 
@@ -231,20 +343,56 @@ impl Drop for Instance {
 }
 
 /// Information that can be given to the Vulkan driver so that it can identify your application.
+// TODO: better documentation for struct and methods
+#[derive(Debug, Clone)]
 pub struct ApplicationInfo<'a> {
     /// Name of the application.
-    pub application_name: &'a str,
+    pub application_name: Option<Cow<'a, str>>,
     /// An opaque number that contains the version number of the application.
-    pub application_version: u32,
+    pub application_version: Option<Version>,
     /// Name of the engine used to power the application.
-    pub engine_name: &'a str,
+    pub engine_name: Option<Cow<'a, str>>,
     /// An opaque number that contains the version number of the engine.
-    pub engine_version: u32,
+    pub engine_version: Option<Version>,
+}
+
+impl<'a> ApplicationInfo<'a> {
+    /// Builds an `ApplicationInfo` from the information gathered by Cargo.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the required environment variables are missing, which happens if the project
+    ///   wasn't built by Cargo.
+    ///
+    pub fn from_cargo_toml() -> ApplicationInfo<'a> {
+        let version = Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        };
+
+        let name = env!("CARGO_PKG_NAME");
+
+        ApplicationInfo {
+            application_name: Some(name.into()),
+            application_version: Some(version),
+            engine_name: None,
+            engine_version: None,
+        }
+    }
+}
+
+impl<'a> Default for ApplicationInfo<'a> {
+    fn default() -> ApplicationInfo<'a> {
+        ApplicationInfo::from_cargo_toml()
+    }
 }
 
 /// Error that can happen when creating an instance.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum InstanceCreationError {
+    /// Failed to load the Vulkan shared library.
+    LoadingError(LoadingError),
     /// Not enough memory.
     OomError(OomError),
     /// Failed to initialize for an implementation-specific reason.
@@ -254,6 +402,7 @@ pub enum InstanceCreationError {
     /// One of the requested extensions is missing.
     ExtensionNotPresent,
     /// The version requested is not supported by the implementation.
+    // TODO: more info about this once the question of the version has been resolved
     IncompatibleDriver,
 }
 
@@ -261,6 +410,7 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            InstanceCreationError::LoadingError(_) => "failed to load the Vulkan shared library",
             InstanceCreationError::OomError(_) => "not enough memory available",
             InstanceCreationError::InitializationFailed => "initialization failed",
             InstanceCreationError::LayerNotPresent => "layer not present",
@@ -272,6 +422,7 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
+            InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
             _ => None
         }
@@ -289,6 +440,13 @@ impl From<OomError> for InstanceCreationError {
     #[inline]
     fn from(err: OomError) -> InstanceCreationError {
         InstanceCreationError::OomError(err)
+    }
+}
+
+impl From<LoadingError> for InstanceCreationError {
+    #[inline]
+    fn from(err: LoadingError) -> InstanceCreationError {
+        InstanceCreationError::LoadingError(err)
     }
 }
 
@@ -316,6 +474,26 @@ struct PhysicalDeviceInfos {
 }
 
 /// Represents one of the available devices on this machine.
+///
+/// This struct simply contains a pointer to an instance and a number representing the physical
+/// device. You are therefore encouraged to pass this around by value instead of by reference.
+///
+/// # Example
+///
+/// ```no_run
+/// # use vulkano::instance::Instance;
+/// # use vulkano::instance::InstanceExtensions;
+/// use vulkano::instance::PhysicalDevice;
+///
+/// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+/// for physical_device in PhysicalDevice::enumerate(&instance) {
+///     print_infos(physical_device);
+/// }
+///
+/// fn print_infos(dev: PhysicalDevice) {
+///     println!("Name: {}", dev.name());
+/// }
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct PhysicalDevice<'a> {
     instance: &'a Arc<Instance>,
@@ -324,6 +502,19 @@ pub struct PhysicalDevice<'a> {
 
 impl<'a> PhysicalDevice<'a> {
     /// Returns an iterator that enumerates the physical devices available.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::instance::Instance;
+    /// # use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// for physical_device in PhysicalDevice::enumerate(&instance) {
+    ///     println!("Available device: {}", physical_device.name());
+    /// }
+    /// ```
     #[inline]
     pub fn enumerate(instance: &'a Arc<Instance>) -> PhysicalDevicesIter<'a> {
         PhysicalDevicesIter {
@@ -333,6 +524,19 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns a physical device from its index. Returns `None` if out of range.
+    ///
+    /// Indices range from 0 to the number of devices.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::Instance;
+    /// use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
+    /// ```
     #[inline]
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
@@ -346,6 +550,17 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns the instance corresponding to this physical device.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// fn do_something(physical_device: PhysicalDevice) {
+    ///     let _loaded_extensions = physical_device.instance().loaded_extensions();
+    ///     // ... 
+    /// }
+    /// ```
     #[inline]
     pub fn instance(&self) -> &'a Arc<Instance> {
         &self.instance
@@ -353,7 +568,7 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the index of the physical device in the physical devices list.
     ///
-    /// This index never changes and can be used later to retreive a `PhysicalDevice` from an
+    /// This index never changes and can be used later to retrieve a `PhysicalDevice` from an
     /// instance and an index.
     #[inline]
     pub fn index(&self) -> usize {
@@ -362,7 +577,7 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the human-readable name of the device.
     #[inline]
-    pub fn name(&self) -> String {  // FIXME: for some reason this panicks if you use a `&str`
+    pub fn name(&self) -> String {  // FIXME: for some reason this panics if you use a `&str`
         unsafe {
             let val = self.infos().properties.deviceName;
             let val = CStr::from_ptr(val.as_ptr());
@@ -371,6 +586,20 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns the type of the device.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::instance::Instance;
+    /// # use vulkano::instance::InstanceExtensions;
+    /// use vulkano::instance::PhysicalDevice;
+    ///
+    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// for physical_device in PhysicalDevice::enumerate(&instance) {
+    ///     println!("Available device: {} (type: {:?})",
+    ///               physical_device.name(), physical_device.ty());
+    /// }
+    /// ```
     #[inline]
     pub fn ty(&self) -> PhysicalDeviceType {
         match self.instance.physical_devices[self.device].properties.deviceType {
@@ -475,6 +704,9 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns an opaque number representing the version of the driver of this device.
+    ///
+    /// The meaning of this number is implementation-specific. It can be used in bug reports, for
+    /// example.
     #[inline]
     pub fn driver_version(&self) -> u32 {
         self.infos().properties.driverVersion
@@ -493,12 +725,15 @@ impl<'a> PhysicalDevice<'a> {
     }
 
     /// Returns a unique identifier for the device.
+    ///
+    /// Can be stored in a configuration file, so that you can retrieve the device again the next
+    /// time the program is run.
     #[inline]
     pub fn uuid(&self) -> &[u8; 16] {   // must be equal to vk::UUID_SIZE
         &self.infos().properties.pipelineCacheUUID
     }
 
-    /// Internal function to make it easier to get the infos of this device.
+    // Internal function to make it easier to get the infos of this device.
     #[inline]
     fn infos(&self) -> &'a PhysicalDeviceInfos {
         &self.instance.physical_devices[self.device]
@@ -538,6 +773,15 @@ impl<'a> Iterator for PhysicalDevicesIter<'a> {
         self.current_id += 1;
         Some(dev)
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.instance.physical_devices.len() - self.current_id;
+        (len, Some(len))
+    }
+}
+
+impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {
 }
 
 /// Type of a physical device.
@@ -833,6 +1077,8 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
     }
 }
 
+impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
+
 /// Limits of a physical device.
 pub struct Limits<'a> {
     device: PhysicalDevice<'a>,
@@ -959,8 +1205,6 @@ limits_impl!{
     optimal_buffer_copy_row_pitch_alignment: u64 => optimalBufferCopyRowPitchAlignment,
     non_coherent_atom_size: u64 => nonCoherentAtomSize,
 }
-
-impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
 
 #[cfg(test)]
 mod tests {

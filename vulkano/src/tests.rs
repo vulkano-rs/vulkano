@@ -14,12 +14,7 @@ macro_rules! instance {
     () => ({
         use instance;
 
-        let app = instance::ApplicationInfo {
-            application_name: "vulkano tests", application_version: 1,
-            engine_name: "vulkano tests", engine_version: 1
-        };
-
-        match instance::Instance::new(Some(&app), &instance::InstanceExtensions::none(), None) {
+        match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
             Ok(i) => i,
             Err(_) => return
         }
@@ -55,13 +50,18 @@ macro_rules! gfx_dev_and_queue {
             .. Features::none()
         };
 
-        let (device, queues) = match Device::new(&physical, &features,
-                                                 &extensions, None, [(queue, 0.5)].iter().cloned())
+        // If the physical device doesn't support the requested features, just return.
+        if !physical.supported_features().superset_of(&features) {
+            return;
+        }
+
+        let (device, mut queues) = match Device::new(&physical, &features,
+                                                     &extensions, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,
             Err(_) => return
         };
 
-        (device, queues.into_iter().next().unwrap())
+        (device, queues.next().unwrap())
     });
 }

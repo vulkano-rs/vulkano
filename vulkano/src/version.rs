@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// The `Version` object is reexported from the `instance` module.
+
 use std::cmp::Ordering;
 
 /// Represents an API version of Vulkan.
@@ -58,7 +60,7 @@ impl Version {
     ///
     /// # Panic
     ///
-    /// Panicks if the values in the `Version` are out of acceptable range.
+    /// Panics if the values in the `Version` are out of acceptable range.
     #[inline]
     pub fn into_vulkan_version(&self) -> u32 {
         assert!(self.major <= 0x3ff);

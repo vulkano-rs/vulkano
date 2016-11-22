@@ -1,6 +1,9 @@
 [package]
 name = "vk-sys"
-version = "0.1.0"
+version = "0.2.1"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
-
-[dependencies]
+repository = "https://github.com/tomaka/vulkano"
+description = "Bindings for the Vulkan graphics API"
+license = "MIT/Apache-2.0"
+documentation = "https://docs.rs/vk-sys"
+keywords = ["vulkan", "bindings", "graphics", "gpu"]

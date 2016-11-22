@@ -10,18 +10,20 @@
 use std::error;
 use std::fmt;
 use std::mem;
-use std::ops::Range;
+use std::os::raw::c_ulong;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use format::Format;
-use format::FormatDesc;
 use image::Usage as ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
-use swapchain::DisplayMode;
-use swapchain::DisplayPlane;
+use swapchain::SurfaceSwapchainLock;
+use swapchain::SupportedSurfaceTransforms;
+use swapchain::display::DisplayMode;
+use swapchain::display::DisplayPlane;
 
 use check_errors;
 use Error;
@@ -37,6 +39,10 @@ use vk;
 pub struct Surface {
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
+
+    // If true, a swapchain has been associated to this surface, and that any new swapchain
+    // creation should be forbidden.
+    has_swapchain: AtomicBool,
 }
 
 impl Surface {
@@ -44,21 +50,21 @@ impl Surface {
     ///
     /// # Panic
     ///
-    /// - Panicks if `display_mode` and `plane` don't belong to the same physical device.
-    /// - Panicks if `plane` doesn't support the display of `display_mode`.
+    /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
+    /// - Panics if `plane` doesn't support the display of `display_mode`.
     ///
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, SurfaceCreationError>
     {
-        if !display_mode.display.physical_device().instance().loaded_extensions().khr_display {
+        if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
             return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
         }
 
-        assert_eq!(display_mode.display.physical_device().internal_object(),
+        assert_eq!(display_mode.display().physical_device().internal_object(),
                    plane.physical_device().internal_object());
         assert!(plane.supports(display_mode.display()));
 
-        let instance = display_mode.display.physical_device().instance();
+        let instance = display_mode.display().physical_device().instance();
         let vk = instance.pointers();
 
         let surface = unsafe {
@@ -66,15 +72,15 @@ impl Surface {
                 sType: vk::STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                displayMode: display_mode.display_mode,
-                planeIndex: plane.index,
-                planeStackIndex: plane.properties.currentStackIndex,
+                displayMode: display_mode.internal_object(),
+                planeIndex: plane.index(),
+                planeStackIndex: 0, // FIXME: plane.properties.currentStackIndex,
                 transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,      // TODO: let user choose
                 globalAlpha: 0.0,       // TODO: let user choose
                 alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,       // TODO: let user choose
                 imageExtent: vk::Extent2D {     // TODO: let user choose
-                    width: display_mode.parameters.visibleRegion.width,
-                    height: display_mode.parameters.visibleRegion.height,
+                    width: display_mode.visible_region()[0],
+                    height: display_mode.visible_region()[1],
                 },
             };
 
@@ -87,6 +93,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -125,6 +132,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -136,7 +144,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xcb<C, W>(instance: &Arc<Instance>, connection: *const C, window: *const W)
+    pub unsafe fn from_xcb<C>(instance: &Arc<Instance>, connection: *const C, window: u32)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -151,7 +159,7 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 connection: connection as *mut _,
-                window: window as *mut _,
+                window: window,
             };
 
             let mut output = mem::uninitialized();
@@ -163,6 +171,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -174,7 +183,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xlib<D, W>(instance: &Arc<Instance>, display: *const D, window: *const W)
+    pub unsafe fn from_xlib<D>(instance: &Arc<Instance>, display: *const D, window: c_ulong)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -189,7 +198,7 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 dpy: display as *mut _,
-                window: window as *mut _,
+                window: window,
             };
 
             let mut output = mem::uninitialized();
@@ -201,6 +210,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -239,6 +249,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -278,6 +289,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -313,6 +325,7 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
+            has_swapchain: AtomicBool::new(false),
         }))
     }
 
@@ -334,7 +347,7 @@ impl Surface {
     ///
     /// # Panic
     ///
-    /// - Panicks if the device and the surface don't belong to the same instance.
+    /// - Panics if the device and the surface don't belong to the same instance.
     ///
     pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> { // TODO: wrong error type
         unsafe {
@@ -384,11 +397,17 @@ impl Surface {
                                                                modes.as_mut_ptr())
                 ));
                 modes.set_len(num as usize);
-                modes
+                // TODO: Use this assertion, once mesa fixes their driver.
+                // https://bugs.freedesktop.org/show_bug.cgi?id=97153
+                // debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
+                debug_assert!(modes.iter().count() > 0);
+                SupportedPresentModes::from_list(modes.into_iter())
             };
 
             Ok(Capabilities {
-                image_count: caps.minImageCount .. caps.maxImageCount + 1,
+                min_image_count: caps.minImageCount,
+                max_image_count: if caps.maxImageCount == 0 { None }
+                                 else { Some(caps.maxImageCount) },
                 current_extent: if caps.currentExtent.width == 0xffffffff &&
                                    caps.currentExtent.height == 0xffffffff
                 {
@@ -399,9 +418,9 @@ impl Surface {
                 min_image_extent: [caps.minImageExtent.width, caps.minImageExtent.height],
                 max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
                 max_image_array_layers: caps.maxImageArrayLayers,
-                supported_transforms: SurfaceTransform::from_bits(caps.supportedTransforms),
-                current_transform: SurfaceTransform::from_bits(caps.supportedTransforms).into_iter().next().unwrap(),        // TODO:
-                supported_composite_alpha: CompositeAlpha::from_bits(caps.supportedCompositeAlpha),
+                supported_transforms: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms),
+                current_transform: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms).iter().next().unwrap(),        // TODO:
+                supported_composite_alpha: SupportedCompositeAlpha::from_bits(caps.supportedCompositeAlpha),
                 supported_usage_flags: {
                     let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
                     debug_assert!(usage.color_attachment);  // specs say that this must be true
@@ -410,9 +429,16 @@ impl Surface {
                 supported_formats: formats.into_iter().map(|f| {
                     (Format::from_num(f.format).unwrap(), ColorSpace::from_num(f.colorSpace))
                 }).collect(),
-                present_modes: modes.into_iter().map(|mode| PresentMode::from_num(mode)).collect(),
+                present_modes: modes,
             })
         }
+    }
+}
+
+unsafe impl SurfaceSwapchainLock for Surface {
+    #[inline]
+    fn flag(&self) -> &AtomicBool {
+        &self.has_swapchain
     }
 }
 
@@ -442,7 +468,10 @@ pub enum SurfaceCreationError {
     OomError(OomError),
 
     /// The extension required for this function was not enabled.
-    MissingExtension { name: &'static str },
+    MissingExtension {
+        /// Name of the missing extension.
+        name: &'static str
+    },
 }
 
 impl error::Error for SurfaceCreationError {
@@ -494,25 +523,45 @@ impl From<Error> for SurfaceCreationError {
 /// You have to match these capabilities when you create a swapchain.
 #[derive(Clone, Debug)]
 pub struct Capabilities {
-    /// Range of the number of images that can be created. Please remember that the end is out of
-    /// the range.
-    pub image_count: Range<u32>,
+    /// Minimum number of images that must be present in the swapchain.
+    pub min_image_count: u32,
+
+    /// Maximum number of images that must be present in the swapchain, or `None` if there is no
+    /// maximum value. Note that "no maximum" doesn't mean that you can set a very high value, as
+    /// you may still get out of memory errors.
+    pub max_image_count: Option<u32>,
 
     /// The current dimensions of the surface. `None` means that the surface's dimensions will
     /// depend on the dimensions of the swapchain that you are going to create.
     pub current_extent: Option<[u32; 2]>,
 
+    /// Minimum width and height of a swapchain that uses this surface.
     pub min_image_extent: [u32; 2],
-    pub max_image_extent: [u32; 2],
-    pub max_image_array_layers: u32,
-    pub supported_transforms: Vec<SurfaceTransform>,
-    pub current_transform: SurfaceTransform,
-    pub supported_composite_alpha: Vec<CompositeAlpha>,
-    pub supported_usage_flags: ImageUsage,
-    pub supported_formats: Vec<(Format, ColorSpace)>,       // FIXME: driver can return FORMAT_UNDEFINED which indicates that it has no preferred format, so that field should be an Option
 
-    /// List of present modes that are supported.
-    pub present_modes: Vec<PresentMode>,
+    /// Maximum width and height of a swapchain that uses this surface.
+    pub max_image_extent: [u32; 2],
+
+    /// Maximum number of image layers if you create an image array. The minimum is 1.
+    pub max_image_array_layers: u32,
+
+    /// List of transforms supported for the swapchain.
+    pub supported_transforms: SupportedSurfaceTransforms,
+
+    /// Current transform used by the surface.
+    pub current_transform: SurfaceTransform,
+
+    /// List of composite alpha modes supports for the swapchain.
+    pub supported_composite_alpha: SupportedCompositeAlpha,
+
+    /// List of image usages that are supported for images of the swapchain. Only
+    /// the `color_attachment` usage is guaranteed to be supported.
+    pub supported_usage_flags: ImageUsage,
+
+    /// List of formats supported for the swapchain.
+    pub supported_formats: Vec<(Format, ColorSpace)>,       // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
+
+    /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
+    pub present_modes: SupportedPresentModes,
 }
 
 /// The way presenting a swapchain is accomplished.
@@ -530,6 +579,8 @@ pub enum PresentMode {
     /// The action of presenting an image adds it to a queue of images. At each vertical blanking
     /// period, the queue is poped and an image is presented.
     ///
+    /// Guaranteed to be always supported.
+    ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of 1.
     Fifo = vk::PRESENT_MODE_FIFO_KHR,
 
@@ -540,17 +591,74 @@ pub enum PresentMode {
     Relaxed = vk::PRESENT_MODE_FIFO_RELAXED_KHR,
 }
 
-impl PresentMode {
-    /// Panicks if the mode is unrecognized.
+/// List of `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModes {
+    pub immediate: bool,
+    pub mailbox: bool,
+    pub fifo: bool,
+    pub relaxed: bool,
+}
+
+impl SupportedPresentModes {
+    /// Builds a `SupportedPresentModes` with all fields set to false.
     #[inline]
-    fn from_num(num: u32) -> PresentMode {
-        match num {
-            vk::PRESENT_MODE_IMMEDIATE_KHR => PresentMode::Immediate,
-            vk::PRESENT_MODE_MAILBOX_KHR => PresentMode::Mailbox,
-            vk::PRESENT_MODE_FIFO_KHR => PresentMode::Fifo,
-            vk::PRESENT_MODE_FIFO_RELAXED_KHR => PresentMode::Relaxed,
-            m => panic!("unrecognized present mode: {:?}", m)
+    pub fn none() -> SupportedPresentModes {
+        SupportedPresentModes {
+            immediate: false,
+            mailbox: false,
+            fifo: false,
+            relaxed: false,
         }
+    }
+
+    #[inline]
+    fn from_list<I>(elem: I) -> SupportedPresentModes where I: Iterator<Item = vk::PresentModeKHR> {
+        let mut result = SupportedPresentModes::none();
+        for e in elem {
+            match e {
+                vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
+                vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
+                vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
+                vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
+                _ => panic!("Wrong value for vk::PresentModeKHR")
+            }
+        }
+        result
+    }
+
+    /// Returns true if the given present mode is in this list of supported modes.
+    #[inline]
+    pub fn supports(&self, mode: PresentMode) -> bool {
+        match mode {
+            PresentMode::Immediate => self.immediate,
+            PresentMode::Mailbox => self.mailbox,
+            PresentMode::Fifo => self.fifo,
+            PresentMode::Relaxed => self.relaxed,
+        }
+    }
+
+    /// Returns an iterator to the list of supported present modes.
+    #[inline]
+    pub fn iter(&self) -> SupportedPresentModesIter {
+        SupportedPresentModesIter(self.clone())
+    }
+}
+
+/// Enumeration of the `PresentMode`s that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedPresentModesIter(SupportedPresentModes);
+
+impl Iterator for SupportedPresentModesIter {
+    type Item = PresentMode;
+
+    #[inline]
+    fn next(&mut self) -> Option<PresentMode> {
+        if self.0.immediate { self.0.immediate = false; return Some(PresentMode::Immediate); }
+        if self.0.mailbox { self.0.mailbox = false; return Some(PresentMode::Mailbox); }
+        if self.0.fifo { self.0.fifo = false; return Some(PresentMode::Fifo); }
+        if self.0.relaxed { self.0.relaxed = false; return Some(PresentMode::Relaxed); }
+        None
     }
 }
 
@@ -558,50 +666,27 @@ impl PresentMode {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum SurfaceTransform {
+    /// Don't transform the image.
     Identity = vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    /// Rotate 90 degrees.
     Rotate90 = vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+    /// Rotate 180 degrees.
     Rotate180 = vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
+    /// Rotate 270 degrees.
     Rotate270 = vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
+    /// Mirror the image horizontally.
     HorizontalMirror = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
+    /// Mirror the image horizontally and rotate 90 degrees.
     HorizontalMirrorRotate90 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
+    /// Mirror the image horizontally and rotate 180 degrees.
     HorizontalMirrorRotate180 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
+    /// Mirror the image horizontally and rotate 270 degrees.
     HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
 }
 
-impl SurfaceTransform {
-    fn from_bits(val: u32) -> Vec<SurfaceTransform> {
-        macro_rules! v {
-            ($val:expr, $out:ident, $e:expr, $o:ident) => (
-                if ($val & $e) != 0 { $out.push(SurfaceTransform::$o); }
-            );
-        }
-
-        let mut result = Vec::with_capacity(9);
-        v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, Identity);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, Rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, Rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, Rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, HorizontalMirror);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-                        HorizontalMirrorRotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-                        HorizontalMirrorRotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-                        HorizontalMirrorRotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, Inherit);
-        result
-    }
-}
-
-impl Default for SurfaceTransform {
-    #[inline]
-    fn default() -> SurfaceTransform {
-        SurfaceTransform::Identity
-    }
-}
-
-// How the alpha values of the pixels of the window are treated.
+/// How the alpha values of the pixels of the window are treated.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum CompositeAlpha {
@@ -617,30 +702,151 @@ pub enum CompositeAlpha {
     /// alpha value by the compositor before being added to what is behind.
     PostMultiplied = vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
 
-    /// Platform-specific behavior.
+    /// Let the operating system or driver implementation choose.
     Inherit = vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR,
 }
 
-impl CompositeAlpha {
-    fn from_bits(val: u32) -> Vec<CompositeAlpha> {
-        let mut result = Vec::with_capacity(4);
-        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.push(CompositeAlpha::Opaque); }
-        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PreMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.push(CompositeAlpha::PostMultiplied); }
-        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.push(CompositeAlpha::Inherit); }
+/// List of supported composite alpha modes.
+///
+/// See the docs of `CompositeAlpha`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[allow(missing_docs)]
+pub struct SupportedCompositeAlpha {
+    pub opaque: bool,
+    pub pre_multiplied: bool,
+    pub post_multiplied: bool,
+    pub inherit: bool,
+}
+
+impl SupportedCompositeAlpha {
+    /// Builds a `SupportedCompositeAlpha` with all fields set to false.
+    #[inline]
+    pub fn none() -> SupportedCompositeAlpha {
+        SupportedCompositeAlpha {
+            opaque: false,
+            pre_multiplied: false,
+            post_multiplied: false,
+            inherit: false,
+        }
+    }
+
+    #[inline]
+    fn from_bits(val: u32) -> SupportedCompositeAlpha {
+        let mut result = SupportedCompositeAlpha::none();
+        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.opaque = true; }
+        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.pre_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.post_multiplied = true; }
+        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.inherit = true; }
         result
+    }
+
+    /// Returns true if the given `CompositeAlpha` is in this list.
+    #[inline]
+    pub fn supports(&self, value: CompositeAlpha) -> bool {
+        match value {
+            CompositeAlpha::Opaque => self.opaque,
+            CompositeAlpha::PreMultiplied => self.pre_multiplied,
+            CompositeAlpha::PostMultiplied => self.post_multiplied,
+            CompositeAlpha::Inherit => self.inherit,
+        }
+    }
+
+    /// Returns an iterator to the list of supported composite alpha.
+    #[inline]
+    pub fn iter(&self) -> SupportedCompositeAlphaIter {
+        SupportedCompositeAlphaIter(self.clone())
     }
 }
 
+/// Enumeration of the `CompositeAlpha` that are supported.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SupportedCompositeAlphaIter(SupportedCompositeAlpha);
+
+impl Iterator for SupportedCompositeAlphaIter {
+    type Item = CompositeAlpha;
+
+    #[inline]
+    fn next(&mut self) -> Option<CompositeAlpha> {
+        if self.0.opaque { self.0.opaque = false; return Some(CompositeAlpha::Opaque); }
+        if self.0.pre_multiplied { self.0.pre_multiplied = false; return Some(CompositeAlpha::PreMultiplied); }
+        if self.0.post_multiplied { self.0.post_multiplied = false; return Some(CompositeAlpha::PostMultiplied); }
+        if self.0.inherit { self.0.inherit = false; return Some(CompositeAlpha::Inherit); }
+        None
+    }
+}
+
+/// How the presentation engine should interpret the data.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ColorSpace {
+    /// Interpret it as sRGB.
     SrgbNonLinear,
 }
 
 impl ColorSpace {
     #[inline]
     fn from_num(val: u32) -> ColorSpace {
-        assert_eq!(val, vk::COLORSPACE_SRGB_NONLINEAR_KHR);
+        assert_eq!(val, vk::COLOR_SPACE_SRGB_NONLINEAR_KHR);
         ColorSpace::SrgbNonLinear
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ptr;
+    use swapchain::Surface;
+    use swapchain::SurfaceCreationError;
+
+    #[test]
+    fn khr_win32_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_hwnd(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_xcb_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), 0) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_xlib_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), 0) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_wayland_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_wayland(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_mir_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_mir(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn khr_android_surface_ext_missing() {
+        let instance = instance!();
+        match unsafe { Surface::from_anativewindow(&instance, ptr::null::<u8>()) } {
+            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            _ => panic!()
+        }
     }
 }

@@ -43,7 +43,6 @@
 
 pub use self::inner::Submission;
 pub use self::outer::submit;
-pub use self::outer::DynamicState;
 pub use self::outer::PrimaryCommandBufferBuilder;
 pub use self::outer::PrimaryCommandBufferBuilderInlineDraw;
 pub use self::outer::PrimaryCommandBufferBuilderSecondaryDraw;
@@ -52,8 +51,61 @@ pub use self::outer::SecondaryGraphicsCommandBufferBuilder;
 pub use self::outer::SecondaryGraphicsCommandBuffer;
 pub use self::outer::SecondaryComputeCommandBufferBuilder;
 pub use self::outer::SecondaryComputeCommandBuffer;
-pub use self::pool::CommandBufferPool;
+pub use self::submit::CommandBuffer;
+pub use self::submit::Submit;
+
+use pipeline::viewport::Viewport;
+use pipeline::viewport::Scissor;
 
 mod inner;
 mod outer;
-mod pool;
+
+pub mod pool;
+pub mod std;
+pub mod submit;
+pub mod sys;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DrawIndirectCommand {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DrawIndexedIndirectCommand {
+    pub index_count: u32,
+    pub instance_count: u32,
+    pub first_index: u32,
+    pub vertex_offset: u32,
+    pub first_instance: u32,
+}
+
+/// The dynamic state to use for a draw command.
+#[derive(Debug, Clone)]
+pub struct DynamicState {
+    pub line_width: Option<f32>,
+    pub viewports: Option<Vec<Viewport>>,
+    pub scissors: Option<Vec<Scissor>>,
+}
+
+impl DynamicState {
+    #[inline]
+    pub fn none() -> DynamicState {
+        DynamicState {
+            line_width: None,
+            viewports: None,
+            scissors: None,
+        }
+    }
+}
+
+impl Default for DynamicState {
+    #[inline]
+    fn default() -> DynamicState {
+        DynamicState::none()
+    }
+}
