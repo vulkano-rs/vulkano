@@ -55,7 +55,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
                    attachments: Ia) -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
-        where Rp: RenderPassRef + RenderPassAttachmentsList<Ia>,
+        where Rp: RenderPassRef,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
     {
@@ -63,7 +63,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
-        try!(render_pass.check_attachments_list(&attachments));
+        try!(render_pass.desc().check_attachments_list(&attachments));
 
         let attachments = attachments.into_attachments_list();
 

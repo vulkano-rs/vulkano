@@ -7,20 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::iter::Empty as EmptyIter;
 use std::sync::Arc;
 
 use device::Device;
-use format::ClearValue;
-use framebuffer::framebuffer::FramebufferCreationError;
 use framebuffer::sys::RenderPass;
 use framebuffer::sys::RenderPassSys;
 use framebuffer::sys::RenderPassCreationError;
 use framebuffer::traits::RenderPassRef;
 use framebuffer::traits::RenderPassDesc;
-use framebuffer::traits::RenderPassAttachmentsList;
-use framebuffer::traits::RenderPassClearValues;
 use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
@@ -166,22 +160,6 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
         } else {
             None
         }
-    }
-}
-
-unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    #[inline]
-    fn check_attachments_list(&self, _: &()) -> Result<(), FramebufferCreationError> {
-        Ok(())
-    }
-}
-
-unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
-    type ClearValuesIter = EmptyIter<ClearValue>;
-
-    #[inline]
-    fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
-        iter::empty()
     }
 }
 

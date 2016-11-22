@@ -434,28 +434,16 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 /// - That the attachments use identity components swizzling.
 /// TODO: more stuff with aliasing
 ///
-pub unsafe trait RenderPassAttachmentsList<A>: RenderPassRef {
+pub unsafe trait RenderPassAttachmentsList<A>: RenderPassDesc {
     /// Decodes a `A` into a list of attachments.
     ///
     /// Returns an error if one of the attachments is wrong.
     fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
-unsafe impl<A, Rp> RenderPassAttachmentsList<A> for Arc<Rp>
-    where Rp: RenderPassAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: &A) -> Result<(), FramebufferCreationError> {
-        (**self).check_attachments_list(atch)
-    }
-}
-
-unsafe impl<'a, A, Rp> RenderPassAttachmentsList<A> for &'a Rp
-    where Rp: RenderPassAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: &A) -> Result<(), FramebufferCreationError> {
-        (**self).check_attachments_list(atch)
+unsafe impl<A, R> RenderPassAttachmentsList<A> for R where R: RenderPassDesc {
+    fn check_attachments_list(&self, attachments: &A) -> Result<(), FramebufferCreationError> {
+        Ok(())        // FIXME:
     }
 }
 
@@ -483,7 +471,7 @@ pub unsafe trait RenderPassClearValues<C>: RenderPassDesc {
     type ClearValuesIter = ;
 
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter {
-        
+
     }
 }*/
 
