@@ -504,18 +504,20 @@ unsafe impl<'a, C, Rp> RenderPassClearValues<C> for &'a Rp where Rp: RenderPassC
 /// `RenderPassDesc`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
-pub unsafe trait RenderPassSubpassInterface<Other>: RenderPassRef where Other: ShaderInterfaceDef {
+pub unsafe trait RenderPassSubpassInterface<Other: ?Sized>: RenderPassDesc
+    where Other: ShaderInterfaceDef
+{
     /// Returns `true` if this subpass is compatible with the fragment output definition.
     /// Also returns `false` if the subpass is out of range.
     // TODO: return proper error
     fn is_compatible_with(&self, subpass: u32, other: &Other) -> bool;
 }
 
-unsafe impl<A, B> RenderPassSubpassInterface<B> for A
-    where A: RenderPassRef + RenderPassDesc, B: ShaderInterfaceDef
+unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
+    where A: RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match (0 .. self.num_subpasses()).map(|p| RenderPassDesc::subpass(self, p).unwrap()).skip(subpass as usize).next() {
+        let pass_descr = match RenderPassDesc::subpasses(self).skip(subpass as usize).next() {
             Some(s) => s,
             None => return false,
         };
