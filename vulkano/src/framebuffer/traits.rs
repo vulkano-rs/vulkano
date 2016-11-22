@@ -459,14 +459,14 @@ unsafe impl<'a, A, Rp> RenderPassAttachmentsList<A> for &'a Rp
     }
 }
 
-/// Extension trait for `RenderPassRef`. Defines which types are allowed as a list of clear values.
+/// Extension trait for `RenderPassDesc`. Defines which types are allowed as a list of clear values.
 ///
 /// # Safety
 ///
 /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
 /// matches the attachment.
 ///
-pub unsafe trait RenderPassClearValues<C>: RenderPassRef {
+pub unsafe trait RenderPassClearValues<C>: RenderPassDesc {
     /// Iterator that produces one clear value per attachment.
     type ClearValuesIter: Iterator<Item = ClearValue>;
 
@@ -479,23 +479,13 @@ pub unsafe trait RenderPassClearValues<C>: RenderPassRef {
     fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
 }
 
-unsafe impl<C, Rp> RenderPassClearValues<C> for Arc<Rp> where Rp: RenderPassClearValues<C> {
-    type ClearValuesIter = Rp::ClearValuesIter;
+/*unsafe impl<'a, R> RenderPassClearValues<&'a [ClearValue]> for R where R: RenderPassDesc {
+    type ClearValuesIter = ;
 
-    #[inline]
-    fn convert_clear_values(&self, values: C) -> Self::ClearValuesIter {
-        (**self).convert_clear_values(values)
+    fn convert_clear_values(&self, C) -> Self::ClearValuesIter {
+        
     }
-}
-
-unsafe impl<'a, C, Rp> RenderPassClearValues<C> for &'a Rp where Rp: RenderPassClearValues<C> {
-    type ClearValuesIter = Rp::ClearValuesIter;
-
-    #[inline]
-    fn convert_clear_values(&self, values: C) -> Self::ClearValuesIter {
-        (**self).convert_clear_values(values)
-    }
-}
+}*/
 
 /// Extension trait for `RenderPassRef` that checks whether a subpass of this render pass accepts
 /// the output of a fragment shader.
