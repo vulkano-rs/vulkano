@@ -540,13 +540,13 @@ pub unsafe trait RenderPassCompatible<Other>: RenderPassRef where Other: RenderP
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     // TODO: return proper error
-    fn is_compatible_with(&self, other: &Arc<Other>) -> bool;
+    fn is_compatible_with(&self, other: &Other) -> bool;
 }
 
 unsafe impl<A, B> RenderPassCompatible<B> for A
     where A: RenderPassRef, B: RenderPassRef
 {
-    fn is_compatible_with(&self, other: &Arc<B>) -> bool {
+    fn is_compatible_with(&self, other: &B) -> bool {
         // FIXME:
         /*for (atch1, atch2) in (&self).attachments().zip(other.attachments()) {
             if !atch1.is_compatible_with(&atch2) {

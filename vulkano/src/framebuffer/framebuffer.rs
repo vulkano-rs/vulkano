@@ -134,9 +134,8 @@ impl<Rp, A> Framebuffer<Rp, A> {
 
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
-    pub fn is_compatible_with<R>(&self, render_pass: &Arc<R>) -> bool
-        where R: RenderPassRef,
-              Rp: RenderPassRef + RenderPassCompatible<R>
+    pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
+        where R: RenderPassRef, Rp: RenderPassRef
     {
         self.render_pass.is_compatible_with(render_pass)
     }
