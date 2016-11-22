@@ -98,33 +98,6 @@ pub unsafe trait VulkanObject {
     fn internal_object(&self) -> Self::Object;
 }
 
-unsafe impl<'a, T> VulkanObject for &'a T where T: VulkanObject {
-    type Object = T::Object;
-
-    #[inline]
-    fn internal_object(&self) -> Self::Object {
-        (**self).internal_object()
-    }
-}
-
-unsafe impl<'a, T> VulkanObject for &'a mut T where T: VulkanObject {
-    type Object = T::Object;
-
-    #[inline]
-    fn internal_object(&self) -> Self::Object {
-        (**self).internal_object()
-    }
-}
-
-unsafe impl<T> VulkanObject for Arc<T> where T: VulkanObject {
-    type Object = T::Object;
-
-    #[inline]
-    fn internal_object(&self) -> Self::Object {
-        (**self).internal_object()
-    }
-}
-
 /// Gives access to the internal identifier of an object.
 // TODO: remove ; crappy design
 pub unsafe trait SynchronizedVulkanObject {
