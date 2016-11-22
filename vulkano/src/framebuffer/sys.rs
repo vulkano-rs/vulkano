@@ -306,19 +306,15 @@ impl RenderPass {
     }
 }
 
-unsafe impl VulkanObject for RenderPass {
-    type Object = vk::RenderPass;
-
-    #[inline]
-    fn internal_object(&self) -> vk::RenderPass {
-        self.renderpass
-    }
-}
-
 unsafe impl RenderPassRef for RenderPass {
     #[inline]
-    fn inner(&self) -> &RenderPass {
-        self
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    #[inline]
+    fn inner(&self) -> RenderPassSys {
+       RenderPassSys(&self.renderpass)
     }
 
     #[inline]
@@ -334,6 +330,19 @@ impl Drop for RenderPass {
             let vk = self.device.pointers();
             vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
         }
+    }
+}
+
+/// Opaque struct that represents a render pass without a template parameter.
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassSys<'a>(&'a vk::RenderPass);
+
+unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
+    type Object = vk::RenderPass;
+
+    #[inline]
+    fn internal_object(&self) -> vk::RenderPass {
+        *self.0
     }
 }
 
