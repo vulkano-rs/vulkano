@@ -16,11 +16,11 @@
 //! - A `RenderPassRef` is a collection of one or multiples passes called subpasses. Each subpass
 //!   contains the format and dimensions of the attachments that are part of the subpass. The
 //!   render pass only defines the layout of the rendering process.
-//! - A `Framebuffer` contains the list of actual images that are attached. It is created from a
+//! - A `FramebufferRef` contains the list of actual images that are attached. It is created from a
 //!   render pass and has to match its characteristics.
 //!
 //! You can create graphics pipelines from a render pass object alone.
-//! A `Framebuffer` is only needed when you add draw commands to a command buffer.
+//! A `FramebufferRef` is only needed when you add draw commands to a command buffer.
 //!
 //! # Render passes
 //!
@@ -59,7 +59,7 @@
 //! # Framebuffers
 //!
 //! Creating a framebuffer is done by passing the render pass object, the dimensions of the
-//! framebuffer, and the list of attachments to `Framebuffer::new()`.
+//! framebuffer, and the list of attachments to `FramebufferRef::new()`.
 //!
 //! The slightly tricky part is that the type that contains the list of attachments depends on
 //! the trait implementation of `RenderPassRef`. For example if you use an
@@ -72,7 +72,7 @@ pub use self::framebuffer::FramebufferCreationError;
 pub use self::sys::RenderPass;
 pub use self::sys::RenderPassSys;
 pub use self::sys::RenderPassCreationError;
-pub use self::traits::Framebuffer;
+pub use self::traits::FramebufferRef;
 pub use self::traits::RenderPassRef;
 pub use self::traits::RenderPassDesc;
 pub use self::traits::RenderPassAttachmentsList;

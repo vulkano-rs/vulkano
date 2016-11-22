@@ -25,7 +25,7 @@ use vk;
 
 use VulkanObject;
 
-pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
+pub unsafe trait FramebufferRef: VulkanObject<Object = vk::Framebuffer> {
     type RenderPassRef: RenderPassRef;
 
     /// Returns the render pass this framebuffer belongs to.
@@ -35,7 +35,7 @@ pub unsafe trait Framebuffer: VulkanObject<Object = vk::Framebuffer> {
     fn dimensions(&self) -> [u32; 3];
 }
 
-unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
+unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
     type RenderPassRef = F::RenderPassRef;
 
     #[inline]
@@ -49,7 +49,7 @@ unsafe impl<'a, F> Framebuffer for &'a F where F: Framebuffer {
     }
 }
 
-unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
+unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
     type RenderPassRef = F::RenderPassRef;
 
     #[inline]
@@ -64,7 +64,7 @@ unsafe impl<F> Framebuffer for Arc<F> where F: Framebuffer {
 }
 
 // TODO: docs
-pub unsafe trait TrackedFramebuffer: Framebuffer {
+pub unsafe trait TrackedFramebuffer: FramebufferRef {
     fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
 }
 

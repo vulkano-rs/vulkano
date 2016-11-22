@@ -34,7 +34,7 @@
 //!   operation. `Shader`s are programs that the GPU will execute as part of a pipeline.
 //!   Descriptors can be used to access the content of buffers or images from within shaders.
 //!
-//! - For graphical operations, `RenderPassRef`es and `Framebuffer`s describe on which images the
+//! - For graphical operations, `RenderPassRef`es and `FramebufferRef`s describe on which images the
 //!   implementation must draw upon.
 //!
 //! - In order to ask the GPU to do something, you must create a `CommandBuffer`. A `CommandBuffer`

@@ -19,7 +19,7 @@ use device::Device;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
-use framebuffer::traits::Framebuffer as FramebufferTrait;
+use framebuffer::traits::FramebufferRef;
 use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
 use image::traits::ImageView;
@@ -178,7 +178,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPassRef {
+unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A> where Rp: RenderPassRef {
     type RenderPassRef = Rp;
 
     #[inline]
