@@ -17,6 +17,7 @@ use std::sync::Arc;
 use command_buffer::cmd::CommandsListSink;
 use device::Device;
 use framebuffer::FramebufferRef;
+use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
@@ -40,7 +41,7 @@ use vk;
 /// A framebuffer can be used alongside with any other render pass object as long as it is
 /// compatible with the render pass that his framebuffer was created with. You can determine
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
-pub struct Framebuffer<Rp, A> {
+pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,
