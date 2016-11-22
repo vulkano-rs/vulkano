@@ -36,21 +36,7 @@ pub struct EmptySinglePassRenderPass {
 impl EmptySinglePassRenderPass {
     /// See the docs of new().
     pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
-        let rp = try!(unsafe {
-            let pass = LayoutPassDescription {
-                color_attachments: vec![],
-                depth_stencil: None,
-                input_attachments: vec![],
-                resolve_attachments: vec![],
-                preserve_attachments: vec![],
-            };
-
-            RenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
-        });
-
-        Ok(EmptySinglePassRenderPass {
-            render_pass: rp
-        })
+        unimplemented!()
     }
     
     /// Builds the render pass.

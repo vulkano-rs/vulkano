@@ -134,21 +134,42 @@ unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     }
 }
 
+///
+/// # Safety
+///
+/// TODO:
+/// - All color and depth/stencil attachments used by any given subpass must have the same number
+///   of samples.
 pub unsafe trait RenderPassDesc {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
     /// Returns the description of an attachment.
     fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription>;
+    /// Returns an iterator to the list of attachments.
+    #[inline]
+    fn attachments(&self) -> RenderPassDescAttachments<Self> where Self: Sized {
+        RenderPassDescAttachments { render_pass: self, num: 0 }
+    }
 
     /// Returns the number of subpasses of the render pass.
     fn num_subpasses(&self) -> usize;
     /// Returns the description of a suvpass.
     fn subpass(&self, num: usize) -> Option<LayoutPassDescription>;
+    /// Returns an iterator to the list of subpasses.
+    #[inline]
+    fn subpasses(&self) -> RenderPassDescSubpasses<Self> where Self: Sized {
+        RenderPassDescSubpasses { render_pass: self, num: 0 }
+    }
 
     /// Returns the number of dependencies of the render pass.
     fn num_dependencies(&self) -> usize;
     /// Returns the description of a dependency.
     fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
+    /// Returns an iterator to the list of dependencies.
+    #[inline]
+    fn dependencies(&self) -> RenderPassDescDependencies<Self> where Self: Sized {
+        RenderPassDescDependencies { render_pass: self, num: 0 }
+    }
 
     /// Returns the number of color attachments in a subpass. Returns `None` if out of range.
     #[inline]
@@ -329,6 +350,63 @@ unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
     #[inline]
     fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         (**self).dependency(num)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassDescAttachments<'a, R: ?Sized + 'a> {
+    render_pass: &'a R,
+    num: usize,
+}
+
+impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R> where R: RenderPassDesc {
+    type Item = LayoutAttachmentDescription;
+
+    fn next(&mut self) -> Option<LayoutAttachmentDescription> {
+        if self.num < self.render_pass.num_attachments() {
+            Some(self.render_pass.attachment(self.num).expect("Wrong RenderPassDesc \
+                                                               implementation"))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassDescSubpasses<'a, R: ?Sized + 'a> {
+    render_pass: &'a R,
+    num: usize,
+}
+
+impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R> where R: RenderPassDesc {
+    type Item = LayoutPassDescription;
+
+    fn next(&mut self) -> Option<LayoutPassDescription> {
+        if self.num < self.render_pass.num_subpasses() {
+            Some(self.render_pass.subpass(self.num).expect("Wrong RenderPassDesc \
+                                                            implementation"))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassDescDependencies<'a, R: ?Sized + 'a> {
+    render_pass: &'a R,
+    num: usize,
+}
+
+impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R: RenderPassDesc {
+    type Item = LayoutPassDependencyDescription;
+
+    fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
+        if self.num < self.render_pass.num_dependencies() {
+            Some(self.render_pass.dependency(self.num).expect("Wrong RenderPassDesc \
+                                                               implementation"))
+        } else {
+            None
+        }
     }
 }
 
