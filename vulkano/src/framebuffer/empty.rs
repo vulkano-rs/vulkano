@@ -69,6 +69,11 @@ unsafe impl RenderPassRef for EmptySinglePassRenderPass {
     fn inner(&self) -> &RenderPass {
         &self.render_pass
     }
+
+    #[inline]
+    fn desc(&self) -> &RenderPassDesc {
+        unimplemented!()
+    }
 }
 
 unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
