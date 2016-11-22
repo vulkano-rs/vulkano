@@ -33,6 +33,8 @@ pub unsafe trait FramebufferRef: VulkanObject<Object = vk::Framebuffer> {
 
     /// Returns the width, height and number of layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
+
+    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
 }
 
 unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
@@ -46,6 +48,11 @@ unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
+    }
+
+    #[inline]
+    fn add_transition<'m>(&'m self, sink: &mut CommandsListSink<'m>) {
+        (**self).add_transition(sink);
     }
 }
 
@@ -61,14 +68,7 @@ unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
     fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
     }
-}
 
-// TODO: docs
-pub unsafe trait TrackedFramebuffer: FramebufferRef {
-    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
-}
-
-unsafe impl<T> TrackedFramebuffer for Arc<T> where T: TrackedFramebuffer {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
         (**self).add_transition(sink);

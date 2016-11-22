@@ -16,11 +16,10 @@ use std::sync::Arc;
 
 use command_buffer::cmd::CommandsListSink;
 use device::Device;
+use framebuffer::FramebufferRef;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassAttachmentsList;
 use framebuffer::RenderPassCompatible;
-use framebuffer::traits::FramebufferRef;
-use framebuffer::traits::TrackedFramebuffer;
 use image::sys::Layout;
 use image::traits::ImageView;
 use sync::AccessFlagBits;
@@ -178,7 +177,9 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A> where Rp: RenderPassRef {
+unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A>
+    where Rp: RenderPassRef, A: AttachmentsList
+{
     type RenderPassRef = Rp;
 
     #[inline]
@@ -189,6 +190,11 @@ unsafe impl<Rp, A> FramebufferRef for StdFramebuffer<Rp, A> where Rp: RenderPass
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         self.dimensions
+    }
+
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+        self.resources.add_transition(sink);
     }
 }
 
@@ -211,15 +217,6 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
-    where Rp: RenderPassRef, A: AttachmentsList
-{
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        self.resources.add_transition(sink);
-    }
-}
-
 pub unsafe trait AttachmentsList {
     /// Returns the raw handles of the image views of this list.
     // TODO: better return type
@@ -239,6 +236,22 @@ pub unsafe trait AttachmentsList {
 #[derive(Debug, Copy, Clone)]
 pub struct EmptyAttachmentsList;
 unsafe impl AttachmentsList for EmptyAttachmentsList {
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
+        vec![]
+    }
+
+    #[inline]
+    fn min_dimensions(&self) -> Option<[u32; 3]> {
+        None
+    }
+
+    #[inline]
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
+    }
+}
+
+unsafe impl AttachmentsList for () {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
         vec![]

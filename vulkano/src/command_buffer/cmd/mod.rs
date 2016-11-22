@@ -21,7 +21,7 @@ use command_buffer::SecondaryCommandBuffer;
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
-use framebuffer::traits::TrackedFramebuffer;
+use framebuffer::FramebufferRef;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
@@ -175,7 +175,7 @@ pub unsafe trait CommandsList {
     #[inline]
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
                                -> CmdBeginRenderPass<Self, F::RenderPassRef, F>
-        where Self: Sized, F: TrackedFramebuffer,
+        where Self: Sized, F: FramebufferRef,
               F::RenderPassRef: RenderPassRef + RenderPassClearValues<C>
     {
         CmdBeginRenderPass::new(self, framebuffer, secondary, clear_values)

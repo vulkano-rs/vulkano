@@ -17,7 +17,7 @@ use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use device::Device;
 use format::ClearValue;
-use framebuffer::traits::TrackedFramebuffer;
+use framebuffer::FramebufferRef;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use VulkanObject;
@@ -47,7 +47,7 @@ pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
 }
 
 impl<L, F> CmdBeginRenderPass<L, F::RenderPassRef, F>
-    where L: CommandsList, F: TrackedFramebuffer
+    where L: CommandsList, F: FramebufferRef
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
@@ -110,7 +110,7 @@ impl<L, F> CmdBeginRenderPass<L, F::RenderPassRef, F>
 }
 
 unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
-    where L: CommandsList, F: TrackedFramebuffer
+    where L: CommandsList, F: FramebufferRef
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
