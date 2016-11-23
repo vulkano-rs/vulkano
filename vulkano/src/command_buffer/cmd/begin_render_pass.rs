@@ -62,8 +62,7 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
 
         let clear_values = {
             let desc = framebuffer.render_pass().desc();
-            let iter: Vec<ClearValue> = (&desc).convert_clear_values(clear_values).collect();
-            iter.into_iter().map(|clear_value| {
+            (&desc).convert_clear_values(clear_values).map(|clear_value| {
                 match clear_value {
                     ClearValue::None => {
                         vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
