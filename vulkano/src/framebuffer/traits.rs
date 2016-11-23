@@ -28,9 +28,8 @@ pub unsafe trait FramebufferRef {
     /// Returns the underlying framebuffer. Used by vulkano's internals.
     fn inner(&self) -> FramebufferSys;
 
-    type RenderPassRef: RenderPassRef;
     /// Returns the render pass this framebuffer belongs to.
-    fn render_pass(&self) -> &Self::RenderPassRef;
+    fn render_pass(&self) -> &RenderPassRef;
 
     /// Returns the width, height and number of layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
@@ -44,10 +43,8 @@ unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
         (**self).inner()
     }
 
-    type RenderPassRef = F::RenderPassRef;
-
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPassRef {
+    fn render_pass(&self) -> &RenderPassRef {
         (**self).render_pass()
     }
 
@@ -68,10 +65,8 @@ unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
         (**self).inner()
     }
 
-    type RenderPassRef = F::RenderPassRef;
-
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPassRef {
+    fn render_pass(&self) -> &RenderPassRef {
         (**self).render_pass()
     }
 
@@ -455,25 +450,22 @@ unsafe impl<A, R> RenderPassAttachmentsList<A> for R where R: RenderPassDesc {
 /// matches the attachment.
 ///
 pub unsafe trait RenderPassClearValues<C>: RenderPassDesc {
-    /// Iterator that produces one clear value per attachment.
-    type ClearValuesIter: Iterator<Item = ClearValue>;
-
     /// Decodes a `C` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned iterator must be the same as the number of
     /// attachments.
     ///
     /// The format of the clear value **must** match the format of the attachment. Attachments
     /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
-    fn convert_clear_values(&self, C) -> Self::ClearValuesIter;
+    // TODO: meh for boxing
+    fn convert_clear_values(&self, C) -> Box<Iterator<Item = ClearValue>>;
 }
 
-/*unsafe impl<'a, R> RenderPassClearValues<&'a [ClearValue]> for R where R: RenderPassDesc {
-    type ClearValuesIter = ;
-
-    fn convert_clear_values(&self, C) -> Self::ClearValuesIter {
-
+unsafe impl<R: ?Sized> RenderPassClearValues<Vec<ClearValue>> for R where R: RenderPassDesc {
+    #[inline]
+    fn convert_clear_values(&self, vals: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+        Box::new(vals.into_iter())
     }
-}*/
+}
 
 /// Extension trait for `RenderPassRef` that checks whether a subpass of this render pass accepts
 /// the output of a fragment shader.

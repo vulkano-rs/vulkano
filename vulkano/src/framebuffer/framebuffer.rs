@@ -185,10 +185,8 @@ unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
         FramebufferSys(&self.framebuffer)
     }
 
-    type RenderPassRef = Rp;
-
     #[inline]
-    fn render_pass(&self) -> &Self::RenderPassRef {
+    fn render_pass(&self) -> &RenderPassRef {
         &self.render_pass
     }
 

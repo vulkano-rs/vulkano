@@ -18,7 +18,8 @@ use command_buffer::CommandsListSink;
 use device::Device;
 use format::ClearValue;
 use framebuffer::FramebufferRef;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPass;
+use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassClearValues;
 use VulkanObject;
 use VulkanPointers;
@@ -46,52 +47,54 @@ pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
     framebuffer: F,
 }
 
-impl<L, F> CmdBeginRenderPass<L, F::RenderPassRef, F>
+impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
     where L: CommandsList, F: FramebufferRef
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<L, F::RenderPassRef, F>
-        where F::RenderPassRef: RenderPassClearValues<C>
+                  -> CmdBeginRenderPass<L, Arc<RenderPass>, F>
+        where for<'r> &'r RenderPassDesc: RenderPassClearValues<C>
     {
         let raw_render_pass = framebuffer.render_pass().inner().internal_object();
         let device = framebuffer.render_pass().device().clone();
         let raw_framebuffer = framebuffer.inner().internal_object();
 
-        let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
-                                      .map(|clear_value|
-        {
-            match clear_value {
-                ClearValue::None => {
-                    vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
-                },
-                ClearValue::Float(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::float32(val))
-                },
-                ClearValue::Int(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::int32(val))
-                },
-                ClearValue::Uint(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::uint32(val))
-                },
-                ClearValue::Depth(val) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: val, stencil: 0
-                    })
-                },
-                ClearValue::Stencil(val) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: 0.0, stencil: val
-                    })
-                },
-                ClearValue::DepthStencil((depth, stencil)) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: depth, stencil: stencil,
-                    })
-                },
-            }
-        }).collect();
+        let clear_values = {
+            let desc = framebuffer.render_pass().desc();
+            let iter: Vec<ClearValue> = (&desc).convert_clear_values(clear_values).collect();
+            iter.into_iter().map(|clear_value| {
+                match clear_value {
+                    ClearValue::None => {
+                        vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
+                    },
+                    ClearValue::Float(val) => {
+                        vk::ClearValue::color(vk::ClearColorValue::float32(val))
+                    },
+                    ClearValue::Int(val) => {
+                        vk::ClearValue::color(vk::ClearColorValue::int32(val))
+                    },
+                    ClearValue::Uint(val) => {
+                        vk::ClearValue::color(vk::ClearColorValue::uint32(val))
+                    },
+                    ClearValue::Depth(val) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: val, stencil: 0
+                        })
+                    },
+                    ClearValue::Stencil(val) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: 0.0, stencil: val
+                        })
+                    },
+                    ClearValue::DepthStencil((depth, stencil)) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: depth, stencil: stencil,
+                        })
+                    },
+                }
+            }).collect()
+        };
 
         let rect = [0 .. framebuffer.dimensions()[0], 0 .. framebuffer.dimensions()[1]];
 
