@@ -171,13 +171,14 @@ impl<'a> PipelineBarrierBuilder<'a> {
                   (&mut self, buffer: &'a B, source_stage: PipelineStages,
                    source_access: AccessFlagBits, dest_stage: PipelineStages,
                    dest_access: AccessFlagBits, by_region: bool,
-                   queue_transfer: Option<(u32, u32)>)
+                   queue_transfer: Option<(u32, u32)>, offset: usize, size: usize)
         where B: Buffer
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
-        let size = buffer.size();
-        let BufferInner { buffer, offset } = buffer.inner();
+        debug_assert!(size <= buffer.size());
+        let BufferInner { buffer, offset: org_offset } = buffer.inner();
+        let offset = offset + org_offset;
 
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)

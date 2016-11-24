@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::error::Error;
@@ -164,10 +165,18 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                                                                               access.stages, true);
                                 }
                             } else {
+                                let real_offset = cmp::min(old_offset, new_offset);
+                                let real_size = if old_offset < new_offset {
+                                    cmp::max(old_size, new_size + (new_offset - old_offset))
+                                } else {
+                                    cmp::max(new_size, old_size + (old_offset - new_offset))
+                                };
+
                                 unsafe {
                                     pipeline_barrier.add_buffer_memory_barrier(old_buffer, prev_access.stages,
                                                                                prev_access.access, access.stages,
-                                                                               access.access, true, None);
+                                                                               access.access, true, None,
+                                                                               real_offset, real_size);
                                 }
                             }
                         },
