@@ -71,7 +71,6 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::framebuffer::IntoAttachmentsList;
         use $crate::image::Layout;
         use $crate::image::traits::ImageView;
-        use $crate::image::traits::ImageView;
         use $crate::sync::AccessFlagBits;
         use $crate::sync::PipelineStages;
 
