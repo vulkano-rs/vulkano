@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use buffer::Buffer;
@@ -140,4 +141,43 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
                                          _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
     }
+}
+
+struct Key<'a> {
+    hash: u64,
+    stages: PipelineStages,
+    access: AccessFlagBits,
+    inner: KeyInner<'a>,
+}
+
+impl<'a> Hash for Key<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash);
+    }
+}
+
+impl<'a> PartialEq for Key<'a> {
+    fn eq(&self, other: &Key<'a>) -> bool {
+        match (&self.inner, &other.inner) {
+            (&KeyInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size,
+                                 write: self_write },
+             &KeyInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size,
+                                 write: other_write }) =>
+            {
+                 self_buffer.conflicts_buffer(self_offset, self_size, self_write, other_buffer,
+                                              other_offset, other_size, other_write)
+             },
+        }
+    }
+}
+
+impl<'a> Eq for Key<'a> {}
+
+enum KeyInner<'a> {
+    Buffer {
+        buffer: &'a Buffer,
+        offset: usize,
+        size: usize,
+        write: bool,
+    },
 }
