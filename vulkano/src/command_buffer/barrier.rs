@@ -167,7 +167,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     ///   is added.
     /// - Queue ownership transfers must be correct.
     ///
-    pub unsafe fn add_buffer_memory_barrier<B>
+    pub unsafe fn add_buffer_memory_barrier<B: ?Sized>
                   (&mut self, buffer: &'a B, source_stage: PipelineStages,
                    source_access: AccessFlagBits, dest_stage: PipelineStages,
                    dest_access: AccessFlagBits, by_region: bool,
@@ -215,7 +215,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     /// - Image layouts transfers must be correct.
     /// - Access flags must be compatible with the image usage flags passed at image creation.
     ///
-    pub unsafe fn add_image_memory_barrier<I>(&mut self, image: &'a I, mipmaps: Range<u32>,
+    pub unsafe fn add_image_memory_barrier<I: ?Sized>(&mut self, image: &'a I, mipmaps: Range<u32>,
                   layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
                   dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
                   queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)

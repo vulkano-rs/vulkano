@@ -7,11 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::error::Error;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::mem;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use buffer::Buffer;
 use command_buffer::cb::CommandsListBuildPrimaryPool;
@@ -24,6 +25,7 @@ use command_buffer::submit::SubmitBuilder;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use command_buffer::CommandsListSinkCaller;
+use command_buffer::PipelineBarrierBuilder;
 use command_buffer::SecondaryCommandBuffer;
 use device::Device;
 use device::Queue;
@@ -105,8 +107,8 @@ unsafe impl<L> CommandsList for WrappedCommandsList<L> where L: CommandsList {
         let mut sink = Sink {
             output: builder,
             device: &self.1,
-            accesses: HashSet::new(),
-            pending_accesses: HashSet::new(),
+            accesses: HashMap::new(),
+            pending_accesses: HashMap::new(),
             pending_commands: Vec::new(),
         };
 
@@ -122,21 +124,67 @@ unsafe impl<L> CommandsList for WrappedCommandsList<L> where L: CommandsList {
 struct Sink<'c: 'o, 'o> {
     output: &'o mut CommandsListSink<'c>,
     device: &'o Arc<Device>,
-    accesses: HashSet<Key<'c>>,
-    pending_accesses: HashSet<Key<'c>>,
+    accesses: HashMap<u64, SmallVec<[Element<'c>; 2]>>,
+    pending_accesses: HashMap<u64, SmallVec<[Element<'c>; 2]>>,
     pending_commands: Vec<Box<CommandsListSinkCaller<'c> + 'c>>,
 }
 
 impl<'c: 'o, 'o> Sink<'c, 'o> {
     fn flush(&mut self) {
-        for access in self.pending_accesses.drain() {
-            if let Some(prev_access) = self.accesses.take(&access) {
+        let mut pipeline_barrier = PipelineBarrierBuilder::new();
 
-            } else {
-                self.accesses.insert(access);
+        for (key, accesses) in self.pending_accesses.drain() {
+            let prev_accesses = match self.accesses.entry(key) {
+                Entry::Occupied(e) => e.into_mut(),     // TODO: for images, need to transition from initial layout
+                Entry::Vacant(e) => { e.insert(accesses); continue; }
+            };
+
+            for prev_access in mem::replace(prev_accesses, SmallVec::new()).into_iter() {
+                let mut found_conflict = false;
+
+                for access in accesses.iter() {
+                    match (&prev_access.inner, &access.inner) {
+                        (&ElementInner::Buffer { buffer: old_buffer, offset: old_offset,
+                                                 size: old_size, write: old_write },
+                         &ElementInner::Buffer { buffer: new_buffer, offset: new_offset,
+                                                 size: new_size, write: new_write }) =>
+                        {
+                            if !old_buffer.conflicts_buffer(old_offset, old_size, old_write,
+                                                            new_buffer, new_offset, new_size,
+                                                            new_write)
+                            {
+                                continue;
+                            }
+
+                            found_conflict = true;
+
+                            if !old_write {
+                                unsafe {
+                                    pipeline_barrier.add_execution_dependency(prev_access.stages,
+                                                                              access.stages, true);
+                                }
+                            } else {
+                                unsafe {
+                                    pipeline_barrier.add_buffer_memory_barrier(old_buffer, prev_access.stages,
+                                                                               prev_access.access, access.stages,
+                                                                               access.access, true, None);
+                                }
+                            }
+                        },
+                    }
+                }
+
+                if !found_conflict {
+                    prev_accesses.push(prev_access);
+                }
+            }
+
+            for access in accesses.into_iter() {
+                prev_accesses.push(access);
             }
         }
 
+        pipeline_barrier.append_to(self.output);
         for cmd in self.pending_commands.drain(..) {
             self.output.add_command(cmd);
         }
@@ -158,11 +206,12 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool,
                              stages: PipelineStages, access: AccessFlagBits)
     {
-        let key = Key {
-            hash: buffer.conflict_key(offset, size, write),
+        let key = buffer.conflict_key(offset, size, write);
+
+        let element = Element {
             stages: stages,
             access: access,
-            inner: KeyInner::Buffer {
+            inner: ElementInner::Buffer {
                 buffer: buffer,
                 offset: offset,
                 size: size,
@@ -170,11 +219,11 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
             },
         };
 
-        if self.pending_accesses.contains(&key) {
+        if self.pending_accesses.get(&key).map(|l| l.iter().any(|e| e.conflicts(&element))).unwrap_or(false) {
             self.flush();
         }
 
-        self.pending_accesses.insert(key);
+        self.pending_accesses.entry(key).or_insert_with(|| SmallVec::new()).push(element);
     }
 
     #[inline]
@@ -192,44 +241,35 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     }
 }
 
-#[derive(Copy, Clone)]
-struct Key<'a> {
-    hash: u64,
+#[derive(Clone)]
+struct Element<'a> {
     stages: PipelineStages,
     access: AccessFlagBits,
-    inner: KeyInner<'a>,
+    inner: ElementInner<'a>,
 }
 
-impl<'a> Hash for Key<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
-    }
-}
-
-impl<'a> PartialEq for Key<'a> {
-    fn eq(&self, other: &Key<'a>) -> bool {
-        // TODO: totally wrong
+impl<'a> Element<'a> {
+    fn conflicts(&self, other: &Element<'a>) -> bool {
         match (&self.inner, &other.inner) {
-            (&KeyInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size,
-                                 write: self_write },
-             &KeyInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size,
-                                 write: other_write }) =>
+            (&ElementInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size,
+                                     write: self_write },
+             &ElementInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size,
+                                     write: other_write }) =>
             {
                  self_buffer.conflicts_buffer(self_offset, self_size, self_write, other_buffer,
                                               other_offset, other_size, other_write)
-             },
+            },
         }
     }
 }
 
-impl<'a> Eq for Key<'a> {}
-
-#[derive(Copy, Clone)]
-enum KeyInner<'a> {
+#[derive(Clone)]
+enum ElementInner<'a> {
     Buffer {
         buffer: &'a Buffer,
         offset: usize,
         size: usize,
         write: bool,
     },
+    // Image { .. }
 }
