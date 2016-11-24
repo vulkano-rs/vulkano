@@ -34,7 +34,6 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer;
-use vulkano::command_buffer::cb::AutobarriersCommandBuffer;
 use vulkano::command_buffer::DynamicState;
 use vulkano::command_buffer::CommandsList;
 use vulkano::command_buffer::Submit;
@@ -380,7 +379,7 @@ fn main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer: AutobarriersCommandBuffer<_, _> = command_buffer::empty()
+        let command_buffer = command_buffer::empty()
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.

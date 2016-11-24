@@ -11,8 +11,10 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::TypedBuffer;
+use command_buffer::cb::AutobarriersCommandBuffer;
 use command_buffer::cb::CommandsListBuildPrimary;
 use command_buffer::cb::CommandsListBuildPrimaryPool;
+use command_buffer::pool::StandardCommandPool;
 use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::SecondaryCommandBuffer;
@@ -240,8 +242,17 @@ pub unsafe trait CommandsList {
 
     /// Builds the list as a primary command buffer.
     #[inline]
-    fn build_primary<C>(self, device: &Arc<Device>, queue_family: QueueFamily)
-                        -> Result<C, OomError>
+    fn build_primary(self, device: &Arc<Device>, queue_family: QueueFamily)
+                     -> Result<AutobarriersCommandBuffer<Self, Arc<StandardCommandPool>>, OomError>
+        where Self: Sized
+    {
+        self.build_primary_custom(device, queue_family)
+    }
+
+    /// Builds the list as a primary command buffer.
+    #[inline]
+    fn build_primary_custom<C>(self, device: &Arc<Device>, queue_family: QueueFamily)
+                               -> Result<C, OomError>
         where C: CommandsListBuildPrimary<Self>, Self: Sized
     {
         CommandsListBuildPrimary::build_primary(device, queue_family, self)
