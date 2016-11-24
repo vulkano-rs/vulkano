@@ -302,13 +302,13 @@ pub trait CommandsListSink<'a> {
     /// The parameters are the buffer, and its offset and size, plus a `write` boolean that is
     /// `true` if the buffer must be transitionned to a writable state or `false` if it must be
     /// transitionned to a readable state.
-    fn add_buffer_transition(&mut self, buffer: &Buffer, offset: usize, size: usize,
+    fn add_buffer_transition(&mut self, buffer: &'a Buffer, offset: usize, size: usize,
                              write: bool, stages: PipelineStages, access: AccessFlagBits);
 
     /// Requests that an image must be transitionned to a given state.
     ///
     /// If necessary, you must transition the image to the `layout`.
-    fn add_image_transition(&mut self, image: &Image, first_layer: u32, num_layers: u32,
+    fn add_image_transition(&mut self, image: &'a Image, first_layer: u32, num_layers: u32,
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
                             stages: PipelineStages, access: AccessFlagBits);
 
@@ -317,7 +317,7 @@ pub trait CommandsListSink<'a> {
     ///
     /// The sink doesn't need to perform any operation when this method is called, but should
     /// modify its internal state in order to keep track of the state of that image.
-    fn add_image_transition_notification(&mut self, image: &Image, first_layer: u32,
+    fn add_image_transition_notification(&mut self, image: &'a Image, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
                                          layout: Layout, stages: PipelineStages,
                                          access: AccessFlagBits);

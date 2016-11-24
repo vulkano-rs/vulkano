@@ -95,14 +95,14 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, buffer: &Buffer, offset: usize, size: usize,
+    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize,
                              write: bool, stages: PipelineStages, access: AccessFlagBits)
     {
         self.0.add_buffer_transition(buffer, offset, size, write, stages, access)
     }
 
     #[inline]
-    fn add_image_transition(&mut self, image: &Image, first_layer: u32, num_layers: u32,
+    fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32,
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
                             stages: PipelineStages, access: AccessFlagBits)
     {
@@ -111,7 +111,7 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_image_transition_notification(&mut self, image: &Image, first_layer: u32,
+    fn add_image_transition_notification(&mut self, image: &'c Image, first_layer: u32,
                                          num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
                                          layout: Layout, stages: PipelineStages,
                                          access: AccessFlagBits)

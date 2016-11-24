@@ -7,8 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::collections::HashSet;
 use std::error::Error;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use buffer::Buffer;
@@ -100,17 +102,45 @@ struct WrappedCommandsList<L>(L, Arc<Device>);
 unsafe impl<L> CommandsList for WrappedCommandsList<L> where L: CommandsList {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.0.append(&mut Sink {
+        let mut sink = Sink {
             output: builder,
             device: &self.1,
-        });
+            accesses: HashSet::new(),
+            pending_accesses: HashSet::new(),
+            pending_commands: Vec::new(),
+        };
+
+        self.0.append(&mut sink);
+        sink.flush();
     }
 }
 
 // Helper object for AutobarriersCommandBuffer. Implementation detail.
+//
+// This object is created in a local scope when the command is built, and destroyed after all the
+// commands have been passed through.
 struct Sink<'c: 'o, 'o> {
     output: &'o mut CommandsListSink<'c>,
     device: &'o Arc<Device>,
+    accesses: HashSet<Key<'c>>,
+    pending_accesses: HashSet<Key<'c>>,
+    pending_commands: Vec<Box<CommandsListSinkCaller<'c> + 'c>>,
+}
+
+impl<'c: 'o, 'o> Sink<'c, 'o> {
+    fn flush(&mut self) {
+        for access in self.pending_accesses.drain() {
+            if let Some(prev_access) = self.accesses.take(&access) {
+
+            } else {
+                self.accesses.insert(access);
+            }
+        }
+
+        for cmd in self.pending_commands.drain(..) {
+            self.output.add_command(cmd);
+        }
+    }
 }
 
 impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
@@ -121,28 +151,48 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
 
     #[inline]
     fn add_command(&mut self, f: Box<CommandsListSinkCaller<'c> + 'c>) {
-        self.output.add_command(f);
+        self.pending_commands.push(f);
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool,
-                             _: PipelineStages, _: AccessFlagBits)
+    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool,
+                             stages: PipelineStages, access: AccessFlagBits)
     {
+        let key = Key {
+            hash: buffer.conflict_key(offset, size, write),
+            stages: stages,
+            access: access,
+            inner: KeyInner::Buffer {
+                buffer: buffer,
+                offset: offset,
+                size: size,
+                write: write,
+            },
+        };
+
+        if self.pending_accesses.contains(&key) {
+            self.flush();
+        }
+
+        self.pending_accesses.insert(key);
     }
 
     #[inline]
     fn add_image_transition(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32,
                             _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
+        // FIXME: unimplemented
     }
 
     #[inline]
     fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32,
                                          _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
     {
+        // FIXME: unimplemented
     }
 }
 
+#[derive(Copy, Clone)]
 struct Key<'a> {
     hash: u64,
     stages: PipelineStages,
@@ -158,6 +208,7 @@ impl<'a> Hash for Key<'a> {
 
 impl<'a> PartialEq for Key<'a> {
     fn eq(&self, other: &Key<'a>) -> bool {
+        // TODO: totally wrong
         match (&self.inner, &other.inner) {
             (&KeyInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size,
                                  write: self_write },
@@ -173,6 +224,7 @@ impl<'a> PartialEq for Key<'a> {
 
 impl<'a> Eq for Key<'a> {}
 
+#[derive(Copy, Clone)]
 enum KeyInner<'a> {
     Buffer {
         buffer: &'a Buffer,

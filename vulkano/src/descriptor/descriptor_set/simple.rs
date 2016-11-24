@@ -249,7 +249,7 @@ unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf
             .. AccessFlagBits::none()
         };
 
-        sink.add_buffer_transition(&self.view.view().buffer(), 0, self.view.view().buffer().size(),
+        sink.add_buffer_transition(self.view.view().buffer(), 0, self.view.view().buffer().size(),
                                    self.write, stages, access);
     }
 }
@@ -288,7 +288,7 @@ unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(&self.image.parent(), self.first_layer, self.num_layers,
+        sink.add_image_transition(self.image.parent(), self.first_layer, self.num_layers,
                                   self.first_mipmap, self.num_mipmaps, self.write,
                                   self.layout, stages, access);
     }

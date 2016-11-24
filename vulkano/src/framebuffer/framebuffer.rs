@@ -307,7 +307,7 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(&self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
+        sink.add_image_transition(self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
                                   stages, access);
         self.rest.add_transition(sink);
     }
