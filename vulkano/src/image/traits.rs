@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use buffer::Buffer;
 use format::ClearValue;
 use format::Format;
 use format::PossibleFloatFormatDesc;
@@ -23,6 +24,8 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+
+use VulkanObject;
 
 /// Trait for types that represent images.
 pub unsafe trait Image {
@@ -80,6 +83,50 @@ pub unsafe trait Image {
     #[inline]
     fn supports_blit_destination(&self) -> bool {
         self.inner().supports_blit_destination()
+    }
+
+    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
+    /// `other`.
+    ///
+    /// Returns false if they can be executed simultaneously.
+    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
+                        self_num_mipmaps: u32, self_write: bool, other: &Buffer,
+                        other_offset: usize, other_size: usize, other_write: bool) -> bool
+    {
+        // TODO: should we really provide a default implementation?
+        false
+    }
+
+    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
+    /// `other`.
+    ///
+    /// Returns false if they can be executed simultaneously.
+    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
+                       self_num_mipmaps: u32, self_write: bool, other: &Image,
+                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
+                       other_num_mipmaps: u32, other_write: bool) -> bool
+    {
+        // TODO: should we really provide a default implementation?
+
+        // TODO: debug asserts to check for ranges
+
+        if self.inner().internal_object() != other.inner().internal_object() {
+            return false;
+        }
+
+        if !self_write && !other_write {
+            return false;
+        }
+
+        true
+    }
+
+    /// Two resources that conflict with each other should return the same key.
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                    write: bool) -> u64
+    {
+        // FIXME: remove implementation
+        unimplemented!()
     }
 }
 

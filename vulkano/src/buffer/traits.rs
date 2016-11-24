@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
+use image::Image;
 use memory::Content;
 
 use VulkanObject;
@@ -100,6 +101,18 @@ pub unsafe trait Buffer {
         }
 
         true
+    }
+
+    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
+    /// `other`.
+    ///
+    /// Returns false if they can be executed simultaneously.
+    fn conflicts_image(&self, self_offset: usize, self_size: usize, self_write: bool, other: &Image,
+                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
+                       other_num_mipmaps: u32, other_write: bool) -> bool
+    {
+        // TODO: should we really provide a default implementation?
+        false
     }
 
     /// Two resources that conflict with each other should return the same key.
