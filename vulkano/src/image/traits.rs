@@ -85,10 +85,12 @@ pub unsafe trait Image {
         self.inner().supports_blit_destination()
     }
 
-    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
-    /// `other`.
+    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
+    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
+    /// access to `other` (as defined by `other_offset` and `other_size`).
     ///
-    /// Returns false if they can be executed simultaneously.
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
                         self_num_mipmaps: u32, other: &Buffer, other_offset: usize,
                         other_size: usize) -> bool
@@ -97,10 +99,13 @@ pub unsafe trait Image {
         false
     }
 
-    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
-    /// `other`.
+    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
+    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
+    /// access to `other` (as defined by `other_first_layer`, `other_num_layers`,
+    /// `other_first_mipmap` and `other_num_mipmaps`).
     ///
-    /// Returns false if they can be executed simultaneously.
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
                        self_num_mipmaps: u32, other: &Image,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
@@ -117,7 +122,18 @@ pub unsafe trait Image {
         true
     }
 
-    /// Two resources that conflict with each other should return the same key.
+    /// Returns a key that uniquely identifies the range given by
+    /// first_layer/num_layers/first_mipmap/num_mipmaps.
+    ///
+    /// Two ranges that potentially overlap in memory should return the same key.
+    ///
+    /// The key is shared amongst all buffers and images, which means that you can make several
+    /// different image objects share the same memory, or make some image objects share memory
+    /// with buffers, as long as they return the same key.
+    ///
+    /// Since it is possible to accidentally return the same key for memory ranges that don't
+    /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
+    /// verify whether they actually overlap.
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
                     -> u64;
 }

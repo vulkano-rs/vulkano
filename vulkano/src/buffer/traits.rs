@@ -68,11 +68,12 @@ pub unsafe trait Buffer {
         BufferSlice::from(self)
     }
 
-    /// Returns true if an access to `self` (as defined by `self_offset`, `self_size` and
-    /// `self_write`) shouldn't execute at the same time as an access to `other` (as defined by
-    /// `other_offset`, `other_size` and `other_write`).
+    /// Returns true if an access to `self` (as defined by `self_offset` and `self_size`)
+    /// potentially overlaps the same memory as an access to `other` (as defined by `other_offset`
+    /// and `other_size`).
     ///
-    /// Returns false if they can be executed simultaneously.
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
                         other: &Buffer, other_offset: usize, other_size: usize)
                         -> bool
@@ -99,19 +100,32 @@ pub unsafe trait Buffer {
         true
     }
 
-    /// Returns true if an access to `self` shouldn't execute at the same time as an access to
-    /// `other`.
+    /// Returns true if an access to `self` (as defined by `self_offset` and `self_size`)
+    /// potentially overlaps the same memory as an access to `other` (as defined by
+    /// `other_first_layer`, `other_num_layers`, `other_first_mipmap` and `other_num_mipmaps`).
     ///
-    /// Returns false if they can be executed simultaneously.
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32) -> bool
     {
-        // TODO: should we really provide a default implementation?
-        false
+        let other_key = other.conflict_key(other_first_layer, other_num_layers, other_first_mipmap,
+                                           other_num_mipmaps);
+        self.conflict_key(self_offset, self_size) == other_key
     }
 
-    /// Two resources that conflict with each other should return the same key.
+    /// Returns a key that uniquely identifies the range given by offset/size.
+    ///
+    /// Two ranges that potentially overlap in memory should return the same key.
+    ///
+    /// The key is shared amongst all buffers and images, which means that you can make several
+    /// different buffer objects share the same memory, or make some buffer objects share memory
+    /// with images, as long as they return the same key.
+    ///
+    /// Since it is possible to accidentally return the same key for memory ranges that don't
+    /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
+    /// verify whether they actually overlap.
     fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         // FIXME: remove implementation
         unimplemented!()
