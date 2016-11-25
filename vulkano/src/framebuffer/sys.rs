@@ -51,7 +51,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///
-    pub fn new(device: &Arc<Device>, description: D)
+    pub fn new(device: Arc<Device>, description: D)
                -> Result<RenderPass<D>, RenderPassCreationError>
     {
         let vk = device.pointers();

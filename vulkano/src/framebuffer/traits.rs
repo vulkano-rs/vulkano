@@ -183,7 +183,7 @@ pub unsafe trait RenderPassDesc {
     ///
     /// > **Note**: This function is just a shortcut for `RenderPass::new`.
     #[inline]
-    fn build_render_pass(self, device: &Arc<Device>)
+    fn build_render_pass(self, device: Arc<Device>)
                          -> Result<RenderPass<Self>, RenderPassCreationError>
         where Self: Sized
     {
