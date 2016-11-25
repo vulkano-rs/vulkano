@@ -158,21 +158,19 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
-                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
-                        -> bool
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
+                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
     {
         let self_offset = self.offset + self_offset;
         debug_assert!(self_size + self_offset <= self.size);
-        self.resource.conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
-                                       other_size, other_write)
+        self.resource.conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         let self_offset = self.offset + self_offset;
         debug_assert!(self_size + self_offset <= self.size);
-        self.resource.conflict_key(self_offset, self_size, self_write)
+        self.resource.conflict_key(self_offset, self_size)
     }
 }
 

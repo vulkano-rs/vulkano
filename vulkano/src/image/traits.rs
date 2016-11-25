@@ -90,8 +90,8 @@ pub unsafe trait Image {
     ///
     /// Returns false if they can be executed simultaneously.
     fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, self_write: bool, other: &Buffer,
-                        other_offset: usize, other_size: usize, other_write: bool) -> bool
+                        self_num_mipmaps: u32, other: &Buffer, other_offset: usize,
+                        other_size: usize) -> bool
     {
         // TODO: should we really provide a default implementation?
         false
@@ -102,9 +102,9 @@ pub unsafe trait Image {
     ///
     /// Returns false if they can be executed simultaneously.
     fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, self_write: bool, other: &Image,
+                       self_num_mipmaps: u32, other: &Image,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32, other_write: bool) -> bool
+                       other_num_mipmaps: u32) -> bool
     {
         // TODO: should we really provide a default implementation?
 
@@ -114,16 +114,12 @@ pub unsafe trait Image {
             return false;
         }
 
-        if !self_write && !other_write {
-            return false;
-        }
-
         true
     }
 
     /// Two resources that conflict with each other should return the same key.
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                    write: bool) -> u64;
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64;
 }
 
 unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
@@ -133,10 +129,10 @@ unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                    write: bool) -> u64
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
     {
-        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps, write)
+        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 }
 
@@ -147,10 +143,10 @@ unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                    write: bool) -> u64
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
     {
-        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps, write)
+        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 }
 

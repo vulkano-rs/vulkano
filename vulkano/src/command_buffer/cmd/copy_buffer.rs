@@ -75,10 +75,10 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
 
         let size = cmp::min(source.size(), destination.size());
 
-        if source.conflicts_buffer(0, size, false, &destination, 0, size, true) {
+        if source.conflicts_buffer(0, size, &destination, 0, size) {
             return Err(CmdCopyBufferError::OverlappingRanges);
         } else {
-            debug_assert!(!destination.conflicts_buffer(0, size, true, &source, 0, size, false));
+            debug_assert!(!destination.conflicts_buffer(0, size, &source, 0, size));
         }
 
         Ok(CmdCopyBuffer {

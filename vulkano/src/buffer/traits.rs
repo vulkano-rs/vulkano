@@ -73,8 +73,8 @@ pub unsafe trait Buffer {
     /// `other_offset`, `other_size` and `other_write`).
     ///
     /// Returns false if they can be executed simultaneously.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
-                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
+                        other: &Buffer, other_offset: usize, other_size: usize)
                         -> bool
     {
         // TODO: should we really provide a default implementation?
@@ -82,10 +82,6 @@ pub unsafe trait Buffer {
         debug_assert!(self_size <= self.size());
 
         if self.inner().buffer.internal_object() != other.inner().buffer.internal_object() {
-            return false;
-        }
-
-        if !self_write && !other_write {
             return false;
         }
 
@@ -107,16 +103,16 @@ pub unsafe trait Buffer {
     /// `other`.
     ///
     /// Returns false if they can be executed simultaneously.
-    fn conflicts_image(&self, self_offset: usize, self_size: usize, self_write: bool, other: &Image,
+    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32, other_write: bool) -> bool
+                       other_num_mipmaps: u32) -> bool
     {
         // TODO: should we really provide a default implementation?
         false
     }
 
     /// Two resources that conflict with each other should return the same key.
-    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         // FIXME: remove implementation
         unimplemented!()
     }
@@ -144,17 +140,15 @@ unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
-                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
-                        -> bool
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
+                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
     {
-        (**self).conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
-                                  other_size, other_write)
+        (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
-        (**self).conflict_key(self_offset, self_size, self_write)
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        (**self).conflict_key(self_offset, self_size)
     }
 }
 
@@ -170,17 +164,15 @@ unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, self_write: bool,
-                        other: &Buffer, other_offset: usize, other_size: usize, other_write: bool)
-                        -> bool
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
+                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
     {
-        (**self).conflicts_buffer(self_offset, self_size, self_write, other, other_offset,
-                                  other_size, other_write)
+        (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
-        (**self).conflict_key(self_offset, self_size, self_write)
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        (**self).conflict_key(self_offset, self_size)
     }
 }
 

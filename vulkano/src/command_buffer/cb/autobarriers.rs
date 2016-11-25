@@ -150,9 +150,9 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                          &ElementInner::Buffer { buffer: new_buffer, offset: new_offset,
                                                  size: new_size, write: new_write }) =>
                         {
-                            if !old_buffer.conflicts_buffer(old_offset, old_size, old_write,
-                                                            new_buffer, new_offset, new_size,
-                                                            new_write)
+                            if (!old_write && !new_write) ||
+                                !old_buffer.conflicts_buffer(old_offset, old_size,
+                                                             new_buffer, new_offset, new_size)
                             {
                                 continue;
                             }
@@ -188,10 +188,10 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                                                 first_mipmap: other_fm, num_mipmaps: other_nm,
                                                 write: other_write, layout: other_layout }) =>
                         {
-                            if self_layout == other_layout &&
-                                !self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm, self_write,
-                                                            other_image, other_fl, other_nl, other_fm, other_nm,
-                                                            other_write)
+                            if (self_layout == other_layout && !self_write && !other_write) ||
+                                !self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm,
+                                                            other_image, other_fl, other_nl,
+                                                            other_fm, other_nm)
                             {
                                 continue;
                             }
@@ -235,11 +235,12 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                                                 write: other_write, .. },
                          &ElementInner::Buffer { buffer, offset, size, write: self_write }) =>
                         {
-                            if !buffer.conflicts_image(offset, size, self_write, image, first_layer, num_layers,
+                            // TODO: think about this situation
+                            /*if !buffer.conflicts_image(offset, size, self_write, image, first_layer, num_layers,
                                                        first_mipmap, num_mipmaps, other_write)
                             {
                                 continue;
-                            }
+                            }*/
                             
                             //found_conflict = true;    // there's a warning if we uncomment that
                             unimplemented!()        // TODO:
@@ -279,7 +280,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool,
                              stages: PipelineStages, access: AccessFlagBits)
     {
-        let key = buffer.conflict_key(offset, size, write);
+        let key = buffer.conflict_key(offset, size);
 
         let element = Element {
             stages: stages,
@@ -304,7 +305,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
                             stages: PipelineStages, access: AccessFlagBits)
     {
-        let key = image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps, write);
+        let key = image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps);
 
         let element = Element {
             stages: stages,
@@ -350,8 +351,9 @@ impl<'a> Element<'a> {
              &ElementInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size,
                                      write: other_write }) =>
             {
-                self_buffer.conflicts_buffer(self_offset, self_size, self_write, other_buffer,
-                                             other_offset, other_size, other_write)
+                (self_write || other_write) &&
+                    self_buffer.conflicts_buffer(self_offset, self_size, other_buffer,
+                                                 other_offset, other_size)
             },
 
             (&ElementInner::Buffer { buffer, offset, size, write: self_write },
@@ -361,8 +363,9 @@ impl<'a> Element<'a> {
                                     write: other_write, .. },
              &ElementInner::Buffer { buffer, offset, size, write: self_write }) =>
             {
-                buffer.conflicts_image(offset, size, self_write, image, first_layer, num_layers,
-                                       first_mipmap, num_mipmaps, other_write)
+                (self_write || other_write) &&
+                    buffer.conflicts_image(offset, size, image, first_layer, num_layers,
+                                           first_mipmap, num_mipmaps)
             },
 
             (&ElementInner::Image { image: self_image, first_layer: self_fl, num_layers: self_nl,
@@ -372,10 +375,9 @@ impl<'a> Element<'a> {
                                     first_mipmap: other_fm, num_mipmaps: other_nm,
                                     write: other_write, layout: other_layout }) =>
             {
-                self_layout != other_layout ||
-                    self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm, self_write,
-                                               other_image, other_fl, other_nl, other_fm, other_nm,
-                                               other_write)
+                (self_layout != other_layout || self_write || other_write) &&
+                    self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm,
+                                               other_image, other_fl, other_nl, other_fm, other_nm)
             },
         }
     }
