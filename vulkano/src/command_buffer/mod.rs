@@ -139,5 +139,7 @@ pub struct RawCommandBufferPrototype<'a> {
     bound_graphics_pipeline: vk::Pipeline,
     bound_compute_pipeline: vk::Pipeline,
     bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
+    // Note: if fields are added here, don't forget to reset them
+    // when vkCmdExecuteCommands is called.
     marker: PhantomData<&'a ()>,
 }

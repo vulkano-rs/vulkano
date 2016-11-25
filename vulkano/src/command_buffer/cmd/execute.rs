@@ -11,6 +11,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use buffer::Buffer;
+use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::SecondaryCommandBuffer;
 use command_buffer::cmd::CommandsList;
@@ -77,6 +78,12 @@ unsafe impl<Cb, L> CommandsList for CmdExecuteCommands<Cb, L>
                 let cmd = raw.command_buffer.clone().take().unwrap();
                 
                 vk.CmdExecuteCommands(cmd, self.raw_list.len() as u32, self.raw_list.as_ptr());
+
+                // vkCmdExecuteCommands resets the state of the command buffer.
+                raw.current_state = DynamicState::none();
+                raw.bound_graphics_pipeline = 0;
+                raw.bound_compute_pipeline = 0;
+                raw.bound_index_buffer = (0, 0, 0);
             }
         }));
     }
@@ -94,6 +101,8 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     fn add_command(&mut self, _: Box<CommandsListSinkCaller<'c> + 'c>) {
     }
 
+    // FIXME: this is wrong since the underlying impl will try to perform transitions that are
+    //        performed by the secondary command buffer
     #[inline]
     fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize,
                              write: bool, stages: PipelineStages, access: AccessFlagBits)
@@ -101,6 +110,8 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
         self.0.add_buffer_transition(buffer, offset, size, write, stages, access)
     }
 
+    // FIXME: this is wrong since the underlying impl will try to perform transitions that are
+    //        performed by the secondary command buffer
     #[inline]
     fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32,
                             first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
