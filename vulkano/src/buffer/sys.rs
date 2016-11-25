@@ -239,6 +239,12 @@ impl UnsafeBuffer {
     pub fn usage_indirect_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
+
+    /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.buffer
+    }
 }
 
 unsafe impl VulkanObject for UnsafeBuffer {

@@ -52,7 +52,6 @@ use sync::AccessFlagBits;
 use sync::PipelineStages;
 
 use OomError;
-use VulkanObject;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
@@ -328,7 +327,7 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
 
     #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize, self_write: bool) -> u64 {
-        self.inner.internal_object()
+        self.inner.key()
     }
 
     /*fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
