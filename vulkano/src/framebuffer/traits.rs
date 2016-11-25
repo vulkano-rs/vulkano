@@ -16,6 +16,8 @@ use format::Format;
 use format::FormatTy;
 use framebuffer::FramebufferCreationError;
 use framebuffer::FramebufferSys;
+use framebuffer::RenderPass;
+use framebuffer::RenderPassCreationError;
 use framebuffer::RenderPassSys;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
@@ -175,6 +177,17 @@ pub unsafe trait RenderPassDesc {
     #[inline]
     fn dependencies(&self) -> RenderPassDescDependencies<Self> where Self: Sized {
         RenderPassDescDependencies { render_pass: self, num: 0 }
+    }
+
+    /// Builds a render pass from this description.
+    ///
+    /// > **Note**: This function is just a shortcut for `RenderPass::new`.
+    #[inline]
+    fn build_render_pass(self, device: &Arc<Device>)
+                         -> Result<RenderPass<Self>, RenderPassCreationError>
+        where Self: Sized
+    {
+        RenderPass::new(device, self)
     }
 
     /// Returns the number of color attachments in a subpass. Returns `None` if out of range.
