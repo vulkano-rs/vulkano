@@ -514,6 +514,12 @@ impl UnsafeImage {
         self.samples
     }
 
+    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.image
+    }
+
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.
     ///
     /// This function is only valid for images with a color format. See the other similar functions

@@ -161,6 +161,11 @@ unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A
     fn inner(&self) -> &UnsafeImage {
         &self.image
     }
+
+    #[inline]
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32, _: bool) -> u64 {
+        self.image.key()
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>

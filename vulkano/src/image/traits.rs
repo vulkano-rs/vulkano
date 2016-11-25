@@ -123,11 +123,7 @@ pub unsafe trait Image {
 
     /// Two resources that conflict with each other should return the same key.
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                    write: bool) -> u64
-    {
-        // FIXME: remove implementation
-        unimplemented!()
-    }
+                    write: bool) -> u64;
 }
 
 unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
@@ -135,12 +131,26 @@ unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
     }
+
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                    write: bool) -> u64
+    {
+        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps, write)
+    }
 }
 
 unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
+    }
+
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
+                    write: bool) -> u64
+    {
+        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps, write)
     }
 }
 

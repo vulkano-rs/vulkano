@@ -131,6 +131,11 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
     fn inner(&self) -> &UnsafeImage {
         &self.image
     }
+
+    #[inline]
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32, _: bool) -> u64 {
+        self.image.key()
+    }
 }
 
 unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>

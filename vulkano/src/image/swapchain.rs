@@ -109,6 +109,11 @@ unsafe impl Image for SwapchainImage {
     fn inner(&self) -> &UnsafeImage {
         &self.image
     }
+
+    #[inline]
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32, _: bool) -> u64 {
+        self.image.key()
+    }
 }
 
 unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage
