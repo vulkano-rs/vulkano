@@ -66,7 +66,7 @@
 //! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
 //!
 
-pub use self::empty::EmptySinglePassRenderPass;
+pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;

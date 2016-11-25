@@ -21,7 +21,8 @@ use command_buffer::CommandsListSinkCaller;
 use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use device::Device;
-use framebuffer::EmptySinglePassRenderPass;
+use framebuffer::EmptySinglePassRenderPassDesc;
+use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
@@ -58,14 +59,14 @@ pub enum Kind<'a, R, F: 'a> {
     },
 }
 
-impl<'a> Kind<'a, EmptySinglePassRenderPass, Framebuffer<EmptySinglePassRenderPass, ()>> {
+impl<'a> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<'a, EmptySinglePassRenderPass, Framebuffer<EmptySinglePassRenderPass, ()>> {
+    pub fn primary() -> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
         Kind::Primary
     }
 }

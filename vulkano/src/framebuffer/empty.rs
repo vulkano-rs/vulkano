@@ -7,62 +7,29 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
-use device::Device;
-use framebuffer::sys::RenderPass;
-use framebuffer::sys::RenderPassSys;
-use framebuffer::sys::RenderPassCreationError;
-use framebuffer::traits::RenderPassRef;
 use framebuffer::traits::RenderPassDesc;
 use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
 
-/// Implementation of `RenderPassRef` with no attachment at all and a single pass.
+/// Description of an empty render pass.
 ///
-/// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
-/// be `()`.
-pub struct EmptySinglePassRenderPass {
-    render_pass: RenderPass,
-}
+/// Can be used to create a render pass with one subpass and no attachment.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+/// use vulkano::framebuffer::RenderPassDesc;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
+/// ```
+///
+#[derive(Debug, Copy, Clone)]
+pub struct EmptySinglePassRenderPassDesc;
 
-impl EmptySinglePassRenderPass {
-    /// See the docs of new().
-    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
-        unimplemented!()
-    }
-    
-    /// Builds the render pass.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<EmptySinglePassRenderPass> {
-        Arc::new(EmptySinglePassRenderPass::raw(device).unwrap())
-    }
-}
-
-unsafe impl RenderPassRef for EmptySinglePassRenderPass {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        unimplemented!()
-    }
-
-    #[inline]
-    fn inner(&self) -> RenderPassSys {
-        unimplemented!()
-    }
-
-    #[inline]
-    fn desc(&self) -> &RenderPassDesc {
-        unimplemented!()
-    }
-}
-
-unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
+unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     #[inline]
     fn num_attachments(&self) -> usize {
         0
@@ -160,17 +127,5 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
         } else {
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use framebuffer::EmptySinglePassRenderPass;
-
-    #[test]
-    #[ignore]       // TODO: crashes on AMD+Windows
-    fn create() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _ = EmptySinglePassRenderPass::new(&device);
     }
 }
