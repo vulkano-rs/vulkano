@@ -54,7 +54,7 @@ impl<L, S, D> CmdBlitImageUnsynced<L, S, D>
             return Err(CmdBlitImageUnsyncedError::SourceUsageMissingSrcTransfer);
         }
 
-        if !source.inner().usage_transfer_dest() {
+        if !destination.inner().usage_transfer_dest() {
             return Err(CmdBlitImageUnsyncedError::DestinationUsageMissingDestTransfer);
         }
 
@@ -62,7 +62,7 @@ impl<L, S, D> CmdBlitImageUnsynced<L, S, D>
             return Err(CmdBlitImageUnsyncedError::SourceFormatDoesntSupportBlits);
         }
 
-        if !source.inner().supports_blit_destination() {
+        if !destination.inner().supports_blit_destination() {
             return Err(CmdBlitImageUnsyncedError::DestinationFormatDoesntSupportBlits);
         }
 
