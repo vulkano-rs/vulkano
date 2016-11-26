@@ -66,6 +66,8 @@
 //! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
 //!
 
+pub use self::basic_render_pass::BasicRenderPassDesc;
+pub use self::basic_render_pass::BasicRenderPassDescAttachment;
 pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferCreationError;
@@ -87,6 +89,7 @@ pub use self::traits::StoreOp;
 pub use self::traits::LoadOp;
 pub use self::traits::Subpass;
 
+mod basic_render_pass;
 #[macro_use]
 mod macros;
 mod empty;
