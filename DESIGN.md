@@ -2,7 +2,7 @@ This document contains the global design decisions made by the vulkano library. 
 good start if you want to contribute to some internal parts of vulkano and don't know how it works.
 
 This document assumes that you're already familiar with Vulkan and does not introduce the various
-concepts. However it can still be a good read if are not so familiar.
+concepts. However it can still be a good read if you are not so familiar.
 
 If you notice any mistake, feel free to open a PR. If you want to suggest something, feel free to
 open a PR as well.
