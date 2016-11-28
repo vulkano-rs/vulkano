@@ -13,36 +13,36 @@ Vulkano provides wrappers around all objects of the Vulkan API. However these ob
 three categories, depending on their access pattern:
 
 - Objects that are not created often and in very small numbers.
-- Objects that are typically created at initialization and which are often accessed in read-only
-  in performance-critical code.
+- Objects that are typically created at initialization and which are often accessed without mutation
+  by performance-critical code.
 - Objects that are created, destroyed or modified during performance-critical code, and that
   usually require a synchronization strategy to avoid race conditions.
 
 The first category are objects that are not created often and created in very small numbers:
 Instances, Devices, Surfaces, Swapchains. In a typical application each of these objects is only
 created once and destroyed when the application exits. Vulkano's API provides a struct that
-correponds to each of these objects, and this struct is typically wrapped around an `Arc`.
+corresponds to each of these objects, and this struct is typically wrapped in an `Arc`.
 Their `new` method in fact returns an `Arc<T>` instead of just a `T` in order to encourage users to
 use `Arc`s. You use these objects by cloning them around like you would use objects in a
 garbage-collected language such as Java.
 
 The second category are objects like the GraphicsPipeline, ComputePipeline, PipelineLayout,
 RenderPass and Framebuffer. They are usually created at initialization and don't perform any
-operation themselves, but they describe to the Vulkan implementation operations that we are going
+operations themselves, but they describe to the Vulkan implementation operations that we are going
 to perform and are thus frequently accessed in order to determine whether the operation that the
-vulkano user requested is compliant to what was described. Just like the first category each of
+vulkano user requested is compliant to what was described. Just like the first category, each of
 these objects has a struct that corresponds to them, but in order to make these checks as fast as
 possible these structs have a template parameter that describes in a strongly-typed fashion the
-operation on the CPU side. This makes it possible to move many checks at compile-time instead of
+operation on the CPU side. This makes it possible to move many checks to compile-time instead of
 runtime. More information in another section of this document.
 
 The third category are objects like CommandBuffers, CommandPools, DescriptorSets, DescriptorPools,
 Buffers, Images, and memory pools (although not technically a Vulkan object). The way they are
-implemented has a huge impact on the performances of the application. Contrary to the first two
+implemented has a huge impact on the performance of the application. Contrary to the first two
 categories, each of these objects is represented in vulkano by an unsafe trait (and not by a
-struct) that can be freely implemented by the user if they wish so. Vulkano provides unsafe structs
+struct) that can be freely implemented by the user if they wish. Vulkano provides unsafe structs
 such as `UnsafeBuffer`, `UnsafeImage`, etc. which have zero overhead and do not perform any safety
-check, and are the tools used by the safe implementations of the traits. Vulkano also provides
+checks, and are the tools used by the safe implementations of the traits. Vulkano also provides
 some safe implementations for convenience such as `CpuAccessibleBuffer` or `AttachmentImage`.
 
 # Runtime vs compile-time checks
@@ -70,10 +70,10 @@ example), and the user will only be able to pass a `MyResourcesList` object for 
 resources. This moves the check to compile-time and totally eliminates any runtime check. The
 compute pipeline is then expressed as `ComputePipeline<MyComputeOpDesc>`.
 
-However this design has a drawback, which is that is can be difficult to explcitely express such a
+However this design has a drawback, which is that is can be difficult to explicitly express such a
 type. A compute pipeline in the example above could be expressed as
 `ComputePipeline<MyComputeOpDesc>`, but in practice these types (like `MyComputeOpDesc`) would be
-built by builders and can become very very long and annoying to put in a struct (just like for
+built by builders and can become extremely long and annoying to put in a struct (just like for
 example the type of `(10..).filter(|n| n*2).skip(3).take(5)` can be very long and annoying to put
 in a struct). This is especially problematic as it concerns objects that are usually created at
 initialization and stay alive for a long time, in other words the kind of objects that you would
@@ -100,7 +100,7 @@ it.
 
 For the moment submitting an object always creates a fence, which is how the `Submission` knows
 whether the GPU has finished executing it. Eventually this will need to be modified for the sake of
-performances.
+performance.
 
 In order to make the `Submit` trait safer to implement, the method that actually needs to be
 implemented is not `build` but `append_submission`. This method uses a API/lifetime trick to
@@ -110,7 +110,7 @@ guarantee that the GPU only executes command buffers that outlive the struct tha
 SAFETY ISSUE HERE HOWEVER: the user can use mem::forget on the Submission and then drop the
 objects referenced by it. There are two solutions to this: either store a bunch of Arc<Fence> in
 every single object referenced by submissions (eg. pipeline objects), or force the user to use
-either Arcs or give ownership of the object. The latter is preferred but not yet implemented. 
+either Arcs or give ownership of the object. The latter is preferred but not yet implemented.
 
 # Pools
 
@@ -120,11 +120,11 @@ pattern that you are strongly encouraged to embrace when you write a Vulkan appl
 
 These three kinds of pools are each represented in vulkano by a trait. When you use the Vulkan API,
 you are expected to create multiple command pools and multiple descriptor pools for maximum
-performances. In vulkano however, it is the implementation of the pool trait that is responsible
+performance. In vulkano however, it is the implementation of the pool trait that is responsible
 for managing multiple actual pool objects. In other words a pool in vulkano is just a trait that
-provides a method to allocate or free some resource, and the advanced functionnalities of Vulkan
+provides a method to allocate or free some resource, and the advanced functionality of Vulkan
 pools (like resetting a command buffer, resetting a pool, or managing the descriptor pool's
-capacity) are handled internally by the implementation of the trait. For example freeing a
+capacity) is handled internally by the implementation of the trait. For example freeing a
 command buffer can be implemented by resetting it and reusing it, instead of actually freeing it.
 
 One of the goals of vulkano is to be easy to use by default. Therefore vulkano provides a default
@@ -133,12 +133,12 @@ buffers, images, descriptor sets, and command buffers) will use the default impl
 possible for the user to use an alternative implementation of a pool by using an alternative
 constructor, but the default implementations should be good for most usages. This is similar to
 memory allocators in languages such as C++ and Rust, in the sense that some users want to be able
-to use a custom allocator but most of the time it's not worth bothering with that.  
+to use a custom allocator but most of the time it's not worth bothering with that.
 
 # Command buffers
 
 Command buffer objects belong to the last category of objects that were described above. They are
-represented by an unsafe trait and can be implemented manually by the user if they wish so.
+represented by an unsafe trait and can be implemented manually by the user if they wish.
 
 However this poses a practical problem, which is that creating a command buffer in a safe way
 is really complicated. There are tons of commands to implement, and each command has a ton of
@@ -154,9 +154,9 @@ In order to make it possible to customize the synchronization story of command b
 split the command buffer building process in two steps. First the user builds a list of commands
 through an iterator-like API (and vulkano will check their validity), and then they are turned into
 a command buffer through a trait. This means that the user can customize the synchronization
-strategy (by customizing the second step) while still using the same commands-building process
+strategy (by customizing the second step) while still using the same command-building process
 (the first step). Commands are not opinionated towards one strategy or another. The
-commands-building code is totally isolated from the synchronization strategy and only checks
+command-building code is totally isolated from the synchronization strategy and only checks
 whether the commands themselves are valid.
 
 The fact that all the commands are added at once can be a little surprising for a user coming from
@@ -164,7 +164,7 @@ Vulkan. Vulkano's API looks very similar to Vulkan's API, but there is a major d
 Vulkan the cost of creating a command buffer is distributed between each function call, but in
 vulkano it is done all at once. For example creating a command buffer with 6 commands with Vulkan
 requires 8 function calls that take say 5µs each, while creating the same command buffer with
-vulkano requires 8 functions calls, but the first 7 are almost free and the last one takes 40µs.
+vulkano requires 8 function calls, but the first 7 are almost free and the last one takes 40µs.
 After some thinking, it was considered to not be a problem.
 
 Creating a list of commands with an iterator-like API has the problem that the type of the list of
@@ -193,7 +193,7 @@ means that you can't write to one and read from the other one simultaneously or 
 simultaneously.
 
 But we don't want to check every single combination of buffer and image every time to check whether
-they conflict. So in order to improve performances, buffers and images also need to provide a key
+they conflict. So in order to improve performance, buffers and images also need to provide a key
 that identifies them. Two resources that can potentially conflict must always return the same key.
 The regular `conflict` functions are still necessary to handle the situation where buffers or
 images accidentally return the same key but don't actually conflict.
@@ -206,7 +206,7 @@ situations are forbidden).
 
 Tracking image layouts can be tedious. Vulkano uses a simple solution, which is that images must
 always be in a specific layout at the beginning and the end of a command buffer. If a transition
-is performed dmuring a command buffer, the image must be transitionned back before the end of the
+is performed during a command buffer, the image must be transitioned back before the end of the
 command buffer. The layout in question is queried with a method on the `Image` trait.
 
 For example an `AttachmentImage` must always be in the `ColorAttachmentOptimal` layout for color
@@ -216,13 +216,13 @@ of the command buffer.
 
 This system works very nicely in practice, and unnecessary layout transitions almost never happen.
 The only situation where unnecessary transitions tend to happen in practice is for swapchain images
-that are transitionned from `PresentSrc` to `ColorAttachmentOptimal` before the start of the
+that are transitioned from `PresentSrc` to `ColorAttachmentOptimal` before the start of the
 render pass, because the initial layout of the render pass attachment is `ColorAttachmentOptimal`
 by default for color attachments. Vulkano should make it clear in the documentation of render
 passes that the user is encouraged to specify when an attachment is expected to be in the
 `PresentSrc` layout.
 
-The only problematic area concerns the first usage of an image, where it must be transitionned from
+The only problematic area concerns the first usage of an image, where it must be transitioned from
 the `Undefined` layout. This is done by automatically building and inserting a command buffer that
 performs the transition whenever you use an image for the first time. This behavior is requested by
 the `Image` trait implementation, and therefore as usual you can choose not to use it. Vulkano is
@@ -239,11 +239,11 @@ command buffer block until the first command buffer has finished executing.
 This case is similar to spawning two threads that each access the same resource protected by
 a `RwLock` or a `Mutex`. One of the two threads will need to block until the first one is finished.
 
-This raises the question: should vulkano implicitely block command buffers to avoid data races,
-or should it force the user to explicitely add wait operations? By comparing a CPU-side
+This raises the question: should vulkano implicitly block command buffers to avoid data races,
+or should it force the user to explicitly add wait operations? By comparing a CPU-side
 multithreaded program and a GPU-side multithreaded program, then the answer is to make it implicit,
-as a CPU will also implicitely block when calling a function that happens to lock a `Mutex` or
-a `RwLock`. In a CPU code, these locking problems are always "fixed" by properly documenting the
+as a CPU will also implicitly block when calling a function that happens to lock a `Mutex` or
+a `RwLock`. In CPU code, these locking problems are always "fixed" by properly documenting the
 behavior of the functions you call. Similarly, vulkano should precisely document its behavior.
 
 More generally users are encouraged to avoid sharing resources between multiple queues unless these
@@ -251,15 +251,15 @@ resources are read-only, and in practice in a video game it is indeed rarely nee
 resources between multiple queues. Just like for CPU-side multithreading, users are encouraged to
 have a graph of the ways queues interact with each other.
 
-However another problems arises. In order to make a command buffer wait for another, you need to
+However another problem arises. In order to make a command buffer wait for another, you need to
 make the queue of the first command buffer submit a semaphore after execution, and the queue of
 the second command buffer wait on that same semaphore before execution. Semaphores can only be used
 once. This means that when you submit a command buffer to a queue, you must already know if any
-command buffer is going to wait on the one you are submitting, and if so how many. This is not
+other command buffers are going to wait on the one you are submitting, and if so how many. This is not
 something that vulkano can automatically determine. The fact that there is therefore no optimal
-algorithm for implicit synchronization would be a good point towards explicit synchronization.
+algorithm for implicit synchronization would be a good point in favor of explicit synchronization.
 
-The decision was taken to encourage users to explicitely handle synchronization between multiple
+The decision was taken to encourage users to explicitly handle synchronization between multiple
 queues, but if they forget to do so then vulkano will automatically fall back to a dumb
 worst-case-scenario but safe behavior. Whenever this dumb behavior is triggered, a debug message
 is outputted by vulkano with the `vkDebugReportMessageEXT` function. This message can easily be
