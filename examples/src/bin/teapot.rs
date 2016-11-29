@@ -82,7 +82,7 @@ fn main() {
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
-    let proj = cgmath::perspective(cgmath::rad(3.141592 / 2.0), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
+    let proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
@@ -196,7 +196,7 @@ fn main() {
             // aquiring write lock for the uniform buffer
             let mut buffer_content = uniform_buffer.write(Duration::new(1, 0)).unwrap(); 
 
-            let rotation = cgmath::Matrix3::from_angle_y(cgmath::rad(time::precise_time_ns() as f32 * 0.000000001));
+            let rotation = cgmath::Matrix3::from_angle_y(cgmath::Rad(time::precise_time_ns() as f32 * 0.000000001));
 
             // since write lock implementd Deref and DerefMut traits, 
             // we can update content directly 
