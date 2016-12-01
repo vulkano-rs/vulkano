@@ -7,17 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `RenderPass`.
+/// Builds a `CustomRenderPassDesc` object that provides a safe wrapper around `RenderPass`.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
+        $device:expr,
         attachments: { $($a:tt)* },
         pass: {
             color: [$($color_atch:ident),*],
             depth_stencil: {$($depth_atch:ident)*}
         }
-    ) => {
-        ordered_passes_renderpass!{
+    ) => (
+        ordered_passes_renderpass!(
+            $device,
             attachments: { $($a)* },
             passes: [
                 {
@@ -26,20 +28,22 @@ macro_rules! single_pass_renderpass {
                     input: []
                 }
             ]
-        }
-    }
+        )
+    )
 }
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `RenderPass`.
+/// Builds a `CustomRenderPassDesc` object that provides a safe wrapper around `RenderPass`.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
+        $device:expr,
         attachments: {
             $(
                 $atch_name:ident: {
                     load: $load:ident,
                     store: $store:ident,
-                    format: $format:ty,
+                    format: $format:expr,
+                    samples: $samples:expr,
                     $(initial_layout: $init_layout:expr,)*
                     $(final_layout: $final_layout:expr,)*
                 }
@@ -54,10 +58,11 @@ macro_rules! ordered_passes_renderpass {
                 }
             ),*
         ]
-    ) => {
+    ) => ({
         use std::sync::Arc;
         use $crate::device::Device;
         use $crate::format::ClearValue;
+        use $crate::format::Format;
         use $crate::framebuffer::RenderPass;
         use $crate::framebuffer::RenderPassRef;
         use $crate::framebuffer::RenderPassDesc;
@@ -74,58 +79,14 @@ macro_rules! ordered_passes_renderpass {
         use $crate::sync::AccessFlagBits;
         use $crate::sync::PipelineStages;
 
-        #[derive(Debug, Clone)]
-        pub struct Formats {
+        pub struct CustomRenderPassDesc {
             $(
-                pub $atch_name: ($format, u32),
+                $atch_name: (Format, u32),
             )*
         }
 
-        pub struct CustomRenderPass {
-            render_pass: RenderPass,
-            formats: Formats,
-        }
-
-        impl CustomRenderPass {
-            pub fn raw(device: &Arc<Device>, formats: &Formats)
-                       -> Result<CustomRenderPass, RenderPassCreationError>
-            {
-                #![allow(unsafe_code)]
-
-                let rp = try!(unsafe {
-                    let atch = (0 .. num_attachments()).map(|p| attachment(formats, p).unwrap());
-                    let subpasses = (0 .. num_subpasses()).map(|p| subpass(p).unwrap());
-                    let deps = (0 .. num_dependencies()).map(|p| dependency(p).unwrap());
-                    // TODO: shouldn't collect
-                    RenderPass::new(device, atch.collect::<Vec<_>>().into_iter(),
-                                          subpasses.collect::<Vec<_>>().into_iter(),
-                                          deps.collect::<Vec<_>>().into_iter())
-                });
-
-                Ok(CustomRenderPass {
-                    render_pass: rp,
-                    formats: formats.clone(),
-                })
-            }
-
-            #[inline]
-            pub fn new(device: &Arc<Device>, formats: &Formats)
-                       -> Result<Arc<CustomRenderPass>, RenderPassCreationError>
-            {
-                Ok(Arc::new(try!(CustomRenderPass::raw(device, formats))))
-            }
-        }
-
         #[allow(unsafe_code)]
-        unsafe impl RenderPassRef for CustomRenderPass {
-            #[inline]
-            fn inner(&self) -> &RenderPass {
-                &self.render_pass
-            }
-        }
-
-        #[allow(unsafe_code)]
-        unsafe impl RenderPassDesc for CustomRenderPass {
+        unsafe impl RenderPassDesc for CustomRenderPassDesc {
             #[inline]
             fn num_attachments(&self) -> usize {
                 num_attachments()
@@ -133,7 +94,7 @@ macro_rules! ordered_passes_renderpass {
 
             #[inline]
             fn attachment(&self, id: usize) -> Option<LayoutAttachmentDescription> {
-                attachment(&self.formats, id)
+                attachment(self, id)
             }
 
             #[inline]
@@ -168,7 +129,7 @@ macro_rules! ordered_passes_renderpass {
         }
 
         #[inline]
-        fn attachment(formats: &Formats, id: usize) -> Option<LayoutAttachmentDescription> {
+        fn attachment(desc: &CustomRenderPassDesc, id: usize) -> Option<LayoutAttachmentDescription> {
             #![allow(unused_assignments)]
             #![allow(unused_mut)]
 
@@ -179,8 +140,8 @@ macro_rules! ordered_passes_renderpass {
                     let (initial_layout, final_layout) = attachment_layouts(num);
 
                     return Some($crate::framebuffer::LayoutAttachmentDescription {
-                        format: $crate::format::FormatDesc::format(&formats.$atch_name.0),
-                        samples: formats.$atch_name.1,
+                        format: desc.$atch_name.0,
+                        samples: desc.$atch_name.1,
                         load: $crate::framebuffer::LoadOp::$load,
                         store: $crate::framebuffer::StoreOp::$store,
                         initial_layout: initial_layout,
@@ -331,7 +292,7 @@ macro_rules! ordered_passes_renderpass {
             (initial_layout.unwrap(), final_layout.unwrap())
         }
 
-        #[allow(non_camel_case_types)]
+        /*#[allow(non_camel_case_types)]
         pub struct AList<$($atch_name),*> {
             $(
                 pub $atch_name: $atch_name,
@@ -348,7 +309,7 @@ macro_rules! ordered_passes_renderpass {
 
         #[allow(non_camel_case_types)]
         #[allow(unsafe_code)]
-        unsafe impl<$($atch_name: ImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPass {
+        unsafe impl<$($atch_name: ImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPassDesc {
             #[inline]
             fn check_attachments_list(&self, l: &AList<$($atch_name),*>) -> Result<(), FramebufferCreationError> {
                 #![allow(unused_assignments)]
@@ -361,20 +322,27 @@ macro_rules! ordered_passes_renderpass {
 
                 Ok(())
             }
-        }
+        }*/
 
-        ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
+        // FIXME: restore
+        //ordered_passes_renderpass!{[] __impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
+
+        CustomRenderPassDesc {
+            $(
+                $atch_name: ($format, $samples),
+            )*
+        }.build_render_pass($device)
+    });
+
+    ([] __impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
+        ordered_passes_renderpass!{[] __impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }
     };
 
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
-        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }
+    ([] __impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, $misc:ident, $($rest:tt)*]) => {
+        ordered_passes_renderpass!{[] __impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
     };
 
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, $misc:ident, $($rest:tt)*]) => {
-        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
-    };
-
-    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ty,)+] []) => {
+    ([] __impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ty,)+] []) => {
         #[allow(non_camel_case_types)]
         pub struct ClearValues<$($atch),+> {
             $(
@@ -385,7 +353,7 @@ macro_rules! ordered_passes_renderpass {
         #[allow(non_camel_case_types)]
         #[allow(unsafe_code)]
         unsafe impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),*>
-            RenderPassClearValues<ClearValues<$($atch),*>> for CustomRenderPass
+            RenderPassClearValues<ClearValues<$($atch),*>> for CustomRenderPassDesc
         {
             type ClearValuesIter = ClearValuesIter<$($atch),+>;
 
@@ -436,11 +404,11 @@ macro_rules! ordered_passes_renderpass {
             ExactSizeIterator for ClearValuesIter<$($atch),+> {}
     };
 
-    (__impl_clear_values__ [$total:expr] [] []) => {
+    ([] __impl_clear_values__ [$total:expr] [] []) => {
         pub type ClearValues = ();
 
         #[allow(unsafe_code)]
-        unsafe impl RenderPassClearValues<()> for CustomRenderPass {
+        unsafe impl RenderPassClearValues<()> for CustomRenderPassDesc {
             type ClearValuesIter = ClearValuesIter;
 
             #[inline]

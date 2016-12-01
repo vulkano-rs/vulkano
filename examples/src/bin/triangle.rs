@@ -41,7 +41,7 @@ use vulkano::command_buffer::Submission;
 use vulkano::descriptor::pipeline_layout::PipelineLayout;
 use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 use vulkano::device::Device;
-use vulkano::framebuffer::StdFramebuffer;
+use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
 use vulkano::instance::Instance;
 use vulkano::pipeline::GraphicsPipeline;
@@ -57,6 +57,7 @@ use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 fn main() {
@@ -226,53 +227,33 @@ fn main() {
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    mod render_pass {
-        use vulkano::format::Format;
-
-        // Calling this macro creates multiple structs based on the macro's parameters:
-        //
-        // - `CustomRenderPass` is the main struct that represents the render pass.
-        // - `Formats` can be used to indicate the list of the formats of the attachments.
-        // - `AList` can be used to indicate the actual list of images that are attached.
-        //
-        // Render passes can also have multiple subpasses, the only restriction being that all
-        // the passes will use the same framebuffer dimensions. Here we only have one pass, so
-        // we use the appropriate macro.
-        single_pass_renderpass!{
-            attachments: {
-                // `color` is a custom name we give to the first and only attachment.
-                color: {
-                    // `load: Clear` means that we ask the GPU to clear the content of this
-                    // attachment at the start of the drawing.
-                    load: Clear,
-                    // `store: Store` means that we ask the GPU to store the output of the draw
-                    // in the actual image. We could also ask it to discard the result.
-                    store: Store,
-                    // `format: <ty>` indicates the type of the format of the image. This has to
-                    // be one of the types of the `vulkano::format` module (or alternatively one
-                    // of your structs that implements the `FormatDesc` trait). Here we use the
-                    // generic `vulkano::format::Format` enum because we don't know the format in
-                    // advance.
-                    format: Format,
-                }
-            },
-            pass: {
-                // We use the attachment named `color` as the one and only color attachment.
-                color: [color],
-                // No depth-stencil attachment is indicated with empty brackets.
-                depth_stencil: {}
+    let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+        attachments: {
+            // `color` is a custom name we give to the first and only attachment.
+            color: {
+                // `load: Clear` means that we ask the GPU to clear the content of this
+                // attachment at the start of the drawing.
+                load: Clear,
+                // `store: Store` means that we ask the GPU to store the output of the draw
+                // in the actual image. We could also ask it to discard the result.
+                store: Store,
+                // `format: <ty>` indicates the type of the format of the image. This has to
+                // be one of the types of the `vulkano::format` module (or alternatively one
+                // of your structs that implements the `FormatDesc` trait). Here we use the
+                // generic `vulkano::format::Format` enum because we don't know the format in
+                // advance.
+                format: images[0].format(),
+                // TODO:
+                samples: 1,
             }
+        },
+        pass: {
+            // We use the attachment named `color` as the one and only color attachment.
+            color: [color],
+            // No depth-stencil attachment is indicated with empty brackets.
+            depth_stencil: {}
         }
-    }
-
-    // The macro above only created the custom struct that represents our render pass. We also have
-    // to actually instanciate that struct.
-    //
-    // To do so, we have to pass the actual values of the formats of the attachments.
-    let render_pass = render_pass::CustomRenderPass::new(&device, &render_pass::Formats {
-        // Use the format of the images and one sample.
-        color: (images[0].format(), 1)
-    }).unwrap();
+    ).unwrap());
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
@@ -341,11 +322,7 @@ fn main() {
     // each image.
     let framebuffers = images.iter().map(|image| {
         let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        StdFramebuffer::new(render_pass.clone(), dimensions, render_pass::AList {
-            // The `AList` struct was generated by the render pass macro above, and contains one
-            // member for each attachment.
-            color: image.clone()
-        }).unwrap()
+        Framebuffer::new(render_pass.clone(), dimensions, (image.clone(),)).unwrap()
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!
