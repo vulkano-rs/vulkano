@@ -29,12 +29,33 @@ pub fn write_structs(doc: &parse::Spirv) -> String {
     result
 }
 
+/// Represents a rust struct member
+struct Member {
+    name: String,
+    value: String,
+    offset: Option<usize>
+}
+
+impl Member {
+    fn declaration_text(&self) -> String {
+        let offset = match self.offset {
+            Some(o) => format!("/* offset: {} */", o),
+            _ => "".to_owned(),
+        };
+        format!("    pub {}: {} {}", self.name, self.value, offset)
+    }
+    fn copy_text(&self) -> String {
+        format!("            {name}: self.{name}", name = self.name)
+    }
+}
+
 /// Writes a single struct.
 fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     let name = ::name_from_id(doc, struct_id);
 
-    // Strings of each member definition.
-    let mut members_defs = Vec::with_capacity(members.len());
+    // The members of this struct.
+    let mut rust_members = Vec::with_capacity(members.len());
+    
     // Padding structs will be named `_paddingN` where `N` is determined by this variable.
     let mut next_padding_num = 0;
 
@@ -90,7 +111,11 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             if spirv_offset != *current_rust_offset {
                 let diff = spirv_offset.checked_sub(*current_rust_offset).unwrap();
                 let padding_num = next_padding_num; next_padding_num += 1;
-                members_defs.push(format!("pub _dummy{}: [u8; {}]", padding_num, diff));
+                rust_members.push(Member {
+                        name: format!("_dummy{}", padding_num),
+                        value: format!("[u8; {}]", diff),
+                        offset: None,
+                });
                 *current_rust_offset += diff;
             }
         }
@@ -102,8 +127,11 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             current_rust_offset = None;
         }
 
-        members_defs.push(format!("pub {name}: {ty} /* offset: {offset} */",
-                                  name = member_name, ty = ty, offset = spirv_offset));
+        rust_members.push(Member {
+                name: member_name.to_owned(),
+                value: ty,
+                offset: Some(spirv_offset),
+        });
     }
 
     // Try determine the total size of the struct in order to add padding at the end of the struct.
@@ -139,20 +167,22 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
         let diff = req_size.checked_sub(cur_size as u32).unwrap();
         if diff >= 1 {
-            members_defs.push(format!("pub _dummy{}: [u8; {}]", next_padding_num, diff));
+            rust_members.push(Member {
+                    name: format!("_dummy{}", next_padding_num),
+                    value: format!("[u8; {}]", diff),
+                    offset: None,
+            });
         }
     }
 
-    // We can only derive common traits if there's no unsized member in the struct.
-    let derive = if current_rust_offset.is_some() {
-        "#[derive(Copy, Clone, Debug, Default)]\n"
-    } else {
-        ""
-    };
-
-    format!("#[repr(C)]\n{derive}\
-             pub struct {name} {{\n\t{members}\n}} /* total_size: {t:?} */\n",
-            derive = derive, name = name, members = members_defs.join(",\n\t"), t = spirv_req_total_size)
+    format!("#[repr(C)]\n\
+             pub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n\n\
+             impl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \
+             {name} {{\n{copies}\n        }}\n    }}\n}}\n\n",
+            name = name,
+            members = rust_members.iter().map(Member::declaration_text).collect::<Vec<_>>().join(",\n"),
+            t = spirv_req_total_size,
+            copies = rust_members.iter().map(Member::copy_text).collect::<Vec<_>>().join(",\n"))
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
