@@ -48,8 +48,8 @@ impl Event {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
-                                             ptr::null(), &mut output)));
+            check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
+                                        ptr::null(), &mut output))?;
             output
         };
 
@@ -75,8 +75,8 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             self.event)));
+            let result = check_errors(vk.GetEventStatus(self.device.internal_object(),
+                                                        self.event))?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -90,7 +90,7 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.SetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.SetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }
@@ -113,7 +113,7 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.ResetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }

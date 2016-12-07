@@ -100,8 +100,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         let mut per_thread = match per_thread.entry(curr_thread_id()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let new_pool = try!(UnsafeCommandPool::new(&self.device, self.queue_family(),
-                                                           false, true));
+                let new_pool = UnsafeCommandPool::new(&self.device, self.queue_family(),
+                                                      false, true)?;
 
                 entry.insert(StandardCommandPoolPerThread {
                     pool: new_pool,
@@ -122,7 +122,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         // Build an iterator to construct the missing command buffers from the Vulkan pool.
         let num_new = count as usize - num_from_existing;
         debug_assert!(num_new <= count as usize);        // Check overflows.
-        let newly_allocated = try!(per_thread.pool.alloc_command_buffers(secondary, num_new));
+        let newly_allocated = per_thread.pool.alloc_command_buffers(secondary, num_new)?;
 
         // Returning them as a chain.
         Ok(from_existing.chain(newly_allocated))

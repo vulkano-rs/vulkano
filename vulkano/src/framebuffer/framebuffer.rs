@@ -58,7 +58,7 @@ impl<L> Framebuffer<L> {
         let vk = render_pass.inner().device().pointers();
         let device = render_pass.inner().device().clone();
 
-        let attachments = try!(render_pass.convert_attachments_list(attachments))
+        let attachments = render_pass.convert_attachments_list(attachments)?
                                 .collect::<SmallVec<[_; 8]>>();
 
         // Checking the dimensions against the limits.
@@ -107,8 +107,8 @@ impl<L> Framebuffer<L> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFramebuffer(device.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            check_errors(vk.CreateFramebuffer(device.internal_object(), &infos,
+                                              ptr::null(), &mut output))?;
             output
         };
 

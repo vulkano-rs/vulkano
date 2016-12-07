@@ -54,7 +54,7 @@ fn parse_u32s(i: &[u32]) -> Result<Spirv, ParseError> {
         let mut ret = Vec::new();
         let mut i = &i[5..];
         while i.len() >= 1 {
-            let (instruction, rest) = try!(parse_instruction(i));
+            let (instruction, rest) = parse_instruction(i)?;
             ret.push(instruction);
             i = rest;
         }
@@ -130,7 +130,7 @@ fn parse_instruction(i: &[u32]) -> Result<(Instruction, &[u32]), ParseError> {
         return Err(ParseError::IncompleteInstruction);
     }
 
-    let opcode = try!(decode_instruction(opcode, &i[1 .. word_count]));
+    let opcode = decode_instruction(opcode, &i[1..word_count])?;
     Ok((opcode, &i[word_count..]))
 }
 
@@ -143,17 +143,17 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             result_id: operands[0],
             name: parse_string(&operands[1..]).0
         },
-        14 => Instruction::MemoryModel(try!(AddressingModel::from_num(operands[0])), try!(MemoryModel::from_num(operands[1]))),
+        14 => Instruction::MemoryModel(AddressingModel::from_num(operands[0])?, MemoryModel::from_num(operands[1])?),
         15 => {
             let (n, r) = parse_string(&operands[2..]);
             Instruction::EntryPoint {
-                execution: try!(ExecutionModel::from_num(operands[0])),
+                execution: ExecutionModel::from_num(operands[0])?,
                 id: operands[1],
                 name: n,
                 interface: r.to_owned(),
             }
         },
-        17 => Instruction::Capability(try!(Capability::from_num(operands[0]))),
+        17 => Instruction::Capability(Capability::from_num(operands[0])?),
         19 => Instruction::TypeVoid { result_id: operands[0] },
         20 => Instruction::TypeBool { result_id: operands[0] },
         21 => Instruction::TypeInt { result_id: operands[0], width: operands[1], signedness: operands[2] != 0 },
@@ -163,13 +163,13 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
         25 => Instruction::TypeImage {
                 result_id: operands[0],
                 sampled_type_id: operands[1],
-                dim: try!(Dim::from_num(operands[2])),
+                dim: Dim::from_num(operands[2])?,
                 depth: match operands[3] { 0 => Some(false), 1 => Some(true), 2 => None, _ => unreachable!() },
                 arrayed: operands[4] != 0,
                 ms: operands[5] != 0,
                 sampled: match operands[6] { 0 => None, 1 => Some(true), 2 => Some(false), _ => unreachable!() },
-                format: try!(ImageFormat::from_num(operands[7])),
-                access: if operands.len() >= 9 { Some(try!(AccessQualifier::from_num(operands[8]))) } else { None },
+                format: ImageFormat::from_num(operands[7])?,
+                access: if operands.len() >= 9 { Some(AccessQualifier::from_num(operands[8])?) } else { None },
         },
         26 => Instruction::TypeSampler { result_id: operands[0] },
         27 => Instruction::TypeSampledImage { result_id: operands[0], image_type_id: operands[1] },
@@ -177,16 +177,16 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
         29 => Instruction::TypeRuntimeArray { result_id: operands[0], type_id: operands[1] },
         30 => Instruction::TypeStruct { result_id: operands[0], member_types: operands[1..].to_owned() },
         31 => Instruction::TypeOpaque { result_id: operands[0], name: parse_string(&operands[1..]).0 },
-        32 => Instruction::TypePointer { result_id: operands[0], storage_class: try!(StorageClass::from_num(operands[1])), type_id: operands[2] },
+        32 => Instruction::TypePointer { result_id: operands[0], storage_class: StorageClass::from_num(operands[1])?, type_id: operands[2] },
         43 => Instruction::Constant { result_type_id: operands[0], result_id: operands[1], data: operands[2..].to_owned() },
         56 => Instruction::FunctionEnd,
         59 => Instruction::Variable {
             result_type_id: operands[0], result_id: operands[1],
-            storage_class: try!(StorageClass::from_num(operands[2])),
+            storage_class: StorageClass::from_num(operands[2])?,
             initializer: operands.get(3).map(|&v| v)
         },
-        71 => Instruction::Decorate { target_id: operands[0], decoration: try!(Decoration::from_num(operands[1])), params: operands[2..].to_owned() },
-        72 => Instruction::MemberDecorate { target_id: operands[0], member: operands[1], decoration: try!(Decoration::from_num(operands[2])), params: operands[3..].to_owned() },
+        71 => Instruction::Decorate { target_id: operands[0], decoration: Decoration::from_num(operands[1])?, params: operands[2..].to_owned() },
+        72 => Instruction::MemberDecorate { target_id: operands[0], member: operands[1], decoration: Decoration::from_num(operands[2])?, params: operands[3..].to_owned() },
         248 => Instruction::Label { result_id: operands[0] },
         249 => Instruction::Branch { result_id: operands[0] },
         252 => Instruction::Kill,

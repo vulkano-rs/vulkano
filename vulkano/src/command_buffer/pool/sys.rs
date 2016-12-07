@@ -77,8 +77,8 @@ impl UnsafeCommandPool {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateCommandPool(device.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            check_errors(vk.CreateCommandPool(device.internal_object(), &infos,
+                                              ptr::null(), &mut output))?;
             output
         };
 
@@ -102,7 +102,7 @@ impl UnsafeCommandPool {
                     else { 0 };
 
         let vk = self.device.pointers();
-        try!(check_errors(vk.ResetCommandPool(self.device.internal_object(), self.pool, flags)));
+        check_errors(vk.ResetCommandPool(self.device.internal_object(), self.pool, flags))?;
         Ok(())
     }
 
@@ -129,8 +129,8 @@ impl UnsafeCommandPool {
         unsafe {
             let vk = self.device.pointers();
             let mut out = Vec::with_capacity(count);
-            try!(check_errors(vk.AllocateCommandBuffers(self.device.internal_object(), &infos,
-                                                        out.as_mut_ptr())));
+            check_errors(vk.AllocateCommandBuffers(self.device.internal_object(), &infos,
+                                                   out.as_mut_ptr()))?;
 
             out.set_len(count);
 

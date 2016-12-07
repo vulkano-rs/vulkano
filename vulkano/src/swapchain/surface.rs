@@ -85,8 +85,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayPlaneSurfaceKHR(instance.internal_object(), &infos,
-                                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateDisplayPlaneSurfaceKHR(instance.internal_object(), &infos,
+                                                         ptr::null(), &mut output))?;
             output
         };
 
@@ -124,8 +124,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateWin32SurfaceKHR(instance.internal_object(), &infos,
-                                                       ptr::null(), &mut output)));
+            check_errors(vk.CreateWin32SurfaceKHR(instance.internal_object(), &infos,
+                                                  ptr::null(), &mut output))?;
             output
         };
 
@@ -163,8 +163,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateXcbSurfaceKHR(instance.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreateXcbSurfaceKHR(instance.internal_object(), &infos,
+                                                ptr::null(), &mut output))?;
             output
         };
 
@@ -202,8 +202,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateXlibSurfaceKHR(instance.internal_object(), &infos,
-                                                      ptr::null(), &mut output)));
+            check_errors(vk.CreateXlibSurfaceKHR(instance.internal_object(), &infos,
+                                                 ptr::null(), &mut output))?;
             output
         };
 
@@ -241,8 +241,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateWaylandSurfaceKHR(instance.internal_object(), &infos,
-                                                         ptr::null(), &mut output)));
+            check_errors(vk.CreateWaylandSurfaceKHR(instance.internal_object(), &infos,
+                                                    ptr::null(), &mut output))?;
             output
         };
 
@@ -281,8 +281,8 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(), &infos,
+                                                ptr::null(), &mut output))?;
             output
         };
 
@@ -317,8 +317,10 @@ impl Surface {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateAndroidSurfaceKHR(instance.internal_object(), &infos,
-                                                         ptr::null(), &mut output)));
+            check_errors(
+                vk.CreateAndroidSurfaceKHR(instance.internal_object(), &infos,
+                                                    ptr::null(), &mut output)
+            )?;
             output
         };
 
@@ -335,10 +337,10 @@ impl Surface {
             let vk = self.instance.pointers();
 
             let mut output = mem::uninitialized();
-            try!(check_errors(
+            check_errors(
                 vk.GetPhysicalDeviceSurfaceSupportKHR(queue.physical_device().internal_object(),
                                                       queue.id(), self.surface, &mut output)
-            ));
+            )?;
             Ok(output != 0)
         }
     }
@@ -357,45 +359,45 @@ impl Surface {
 
             let caps = {
                 let mut out: vk::SurfaceCapabilitiesKHR = mem::uninitialized();
-                try!(check_errors(
+                check_errors(
                     vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(device.internal_object(),
                                                                self.surface, &mut out)
-                ));
+                )?;
                 out
             };
 
             let formats = {
                 let mut num = 0;
-                try!(check_errors(
+                check_errors(
                     vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
                                                           self.surface, &mut num,
                                                           ptr::null_mut())
-                ));
+                )?;
 
                 let mut formats = Vec::with_capacity(num as usize);
-                try!(check_errors(
+                check_errors(
                     vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
                                                           self.surface, &mut num,
                                                           formats.as_mut_ptr())
-                ));
+                )?;
                 formats.set_len(num as usize);
                 formats
             };
 
             let modes = {
                 let mut num = 0;
-                try!(check_errors(
+                check_errors(
                     vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
                                                                self.surface, &mut num,
                                                                ptr::null_mut())
-                ));
+                )?;
 
                 let mut modes = Vec::with_capacity(num as usize);
-                try!(check_errors(
+                check_errors(
                     vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
                                                                self.surface, &mut num,
                                                                modes.as_mut_ptr())
-                ));
+                )?;
                 modes.set_len(num as usize);
                 // TODO: Use this assertion, once mesa fixes their driver.
                 // https://bugs.freedesktop.org/show_bug.cgi?id=97153

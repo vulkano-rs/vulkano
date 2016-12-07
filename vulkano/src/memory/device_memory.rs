@@ -85,8 +85,8 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.AllocateMemory(device.internal_object(), &infos,
-                                                ptr::null(), &mut output)));
+            check_errors(vk.AllocateMemory(device.internal_object(), &infos,
+                                           ptr::null(), &mut output))?;
             output
         };
 
@@ -112,15 +112,15 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
-        let mem = try!(DeviceMemory::alloc(device, memory_type, size));
+        let mem = DeviceMemory::alloc(device, memory_type, size)?;
 
         let coherent = memory_type.is_host_coherent();
 
         let ptr = unsafe {
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.MapMemory(device.internal_object(), mem.memory, 0,
-                                           mem.size as vk::DeviceSize, 0 /* reserved flags */,
-                                           &mut output)));
+            check_errors(vk.MapMemory(device.internal_object(), mem.memory, 0,
+                                      mem.size as vk::DeviceSize, 0 /* reserved flags */,
+                                      &mut output))?;
             output
         };
 

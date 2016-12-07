@@ -89,8 +89,8 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFence(device.internal_object(), &infos,
-                                             ptr::null(), &mut output)));
+            check_errors(vk.CreateFence(device.internal_object(), &infos,
+                                        ptr::null(), &mut output))?;
             output
         };
 
@@ -108,8 +108,8 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
             if self.signaled.load(Ordering::Relaxed) { return Ok(true); }
 
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetFenceStatus(self.device.internal_object(),
-                                                             self.fence)));
+            let result = check_errors(vk.GetFenceStatus(self.device.internal_object(),
+                                                        self.fence))?;
             match result {
                 Success::Success => {
                     self.signaled.store(true, Ordering::Relaxed);
@@ -133,8 +133,8 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
                                               .saturating_add(timeout.subsec_nanos() as u64);
 
             let vk = self.device.pointers();
-            let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
-                                                       &self.fence, vk::TRUE, timeout_ns)));
+            let r = check_errors(vk.WaitForFences(self.device.internal_object(), 1,
+                                                  &self.fence, vk::TRUE, timeout_ns))?;
 
             match r {
                 Success::Success => {
@@ -180,8 +180,8 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
         let r = if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                try!(check_errors(vk.WaitForFences(device.internal_object(), fences.len() as u32,
-                                                   fences.as_ptr(), vk::TRUE, timeout_ns)))
+                check_errors(vk.WaitForFences(device.internal_object(), fences.len() as u32,
+                                              fences.as_ptr(), vk::TRUE, timeout_ns))?
             }
         } else {
             return Ok(());

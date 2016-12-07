@@ -60,10 +60,10 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     where R: Read
 {
     let mut data = Vec::new();
-    try!(spirv.read_to_end(&mut data));
+    spirv.read_to_end(&mut data)?;
 
     // now parsing the document
-    let doc = try!(parse::parse_spirv(&data));
+    let doc = parse::parse_spirv(&data)?;
 
     // TODO: remove
     println!("{:#?}", doc);
@@ -146,7 +146,7 @@ impl {name} {{
             let data = [{spirv_data}];
 
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device.clone(), &data))
+                shader: ::vulkano::pipeline::shader::ShaderModule::new(device.clone(), &data)?
             }})
         }}
     }}

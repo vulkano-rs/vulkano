@@ -84,8 +84,8 @@ impl DescriptorPool {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDescriptorPool(device.internal_object(), &infos,
-                                                      ptr::null(), &mut output)));
+            check_errors(vk.CreateDescriptorPool(device.internal_object(), &infos,
+                                                 ptr::null(), &mut output))?;
             output
         };
 

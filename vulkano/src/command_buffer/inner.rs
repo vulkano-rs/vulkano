@@ -141,7 +141,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
         let device = pool.device().clone();
         let vk = device.pointers();
 
-        let cmd = try!(pool.alloc(secondary, 1)).next().unwrap().internal_object();
+        let cmd = pool.alloc(secondary, 1)?.next().unwrap().internal_object();
 
         let mut keep_alive = Vec::new();
 
@@ -182,7 +182,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
                 pInheritanceInfo: &inheritance,
             };
 
-            try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
+            check_errors(vk.BeginCommandBuffer(cmd, &infos))?;
         }
 
         Ok(InnerCommandBufferBuilder {
@@ -1661,7 +1661,7 @@ impl<P> InnerCommandBufferBuilder<P> where P: CommandPool {
             let cmd = self.cmd.take().unwrap();
 
             // Ending the commands recording.
-            try!(check_errors(vk.EndCommandBuffer(cmd)));
+            check_errors(vk.EndCommandBuffer(cmd))?;
 
             Ok(InnerCommandBuffer {
                 device: self.device.clone(),
@@ -1773,8 +1773,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
     assert_eq!(queue.family().id(), me.pool.queue_family().id());
 
     // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-    //let fence = try!(Fence::new(queue.device()));
-    let fence = Arc::new(try!(Fence::raw(queue.device().clone())));
+    //let fence = Fence::new(queue.device())?;
+    let fence = Arc::new(Fence::raw(queue.device().clone())?);
 
     let mut keep_alive_semaphores = SmallVec::<[_; 8]>::new();
     let mut post_semaphores_ids = SmallVec::<[_; 8]>::new();
@@ -1787,8 +1787,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
     //       waiting on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
     {
         // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-        //let signalled = try!(Semaphore::new(queue.device().clone()));
-        let signalled = Arc::new(try!(Semaphore::raw(queue.device().clone())));
+        //let signalled = Semaphore::new(queue.device().clone())?;
+        let signalled = Arc::new(Semaphore::raw(queue.device().clone())?);
         let wait = unsafe { queue.dedicated_semaphore(signalled.clone()) };
         if let Some(wait) = wait {
             pre_semaphores_ids.push(wait.internal_object());
@@ -1806,8 +1806,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
         let mut list = SmallVec::new();
         for _ in 0 .. queue_transitions_hint {
             // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-            //let sem = try!(Semaphore::new(queue.device().clone()));
-            let sem = Arc::new(try!(Semaphore::raw(queue.device().clone())));
+            //let sem = Semaphore::new(queue.device().clone())?;
+            let sem = Arc::new(Semaphore::raw(queue.device().clone())?);
             post_semaphores_ids.push(sem.internal_object());
             keep_alive_semaphores.push(sem.clone());
             list.push(sem);
@@ -2009,8 +2009,8 @@ pub fn submit<P>(me: &InnerCommandBuffer<P>, me_arc: Arc<KeepAlive>,
             }
 
             let fence = fence.internal_object();
-            try!(check_errors(vk.QueueSubmit(*queue.internal_object_guard(), infos.len() as u32,
-                                             infos.as_ptr(), fence)));
+            check_errors(vk.QueueSubmit(*queue.internal_object_guard(), infos.len() as u32,
+                                        infos.as_ptr(), fence))?;
         }
 
         // Don't forget to add all the semaphores in the list of semaphores that must be kept alive.
@@ -2207,7 +2207,7 @@ fn transition_cb<P>(pool: P, image: Arc<Image>, block: (u32, u32),
     let device = pool.device().clone();
     let vk = device.pointers();
 
-    let cmd = try!(pool.alloc(false, 1)).next().unwrap().internal_object();
+    let cmd = pool.alloc(false, 1)?.next().unwrap().internal_object();
 
     unsafe {
         let infos = vk::CommandBufferBeginInfo {
@@ -2218,7 +2218,7 @@ fn transition_cb<P>(pool: P, image: Arc<Image>, block: (u32, u32),
         };
 
         // TODO: leak if this returns an err
-        try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
+        check_errors(vk.BeginCommandBuffer(cmd, &infos))?;
 
         let range_mipmaps = image.block_mipmap_levels_range(block);
         let range_layers = image.block_array_layers_range(block);
@@ -2255,7 +2255,7 @@ fn transition_cb<P>(pool: P, image: Arc<Image>, block: (u32, u32),
                               0, ptr::null(), 0, ptr::null(), 1, &barrier);
 
         // TODO: leak if this returns an err
-        try!(check_errors(vk.EndCommandBuffer(cmd)));
+        check_errors(vk.EndCommandBuffer(cmd))?;
     }
 
     Ok(InnerCommandBuffer {

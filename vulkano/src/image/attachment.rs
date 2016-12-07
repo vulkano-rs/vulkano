@@ -155,9 +155,9 @@ impl<F> AttachmentImage<F> {
         };
 
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device, &usage, format.format(),
-                                  ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
-                                  1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            UnsafeImage::new(device, &usage, format.format(),
+                             ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
+                             1, 1, Sharing::Exclusive::<Empty<u32>>, false, false)?
         };
 
         let mem_ty = {
@@ -169,13 +169,13 @@ impl<F> AttachmentImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
+        let mem = MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+                                    mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe { image.bind_memory(mem.memory(), mem.offset())?; }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1))
+            UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1)?
         };
 
         Ok(Arc::new(AttachmentImage {

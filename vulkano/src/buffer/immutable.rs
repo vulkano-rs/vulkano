@@ -128,10 +128,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+                                    mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        try!(buffer.bind_memory(mem.memory(), mem.offset()));
+        buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(ImmutableBuffer {
             inner: buffer,

@@ -39,7 +39,7 @@ pub struct EmptySinglePassRenderPass {
 impl EmptySinglePassRenderPass {
     /// See the docs of new().
     pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
-        let rp = try!(unsafe {
+        let rp = unsafe {
             let pass = LayoutPassDescription {
                 color_attachments: vec![],
                 depth_stencil: None,
@@ -49,7 +49,7 @@ impl EmptySinglePassRenderPass {
             };
 
             UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
-        });
+        }?;
 
         Ok(EmptySinglePassRenderPass {
             render_pass: rp

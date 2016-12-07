@@ -265,8 +265,8 @@ impl Device {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk_i.CreateDevice(phys.internal_object(), &infos,
-                                                ptr::null(), &mut output)));
+            check_errors(vk_i.CreateDevice(phys.internal_object(), &infos,
+                                           ptr::null(), &mut output))?;
             output
         };
 
@@ -301,7 +301,7 @@ impl Device {
     #[inline]
     pub fn wait_raw(&self) -> Result<(), OomError> {
         unsafe {
-            try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
+            check_errors(self.vk.DeviceWaitIdle(self.device))?;
             Ok(())
         }
     }
@@ -561,7 +561,7 @@ impl Queue {
         unsafe {
             let vk = self.device.pointers();
             let queue = self.queue.lock().unwrap();
-            try!(check_errors(vk.QueueWaitIdle(*queue)));
+            check_errors(vk.QueueWaitIdle(*queue))?;
             Ok(())
         }
     }
@@ -590,7 +590,7 @@ impl Queue {
             return Ok((semaphore.clone(), true));
         }
 
-        let semaphore = try!(Semaphore::new(&self.device));
+        let semaphore = Semaphore::new(&self.device)?;
         *sem = Some(semaphore.clone());
         Ok((semaphore, false))
     }*/

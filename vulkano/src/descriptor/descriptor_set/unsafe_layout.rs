@@ -62,8 +62,8 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
 
             let mut output = mem::uninitialized();
             let vk = device.pointers();
-            try!(check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos,
-                                                           ptr::null(), &mut output)));
+            check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos,
+                                                      ptr::null(), &mut output))?;
             output
         };
 

@@ -130,7 +130,7 @@ impl Swapchain {
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         // Checking that the requested parameters match the capabilities.
-        let capabilities = try!(surface.get_capabilities(&device.physical_device()));
+        let capabilities = surface.get_capabilities(&device.physical_device())?;
         // TODO: return errors instead
         assert!(num_images >= capabilities.min_image_count);
         if let Some(c) = capabilities.max_image_count { assert!(num_images <= c) };
@@ -201,8 +201,8 @@ impl Swapchain {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSwapchainKHR(device.internal_object(), &infos,
-                                                    ptr::null(), &mut output)));
+            check_errors(vk.CreateSwapchainKHR(device.internal_object(), &infos,
+                                               ptr::null(), &mut output))?;
             output
         };
 
@@ -227,14 +227,14 @@ impl Swapchain {
 
         let images = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
-                                                       swapchain.swapchain, &mut num,
-                                                       ptr::null_mut())));
+            check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
+                                                  swapchain.swapchain, &mut num,
+                                                  ptr::null_mut()))?;
 
             let mut images = Vec::with_capacity(num as usize);
-            try!(check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
-                                                       swapchain.swapchain, &mut num,
-                                                       images.as_mut_ptr())));
+            check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
+                                                  swapchain.swapchain, &mut num,
+                                                  images.as_mut_ptr()))?;
             images.set_len(num as usize);
             images
         };
@@ -254,8 +254,8 @@ impl Swapchain {
 
         for _ in 0 .. images.len() + 1 {
             // TODO: check if this change is okay (maybe the Arc can be omitted?) - Mixthos
-            //swapchain.semaphores_pool.push(try!(Semaphore::new(device.clone())));
-            swapchain.semaphores_pool.lock().unwrap().push(Arc::new(try!(Semaphore::raw(device.clone()))));
+            //swapchain.semaphores_pool.push(Semaphore::new(device.clone())?);
+            swapchain.semaphores_pool.lock().unwrap().push(Arc::new(Semaphore::raw(device.clone())?));
         }
 
         Ok((swapchain, images))
@@ -283,10 +283,10 @@ impl Swapchain {
                                               .saturating_add(timeout.subsec_nanos() as u64);
 
             let mut out = mem::uninitialized();
-            let r = try!(check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
-                                                             self.swapchain, timeout_ns,
-                                                             semaphore.internal_object(), 0,     // TODO: timeout
-                                                             &mut out)));
+            let r = check_errors(vk.AcquireNextImageKHR(self.device.internal_object(),
+                                                        self.swapchain, timeout_ns,
+                                                        semaphore.internal_object(), 0, // TODO: timeout
+                                                        &mut out))?;
 
             let id = match r {
                 Success::Success => out as usize,
@@ -338,8 +338,8 @@ impl Swapchain {
                 pResults: &mut result,
             };
 
-            try!(check_errors(vk.QueuePresentKHR(*queue, &infos)));
-            //try!(check_errors(result));       // TODO: AMD driver doesn't seem to write the result
+            check_errors(vk.QueuePresentKHR(*queue, &infos))?;
+            //check_errors(result)?;       // TODO: AMD driver doesn't seem to write the result
         }
 
         self.semaphores_pool.lock().unwrap().push(wait_semaphore);

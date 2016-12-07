@@ -43,8 +43,8 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSemaphore(device.internal_object(), &INFOS,
-                                                 ptr::null(), &mut output)));
+            check_errors(vk.CreateSemaphore(device.internal_object(), &INFOS,
+                                            ptr::null(), &mut output))?;
             output
         };
 
