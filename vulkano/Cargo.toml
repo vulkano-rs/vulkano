@@ -8,9 +8,9 @@ license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vulkano"
 
 [dependencies]
-crossbeam = "0.2.5"
-fnv = "1.0.2"
-shared_library = "0.1.4"
-smallvec = "0.2.0"
-lazy_static = "0.1.15"
-vk-sys = { version = "0.2.0", path = "../vk-sys" }
+crossbeam = "0.2.10"
+fnv = "1.0.5"
+shared_library = "0.1.5"
+smallvec = "0.3.1"
+lazy_static = "0.2.2"
+vk-sys = { version = "0.2.1", path = "../vk-sys" }
