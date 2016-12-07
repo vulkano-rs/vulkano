@@ -12,6 +12,24 @@ use std::mem;
 use parse;
 use enums;
 
+/// Translates all the structs that are contained in the SPIR-V document as Rust structs.
+pub fn write_structs(doc: &parse::Spirv) -> String {
+    let mut result = String::new();
+
+    for instruction in &doc.instructions {
+        match *instruction {
+            parse::Instruction::TypeStruct { result_id, ref member_types } => {
+                result.push_str(&write_struct(doc, result_id, member_types));
+                result.push_str("\n");
+            },
+            _ => ()
+        }
+    }
+
+    result
+}
+
+/// Represents a rust struct member
 struct Member {
     name: String,
     value: String,
@@ -29,23 +47,6 @@ impl Member {
     fn copy_text(&self) -> String {
         format!("            {name}: self.{name}", name = self.name)
     }
-}
-
-/// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub fn write_structs(doc: &parse::Spirv) -> String {
-    let mut result = String::new();
-
-    for instruction in &doc.instructions {
-        match *instruction {
-            parse::Instruction::TypeStruct { result_id, ref member_types } => {
-                result.push_str(&write_struct(doc, result_id, member_types));
-                result.push_str("\n");
-            },
-            _ => ()
-        }
-    }
-
-    result
 }
 
 /// Writes a single struct.
