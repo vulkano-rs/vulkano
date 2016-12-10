@@ -64,7 +64,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
                     None => {
                         let sets_iter = 0 .. desc.num_bindings_in_set(num).unwrap_or(0);
                         let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
-                        Arc::new(try!(UnsafeDescriptorSetLayout::raw(device.clone(), desc_iter)))
+                        Arc::new(try!(UnsafeDescriptorSetLayout::new(device.clone(), desc_iter)))
                     },
                 });
             }

@@ -16,7 +16,6 @@ use check_errors;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
-use SafeDeref;
 use vk;
 
 use descriptor::descriptor::DescriptorDesc;
@@ -27,21 +26,23 @@ use device::Device;
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
 /// in the API as other types whose names start with `Unsafe`.
-///
-/// The `P` template parameter contains a pointer to the `Device` object.
-pub struct UnsafeDescriptorSetLayout<P = Arc<Device>> where P: SafeDeref<Target = Device> {
+pub struct UnsafeDescriptorSetLayout {
     // The layout.
     layout: vk::DescriptorSetLayout,
     // The device this layout belongs to.
-    device: P,
+    device: Arc<Device>,
     // Number of descriptors.
     descriptors_count: DescriptorsCount,
 }
 
-impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
-    /// See the docs of new().
-    pub fn raw<I>(device: P, descriptors: I)
-                  -> Result<UnsafeDescriptorSetLayout<P>, OomError>
+impl UnsafeDescriptorSetLayout {
+    /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
+    ///
+    /// The descriptors must be passed in the order of the bindings. In order words, descriptor
+    /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
+    /// empty, you can make the iterator yield `None` for an element.
+    pub fn new<I>(device: Arc<Device>, descriptors: I)
+                  -> Result<UnsafeDescriptorSetLayout, OomError>
         where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
         let mut descriptors_count = DescriptorsCount::zero();
@@ -67,6 +68,8 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
             })
         }).collect::<SmallVec<[_; 32]>>();
 
+        // Note that it seems legal to have no descriptor at all in the set.
+
         let layout = unsafe {
             let infos = vk::DescriptorSetLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -90,26 +93,9 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
         })
     }
 
-    /// Builds a new `UnsafeDescriptorSetLayout` with the given descriptors.
-    ///
-    /// The descriptors must be passed in the order of the bindings. In order words, descriptor
-    /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
-    /// empty, you can make the iterator yield `None` for an element.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new<I>(device: P, descriptors: I) -> Arc<UnsafeDescriptorSetLayout<P>>
-        where I: IntoIterator<Item = Option<DescriptorDesc>>
-    {
-        Arc::new(UnsafeDescriptorSetLayout::raw(device, descriptors).unwrap())
-    }
-
     /// Returns the device used to create this layout.
     #[inline]
-    pub fn device(&self) -> &P {
+    pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
@@ -120,7 +106,7 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     }
 }
 
-unsafe impl<P> VulkanObject for UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
+unsafe impl VulkanObject for UnsafeDescriptorSetLayout {
     type Object = vk::DescriptorSetLayout;
 
     #[inline]
@@ -129,7 +115,7 @@ unsafe impl<P> VulkanObject for UnsafeDescriptorSetLayout<P> where P: SafeDeref<
     }
 }
 
-impl<P> Drop for UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
+impl Drop for UnsafeDescriptorSetLayout {
     #[inline]
     fn drop(&mut self) {
         unsafe {
