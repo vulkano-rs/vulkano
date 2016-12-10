@@ -492,9 +492,13 @@ impl UnsafeDescriptorSet {
 
     /// Modifies a descriptor set. Doesn't check that the writes or copies are correct.
     ///
+    /// **Important**: You must ensure that the `UnsafeDescriptorSetLayout` object is alive before
+    /// updating a descriptor set.
+    ///
     /// # Safety
     ///
     /// - The `Device` must be the device the pool of this set was created with.
+    /// - The `UnsafeDescriptorSetLayout` object this set was created with must be alive.
     /// - Doesn't verify that the things you write in the descriptor set match its layout.
     /// - Doesn't keep the resources alive. You have to do that yourself.
     /// - Updating a descriptor set obeys synchronization rules that aren't checked here.
