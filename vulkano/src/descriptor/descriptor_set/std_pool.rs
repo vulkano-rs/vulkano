@@ -20,6 +20,11 @@ use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use OomError;
 
+/// Standard implementation of a descriptor pool.
+///
+/// Whenever a set is allocated, this implementation will try to find a pool that has some space
+/// for it. If there is one, allocate from it. If there is none, create a new pool whose capacity
+/// is 40 sets and 40 times the requested descriptors. This number is arbitrary.
 pub struct StdDescriptorPool {
     device: Arc<Device>,
     pools: Mutex<Vec<Arc<Mutex<Pool>>>>,
@@ -41,6 +46,7 @@ impl StdDescriptorPool {
     }
 }
 
+/// A descriptor set allocated from a `StdDescriptorPool`.
 pub struct StdDescriptorPoolAlloc {
     pool: Arc<Mutex<Pool>>,
     set: Option<UnsafeDescriptorSet>,
