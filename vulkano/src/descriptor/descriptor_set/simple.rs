@@ -12,6 +12,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferViewRef;
 use command_buffer::cmd::CommandsListSink;
+use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
@@ -168,8 +169,16 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
         let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
-        // TODO: dispatch depending on the descriptor
-        i.writes.push(unsafe { DescriptorWrite::uniform_buffer(binding_id as u32, &self) });
+        assert!(desc.array_count == 1);     // not implemented
+        i.writes.push(match desc.ty.ty().unwrap() {
+            DescriptorType::UniformBuffer => unsafe {
+                DescriptorWrite::uniform_buffer(binding_id as u32, &self)
+            },
+            DescriptorType::StorageBuffer => unsafe {
+                DescriptorWrite::storage_buffer(binding_id as u32, &self)
+            },
+            _ => panic!()
+        });
 
         SimpleDescriptorSetBuilder {
             layout: i.layout,
