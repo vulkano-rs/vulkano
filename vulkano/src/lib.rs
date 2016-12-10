@@ -126,6 +126,7 @@ unsafe impl<T> VulkanObject for Arc<T> where T: VulkanObject {
 }
 
 /// Gives access to the internal identifier of an object.
+// TODO: remove ; crappy design
 pub unsafe trait SynchronizedVulkanObject {
     /// The type of the object.
     type Object;

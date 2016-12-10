@@ -16,9 +16,12 @@ use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
-use descriptor::descriptor_set::sys::UnsafeDescriptorSet;
-use descriptor::descriptor_set::sys::DescriptorWrite;
+use descriptor::descriptor_set::DescriptorPoolAlloc;
+use descriptor::descriptor_set::UnsafeDescriptorSet;
+use descriptor::descriptor_set::DescriptorWrite;
+use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutRef;
+use device::Device;
 use image::ImageView;
 use image::sys::Layout;
 use sync::AccessFlagBits;
@@ -40,28 +43,30 @@ use sync::PipelineStages;
 ///
 /// # Example
 // TODO:
-pub struct SimpleDescriptorSet<R> {
-    inner: UnsafeDescriptorSet,
+pub struct SimpleDescriptorSet<R, P = Arc<StdDescriptorPool>> where P: DescriptorPool {
+    inner: P::Alloc,
     resources: R,
+    layout: Arc<UnsafeDescriptorSetLayout>
 }
 
-impl<R> SimpleDescriptorSet<R> {
+impl<R, P> SimpleDescriptorSet<R, P> where P: DescriptorPool {
     /// Returns the layout used to create this descriptor set.
     #[inline]
     pub fn set_layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
-        self.inner.layout()
+        &self.layout
     }
 }
 
-unsafe impl<R> DescriptorSet for SimpleDescriptorSet<R> {
+unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: DescriptorPool {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
-        &self.inner
+        self.inner.inner()
     }
 }
 
-unsafe impl<R> TrackedDescriptorSet for SimpleDescriptorSet<R>
-    where R: SimpleDescriptorSetResourcesCollection
+unsafe impl<R, P> TrackedDescriptorSet for SimpleDescriptorSet<R, P>
+    where R: SimpleDescriptorSetResourcesCollection,
+          P: DescriptorPool
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -123,21 +128,21 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
 
 impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
     /// Builds a `SimpleDescriptorSet` from the builder.
-    pub fn build(self) -> SimpleDescriptorSet<R> {
+    pub fn build(self) -> SimpleDescriptorSet<R, Arc<StdDescriptorPool>> {
         // TODO: check that we filled everything
-        // TODO: don't create a pool every time
-        let pool = Arc::new(DescriptorPool::raw(self.layout.device()).unwrap());       // FIXME: error
-        let set_layout = self.layout.descriptor_set_layout(self.set_id).unwrap();       // FIXME: error
+        let pool = Device::standard_descriptor_pool(self.layout.device());
+        let set_layout = self.layout.descriptor_set_layout(self.set_id).unwrap().clone();       // FIXME: error
 
         let set = unsafe {
-            let mut set = UnsafeDescriptorSet::uninitialized_raw(&pool, set_layout).unwrap();      // FIXME: error
-            set.write(self.writes.into_iter());
+            let mut set = pool.alloc(&set_layout).unwrap();      // FIXME: error
+            set.inner_mut().write(pool.device(), self.writes.into_iter());
             set
         };
 
         SimpleDescriptorSet {
             inner: set,
             resources: self.resources,
+            layout: set_layout,
         }
     }
 }
@@ -156,14 +161,15 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
 {
     type Out = (R, SimpleDescriptorSetBuf<T>);
 
-    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str)
+    fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
         let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
-        //i.writes.push(DescriptorWrite:);
+        // TODO: dispatch depending on the descriptor
+        i.writes.push(unsafe { DescriptorWrite::uniform_buffer(binding_id as u32, &self) });
 
         SimpleDescriptorSetBuilder {
             layout: i.layout,

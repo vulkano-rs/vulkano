@@ -18,6 +18,7 @@ extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 use vulkano::command_buffer::CommandsList;
+use vulkano::command_buffer::Submit;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -146,12 +147,12 @@ fn main() {
         fragment_shader: fs.main_entry_point(),
         depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
         blend: vulkano::pipeline::blend::Blend::pass_through(),
-        render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
+        render_pass: vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap(),
     }).unwrap();
 
-    let set = simple_descriptor_set!(&pipeline, 0, {
-        uniforms: &uniform_buffer
-    });
+    let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
+        uniforms: uniform_buffer.clone()
+    }));
 
     let framebuffers = images.iter().map(|image| {
         let attachments = renderpass::AList {
@@ -159,20 +160,20 @@ fn main() {
             depth: depth_buffer.clone(),
         };
 
-        vulkano::framebuffer::StdFramebuffer::new(&renderpass, [image.dimensions()[0], image.dimensions()[1], 1], attachments).unwrap()
+        vulkano::framebuffer::StdFramebuffer::new(renderpass.clone(), [image.dimensions()[0], image.dimensions()[1], 1], attachments).unwrap()
     }).collect::<Vec<_>>();
 
 
     let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::std::PrimaryCbBuilder::new(&device, queue.family())
+        Arc::new(vulkano::command_buffer::empty()
             .begin_render_pass(framebuffer.clone(), false, renderpass::ClearValues {
                  color: [0.0, 0.0, 1.0, 1.0],
                  depth: 1.0,
              })
-            .draw_indexed(&pipeline, (&vertex_buffer, &normals_buffer), &index_buffer,
-                          &vulkano::command_buffer::DynamicState::none(), &set, &())
-            .end_render_pass()
-            .build()
+            .draw_indexed(pipeline.clone(), vulkano::command_buffer::DynamicState::none(),
+                          (vertex_buffer.clone(), normals_buffer.clone()), index_buffer.clone(), set.clone(), ())
+            .end_render_pass().unwrap()
+            .build_primary(&device, queue.family()).unwrap())
     }).collect::<Vec<_>>();
 
     let mut submissions: Vec<vulkano::command_buffer::Submission> = Vec::new();
@@ -193,7 +194,7 @@ fn main() {
         }
 
         let image_num = swapchain.acquire_next_image(Duration::from_millis(1)).unwrap();
-        submissions.push(&command_buffers[image_num].submit(&queue).unwrap());
+        submissions.push(command_buffers[image_num].clone().submit(&queue).unwrap());
         swapchain.present(&queue, image_num).unwrap();
 
         for ev in window.window().poll_events() {

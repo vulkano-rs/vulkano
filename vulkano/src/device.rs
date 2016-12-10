@@ -104,6 +104,7 @@ use smallvec::SmallVec;
 use fnv::FnvHasher;
 
 use command_buffer::pool::StandardCommandPool;
+use descriptor::descriptor_set::StdDescriptorPool;
 use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
@@ -127,6 +128,7 @@ pub struct Device {
     device: vk::Device,
     vk: vk::DevicePointers,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
+    standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
     standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
@@ -280,6 +282,7 @@ impl Device {
             device: device,
             vk: vk,
             standard_pool: Mutex::new(Weak::new()),
+            standard_descriptor_pool: Mutex::new(Weak::new()),
             standard_command_pools: Mutex::new(Default::default()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
@@ -354,6 +357,20 @@ impl Device {
 
         // The weak pointer is empty, so we create the pool.
         let new_pool = StdMemoryPool::new(me);
+        *pool = Arc::downgrade(&new_pool);
+        new_pool
+    }
+
+    /// Returns the standard descriptor pool used by default if you don't provide any other pool.
+    pub fn standard_descriptor_pool(me: &Arc<Self>) -> Arc<StdDescriptorPool> {
+        let mut pool = me.standard_descriptor_pool.lock().unwrap();
+
+        if let Some(p) = pool.upgrade() {
+            return p;
+        }
+
+        // The weak pointer is empty, so we create the pool.
+        let new_pool = Arc::new(StdDescriptorPool::new(me.clone()));
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }

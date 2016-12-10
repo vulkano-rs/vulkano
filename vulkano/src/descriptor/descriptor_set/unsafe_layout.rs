@@ -20,6 +20,7 @@ use SafeDeref;
 use vk;
 
 use descriptor::descriptor::DescriptorDesc;
+use descriptor::descriptor_set::DescriptorsCount;
 use device::Device;
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
@@ -33,6 +34,8 @@ pub struct UnsafeDescriptorSetLayout<P = Arc<Device>> where P: SafeDeref<Target 
     layout: vk::DescriptorSetLayout,
     // The device this layout belongs to.
     device: P,
+    // Number of descriptors.
+    descriptors_count: DescriptorsCount,
 }
 
 impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
@@ -41,6 +44,8 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
                   -> Result<UnsafeDescriptorSetLayout<P>, OomError>
         where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
+        let mut descriptors_count = DescriptorsCount::zero();
+
         let bindings = descriptors.into_iter().enumerate().filter_map(|(binding, desc)| {
             let desc = match desc {
                 Some(d) => d,
@@ -50,9 +55,12 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
             // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
             //        doesn't have tess shaders enabled
 
+            let ty = desc.ty.ty().unwrap();     // TODO: shouldn't panic
+            descriptors_count.add_one(ty);
+
             Some(vk::DescriptorSetLayoutBinding {
                 binding: binding as u32,
-                descriptorType: desc.ty.ty().unwrap() /* TODO: shouldn't panic */ as u32,
+                descriptorType: ty as u32,
                 descriptorCount: desc.array_count,
                 stageFlags: desc.stages.into(),
                 pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
@@ -78,6 +86,7 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
         Ok(UnsafeDescriptorSetLayout {
             layout: layout,
             device: device,
+            descriptors_count: descriptors_count,
         })
     }
 
@@ -102,6 +111,12 @@ impl<P> UnsafeDescriptorSetLayout<P> where P: SafeDeref<Target = Device> {
     #[inline]
     pub fn device(&self) -> &P {
         &self.device
+    }
+
+    /// Returns the number of descriptors of each type.
+    #[inline]
+    pub fn descriptors_count(&self) -> &DescriptorsCount {
+        &self.descriptors_count
     }
 }
 

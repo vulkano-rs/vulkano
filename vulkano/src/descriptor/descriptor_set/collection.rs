@@ -70,7 +70,7 @@ unsafe impl TrackedDescriptorSetsCollection for () {
 }
 
 unsafe impl<T> DescriptorSetsCollection for T
-    where T: DescriptorSet + DescriptorSetDesc
+    where T: DescriptorSet
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -97,7 +97,7 @@ unsafe impl<T> DescriptorSetsCollection for T
 }
 
 // TODO: we can't be generic over the State because we get a conflicting implementation :-/
-unsafe impl<T> TrackedDescriptorSetsCollection for T where T: TrackedDescriptorSet + DescriptorSetDesc /* TODO */ {
+unsafe impl<T> TrackedDescriptorSetsCollection for T where T: TrackedDescriptorSet {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
         self.add_transition(sink);
