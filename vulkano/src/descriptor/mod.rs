@@ -51,8 +51,10 @@
 //! multiple buffers or images that all have the same layout.
 //!
 //! Descriptors are grouped in what is called *descriptor sets*. In Vulkan you don't bind
-//! individual descriptors one by one, but you create then bind descriptor sets one by one. You are
-//! therefore encouraged to put descriptors that are often used together in the same set.
+//! individual descriptors one by one, but you create then bind descriptor sets one by one. As
+//! binding a descriptor set has (small but non-null) a cost, you are encouraged to put descriptors
+//! that are often used together in the same set so that you can keep the same set binding through
+//! multiple draws.
 //!
 //! # Example
 //!

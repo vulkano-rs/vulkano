@@ -7,6 +7,34 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Descriptor sets creation and management
+//! 
+//! This module is dedicated to managing descriptor sets. There are three concepts in Vulkan
+//! related to descriptor sets:
+//! 
+//! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
+//!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
+//!   instance of this object. This is represented with the `UnsafeDescriptorSetLayout` type in
+//!   vulkano.
+//! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
+//!   be used to allocate and free individual descriptor sets. This is represented with the
+//!   `UnsafeDescriptorPool` type in vulkano.
+//! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
+//!   represented with the `UnsafeDescriptorSet` type in vulkano.
+//! 
+//! In addition to this, vulkano defines the following:
+//! 
+//! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
+//!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
+//!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
+//! - The `StdDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
+//! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
+//!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
+//!   them.
+//! - The `SimpleDescriptorSet` type is a default implementation of the `DescriptorSet` trait.
+//! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
+//!   `DescriptorSet`. It is what you pass to the draw functions.
+
 use std::sync::Arc;
 
 use command_buffer::cmd::CommandsListSink;
@@ -42,14 +70,14 @@ pub unsafe trait DescriptorSet {
     fn inner(&self) -> &UnsafeDescriptorSet;
 }
 
-unsafe impl<T> DescriptorSet for Arc<T> where T: DescriptorSet {
+unsafe impl<T: ?Sized> DescriptorSet for Arc<T> where T: DescriptorSet {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         (**self).inner()
     }
 }
 
-unsafe impl<'a, T> DescriptorSet for &'a T where T: 'a + DescriptorSet {
+unsafe impl<'a, T: ?Sized> DescriptorSet for &'a T where T: 'a + DescriptorSet {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         (**self).inner()
@@ -86,6 +114,7 @@ unsafe impl<'a, T> DescriptorSetDesc for &'a T where T: 'a + DescriptorSetDesc {
 // TODO: re-read docs
 /// Extension trait for descriptor sets so that it can be used with the standard commands list
 /// interface.
+//  TODO: is this used?
 pub unsafe trait TrackedDescriptorSet: DescriptorSet {
     fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
 }
