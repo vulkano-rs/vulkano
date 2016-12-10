@@ -83,9 +83,21 @@ macro_rules! simple_descriptor_set {
         use $crate::descriptor::descriptor_set::SimpleDescriptorSetBuilder;
         use $crate::descriptor::descriptor_set::SimpleDescriptorSetBufferExt;
 
+        // We build an empty `SimpleDescriptorSetBuilder` struct, then adds each element one by
+        // one. When done, we call `build()` on the builder.
+
         let builder = SimpleDescriptorSetBuilder::new($layout, $set_num);
 
         $(
+            // Here `$val` can be either a buffer or an image. However we can't create an extension
+            // trait for both buffers and image, because `impl<T: Image> ExtTrait for T {}` would
+            // conflict with `impl<T: Buffer> ExtTrait for T {}`.
+            //
+            // Therefore we use a trick: we create two traits, one for buffers
+            // (`SimpleDescriptorSetBufferExt`) and one for images (`SimpleDescriptorSetImageExt`),
+            // that both have a method named `add_me`. We import these two traits in scope and
+            // call `add_me` on the value, letting Rust dispatch to the right trait. A compilation
+            // error will happen if `$val` is both a buffer and an image.
             let builder = $val.add_me(builder, stringify!($name));
         )*
 
@@ -98,12 +110,19 @@ macro_rules! simple_descriptor_set {
 /// > **Note**: You are encouraged to use the `simple_descriptor_set!` macro instead of
 /// > manipulating these internals.
 ///
+/// The template parameter `L` is the pipeline layout to use, and the template parameter `R` is
+/// a complex unspecified type that represents the list of resources.
+///
 /// # Example
 // TODO: example here
 pub struct SimpleDescriptorSetBuilder<L, R> {
+    // The pipeline layout.
     layout: L,
+    // Id of the set within the pipeline layout.
     set_id: usize,
+    // The writes to perform on a descriptor set in order to put the resources in it.
     writes: Vec<DescriptorWrite>,
+    // Holds the resources alive.
     resources: R,
 }
 
@@ -121,7 +140,7 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
         SimpleDescriptorSetBuilder {
             layout: layout,
             set_id: set_id,
-            writes: Vec::new(),
+            writes: Vec::with_capacity(layout.desc().num_bindings_in_set(set_id).unwrap_or(0)),
             resources: (),
         }
     }
@@ -148,10 +167,12 @@ impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
     }
 }
 
-/// Trait implemented on buffer values that can be appended to a simple descriptor set builder.
+/// Trait implemented on buffers so that they can be appended to a simple descriptor set builder.
 pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
+    /// The new type of the template parameter `R` of the builder.
     type Out;
 
+    /// Appends the buffer to the `SimpleDescriptorSetBuilder`.
     // TODO: return Result
     fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>;

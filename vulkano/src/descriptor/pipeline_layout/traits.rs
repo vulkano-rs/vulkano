@@ -145,11 +145,16 @@ pub unsafe trait PipelineLayoutDesc {
     }
 }
 
+/// Description of a range of the push constants of a pipeline layout.
 // TODO: should contain the layout as well
 #[derive(Debug, Copy, Clone)]
 pub struct PipelineLayoutDescPcRange {
+    /// Offset in bytes from the start of the push constants to this range.
     pub offset: usize,
+    /// Size in bytes of the range.
     pub size: usize,
+    /// The stages which can access this range. Note that the same shader stage can't access two
+    /// different ranges.
     pub stages: ShaderStages,
 }
 
