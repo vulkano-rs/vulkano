@@ -137,10 +137,12 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
     pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
         assert!(layout.desc().num_sets() > set_id);
 
+        let cap = layout.desc().num_bindings_in_set(set_id).unwrap_or(0);
+
         SimpleDescriptorSetBuilder {
             layout: layout,
             set_id: set_id,
-            writes: Vec::with_capacity(layout.desc().num_bindings_in_set(set_id).unwrap_or(0)),
+            writes: Vec::with_capacity(cap),
             resources: (),
         }
     }
