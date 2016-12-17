@@ -53,12 +53,11 @@ pub unsafe trait Submit {
     /// command buffers at once instead. To do so, you can use the `chain` method.
     ///
     /// Contrary to `submit`, this method preserves strong typing in the submission. This means
-    /// that it has a lower overhead but it is less convenient to store in a container. This method
-    /// also has the advantage of not requiring `Self: 'static`.
+    /// that it has a lower overhead but it is less convenient to store in a container.
     // TODO: add example
     #[inline]
     fn submit_precise(self, queue: &Arc<Queue>) -> Result<Submission<Self>, Box<Error>>
-        where Self: Sized
+        where Self: Sized + 'static
     {
         submit(self, queue)
     }
@@ -100,20 +99,6 @@ pub unsafe trait Submit {
     /// TODO: To write.
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>;
-}
-
-unsafe impl<'a, S: ?Sized> Submit for &'a S where S: Submit + 'a {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-
-    #[inline]
-    unsafe fn append_submission<'b>(&'b self, base: SubmitBuilder<'b>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'b>, Box<Error>>
-    {
-        (**self).append_submission(base, queue)
-    }
 }
 
 unsafe impl<S: ?Sized> Submit for Box<S> where S: Submit {
@@ -337,7 +322,7 @@ impl<'a> SubmitBuilder<'a> {
 
 // Implementation for `Submit::submit`.
 fn submit<S>(submit: S, queue: &Arc<Queue>) -> Result<Submission<S>, Box<Error>>
-    where S: Submit
+    where S: Submit + 'static
 {
     let last_fence;
     let keep_alive_semaphores;
@@ -438,13 +423,17 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
 /// in a long-living container such as a `Vec`. From time to time, you can clean the obsolete
 /// objects by checking whether `destroying_would_block()` returns false. For example, if you use
 /// a `Vec` you can do `vec.retain(|s| s.destroying_would_block())`.
-// TODO: docs
-// # Leak safety
-//
-// The `Submission` object can hold borrows of command buffers. In order for it to be safe to leak
-// a `Submission`, the borrowed object themselves must be protected by a fence.
+///
+/// # Leak safety
+///
+/// One of the roles of the `Submission` object is to keep alive the objects used by the GPU during
+/// the submission. However if the user calls `std::mem::forget` on the `Submission`, all borrows
+/// are immediately free'd. This is known as *the leakpocalypse*.
+///
+/// In order to avoid this problem, only `'static` objects can be put in a `Submission`.
+// TODO: ^ decide whether we allow to add an unsafe non-static constructor
 #[must_use]
-pub struct Submission<S = Box<Submit>> {
+pub struct Submission<S: 'static = Box<Submit>> {
     fence: FenceWithWaiting,      // TODO: make optional
     queue: Arc<Queue>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
