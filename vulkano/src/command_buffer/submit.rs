@@ -408,6 +408,8 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
+        // FIXME: huge problem here ; if the second one returns an error, the first one has been
+        // called without any actual following submission
         let builder = try!(self.first.append_submission(base, queue));
         self.second.append_submission(builder, queue)
     }
