@@ -66,10 +66,16 @@
 //! Creating a framebuffer is done by passing the render pass object, the dimensions of the
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
-//! The slightly tricky part is that the type that contains the list of attachments depends on
-//! the trait implementation of `RenderPassRef`. For example if you use an
+//! The tricky part is that the type that contains the list of attachments depends on the
+//! template parameter of the `RenderPass` object. For example if you use an
 //! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
 //!
+//! When it comes to `single_pass_renderpass!` and `ordered_passes_renderpass!` you can build a
+//! list of attachments by TODO.
+//!
+//! ## Example
+//!
+//! TODO
 
 pub use self::basic_render_pass::BasicRenderPassDesc;
 pub use self::basic_render_pass::BasicRenderPassDescAttachment;
