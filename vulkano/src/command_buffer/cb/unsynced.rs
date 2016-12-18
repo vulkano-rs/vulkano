@@ -26,7 +26,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
 use framebuffer::Framebuffer;
 use framebuffer::Subpass;
-use framebuffer::traits::FramebufferRef;
+use framebuffer::FramebufferRef;
 use image::Layout;
 use image::Image;
 use sync::AccessFlagBits;
