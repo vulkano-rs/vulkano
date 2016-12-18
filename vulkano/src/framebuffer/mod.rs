@@ -13,53 +13,58 @@
 //!
 //! There are two concepts in Vulkan:
 //! 
-//! - A `RenderPassRef` is a collection of one or multiples passes called subpasses. Each subpass
-//!   contains the format and dimensions of the attachments that are part of the subpass. The
-//!   render pass only defines the layout of the rendering process.
-//! - A `FramebufferRef` contains the list of actual images that are attached. It is created from a
-//!   render pass and has to match its characteristics.
+//! - A *render pass* describes the target which you are going to render to. It is a collection of
+//!   of descriptions of one or more attachments (ie. image that are rendered to), and of one or
+//!   multiples subpasses. The render pass contains the format and number of samples of each
+//!   attachment, and the attachments that are attached to each subpass. They are represented
+//!   in vulkano with the `RenderPass` object.
+//! - A *framebuffer* contains the list of actual images that are attached. It is created from a
+//!   render pass and has to match its characteristics. They are represented in vulkano with the
+//!   `Framebuffer` object.
 //!
-//! You can create graphics pipelines from a render pass object alone.
-//! A `FramebufferRef` is only needed when you add draw commands to a command buffer.
+//! Render passes are typically created at initialization only (for example during a loading
+//! screen), while framebuffers can be created and destroyed during the frame.
+//!
+//! Consequently you can create graphics pipelines from a render pass object alone.
+//! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
+//!
+//! > **Note**: While it is fast enough to create or destroy a framebuffer during a frame, it
+//! > doesn't mean that you *have to* create it during a frame. You can try to keep framebuffer
+//! > objects alive for as long as possible instead. But don't bother trying too hard if you can't.
 //!
 //! # Render passes
 //!
-//! In vulkano, a render pass is any object that implements the `RenderPassRef` trait.
+//! In vulkano, a render pass is represented by the `RenderPass` struct. The `RenderPassRef` trait
+//! also exists and is implemented on objects that hold a render pass (eg. `Arc<RenderPass>`).
 //!
-//! You can create a render pass by creating a `RenderPass` object. But as its name tells,
-//! it is unsafe because a lot of safety checks aren't performed.
+//! The `RenderPass` struct has a template parameter that contains the description of the render
+//! pass. This template parameter must implement the `RenderPassDesc` trait. In order to create
+//! a render pass, you must first create an object that implements the `RenderPassDesc` trait, then
+//! call the `build_render_pass` method of that trait.
 //!
-//! Instead you are encouraged to use a safe wrapper around an `RenderPass`.
-//! There are two ways to do this:   TODO add more ways
+//! For example the `EmptySinglePassRenderPassDesc` struct implements that trait. You can create
+//! a render pass like this:
 //!
-//! - Creating an instance of an `EmptySinglePassRenderPass`, which describes a render pass with no
-//!   attachment and with one subpass.
-//! - Using the `single_pass_renderpass!` macro. See the documentation of this macro.
-//!
-//! Render passes have three characteristics:
-//!
-//! - A list of attachments with their format.
-//! - A list of subpasses, that defines for each subpass which attachment is used for which
-//!   purpose.
-//! - A list of dependencies between subpasses. Vulkan implementations are free to reorder the
-//!   subpasses, which means that you need to declare dependencies if the output of a subpass
-//!   needs to be read in a following subpass.
-//!
-//! ## Example
-//!
-//! With `EmptySinglePassRenderPass`:
-//!
-//! ```no_run
-//! use vulkano::framebuffer::EmptySinglePassRenderPass;
-//!
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let renderpass = EmptySinglePassRenderPass::new(&device);
 //! ```
+//! use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+//! use vulkano::framebuffer::RenderPassDesc;
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! let desc = EmptySinglePassRenderPassDesc;
+//! let render_pass = desc.build_render_pass(device.clone()).unwrap();
+//! // The type of `render_pass` is `RenderPass<EmptySinglePassRenderPassDesc>`.
+//! ```
+//!
+//! This example creates a render pass with no attachment and one single subpass that doesn't draw
+//! on anything. While it's sometimes useful, most of the time it's not what you want.
+//!
+//! The easiest way to create a "real" render pass is to use the `single_pass_renderpass!` macro.
+//! See the documentation of the macro.
 //!
 //! # Framebuffers
 //!
 //! Creating a framebuffer is done by passing the render pass object, the dimensions of the
-//! framebuffer, and the list of attachments to `FramebufferRef::new()`.
+//! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
 //! The slightly tricky part is that the type that contains the list of attachments depends on
 //! the trait implementation of `RenderPassRef`. For example if you use an
