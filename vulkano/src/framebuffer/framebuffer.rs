@@ -59,17 +59,17 @@ impl<Rp, A> Framebuffer<Rp, A> {
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
     {
-        let device = render_pass.device().clone();
+        let device = render_pass.inner().device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
-        try!(render_pass.desc().check_attachments_list(&attachments));
+        try!(render_pass.inner().desc().check_attachments_list(&attachments));
 
         let attachments = attachments.into_attachments_list();
 
         // Checking the dimensions against the limits.
         {
-            let limits = render_pass.device().physical_device().limits();
+            let limits = render_pass.inner().device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
@@ -103,7 +103,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
         };*/
 
         let framebuffer = unsafe {
-            let vk = render_pass.device().pointers();
+            let vk = render_pass.inner().device().pointers();
 
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -137,7 +137,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
         where R: RenderPassRef, Rp: RenderPassRef
     {
-        self.render_pass.desc().is_compatible_with(render_pass.desc())
+        self.render_pass.inner().desc().is_compatible_with(render_pass.inner().desc())
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -175,29 +175,33 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn render_pass(&self) -> &Rp {
         &self.render_pass
     }
+
+    #[inline]
+    pub fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>)
+        where A: AttachmentsList
+    {
+        self.resources.add_transition(sink);
+    }
 }
 
 unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
     where Rp: RenderPassRef, A: AttachmentsList
 {
-    #[inline]
-    fn inner(&self) -> FramebufferSys {
-        FramebufferSys(&self.framebuffer)
-    }
+    type RenderPass = Rp;
+    type Attachments = A;
 
     #[inline]
-    fn render_pass(&self) -> &RenderPassRef {
-        &self.render_pass
+    fn inner(&self) -> &Framebuffer<Self::RenderPass, Self::Attachments> {
+        self
     }
+}
+
+unsafe impl<Rp, A> VulkanObject for Framebuffer<Rp, A> {
+    type Object = vk::Framebuffer;
 
     #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        self.dimensions
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        self.resources.add_transition(sink);
+    fn internal_object(&self) -> vk::Framebuffer {
+        self.framebuffer
     }
 }
 
@@ -208,19 +212,6 @@ impl<Rp, A> Drop for Framebuffer<Rp, A> {
             let vk = self.device.pointers();
             vk.DestroyFramebuffer(self.device.internal_object(), self.framebuffer, ptr::null());
         }
-    }
-}
-
-/// Opaque struct that represents a framebuffer without a template parameter.
-#[derive(Debug, Copy, Clone)]
-pub struct FramebufferSys<'a>(&'a vk::Framebuffer);
-
-unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
-    type Object = vk::Framebuffer;
-
-    #[inline]
-    fn internal_object(&self) -> vk::Framebuffer {
-        *self.0
     }
 }
 

@@ -9,16 +9,14 @@
 
 use std::sync::Arc;
 
-use command_buffer::cmd::CommandsListSink;
 use device::Device;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
+use framebuffer::Framebuffer;
 use framebuffer::FramebufferCreationError;
-use framebuffer::FramebufferSys;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassCreationError;
-use framebuffer::RenderPassSys;
 use image::Layout as ImageLayout;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
@@ -27,59 +25,33 @@ use sync::PipelineStages;
 use vk;
 
 pub unsafe trait FramebufferRef {
-    /// Returns the underlying framebuffer. Used by vulkano's internals.
-    fn inner(&self) -> FramebufferSys;
+    /// The reference to the render pass. First template parameter of the `Framebuffer` object.
+    type RenderPass: RenderPassRef;
 
-    /// Returns the render pass this framebuffer belongs to.
-    fn render_pass(&self) -> &RenderPassRef;
+    /// The attachments of the framebuffer. Second template parameter of the `Framebuffer` object.
+    type Attachments;
 
-    /// Returns the width, height and number of layers of the framebuffer.
-    fn dimensions(&self) -> [u32; 3];
-
-    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
+    /// Returns the underlying framebuffer.
+    fn inner(&self) -> &Framebuffer<Self::RenderPass, Self::Attachments>;
 }
 
 unsafe impl<'a, F> FramebufferRef for &'a F where F: FramebufferRef {
+    type RenderPass = F::RenderPass;
+    type Attachments = F::Attachments;
+
     #[inline]
-    fn inner(&self) -> FramebufferSys {
+    fn inner(&self) -> &Framebuffer<Self::RenderPass, Self::Attachments> {
         (**self).inner()
-    }
-
-    #[inline]
-    fn render_pass(&self) -> &RenderPassRef {
-        (**self).render_pass()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn add_transition<'m>(&'m self, sink: &mut CommandsListSink<'m>) {
-        (**self).add_transition(sink);
     }
 }
 
 unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
+    type RenderPass = F::RenderPass;
+    type Attachments = F::Attachments;
+
     #[inline]
-    fn inner(&self) -> FramebufferSys {
+    fn inner(&self) -> &Framebuffer<Self::RenderPass, Self::Attachments> {
         (**self).inner()
-    }
-
-    #[inline]
-    fn render_pass(&self) -> &RenderPassRef {
-        (**self).render_pass()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        (**self).add_transition(sink);
     }
 }
 
@@ -89,18 +61,15 @@ unsafe impl<F> FramebufferRef for Arc<F> where F: FramebufferRef {
 ///
 /// This trait is unsafe because:
 ///
-/// - `render_pass` has to return the same `RenderPass` every time.
-/// - `num_subpasses` has to return a correct value.
+/// - `inner` has to return the same `RenderPass` every time.
+/// - `subpass` shouldn't be overridden.
 ///
 pub unsafe trait RenderPassRef {
-    /// Returns the device this render pass belongs to.
-    fn device(&self) -> &Arc<Device>;
+    /// The template parameter of the `RenderPass`.
+    type Desc: RenderPassDesc;
 
-    /// Returns the underlying `RenderPass`. Used by vulkano's internals.
-    fn inner(&self) -> RenderPassSys;
-
-    /// Returns a description of the render pass.
-    fn desc(&self) -> &RenderPassDesc;
+    /// Returns the underlying `RenderPass`.
+    fn inner(&self) -> &RenderPass<Self::Desc>;
 
     #[inline]
     fn subpass(&self, index: u32) -> Option<Subpass<&Self>> where Self: Sized {
@@ -109,36 +78,20 @@ pub unsafe trait RenderPassRef {
 }
 
 unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
+    type Desc = T::Desc;
 
     #[inline]
-    fn inner(&self) -> RenderPassSys {
+    fn inner(&self) -> &RenderPass<Self::Desc> {
         (**self).inner()
-    }
-
-    #[inline]
-    fn desc(&self) -> &RenderPassDesc {
-        (**self).desc()
     }
 }
 
 unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
+    type Desc = T::Desc;
 
     #[inline]
-    fn inner(&self) -> RenderPassSys {
+    fn inner(&self) -> &RenderPass<Self::Desc> {
         (**self).inner()
-    }
-
-    #[inline]
-    fn desc(&self) -> &RenderPassDesc {
-        (**self).desc()
     }
 }
 
@@ -761,7 +714,7 @@ impl<L> Subpass<L> where L: RenderPassRef {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
-        if (id as usize) < render_pass.desc().num_subpasses() {
+        if (id as usize) < render_pass.inner().desc().num_subpasses() {
             Some(Subpass {
                 render_pass: render_pass,
                 subpass_id: id,
@@ -775,47 +728,47 @@ impl<L> Subpass<L> where L: RenderPassRef {
     /// Returns the number of color attachments in this subpass.
     #[inline]
     pub fn num_color_attachments(&self) -> u32 {
-        self.render_pass.desc().num_color_attachments(self.subpass_id).unwrap()
+        self.render_pass.inner().desc().num_color_attachments(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment.
     #[inline]
     pub fn has_depth(&self) -> bool {
-        self.render_pass.desc().has_depth(self.subpass_id).unwrap()
+        self.render_pass.inner().desc().has_depth(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     pub fn has_writable_depth(&self) -> bool {
-        self.render_pass.desc().has_writable_depth(self.subpass_id).unwrap()
+        self.render_pass.inner().desc().has_writable_depth(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
     #[inline]
     pub fn has_stencil(&self) -> bool {
-        self.render_pass.desc().has_stencil(self.subpass_id).unwrap()
+        self.render_pass.inner().desc().has_stencil(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     pub fn has_writable_stencil(&self) -> bool {
-        self.render_pass.desc().has_writable_stencil(self.subpass_id).unwrap()
+        self.render_pass.inner().desc().has_writable_stencil(self.subpass_id).unwrap()
     }
 
     /// Returns true if the subpass has any color or depth/stencil attachment.
     #[inline]
     pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
         self.num_color_attachments() >= 1 ||
-        self.render_pass.desc().has_depth_stencil_attachment(self.subpass_id).unwrap() != (false, false)
+        self.render_pass.inner().desc().has_depth_stencil_attachment(self.subpass_id).unwrap() != (false, false)
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
     /// if there is no such attachment in this subpass.
     #[inline]
     pub fn num_samples(&self) -> Option<u32> {
-        self.render_pass.desc().num_samples(self.subpass_id)
+        self.render_pass.inner().desc().num_samples(self.subpass_id)
     }
 }
 

@@ -17,10 +17,11 @@ use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use device::Device;
 use format::ClearValue;
+use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassClearValues;
+use framebuffer::RenderPassRef;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -54,15 +55,15 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
     // TODO: allow setting more parameters
     pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
                   -> CmdBeginRenderPass<L, Arc<RenderPass>, F>
-        where for<'r> &'r RenderPassDesc: RenderPassClearValues<C>
+        where <<F as FramebufferRef>::RenderPass as RenderPassRef>::Desc: RenderPassClearValues<C>
     {
-        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
-        let device = framebuffer.render_pass().device().clone();
+        let raw_render_pass = framebuffer.inner().render_pass().inner().internal_object();
+        let device = framebuffer.inner().render_pass().inner().device().clone();
         let raw_framebuffer = framebuffer.inner().internal_object();
 
         let clear_values = {
-            let desc = framebuffer.render_pass().desc();
-            (&desc).convert_clear_values(clear_values).map(|clear_value| {
+            let desc = framebuffer.inner().render_pass().inner().desc();
+            desc.convert_clear_values(clear_values).map(|clear_value| {
                 match clear_value {
                     ClearValue::None => {
                         vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
@@ -95,7 +96,8 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
             }).collect()
         };
 
-        let rect = [0 .. framebuffer.dimensions()[0], 0 .. framebuffer.dimensions()[1]];
+        let rect = [0 .. framebuffer.inner().dimensions()[0],
+                    0 .. framebuffer.inner().dimensions()[1]];
 
         CmdBeginRenderPass {
             previous: previous,
@@ -112,7 +114,7 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
 }
 
 unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
-    where L: CommandsList, F: FramebufferRef
+    where L: CommandsList, F: FramebufferRef, F::Attachments: AttachmentsList
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -123,7 +125,7 @@ unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
         debug_assert!(self.rect[0].start <= self.rect[0].end);
         debug_assert!(self.rect[1].start <= self.rect[1].end);
 
-        self.framebuffer.add_transition(builder);
+        self.framebuffer.inner().add_transition(builder);
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {

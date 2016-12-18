@@ -78,11 +78,10 @@
 //! TODO
 
 pub use self::empty::EmptySinglePassRenderPassDesc;
+pub use self::framebuffer::AttachmentsList;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferCreationError;
-pub use self::framebuffer::FramebufferSys;
 pub use self::sys::RenderPass;
-pub use self::sys::RenderPassSys;
 pub use self::sys::RenderPassCreationError;
 pub use self::traits::FramebufferRef;
 pub use self::traits::RenderPassRef;

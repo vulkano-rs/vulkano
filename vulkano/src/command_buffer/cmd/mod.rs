@@ -23,7 +23,6 @@ use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use device::Device;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassClearValues;
 use image::Layout;
@@ -178,7 +177,7 @@ pub unsafe trait CommandsList {
     fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
                                -> CmdBeginRenderPass<Self, Arc<RenderPass>, F>
         where Self: Sized, F: FramebufferRef,
-              for<'r> &'r RenderPassDesc: RenderPassClearValues<C>
+              <<F as FramebufferRef>::RenderPass as RenderPassRef>::Desc: RenderPassClearValues<C>
     {
         CmdBeginRenderPass::new(self, framebuffer, secondary, clear_values)
     }
