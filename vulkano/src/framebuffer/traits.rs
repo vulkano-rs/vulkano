@@ -473,10 +473,10 @@ unsafe impl<R: ?Sized> RenderPassClearValues<Vec<ClearValue>> for R where R: Ren
     }
 }
 
-/// Extension trait for `RenderPassRef` that checks whether a subpass of this render pass accepts
+/// Extension trait for `RenderPassDesc` that checks whether a subpass of this render pass accepts
 /// the output of a fragment shader.
 ///
-/// The trait is automatically implemented for all type that implement `RenderPassRef` and
+/// The trait is automatically implemented for all type that implement `RenderPassDesc` and
 /// `RenderPassDesc`.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible

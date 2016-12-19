@@ -171,7 +171,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Vo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp::Desc: RenderPassSubpassInterface<Fo>,
     {
         if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
@@ -307,7 +307,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gl: PipelineLayoutDescNames,
               Tcl: PipelineLayoutDescNames,
               Tel: PipelineLayoutDescNames,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp::Desc: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
@@ -344,8 +344,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
-                                                                params.fragment_shader.output())
+        if !params.render_pass.render_pass().inner().desc().is_compatible_with(params.render_pass.index(),
+                                                                               params.fragment_shader.output())
         {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
