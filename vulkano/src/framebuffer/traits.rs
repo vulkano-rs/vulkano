@@ -95,6 +95,10 @@ unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     }
 }
 
+/// Trait for objects that contain the description of a a render pass.
+///
+/// See also `RenderPassAttachmentsList` and `RenderPassClearValues` which are extensions to this
+/// trait.
 ///
 /// # Safety
 ///
@@ -414,7 +418,11 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
     }
 }
 
-/// Extension trait for `RenderPassRef`. Defines which types are allowed as an attachments list.
+/// Extension trait for `RenderPassDesc`. Defines which types are allowed as an attachments list.
+///
+/// When the user creates a framebuffer, they need to pass a render pass object and a list of
+/// attachments. In order for it to work, the `RenderPassDesc` object of the render pass must
+/// implement `RenderPassAttachmentsList<A>` where `A` is the type of the list of attachments.
 ///
 /// # Safety
 ///
@@ -434,11 +442,11 @@ pub unsafe trait RenderPassAttachmentsList<A>: RenderPassDesc {
     fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
-unsafe impl<A, R> RenderPassAttachmentsList<A> for R where R: RenderPassDesc {
+/*unsafe impl<A, R> RenderPassAttachmentsList<A> for R where R: RenderPassDesc {
     fn check_attachments_list(&self, attachments: &A) -> Result<(), FramebufferCreationError> {
         Ok(())        // FIXME:
     }
-}
+}*/
 
 /// Extension trait for `RenderPassDesc`. Defines which types are allowed as a list of clear values.
 ///

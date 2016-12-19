@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `CustomRenderPassDesc` object that provides a safe wrapper around `RenderPass`.
+/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -32,7 +32,7 @@ macro_rules! single_pass_renderpass {
     )
 }
 
-/// Builds a `CustomRenderPassDesc` object that provides a safe wrapper around `RenderPass`.
+/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
@@ -73,7 +73,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::LayoutPassDependencyDescription;
         use $crate::framebuffer::FramebufferCreationError;
         use $crate::framebuffer::RenderPassCreationError;
-        use $crate::framebuffer::framebuffer::IntoAttachmentsList;
+        use $crate::framebuffer::IntoAttachmentsList;
         use $crate::image::Layout;
         use $crate::image::traits::ImageView;
         use $crate::sync::AccessFlagBits;
@@ -84,6 +84,17 @@ macro_rules! ordered_passes_renderpass {
                 $atch_name: (Format, u32),
             )*
         }
+
+        impl CustomRenderPassDesc {
+            #[inline]
+            pub fn start_attachments(&self) -> AttachmentsStart {
+                AttachmentsStart
+            }
+        }
+
+        pub struct AttachmentsStart;
+
+        ordered_passes_renderpass!{[] __impl_attachments__ [] [] [$($atch_name),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
 
         #[allow(unsafe_code)]
         unsafe impl RenderPassDesc for CustomRenderPassDesc {
@@ -333,6 +344,56 @@ macro_rules! ordered_passes_renderpass {
             )*
         }.build_render_pass($device)
     });
+
+    ([] __impl_attachments__ [] [] [] [$($params:ident),*]) => {
+        unsafe impl RenderPassAttachmentsList<AttachmentsStart> for CustomRenderPassDesc {
+            fn check_attachments_list(&self, attachments: &AttachmentsStart) -> Result<(), FramebufferCreationError> {
+                Ok(())        // FIXME:
+            }
+        }
+    };
+
+    ([] __impl_attachments__ [] [] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$first_param> {
+            current: $first_param,
+        }
+
+        impl AttachmentsStart {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$first_param> {
+                $next {
+                    current: next,
+                }
+            }
+        }
+
+        ordered_passes_renderpass!{[] __impl_attachments__ [$next] [$first_param] [$($rest),*] [$($rest_params),*]}
+    };
+
+    ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
+        unsafe impl<$($prev_params,)*> RenderPassAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc {
+            fn check_attachments_list(&self, attachments: &$prev<$($prev_params,)*>) -> Result<(), FramebufferCreationError> {
+                Ok(())        // FIXME:
+            }
+        }
+    };
+
+    ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$($prev_params,)* $first_param> {
+            prev: $prev,
+            current: $first_param,
+        }
+
+        impl<$($prev_params,)*> $prev<$($prev_params,)*> {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$($prev_params,)* $first_param> {
+                $next {
+                    prev: self,
+                    current: next,
+                }
+            }
+        }
+
+        ordered_passes_renderpass!{[] __impl_attachments__ [$next] [$($prev_params,)* $first_param] [$($rest),*] [$($rest_params),*]}
+    };
 
     ([] __impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
         ordered_passes_renderpass!{[] __impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }

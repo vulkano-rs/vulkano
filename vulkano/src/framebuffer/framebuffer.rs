@@ -56,6 +56,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
                    attachments: Ia) -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPassRef,
+              Rp::Desc: RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
     {
