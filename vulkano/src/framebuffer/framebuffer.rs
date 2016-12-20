@@ -19,7 +19,7 @@ use device::Device;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
-use framebuffer::RenderPassAttachmentsList;
+use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassCompatible;
 use image::sys::Layout;
 use image::traits::ImageView;
@@ -56,7 +56,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
                    attachments: Ia) -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPassRef,
-              Rp::Desc: RenderPassAttachmentsList<Ia>,
+              Rp::Desc: RenderPassDescAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
     {

@@ -97,7 +97,7 @@ unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
 
 /// Trait for objects that contain the description of a a render pass.
 ///
-/// See also `RenderPassAttachmentsList` and `RenderPassClearValues` which are extensions to this
+/// See also `RenderPassDescAttachmentsList` and `RenderPassClearValues` which are extensions to this
 /// trait.
 ///
 /// # Safety
@@ -422,7 +422,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 ///
 /// When the user creates a framebuffer, they need to pass a render pass object and a list of
 /// attachments. In order for it to work, the `RenderPassDesc` object of the render pass must
-/// implement `RenderPassAttachmentsList<A>` where `A` is the type of the list of attachments.
+/// implement `RenderPassDescAttachmentsList<A>` where `A` is the type of the list of attachments.
 ///
 /// # Safety
 ///
@@ -435,14 +435,14 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 /// - That the attachments use identity components swizzling.
 /// TODO: more stuff with aliasing
 ///
-pub unsafe trait RenderPassAttachmentsList<A>: RenderPassDesc {
+pub unsafe trait RenderPassDescAttachmentsList<A>: RenderPassDesc {
     /// Decodes a `A` into a list of attachments.
     ///
     /// Returns an error if one of the attachments is wrong.
     fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
 }
 
-/*unsafe impl<A, R> RenderPassAttachmentsList<A> for R where R: RenderPassDesc {
+/*unsafe impl<A, R> RenderPassDescAttachmentsList<A> for R where R: RenderPassDesc {
     fn check_attachments_list(&self, attachments: &A) -> Result<(), FramebufferCreationError> {
         Ok(())        // FIXME:
     }

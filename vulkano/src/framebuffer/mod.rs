@@ -87,7 +87,7 @@ pub use self::sys::RenderPassCreationError;
 pub use self::traits::FramebufferRef;
 pub use self::traits::RenderPassRef;
 pub use self::traits::RenderPassDesc;
-pub use self::traits::RenderPassAttachmentsList;
+pub use self::traits::RenderPassDescAttachmentsList;
 pub use self::traits::RenderPassClearValues;
 pub use self::traits::RenderPassCompatible;
 pub use self::traits::RenderPassSubpassInterface;

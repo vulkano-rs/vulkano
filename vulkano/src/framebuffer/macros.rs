@@ -67,7 +67,7 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::RenderPassRef;
         use $crate::framebuffer::RenderPassDesc;
         use $crate::framebuffer::RenderPassClearValues;
-        use $crate::framebuffer::RenderPassAttachmentsList;
+        use $crate::framebuffer::RenderPassDescAttachmentsList;
         use $crate::framebuffer::LayoutAttachmentDescription;
         use $crate::framebuffer::LayoutPassDescription;
         use $crate::framebuffer::LayoutPassDependencyDescription;
@@ -320,7 +320,7 @@ macro_rules! ordered_passes_renderpass {
 
         #[allow(non_camel_case_types)]
         #[allow(unsafe_code)]
-        unsafe impl<$($atch_name: ImageView),*> RenderPassAttachmentsList<AList<$($atch_name),*>> for CustomRenderPassDesc {
+        unsafe impl<$($atch_name: ImageView),*> RenderPassDescAttachmentsList<AList<$($atch_name),*>> for CustomRenderPassDesc {
             #[inline]
             fn check_attachments_list(&self, l: &AList<$($atch_name),*>) -> Result<(), FramebufferCreationError> {
                 #![allow(unused_assignments)]
@@ -346,7 +346,7 @@ macro_rules! ordered_passes_renderpass {
     });
 
     ([] __impl_attachments__ [] [] [] [$($params:ident),*]) => {
-        unsafe impl RenderPassAttachmentsList<AttachmentsStart> for CustomRenderPassDesc {
+        unsafe impl RenderPassDescAttachmentsList<AttachmentsStart> for CustomRenderPassDesc {
             fn check_attachments_list(&self, attachments: &AttachmentsStart) -> Result<(), FramebufferCreationError> {
                 Ok(())        // FIXME:
             }
@@ -370,7 +370,7 @@ macro_rules! ordered_passes_renderpass {
     };
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
-        unsafe impl<$($prev_params,)*> RenderPassAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc {
+        unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc {
             fn check_attachments_list(&self, attachments: &$prev<$($prev_params,)*>) -> Result<(), FramebufferCreationError> {
                 Ok(())        // FIXME:
             }
