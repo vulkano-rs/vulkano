@@ -279,6 +279,12 @@ fn main() {
         // We need to indicate the layout of the vertices.
         // The type `SingleBufferDefinition` actually contains a template parameter corresponding
         // to the type of each vertex. But in this code it is automatically inferred.
+        // In order to manually pass the type, create a vertex struct and call the macro impl_vertex! on it:
+        // 
+        // struct Vertex { position: [f32; 2] }
+        // impl_vertex!(Vertex, position);
+        // ...
+        // vertex_input: SingleBufferDefinition::<Vertex>::new(),
         vertex_input: SingleBufferDefinition::new(),
 
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
