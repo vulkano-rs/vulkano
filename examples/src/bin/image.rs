@@ -60,27 +60,18 @@ fn main() {
     };
 
 
-
-
-    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
-                               ::array(&device, 4, &vulkano::buffer::BufferUsage::all(),
-                                       Some(queue.family())).expect("failed to create buffer");
-
+    #[derive(Debug, Clone)]
     struct Vertex { position: [f32; 2] }
     impl_vertex!(Vertex, position);
 
-    // The buffer that we created contains uninitialized data.
-    // In order to fill it with data, we have to *map* it.
-    {
-        // The `write` function would return `Err` if the buffer was in use by the GPU. This
-        // obviously can't happen here, since we haven't ask the GPU to do anything yet.
-        let mut mapping = vertex_buffer.write(Duration::new(0, 0)).unwrap();
-        mapping[0].position = [-0.5, -0.5];
-        mapping[1].position = [-0.5,  0.5];
-        mapping[2].position = [ 0.5, -0.5];
-        mapping[3].position = [ 0.5,  0.5];
-    }
-
+    let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
+                               ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+                                       Some(queue.family()), [
+                                           Vertex { position: [-0.5, -0.5 ] },
+                                           Vertex { position: [-0.5,  0.5 ] },
+                                           Vertex { position: [ 0.5, -0.5 ] },
+                                           Vertex { position: [ 0.5,  0.5 ] },
+                                       ].iter().cloned()).expect("failed to create buffer");
 
     mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_vs.glsl")} }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
@@ -116,22 +107,13 @@ fn main() {
                                                         image::ImageFormat::PNG).unwrap().to_rgba();
         let image_data = image.into_raw().clone();
 
+        let image_data_chunks = image_data.chunks(4).map(|c| [c[0], c[1], c[2], c[3]]);
+
         // TODO: staging buffer instead
-        let pixel_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-                                   ::array(&device, image_data.len(), &vulkano::buffer::BufferUsage::all(),
-                                           Some(queue.family())).expect("failed to create buffer");
-
-        {
-            let mut mapping = pixel_buffer.write(Duration::new(0, 0)).unwrap();
-            for (o, i) in mapping.iter_mut().zip(image_data.chunks(4)) {
-                o[0] = i[0];
-                o[1] = i[1];
-                o[2] = i[2];
-                o[3] = i[3];
-            }
-        }
-
-        pixel_buffer
+        vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
+            ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+                        Some(queue.family()), image_data_chunks)
+                        .expect("failed to create buffer")
     };
 
 
