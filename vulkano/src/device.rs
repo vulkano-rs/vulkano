@@ -211,7 +211,7 @@ impl Device {
                 if let Some(q) = queues.iter_mut().find(|q| q.0 == queue_family.id()) {
                     output_queues.push((queue_family.id(), q.1.len() as u32));
                     q.1.push(priority);
-                    if q.1.len() >= queue_family.queues_count() {
+                    if q.1.len() > queue_family.queues_count() {
                         return Err(DeviceCreationError::TooManyQueuesForFamily);
                     }
                     continue;
