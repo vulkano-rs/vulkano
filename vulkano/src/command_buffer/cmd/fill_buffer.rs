@@ -24,7 +24,8 @@ use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct CmdFillBuffer<L, B>
-    where B: Buffer, L: CommandsList
+    where B: Buffer,
+          L: CommandsList
 {
     // Parent commands list.
     previous: L,
@@ -45,9 +46,7 @@ impl<L, B> CmdFillBuffer<L, B>
           L: CommandsList + CommandsListPossibleOutsideRenderPass
 {
     /// Builds a command that writes data to a buffer.
-    pub fn new(previous: L, buffer: B, data: u32)
-               -> Result<CmdFillBuffer<L, B>, CmdFillBufferError>
-    {
+    pub fn new(previous: L, buffer: B, data: u32) -> Result<CmdFillBuffer<L, B>, CmdFillBufferError> {
         assert!(previous.is_outside_render_pass());     // TODO: error
 
         let size = buffer.size();
@@ -76,7 +75,7 @@ impl<L, B> CmdFillBuffer<L, B>
 
 unsafe impl<L, B> CommandsList for CmdFillBuffer<L, B>
     where B: Buffer,
-          L: CommandsList,
+          L: CommandsList
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -86,10 +85,9 @@ unsafe impl<L, B> CommandsList for CmdFillBuffer<L, B>
                    builder.device().internal_object());
 
         {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true,
-                                          stages, access);
+            let stages = PipelineStages { transfer: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { transfer_write: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true, stages, access);
         }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
@@ -115,12 +113,8 @@ impl error::Error for CmdFillBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdFillBufferError::BufferMissingUsage => {
-                "the transfer destination usage must be enabled on the buffer"
-            },
-            CmdFillBufferError::WrongAlignment => {
-                "the offset or size are not aligned to 4 bytes"
-            },
+            CmdFillBufferError::BufferMissingUsage => "the transfer destination usage must be enabled on the buffer",
+            CmdFillBufferError::WrongAlignment => "the offset or size are not aligned to 4 bytes",
         }
     }
 }
@@ -145,13 +139,16 @@ mod tests {
     fn basic() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let buffer = CpuAccessibleBuffer::from_data(&device, &BufferUsage::transfer_dest(),
-                                                    Some(queue.family()), 0u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(&device,
+                                                    &BufferUsage::transfer_dest(),
+                                                    Some(queue.family()),
+                                                    0u32)
+            .unwrap();
 
         let _ = PrimaryCbBuilder::new(&device, queue.family())
-                    .fill_buffer(buffer.clone(), 128u32)
-                    .build()
-                    .submit(&queue);
+            .fill_buffer(buffer.clone(), 128u32)
+            .build()
+            .submit(&queue);
 
         let content = buffer.read(Duration::from_secs(0)).unwrap();
         assert_eq!(*content, 128);

@@ -23,7 +23,9 @@ use VulkanPointers;
 ///
 /// Only the values that are `Some` are touched. Parameters that are `None` are left untouched.
 /// A state is not modified if the same state is already current.
-pub struct CmdSetState<L> where L: CommandsList {
+pub struct CmdSetState<L>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // The device.
@@ -32,7 +34,9 @@ pub struct CmdSetState<L> where L: CommandsList {
     dynamic_state: DynamicState,
 }
 
-impl<L> CmdSetState<L> where L: CommandsList {
+impl<L> CmdSetState<L>
+    where L: CommandsList
+{
     /// Builds a command.
     ///
     /// Since this command checks whether the dynamic state is supported by the device, you have
@@ -53,12 +57,15 @@ impl<L> CmdSetState<L> where L: CommandsList {
     }
 }
 
-unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
+unsafe impl<L> CommandsList for CmdSetState<L>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+        assert_eq!(self.device.internal_object(),
+                   builder.device().internal_object());
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {

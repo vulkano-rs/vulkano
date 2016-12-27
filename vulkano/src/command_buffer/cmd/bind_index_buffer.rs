@@ -23,7 +23,9 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
-pub struct CmdBindIndexBuffer<L, B> where L: CommandsList {
+pub struct CmdBindIndexBuffer<L, B>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // Raw handle of the buffer to bind.
@@ -72,19 +74,20 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
 }
 
 unsafe impl<L, B> CommandsList for CmdBindIndexBuffer<L, B>
-    where L: CommandsList, B: Buffer
+    where L: CommandsList,
+          B: Buffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+        assert_eq!(self.device.internal_object(),
+                   builder.device().internal_object());
 
         {
-            let stages = PipelineStages { vertex_input: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { index_read: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), false,
-                                          stages, access);
+            let stages = PipelineStages { vertex_input: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { index_read: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), false, stages, access);
         }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {

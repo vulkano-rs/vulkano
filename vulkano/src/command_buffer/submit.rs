@@ -74,10 +74,16 @@ pub unsafe trait Submit {
     // TODO: add test for panic
     // TODO: add example
     #[inline]
-    fn chain<S>(self, other: S) -> SubmitChain<Self, S> where Self: Sized, S: Submit {
+    fn chain<S>(self, other: S) -> SubmitChain<Self, S>
+        where Self: Sized,
+              S: Submit
+    {
         assert_eq!(self.device().internal_object(),
                    other.device().internal_object());
-        SubmitChain { first: self, second: other }
+        SubmitChain {
+            first: self,
+            second: other,
+        }
     }
 
     /// Returns the device this object belongs to.
@@ -97,34 +103,33 @@ pub unsafe trait Submit {
     /// # Safety for the implementation
     ///
     /// TODO: To write.
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>;
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>) -> Result<SubmitBuilder<'a>, Box<Error>>;
 }
 
-unsafe impl<S: ?Sized> Submit for Box<S> where S: Submit {
+unsafe impl<S: ?Sized> Submit for Box<S>
+    where S: Submit
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
     }
 
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>) -> Result<SubmitBuilder<'a>, Box<Error>> {
         (**self).append_submission(base, queue)
     }
 }
 
-unsafe impl<S: ?Sized> Submit for Arc<S> where S: Submit {
+unsafe impl<S: ?Sized> Submit for Arc<S>
+    where S: Submit
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
     }
 
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>) -> Result<SubmitBuilder<'a>, Box<Error>> {
         (**self).append_submission(base, queue)
     }
 }
@@ -206,13 +211,14 @@ impl<'a> SubmitBuilder<'a> {
     ///
     /// The semaphore must be signalled by a previous submission.
     #[inline]
-    pub fn add_wait_semaphore(mut self, semaphore: Arc<Semaphore>, stages: PipelineStages)
-                              -> SubmitBuilder<'a>
-    {
+    pub fn add_wait_semaphore(mut self, semaphore: Arc<Semaphore>, stages: PipelineStages) -> SubmitBuilder<'a> {
         // TODO: check device of the semaphore with a debug_assert
         // TODO: if stages contains tessellation or geometry stages, make sure the corresponding
         // feature is active with a debug_assert
-        debug_assert!({ let f: vk::PipelineStageFlagBits = stages.into(); f != 0 });
+        debug_assert!({
+            let f: vk::PipelineStageFlagBits = stages.into();
+            f != 0
+        });
 
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
@@ -220,10 +226,10 @@ impl<'a> SubmitBuilder<'a> {
 
         {
             let mut submit = self.submits.last_mut().unwrap();
-            if submit.batches.last().map(|b| b.signalSemaphoreCount != 0 ||
-                                             b.commandBufferCount != 0)
-                                    .unwrap_or(true)
-            {
+            if submit.batches
+                .last()
+                .map(|b| b.signalSemaphoreCount != 0 || b.commandBufferCount != 0)
+                .unwrap_or(true) {
                 submit.batches.push(SubmitBuilder::empty_vk_submit_info());
             }
 
@@ -247,8 +253,7 @@ impl<'a> SubmitBuilder<'a> {
     /// that builds this `SubmitBuilder`. Consequently keeping the `Submit` object alive is enough
     /// to guarantee that the command buffer is kept alive as well.
     #[inline]
-    pub fn add_command_buffer<L, P>(self, command_buffer: &'a UnsyncedCommandBuffer<L, P>)
-                                    -> SubmitBuilder<'a>
+    pub fn add_command_buffer<L, P>(self, command_buffer: &'a UnsyncedCommandBuffer<L, P>) -> SubmitBuilder<'a>
         where P: CommandPool
     {
         self.add_command_buffer_raw(command_buffer.internal_object())
@@ -256,9 +261,7 @@ impl<'a> SubmitBuilder<'a> {
 
     // TODO: remove in favor of `add_command_buffer`?
     #[inline]
-    pub fn add_command_buffer_raw(mut self, command_buffer: vk::CommandBuffer)
-                                  -> SubmitBuilder<'a>
-    {
+    pub fn add_command_buffer_raw(mut self, command_buffer: vk::CommandBuffer) -> SubmitBuilder<'a> {
         if self.submits.last().map(|b| b.fence.is_some()).unwrap_or(true) {
             self.submits.push(Default::default());
         }
@@ -355,28 +358,36 @@ fn submit<S>(submit: S, queue: &Arc<Queue>) -> Result<Submission<S>, Box<Error>>
             for submit in builder.submits.iter_mut() {
                 for batch in submit.batches.iter_mut() {
                     batch.pWaitSemaphores = builder.semaphores_storage
-                                                   .as_ptr().offset(next_semaphore);
+                        .as_ptr()
+                        .offset(next_semaphore);
                     batch.pWaitDstStageMask = builder.dest_stages_storage
-                                                     .as_ptr().offset(next_wait_stage);
+                        .as_ptr()
+                        .offset(next_wait_stage);
                     next_semaphore += batch.waitSemaphoreCount as isize;
                     next_wait_stage += batch.waitSemaphoreCount as isize;
                     batch.pCommandBuffers = builder.command_buffers_storage
-                                                   .as_ptr().offset(next_command_buffer);
+                        .as_ptr()
+                        .offset(next_command_buffer);
                     next_command_buffer += batch.commandBufferCount as isize;
                     batch.pSignalSemaphores = builder.semaphores_storage
-                                                     .as_ptr().offset(next_semaphore);
+                        .as_ptr()
+                        .offset(next_semaphore);
                     next_semaphore += batch.signalSemaphoreCount as isize;
                 }
 
                 let fence = submit.fence.as_ref().map(|f| f.internal_object()).unwrap_or(0);
-                check_errors(vk.QueueSubmit(*queue, submit.batches.len() as u32,
-                                            submit.batches.as_ptr(), fence)).unwrap();        // TODO: handle errors (trickier than it looks)
+                check_errors(vk.QueueSubmit(*queue,
+                                            submit.batches.len() as u32,
+                                            submit.batches.as_ptr(),
+                                            fence))
+                    .unwrap();        // TODO: handle errors (trickier than it looks)
 
             }
 
             debug_assert_eq!(next_semaphore as usize, builder.semaphores_storage.len());
             debug_assert_eq!(next_wait_stage as usize, builder.dest_stages_storage.len());
-            debug_assert_eq!(next_command_buffer as usize, builder.command_buffers_storage.len());
+            debug_assert_eq!(next_command_buffer as usize,
+                             builder.command_buffers_storage.len());
         }
     }
 
@@ -395,19 +406,20 @@ pub struct SubmitChain<A, B> {
     second: B,
 }
 
-unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
+unsafe impl<A, B> Submit for SubmitChain<A, B>
+    where A: Submit,
+          B: Submit
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         debug_assert_eq!(self.first.device().internal_object(),
                          self.second.device().internal_object());
-        
+
         self.first.device()
     }
 
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>) -> Result<SubmitBuilder<'a>, Box<Error>> {
         // FIXME: huge problem here ; if the second one returns an error, the first one has been
         // called without any actual following submission
         let builder = try!(self.first.append_submission(base, queue));
@@ -436,7 +448,7 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
 // TODO: ^ decide whether we allow to add an unsafe non-static constructor
 #[must_use]
 pub struct Submission<S: 'static = Box<Submit>> {
-    fence: FenceWithWaiting,      // TODO: make optional
+    fence: FenceWithWaiting, // TODO: make optional
     queue: Arc<Queue>,
     keep_alive_semaphores: SmallVec<[Arc<Semaphore>; 8]>,
     keep_alive_fences: SmallVec<[Arc<Fence>; 2]>,
@@ -468,7 +480,7 @@ impl<S> Submission<S> {
     /// Returns `true` if the GPU has finished executing this submission.
     #[inline]
     pub fn finished(&self) -> bool {
-        self.fence.0.ready().unwrap_or(false)     // TODO: what to do in case of error?   
+        self.fence.0.ready().unwrap_or(false)     // TODO: what to do in case of error?
     }
 
     /// Waits until the submission has finished.
@@ -484,7 +496,9 @@ impl<S> Submission<S> {
     }
 }
 
-impl<S> Submission<S> where S: Submit + 'static {
+impl<S> Submission<S>
+    where S: Submit + 'static
+{
     /// Turns this submission into a boxed submission.
     pub fn boxed(self) -> Submission {
         Submission {
@@ -522,15 +536,17 @@ mod tests {
 
     #[test]
     fn basic_submit() {
-        struct Basic { inner: UnsafeCommandBuffer<Arc<StandardCommandPool>> }
+        struct Basic {
+            inner: UnsafeCommandBuffer<Arc<StandardCommandPool>>,
+        }
         unsafe impl CommandBuffer for Basic {
             type Pool = Arc<StandardCommandPool>;
 
-            fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> { &self.inner }
+            fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
+                &self.inner
+            }
 
-            unsafe fn on_submit<F>(&self, _: &Arc<Queue>, fence: F)
-                                   -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                                 Self::SemaphoresSignalIterator>
+            unsafe fn on_submit<F>(&self, _: &Arc<Queue>, fence: F) -> SubmitInfo<Self::SemaphoresWaitIterator, Self::SemaphoresSignalIterator>
                 where F: FnOnce() -> Arc<Fence>
             {
                 SubmitInfo::empty()

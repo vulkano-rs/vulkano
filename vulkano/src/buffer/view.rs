@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! View of a buffer, in order to use it as a uniform texel buffer or storage texel buffer.
-//! 
+//!
 //! In order to use a buffer as a uniform texel buffer or a storage texel buffer, you have to
 //! create a `BufferView`, which indicates which format the data is in.
-//! 
+//!
 //! In order to create a view from a buffer, the buffer must have been created with either the
 //! `uniform_texel_buffer` or the `storage_texel_buffer` usage.
 //!
@@ -58,28 +58,31 @@ use vk;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
-pub struct BufferView<F, B> where B: Buffer {
+pub struct BufferView<F, B>
+    where B: Buffer
+{
     view: vk::BufferView,
     buffer: B,
     marker: PhantomData<F>,
     atomic_accesses: bool,
 }
 
-impl<F, B> BufferView<F, B> where B: Buffer {
+impl<F, B> BufferView<F, B>
+    where B: Buffer
+{
     /// Builds a new buffer view.
     #[inline]
     pub fn new(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where B: TypedBuffer<Content = [F::Pixel]>, F: StrongStorage + 'static
+        where B: TypedBuffer<Content = [F::Pixel]>,
+              F: StrongStorage + 'static
     {
-        unsafe {
-            BufferView::unchecked(buffer, format)
-        }
+        unsafe { BufferView::unchecked(buffer, format) }
     }
 
     /// Builds a new buffer view without checking that the format is correct.
-    pub unsafe fn unchecked(org_buffer: B, format: F)
-                            -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where B: Buffer, F: FormatDesc + 'static
+    pub unsafe fn unchecked(org_buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where B: Buffer,
+              F: FormatDesc + 'static
     {
         let (view, format_props) = {
             let size = org_buffer.size();
@@ -106,7 +109,8 @@ impl<F, B> BufferView<F, B> where B: Buffer {
                 let vk_i = device.instance().pointers();
                 let mut output = mem::uninitialized();
                 vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
-                                                    format as u32, &mut output);
+                                                       format as u32,
+                                                       &mut output);
                 output.bufferFeatures
             };
 
@@ -125,7 +129,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             let infos = vk::BufferViewCreateInfo {
                 sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved,
+                flags: 0, // reserved,
                 buffer: buffer.internal_object(),
                 format: format as u32,
                 offset: offset as u64,
@@ -134,8 +138,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
-                                                  ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos, ptr::null(), &mut output)));
             (output, format_props)
         };
 
@@ -143,8 +146,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
             view: view,
             buffer: org_buffer,
             marker: PhantomData,
-            atomic_accesses: (format_props &
-                              vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
+            atomic_accesses: (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
         }))
     }
 
@@ -173,7 +175,9 @@ impl<F, B> BufferView<F, B> where B: Buffer {
     }
 }
 
-unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
+unsafe impl<F, B> VulkanObject for BufferView<F, B>
+    where B: Buffer
+{
     type Object = vk::BufferView;
 
     #[inline]
@@ -182,12 +186,15 @@ unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
     }
 }
 
-impl<F, B> Drop for BufferView<F, B> where B: Buffer {
+impl<F, B> Drop for BufferView<F, B>
+    where B: Buffer
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let vk = self.buffer.inner().buffer.device().pointers();
-            vk.DestroyBufferView(self.buffer.inner().buffer.device().internal_object(), self.view,
+            vk.DestroyBufferView(self.buffer.inner().buffer.device().internal_object(),
+                                 self.view,
                                  ptr::null());
         }
     }
@@ -200,7 +207,9 @@ pub unsafe trait BufferViewRef {
     fn view(&self) -> &BufferView<Self::Format, Self::Buffer>;
 }
 
-unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
+unsafe impl<F, B> BufferViewRef for BufferView<F, B>
+    where B: Buffer
+{
     type Buffer = B;
     type Format = F;
 
@@ -210,7 +219,9 @@ unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
     }
 }
 
-unsafe impl<F, B> BufferViewRef for Arc<BufferView<F, B>> where B: Buffer {
+unsafe impl<F, B> BufferViewRef for Arc<BufferView<F, B>>
+    where B: Buffer
+{
     type Buffer = B;
     type Format = F;
 
@@ -220,7 +231,9 @@ unsafe impl<F, B> BufferViewRef for Arc<BufferView<F, B>> where B: Buffer {
     }
 }
 
-unsafe impl<'a, F, B> BufferViewRef for &'a BufferView<F, B> where B: Buffer {
+unsafe impl<'a, F, B> BufferViewRef for &'a BufferView<F, B>
+    where B: Buffer
+{
     type Buffer = B;
     type Format = F;
 
@@ -252,13 +265,13 @@ impl error::Error for BufferViewCreationError {
     fn description(&self) -> &str {
         match *self {
             BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
-            BufferViewCreationError::WrongBufferUsage => "the buffer is missing correct usage \
-                                                          flags",
-            BufferViewCreationError::UnsupportedFormat => "the requested format is not supported \
-                                                           for this usage",
-            BufferViewCreationError::MaxTexelBufferElementsExceeded => {
-                "the maximum number of texel elements is exceeded"
-            },
+            BufferViewCreationError::WrongBufferUsage => {
+                "the buffer is missing correct usage flags"
+            }
+            BufferViewCreationError::UnsupportedFormat => {
+                "the requested format is not supported for this usage"
+            }
+            BufferViewCreationError::MaxTexelBufferElementsExceeded => "the maximum number of texel elements is exceeded",
         }
     }
 
@@ -305,13 +318,9 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
-            uniform_texel_buffer: true,
-            .. Usage::none()
-        };
+        let usage = Usage { uniform_texel_buffer: true, ..Usage::none() };
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
-                                                         Some(queue.family())).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage, Some(queue.family())).unwrap();
         let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.uniform_texel_buffer());
@@ -322,13 +331,9 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
-            storage_texel_buffer: true,
-            .. Usage::none()
-        };
+        let usage = Usage { storage_texel_buffer: true, ..Usage::none() };
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
-                                                         Some(queue.family())).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage, Some(queue.family())).unwrap();
         let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.storage_texel_buffer());
@@ -339,13 +344,9 @@ mod tests {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
-            storage_texel_buffer: true,
-            .. Usage::none()
-        };
+        let usage = Usage { storage_texel_buffer: true, ..Usage::none() };
 
-        let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
-                                                     Some(queue.family())).unwrap();
+        let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage, Some(queue.family())).unwrap();
         let view = BufferView::new(&buffer, format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());
@@ -357,12 +358,11 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &Usage::none(),
-                                                         Some(queue.family())).unwrap();
+        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &Usage::none(), Some(queue.family())).unwrap();
 
         match BufferView::new(&buffer, format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -373,16 +373,15 @@ mod tests {
         let usage = Usage {
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
-            .. Usage::none()
+            ..Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[[f64; 4]]>::array(&device, 128, &usage,
-                                                          Some(queue.family())).unwrap();
+        let buffer = ImmutableBuffer::<[[f64; 4]]>::array(&device, 128, &usage, Some(queue.family())).unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?
         match BufferView::new(&buffer, format::R64G64B64A64Sfloat) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

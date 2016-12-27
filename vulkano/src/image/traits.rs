@@ -46,7 +46,7 @@ pub unsafe trait Image {
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_depth(&self) -> bool {
         let format = self.format();
@@ -54,7 +54,7 @@ pub unsafe trait Image {
     }
 
     /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_stencil(&self) -> bool {
         let format = self.format();
@@ -91,10 +91,7 @@ pub unsafe trait Image {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, other: &Buffer, other_offset: usize,
-                        other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32, self_num_mipmaps: u32, other: &Buffer, other_offset: usize, other_size: usize) -> bool {
         // TODO: should we really provide a default implementation?
         false
     }
@@ -106,11 +103,7 @@ pub unsafe trait Image {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, other: &Image,
-                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
+    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32, self_num_mipmaps: u32, other: &Image, other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32, other_num_mipmaps: u32) -> bool {
         // TODO: should we really provide a default implementation?
 
         // TODO: debug asserts to check for ranges
@@ -134,34 +127,33 @@ pub unsafe trait Image {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64;
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32) -> u64;
 }
 
-unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
+unsafe impl<I: ?Sized> Image for Arc<I>
+    where I: Image
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32) -> u64 {
         (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 }
 
-unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
+unsafe impl<'a, I: ?Sized + 'a> Image for &'a I
+    where I: Image
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32) -> u64 {
         (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 }
@@ -219,12 +211,16 @@ pub unsafe trait ImageView {
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
     // TODO: return a Result
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool { true /* FIXME */ }
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        true /* FIXME */
+    }
 
-    //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
+    // fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T where T: ImageView {
+unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T
+    where T: ImageView
+{
     #[inline]
     fn parent(&self) -> &Image {
         (**self).parent()
@@ -268,7 +264,9 @@ unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T where T: ImageView {
     }
 }
 
-unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
+unsafe impl<T: ?Sized> ImageView for Arc<T>
+    where T: ImageView
+{
     #[inline]
     fn parent(&self) -> &Image {
         (**self).parent()

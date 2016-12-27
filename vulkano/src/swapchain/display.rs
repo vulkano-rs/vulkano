@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Allows you to create surfaces that fill a whole display, outside of the windowing system.
-//! 
+//!
 //! As far as the author knows, no existing device supports these features. Therefore the code here
 //! is mostly a draft and needs rework in both the API and the implementation.
 
@@ -65,34 +65,43 @@ impl DisplayPlane {
             planes
         };
 
-        Ok(planes.into_iter().enumerate().map(|(index, prop)| {
-            let num = unsafe {
-                let mut num: u32 = 0;
-                check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(), index as u32,
-                                                                    &mut num, ptr::null_mut())).unwrap();       // TODO: shouldn't unwrap
-                num
-            };
+        Ok(planes.into_iter()
+            .enumerate()
+            .map(|(index, prop)| {
+                let num = unsafe {
+                    let mut num: u32 = 0;
+                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(),
+                                                                        index as u32,
+                                                                        &mut num,
+                                                                        ptr::null_mut()))
+                        .unwrap();       // TODO: shouldn't unwrap
+                    num
+                };
 
-            let supported_displays: Vec<vk::DisplayKHR> = unsafe {
-                let mut displays = Vec::with_capacity(num as usize);
-                let mut num = num;
-                check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(),
-                                                                    index as u32, &mut num,
-                                                                    displays.as_mut_ptr())).unwrap();       // TODO: shouldn't unwrap
-                displays.set_len(num as usize);
-                displays
-            };
+                let supported_displays: Vec<vk::DisplayKHR> = unsafe {
+                    let mut displays = Vec::with_capacity(num as usize);
+                    let mut num = num;
+                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(),
+                                                                        index as u32,
+                                                                        &mut num,
+                                                                        displays.as_mut_ptr()))
+                        .unwrap();       // TODO: shouldn't unwrap
+                    displays.set_len(num as usize);
+                    displays
+                };
 
-            DisplayPlane {
-                instance: device.instance().clone(),
-                physical_device: device.index(),
-                index: index as u32,
-                properties: prop,
-                supported_displays: supported_displays,
-            }
-        }).collect::<Vec<_>>().into_iter())
+                DisplayPlane {
+                    instance: device.instance().clone(),
+                    physical_device: device.index(),
+                    index: index as u32,
+                    properties: prop,
+                    supported_displays: supported_displays,
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
-    
+
     /// Enumerates all the display planes that are available on a given physical device.
     ///
     /// # Panic
@@ -128,7 +137,7 @@ impl DisplayPlane {
 pub struct Display {
     instance: Arc<Instance>,
     physical_device: usize,
-    properties: Arc<vk::DisplayPropertiesKHR>,      // TODO: Arc because struct isn't clone
+    properties: Arc<vk::DisplayPropertiesKHR>, // TODO: Arc because struct isn't clone
 }
 
 impl Display {
@@ -154,15 +163,18 @@ impl Display {
             displays
         };
 
-        Ok(displays.into_iter().map(|prop| {
-            Display {
-                instance: device.instance().clone(),
-                physical_device: device.index(),
-                properties: Arc::new(prop),
-            }
-        }).collect::<Vec<_>>().into_iter())
+        Ok(displays.into_iter()
+            .map(|prop| {
+                Display {
+                    instance: device.instance().clone(),
+                    physical_device: device.index(),
+                    properties: Arc::new(prop),
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
-    
+
     /// Enumerates all the displays that are available on a given physical device.
     ///
     /// # Panic
@@ -179,8 +191,9 @@ impl Display {
     #[inline]
     pub fn name(&self) -> &str {
         unsafe {
-            CStr::from_ptr(self.properties.displayName).to_str()
-                                                    .expect("non UTF-8 characters in display name")
+            CStr::from_ptr(self.properties.displayName)
+                .to_str()
+                .expect("non UTF-8 characters in display name")
         }
     }
 
@@ -219,15 +232,18 @@ impl Display {
             modes
         };
 
-        Ok(modes.into_iter().map(|mode| {
-            DisplayMode {
-                display: self.clone(),
-                display_mode: mode.displayMode,
-                parameters: mode.parameters,
-            }
-        }).collect::<Vec<_>>().into_iter())
+        Ok(modes.into_iter()
+            .map(|mode| {
+                DisplayMode {
+                    display: self.clone(),
+                    display_mode: mode.displayMode,
+                    parameters: mode.parameters,
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
-    
+
     /// Returns a list of all modes available on this display.
     ///
     /// # Panic
@@ -258,36 +274,36 @@ pub struct DisplayMode {
 }
 
 impl DisplayMode {
-    /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
-        let vk = instance.pointers();
-        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
-
-        let parameters = vk::DisplayModeParametersKHR {
-            visibleRegion: vk::Extent2D { width: , height:  },
-            refreshRate: ,
-        };
-
-        let display_mode = {
-            let infos = vk::DisplayModeCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_DISPLAY_MODE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
-                parameters: parameters,
-            };
-
-            let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
-                                                      display.display, &infos, ptr::null(),
-                                                      &mut output)));
-            output
-        };
-
-        Ok(Arc::new(DisplayMode {
-            instance: display.device.instance().clone(),
-            display_mode: display_mode,
-            parameters: ,
-        }))
-    }*/
+    // pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
+    // let vk = instance.pointers();
+    // assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
+    //
+    // let parameters = vk::DisplayModeParametersKHR {
+    // visibleRegion: vk::Extent2D { width: , height:  },
+    // refreshRate: ,
+    // };
+    //
+    // let display_mode = {
+    // let infos = vk::DisplayModeCreateInfoKHR {
+    // sType: vk::STRUCTURE_TYPE_DISPLAY_MODE_CREATE_INFO_KHR,
+    // pNext: ptr::null(),
+    // flags: 0,   // reserved
+    // parameters: parameters,
+    // };
+    //
+    // let mut output = mem::uninitialized();
+    // try!(check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
+    // display.display, &infos, ptr::null(),
+    // &mut output)));
+    // output
+    // };
+    //
+    // Ok(Arc::new(DisplayMode {
+    // instance: display.device.instance().clone(),
+    // display_mode: display_mode,
+    // parameters: ,
+    // }))
+    // }
 
     /// Returns the display corresponding to this mode.
     #[inline]

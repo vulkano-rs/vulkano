@@ -41,32 +41,34 @@ impl UnsafeDescriptorSetLayout {
     /// The descriptors must be passed in the order of the bindings. In order words, descriptor
     /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
     /// empty, you can make the iterator yield `None` for an element.
-    pub fn new<I>(device: Arc<Device>, descriptors: I)
-                  -> Result<UnsafeDescriptorSetLayout, OomError>
+    pub fn new<I>(device: Arc<Device>, descriptors: I) -> Result<UnsafeDescriptorSetLayout, OomError>
         where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
         let mut descriptors_count = DescriptorsCount::zero();
 
-        let bindings = descriptors.into_iter().enumerate().filter_map(|(binding, desc)| {
-            let desc = match desc {
-                Some(d) => d,
-                None => return None
-            };
+        let bindings = descriptors.into_iter()
+            .enumerate()
+            .filter_map(|(binding, desc)| {
+                let desc = match desc {
+                    Some(d) => d,
+                    None => return None,
+                };
 
-            // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
-            //        doesn't have tess shaders enabled
+                // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
+                //        doesn't have tess shaders enabled
 
-            let ty = desc.ty.ty().unwrap();     // TODO: shouldn't panic
-            descriptors_count.add_one(ty);
+                let ty = desc.ty.ty().unwrap();     // TODO: shouldn't panic
+                descriptors_count.add_one(ty);
 
-            Some(vk::DescriptorSetLayoutBinding {
-                binding: binding as u32,
-                descriptorType: ty as u32,
-                descriptorCount: desc.array_count,
-                stageFlags: desc.stages.into(),
-                pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
+                Some(vk::DescriptorSetLayoutBinding {
+                    binding: binding as u32,
+                    descriptorType: ty as u32,
+                    descriptorCount: desc.array_count,
+                    stageFlags: desc.stages.into(),
+                    pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
+                })
             })
-        }).collect::<SmallVec<[_; 32]>>();
+            .collect::<SmallVec<[_; 32]>>();
 
         // Note that it seems legal to have no descriptor at all in the set.
 
@@ -74,15 +76,14 @@ impl UnsafeDescriptorSetLayout {
             let infos = vk::DescriptorSetLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 bindingCount: bindings.len() as u32,
                 pBindings: bindings.as_ptr(),
             };
 
             let mut output = mem::uninitialized();
             let vk = device.pointers();
-            try!(check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos,
-                                                           ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -120,8 +121,7 @@ impl Drop for UnsafeDescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout,
-                                          ptr::null());
+            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
         }
     }
 }

@@ -86,7 +86,9 @@ pub enum Flags {
     OneTimeSubmit,
 }
 
-pub struct UnsyncedCommandBuffer<L, P> where P: CommandPool {
+pub struct UnsyncedCommandBuffer<L, P>
+    where P: CommandPool
+{
     // The Vulkan command buffer.
     cmd: vk::CommandBuffer,
 
@@ -106,30 +108,34 @@ pub struct UnsyncedCommandBuffer<L, P> where P: CommandPool {
     // True if we are a secondary command buffer.
     secondary_cb: bool,
 
-    // The commands list. Holds resources of the resources list alive. 
+    // The commands list. Holds resources of the resources list alive.
     commands_list: L,
 }
 
-impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
+impl<L, P> UnsyncedCommandBuffer<L, P>
+    where L: CommandsList,
+          P: CommandPool
+{
     /// Creates a new builder.
-    pub unsafe fn new<R, F>(list: L, pool: P, kind: Kind<R, F>, flags: Flags)
-                            -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+    pub unsafe fn new<R, F>(list: L, pool: P, kind: Kind<R, F>, flags: Flags) -> Result<UnsyncedCommandBuffer<L, P>, OomError>
+        where R: RenderPass,
+              F: Framebuffer
     {
         let secondary = match kind {
             Kind::Primary => false,
-            Kind::Secondary | Kind::SecondaryRenderPass { .. } => true,
+            Kind::Secondary |
+            Kind::SecondaryRenderPass { .. } => true,
         };
 
         let cmd = try!(pool.alloc(secondary, 1)).next().unwrap();
-        
+
         match UnsyncedCommandBuffer::already_allocated(list, pool, cmd, kind, flags) {
             Ok(cmd) => Ok(cmd),
             Err(err) => {
                 // FIXME: uncomment this and solve the fact that `pool` has been moved
-                //unsafe { pool.free(secondary, Some(cmd.into()).into_iter()) };
+                // unsafe { pool.free(secondary, Some(cmd.into()).into_iter()) };
                 Err(err)
-            },
+            }
         }
     }
 
@@ -140,10 +146,9 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     /// - The allocated command buffer must belong to the pool and must not be used anywhere else
     ///   in the code for the duration of this command buffer.
     ///
-    pub unsafe fn already_allocated<R, F>(list: L, pool: P, cmd: AllocatedCommandBuffer,
-                                          kind: Kind<R, F>, flags: Flags)
-                                          -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+    pub unsafe fn already_allocated<R, F>(list: L, pool: P, cmd: AllocatedCommandBuffer, kind: Kind<R, F>, flags: Flags) -> Result<UnsyncedCommandBuffer<L, P>, OomError>
+        where R: RenderPass,
+              F: Framebuffer
     {
         let device = pool.device().clone();
         let vk = device.pointers();
@@ -158,9 +163,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
 
             let b = match kind {
                 Kind::Primary | Kind::Secondary => 0,
-                Kind::SecondaryRenderPass { .. } => {
-                    vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
-                },
+                Kind::SecondaryRenderPass { .. } => vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
             };
 
             a | b
@@ -174,7 +177,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
 
         let framebuffer = if let Kind::SecondaryRenderPass { ref subpass, framebuffer: Some(ref framebuffer) } = kind {
             // TODO: restore check
-            //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
+            // assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
             framebuffer.internal_object()
         } else {
             0
@@ -186,9 +189,9 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
             renderPass: rp,
             subpass: sp,
             framebuffer: framebuffer,
-            occlusionQueryEnable: 0,            // TODO:
-            queryFlags: 0,          // TODO:
-            pipelineStatistics: 0,          // TODO:
+            occlusionQueryEnable: 0, // TODO:
+            queryFlags: 0, // TODO:
+            pipelineStatistics: 0, // TODO:
         };
 
         let infos = vk::CommandBufferBeginInfo {
@@ -223,7 +226,8 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
             flags: flags,
             secondary_cb: match kind {
                 Kind::Primary => false,
-                Kind::Secondary | Kind::SecondaryRenderPass { .. } => true,
+                Kind::Secondary |
+                Kind::SecondaryRenderPass { .. } => true,
             },
             already_submitted: AtomicBool::new(false),
             commands_list: list,
@@ -273,20 +277,11 @@ impl<'a> CommandsListSink<'a> for Sink<'a> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool,
-                             _: PipelineStages, _: AccessFlagBits)
-    {
-    }
+    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool, _: PipelineStages, _: AccessFlagBits) {}
 
     #[inline]
-    fn add_image_transition(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32,
-                            _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits)
-    {
-    }
+    fn add_image_transition(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32, _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits) {}
 
     #[inline]
-    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32,
-                                         _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
-    {
-    }
+    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits) {}
 }

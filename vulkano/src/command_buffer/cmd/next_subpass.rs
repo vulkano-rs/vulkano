@@ -19,14 +19,18 @@ use vk;
 /// Wraps around a commands list and adds to the end of it a command that goes to the next subpass
 /// of the current render pass.
 #[derive(Debug, Copy, Clone)]
-pub struct CmdNextSubpass<L> where L: CommandsList {
+pub struct CmdNextSubpass<L>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // The parameter for vkCmdNextSubpass.
     contents: vk::SubpassContents,
 }
 
-impl<L> CmdNextSubpass<L> where L: CommandsList {
+impl<L> CmdNextSubpass<L>
+    where L: CommandsList
+{
     /// See the documentation of the `next_subpass` method.
     #[inline]
     pub fn new(previous: L, secondary: bool) -> Result<CmdNextSubpass<L>, CmdNextSubpassError> {
@@ -34,13 +38,18 @@ impl<L> CmdNextSubpass<L> where L: CommandsList {
 
         Ok(CmdNextSubpass {
             previous: previous,
-            contents: if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
-                      else { vk::SUBPASS_CONTENTS_INLINE },
+            contents: if secondary {
+                vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+            } else {
+                vk::SUBPASS_CONTENTS_INLINE
+            },
         })
     }
 }
 
-unsafe impl<L> CommandsList for CmdNextSubpass<L> where L: CommandsList {
+unsafe impl<L> CommandsList for CmdNextSubpass<L>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
@@ -49,7 +58,7 @@ unsafe impl<L> CommandsList for CmdNextSubpass<L> where L: CommandsList {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
-                
+
                 vk.CmdNextSubpass(cmd, self.contents);
             }
         }));
@@ -67,9 +76,7 @@ impl error::Error for CmdNextSubpassError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdNextSubpassError::NoSubpassRemaining => {
-                "it's not possible to go to the next subpass if none are remaining"
-            },
+            CmdNextSubpassError::NoSubpassRemaining => "it's not possible to go to the next subpass if none are remaining",
         }
     }
 }

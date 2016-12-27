@@ -38,14 +38,15 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
 
         let shader_content = {
             let mut s = String::new();
-            File::open(shader).expect("failed to open shader").read_to_string(&mut s)
-                              .expect("failed to read shader content");
+            File::open(shader)
+                .expect("failed to open shader")
+                .read_to_string(&mut s)
+                .expect("failed to read shader content");
             s
         };
 
         fs::create_dir_all(&dest.join("shaders").join(shader.parent().unwrap())).unwrap();
-        let mut file_output = File::create(&dest.join("shaders").join(shader))
-                                                        .expect("failed to open shader output");
+        let mut file_output = File::create(&dest.join("shaders").join(shader)).expect("failed to open shader output");
 
         let content = match glsl_to_spirv::compile(&shader_content, ty) {
             Ok(compiled) => compiled,
@@ -109,9 +110,10 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
 
     {
         // contains the data that was passed as input to this function
-        let spirv_data = data.iter().map(|&byte| byte.to_string())
-                             .collect::<Vec<String>>()
-                             .join(", ");
+        let spirv_data = data.iter()
+            .map(|&byte| byte.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
 
         // writing the header
         output.push_str(&format!(r#"
@@ -127,7 +129,8 @@ impl {name} {{
                 -> Result<{name}, ::vulkano::OomError>
     {{
 
-        "#, name = name));
+        "#,
+                                 name = name));
 
         // checking whether each required capability is enabled in the vulkan device
         for i in doc.instructions.iter() {
@@ -137,7 +140,8 @@ impl {name} {{
                         if !device.enabled_features().{cap} {{
                             panic!("capability {{:?}} not enabled", "{cap}")  // FIXME: error
                             //return Err(CapabilityNotEnabled);
-                        }}"#, cap = cap));
+                        }}"#,
+                                             cap = cap));
                 }
             }
         }
@@ -159,7 +163,9 @@ impl {name} {{
     pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {{
         &self.shader
     }}
-        "#, name = name, spirv_data = spirv_data));
+        "#,
+                                 name = name,
+                                 spirv_data = spirv_data));
 
         // writing one method for each entry point of this module
         let mut outside_impl = String::new();
@@ -221,25 +227,29 @@ fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -
             &parse::Instruction::TypeInt { result_id, width, signedness } if result_id == searched => {
                 assert!(!ignore_first_array);
                 return (match (width, signedness) {
-                    (8, true) => "R8Sint",
-                    (8, false) => "R8Uint",
-                    (16, true) => "R16Sint",
-                    (16, false) => "R16Uint",
-                    (32, true) => "R32Sint",
-                    (32, false) => "R32Uint",
-                    (64, true) => "R64Sint",
-                    (64, false) => "R64Uint",
-                    _ => panic!()
-                }.to_owned(), 1);
-            },
+                                (8, true) => "R8Sint",
+                                (8, false) => "R8Uint",
+                                (16, true) => "R16Sint",
+                                (16, false) => "R16Uint",
+                                (32, true) => "R32Sint",
+                                (32, false) => "R32Uint",
+                                (64, true) => "R64Sint",
+                                (64, false) => "R64Uint",
+                                _ => panic!(),
+                            }
+                            .to_owned(),
+                        1);
+            }
             &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
                 assert!(!ignore_first_array);
                 return (match width {
-                    32 => "R32Sfloat",
-                    64 => "R64Sfloat",
-                    _ => panic!()
-                }.to_owned(), 1);
-            },
+                                32 => "R32Sfloat",
+                                64 => "R64Sfloat",
+                                _ => panic!(),
+                            }
+                            .to_owned(),
+                        1);
+            }
             &parse::Instruction::TypeVector { result_id, component_id, count } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let (format, sz) = format_from_id(doc, component_id, false);
@@ -257,28 +267,35 @@ fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -
                     panic!("Found vector type with more than 4 elements")
                 };
                 return (format, sz);
-            },
+            }
             &parse::Instruction::TypeMatrix { result_id, column_type_id, column_count } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let (format, sz) = format_from_id(doc, column_type_id, false);
                 return (format, sz * column_count as usize);
-            },
+            }
             &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == searched => {
                 if ignore_first_array {
                     return format_from_id(doc, type_id, false);
                 }
 
                 let (format, sz) = format_from_id(doc, type_id, false);
-                let len = doc.instructions.iter().filter_map(|e| {
-                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
-                }).next().expect("failed to find array length");
+                let len = doc.instructions
+                    .iter()
+                    .filter_map(|e| {
+                        match e {
+                            &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()),
+                            _ => None,
+                        }
+                    })
+                    .next()
+                    .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
                 return (format, sz * len as usize);
-            },
+            }
             &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == searched => {
                 return format_from_id(doc, type_id, ignore_first_array);
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 
@@ -286,66 +303,71 @@ fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -
 }
 
 fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
-    doc.instructions.iter().filter_map(|i| {
-        if let &parse::Instruction::Name { target_id, ref name } = i {
-            if target_id == searched {
-                Some(name.clone())
+    doc.instructions
+        .iter()
+        .filter_map(|i| {
+            if let &parse::Instruction::Name { target_id, ref name } = i {
+                if target_id == searched {
+                    Some(name.clone())
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
-      .unwrap_or("__unnamed".to_owned())
+        })
+        .next()
+        .and_then(|n| if !n.is_empty() { Some(n) } else { None })
+        .unwrap_or("__unnamed".to_owned())
 }
 
 fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) -> String {
-    doc.instructions.iter().filter_map(|i| {
-        if let &parse::Instruction::MemberName { target_id, member, ref name } = i {
-            if target_id == searched && member == searched_member {
-                Some(name.clone())
+    doc.instructions
+        .iter()
+        .filter_map(|i| {
+            if let &parse::Instruction::MemberName { target_id, member, ref name } = i {
+                if target_id == searched && member == searched_member {
+                    Some(name.clone())
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).next().and_then(|n| if !n.is_empty() { Some(n) } else { None })
-      .unwrap_or("__unnamed".to_owned())
+        })
+        .next()
+        .and_then(|n| if !n.is_empty() { Some(n) } else { None })
+        .unwrap_or("__unnamed".to_owned())
 }
 
 fn location_decoration(doc: &parse::Spirv, searched: u32) -> Option<u32> {
-    doc.instructions.iter().filter_map(|i| {
-        if let &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationLocation, ref params } = i {
-            if target_id == searched {
-                Some(params[0])
+    doc.instructions
+        .iter()
+        .filter_map(|i| {
+            if let &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationLocation, ref params } = i {
+                if target_id == searched {
+                    Some(params[0])
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).next()
+        })
+        .next()
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on an id.
 fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
     for instruction in &doc.instructions {
         match *instruction {
-            parse::Instruction::Decorate { target_id,
-                                           decoration: enums::Decoration::DecorationBuiltIn,
-                                           .. } if target_id == id =>
-            {
+            parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationBuiltIn, .. } if target_id == id => {
                 return true;
-            },
-            parse::Instruction::MemberDecorate { target_id,
-                                                 decoration: enums::Decoration::DecorationBuiltIn,
-                                                 .. } if target_id == id =>
-            {
+            }
+            parse::Instruction::MemberDecorate { target_id, decoration: enums::Decoration::DecorationBuiltIn, .. } if target_id == id => {
                 return true;
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 
@@ -353,22 +375,24 @@ fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
         match *instruction {
             parse::Instruction::Variable { result_type_id, result_id, .. } if result_id == id => {
                 return is_builtin(doc, result_type_id);
-            },
+            }
             parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
                 return is_builtin(doc, type_id);
-            },
+            }
             parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
                 return is_builtin(doc, type_id);
-            },
+            }
             parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == id => {
                 for &mem in member_types {
-                    if is_builtin(doc, mem) { return true; }
+                    if is_builtin(doc, mem) {
+                        return true;
+                    }
                 }
-            },
+            }
             parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
                 return is_builtin(doc, type_id);
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 

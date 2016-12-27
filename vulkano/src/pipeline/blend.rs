@@ -165,10 +165,18 @@ impl Into<vk::PipelineColorBlendAttachmentState> for AttachmentBlend {
             alphaBlendOp: self.alpha_op as u32,
             colorWriteMask: {
                 let mut mask = 0;
-                if self.mask_red { mask |= vk::COLOR_COMPONENT_R_BIT; }
-                if self.mask_green { mask |= vk::COLOR_COMPONENT_G_BIT; }
-                if self.mask_blue { mask |= vk::COLOR_COMPONENT_B_BIT; }
-                if self.mask_alpha { mask |= vk::COLOR_COMPONENT_A_BIT; }
+                if self.mask_red {
+                    mask |= vk::COLOR_COMPONENT_R_BIT;
+                }
+                if self.mask_green {
+                    mask |= vk::COLOR_COMPONENT_G_BIT;
+                }
+                if self.mask_blue {
+                    mask |= vk::COLOR_COMPONENT_B_BIT;
+                }
+                if self.mask_alpha {
+                    mask |= vk::COLOR_COMPONENT_A_BIT;
+                }
                 mask
             },
         }

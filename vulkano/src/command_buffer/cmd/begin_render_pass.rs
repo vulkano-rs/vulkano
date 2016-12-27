@@ -25,7 +25,9 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds to the end of it a command that enters a render pass.
-pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
+pub struct CmdBeginRenderPass<L, Rp, F>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // True if only secondary command buffers can be added.
@@ -47,53 +49,49 @@ pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
 }
 
 impl<L, F> CmdBeginRenderPass<L, F::RenderPass, F>
-    where L: CommandsList, F: TrackedFramebuffer
+    where L: CommandsList,
+          F: TrackedFramebuffer
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
-    pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<L, F::RenderPass, F>
+    pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C) -> CmdBeginRenderPass<L, F::RenderPass, F>
         where F::RenderPass: RenderPassClearValues<C>
     {
         let raw_render_pass = framebuffer.render_pass().inner().internal_object();
         let device = framebuffer.render_pass().inner().device().clone();
         let raw_framebuffer = framebuffer.internal_object();
 
-        let clear_values = framebuffer.render_pass().convert_clear_values(clear_values)
-                                      .map(|clear_value|
-        {
-            match clear_value {
-                ClearValue::None => {
-                    vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
-                },
-                ClearValue::Float(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::float32(val))
-                },
-                ClearValue::Int(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::int32(val))
-                },
-                ClearValue::Uint(val) => {
-                    vk::ClearValue::color(vk::ClearColorValue::uint32(val))
-                },
-                ClearValue::Depth(val) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: val, stencil: 0
-                    })
-                },
-                ClearValue::Stencil(val) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: 0.0, stencil: val
-                    })
-                },
-                ClearValue::DepthStencil((depth, stencil)) => {
-                    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                        depth: depth, stencil: stencil,
-                    })
-                },
-            }
-        }).collect();
+        let clear_values = framebuffer.render_pass()
+            .convert_clear_values(clear_values)
+            .map(|clear_value| {
+                match clear_value {
+                    ClearValue::None => vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4])),
+                    ClearValue::Float(val) => vk::ClearValue::color(vk::ClearColorValue::float32(val)),
+                    ClearValue::Int(val) => vk::ClearValue::color(vk::ClearColorValue::int32(val)),
+                    ClearValue::Uint(val) => vk::ClearValue::color(vk::ClearColorValue::uint32(val)),
+                    ClearValue::Depth(val) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: val,
+                            stencil: 0,
+                        })
+                    }
+                    ClearValue::Stencil(val) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: 0.0,
+                            stencil: val,
+                        })
+                    }
+                    ClearValue::DepthStencil((depth, stencil)) => {
+                        vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                            depth: depth,
+                            stencil: stencil,
+                        })
+                    }
+                }
+            })
+            .collect();
 
-        let rect = [0 .. framebuffer.dimensions()[0], 0 .. framebuffer.dimensions()[1]];
+        let rect = [0..framebuffer.dimensions()[0], 0..framebuffer.dimensions()[1]];
 
         CmdBeginRenderPass {
             previous: previous,
@@ -110,7 +108,8 @@ impl<L, F> CmdBeginRenderPass<L, F::RenderPass, F>
 }
 
 unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
-    where L: CommandsList, F: TrackedFramebuffer
+    where L: CommandsList,
+          F: TrackedFramebuffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -147,9 +146,12 @@ unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
                     pClearValues: self.clear_values.as_ptr(),
                 };
 
-                let contents = if self.secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
-                               else { vk::SUBPASS_CONTENTS_INLINE };
-                
+                let contents = if self.secondary {
+                    vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
+                } else {
+                    vk::SUBPASS_CONTENTS_INLINE
+                };
+
                 vk.CmdBeginRenderPass(cmd, &begin, contents);
             }
         }));

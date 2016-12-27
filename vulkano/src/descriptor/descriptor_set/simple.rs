@@ -44,13 +44,17 @@ use sync::PipelineStages;
 ///
 /// # Example
 // TODO:
-pub struct SimpleDescriptorSet<R, P = Arc<StdDescriptorPool>> where P: DescriptorPool {
+pub struct SimpleDescriptorSet<R, P = Arc<StdDescriptorPool>>
+    where P: DescriptorPool
+{
     inner: P::Alloc,
     resources: R,
-    layout: Arc<UnsafeDescriptorSetLayout>
+    layout: Arc<UnsafeDescriptorSetLayout>,
 }
 
-impl<R, P> SimpleDescriptorSet<R, P> where P: DescriptorPool {
+impl<R, P> SimpleDescriptorSet<R, P>
+    where P: DescriptorPool
+{
     /// Returns the layout used to create this descriptor set.
     #[inline]
     pub fn set_layout(&self) -> &Arc<UnsafeDescriptorSetLayout> {
@@ -58,7 +62,9 @@ impl<R, P> SimpleDescriptorSet<R, P> where P: DescriptorPool {
     }
 }
 
-unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: DescriptorPool {
+unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P>
+    where P: DescriptorPool
+{
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
@@ -126,7 +132,9 @@ pub struct SimpleDescriptorSetBuilder<L, R> {
     resources: R,
 }
 
-impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
+impl<L> SimpleDescriptorSetBuilder<L, ()>
+    where L: PipelineLayoutRef
+{
     /// Builds a new prototype for a `SimpleDescriptorSet`. Requires a reference to a pipeline
     /// layout, and the id of the set within the layout.
     ///
@@ -148,7 +156,9 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
     }
 }
 
-impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
+impl<L, R> SimpleDescriptorSetBuilder<L, R>
+    where L: PipelineLayoutRef
+{
     /// Builds a `SimpleDescriptorSet` from the builder.
     pub fn build(self) -> SimpleDescriptorSet<R, Arc<StdDescriptorPool>> {
         // TODO: check that we filled everything
@@ -176,43 +186,38 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 
     /// Appends the buffer to the `SimpleDescriptorSetBuilder`.
     // TODO: return Result
-    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str)
-              -> SimpleDescriptorSetBuilder<L, Self::Out>;
+    fn add_me(self, i: SimpleDescriptorSetBuilder<L, R>, name: &str) -> SimpleDescriptorSetBuilder<L, Self::Out>;
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: Buffer, L: PipelineLayoutRef
+    where T: Buffer,
+          L: PipelineLayoutRef
 {
     type Out = (R, SimpleDescriptorSetBuf<T>);
 
-    fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
-              -> SimpleDescriptorSetBuilder<L, Self::Out>
-    {
+    fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str) -> SimpleDescriptorSetBuilder<L, Self::Out> {
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
         let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
-            DescriptorType::UniformBuffer => unsafe {
-                DescriptorWrite::uniform_buffer(binding_id as u32, &self)
-            },
-            DescriptorType::StorageBuffer => unsafe {
-                DescriptorWrite::storage_buffer(binding_id as u32, &self)
-            },
-            _ => panic!()
+            DescriptorType::UniformBuffer => unsafe { DescriptorWrite::uniform_buffer(binding_id as u32, &self) },
+            DescriptorType::StorageBuffer => unsafe { DescriptorWrite::storage_buffer(binding_id as u32, &self) },
+            _ => panic!(),
         });
 
         SimpleDescriptorSetBuilder {
             layout: i.layout,
             set_id: i.set_id,
             writes: i.writes,
-            resources: (i.resources, SimpleDescriptorSetBuf {
-                buffer: self,
-                write: !desc.readonly,
-                stage: PipelineStages::none(),      // FIXME:
-                access: AccessFlagBits::none(),     // FIXME:
-            })
+            resources: (i.resources,
+                        SimpleDescriptorSetBuf {
+                            buffer: self,
+                            write: !desc.readonly,
+                            stage: PipelineStages::none(), // FIXME:
+                            access: AccessFlagBits::none(), // FIXME:
+                        }),
         }
     }
 }
@@ -225,8 +230,7 @@ pub unsafe trait SimpleDescriptorSetResourcesCollection {
 
 unsafe impl SimpleDescriptorSetResourcesCollection for () {
     #[inline]
-    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {
-    }
+    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {}
 }
 
 /// Internal object related to the `SimpleDescriptorSet` system.
@@ -246,22 +250,29 @@ unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf
         let stages = PipelineStages {
             compute_shader: true,
             all_graphics: true,
-            .. PipelineStages::none()
+            ..PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             shader_read: true,
             shader_write: true,
-            .. AccessFlagBits::none()
+            ..AccessFlagBits::none()
         };
 
-        sink.add_buffer_transition(&self.buffer, 0, self.buffer.size(), self.write, stages, access);
+        sink.add_buffer_transition(&self.buffer,
+                                   0,
+                                   self.buffer.size(),
+                                   self.write,
+                                   stages,
+                                   access);
     }
 }
 
 /// Internal object related to the `SimpleDescriptorSet` system.
-pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
+pub struct SimpleDescriptorSetBufView<V>
+    where V: BufferViewRef
+{
     view: V,
     write: bool,
     stage: PipelineStages,
@@ -269,7 +280,8 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 }
 
 unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
-    where V: BufferViewRef, V::Buffer: Buffer
+    where V: BufferViewRef,
+          V::Buffer: Buffer
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -277,18 +289,22 @@ unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf
         let stages = PipelineStages {
             compute_shader: true,
             all_graphics: true,
-            .. PipelineStages::none()
+            ..PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             shader_read: true,
             shader_write: true,
-            .. AccessFlagBits::none()
+            ..AccessFlagBits::none()
         };
 
-        sink.add_buffer_transition(self.view.view().buffer(), 0, self.view.view().buffer().size(),
-                                   self.write, stages, access);
+        sink.add_buffer_transition(self.view.view().buffer(),
+                                   0,
+                                   self.view.view().buffer().size(),
+                                   self.write,
+                                   stages,
+                                   access);
     }
 }
 
@@ -314,21 +330,27 @@ unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg
         let stages = PipelineStages {
             compute_shader: true,
             all_graphics: true,
-            .. PipelineStages::none()
+            ..PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             input_attachment_read: true,
             shader_read: true,
             shader_write: true,
-            .. AccessFlagBits::none()
+            ..AccessFlagBits::none()
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(self.image.parent(), self.first_layer, self.num_layers,
-                                  self.first_mipmap, self.num_mipmaps, self.write,
-                                  self.layout, stages, access);
+        sink.add_image_transition(self.image.parent(),
+                                  self.first_layer,
+                                  self.num_layers,
+                                  self.first_mipmap,
+                                  self.num_mipmaps,
+                                  self.write,
+                                  self.layout,
+                                  stages,
+                                  access);
     }
 }
 

@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Safe and rich Rust wrapper around the Vulkan API.
-//! 
+//!
 //! # Brief summary of Vulkan
 //!
 //! - The `Instance` object is the API entry point. It is the first object you must create before
@@ -98,7 +98,9 @@ pub unsafe trait VulkanObject {
     fn internal_object(&self) -> Self::Object;
 }
 
-unsafe impl<'a, T> VulkanObject for &'a T where T: VulkanObject {
+unsafe impl<'a, T> VulkanObject for &'a T
+    where T: VulkanObject
+{
     type Object = T::Object;
 
     #[inline]
@@ -107,7 +109,9 @@ unsafe impl<'a, T> VulkanObject for &'a T where T: VulkanObject {
     }
 }
 
-unsafe impl<'a, T> VulkanObject for &'a mut T where T: VulkanObject {
+unsafe impl<'a, T> VulkanObject for &'a mut T
+    where T: VulkanObject
+{
     type Object = T::Object;
 
     #[inline]
@@ -116,7 +120,9 @@ unsafe impl<'a, T> VulkanObject for &'a mut T where T: VulkanObject {
     }
 }
 
-unsafe impl<T> VulkanObject for Arc<T> where T: VulkanObject {
+unsafe impl<T> VulkanObject for Arc<T>
+    where T: VulkanObject
+{
     type Object = T::Object;
 
     #[inline]
@@ -176,7 +182,7 @@ impl From<Error> for OomError {
         match err {
             Error::OutOfHostMemory => OomError::OutOfHostMemory,
             Error::OutOfDeviceMemory => OomError::OutOfDeviceMemory,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -246,6 +252,6 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_OUT_OF_DATE_KHR => Err(Error::OutOfDate),
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
-        c => unreachable!("Unexpected error code returned by Vulkan: {}", c)
+        c => unreachable!("Unexpected error code returned by Vulkan: {}", c),
     }
 }

@@ -44,8 +44,7 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
     /// - Panics if `size` is 0.
     /// - Panics if `alignment` is 0.
     ///
-    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
-             -> Result<Self::Alloc, OomError>;
+    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout) -> Result<Self::Alloc, OomError>;
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.

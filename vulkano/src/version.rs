@@ -33,12 +33,12 @@ impl Ord for Version {
     fn cmp(&self, other: &Version) -> Ordering {
         match self.major.cmp(&other.major) {
             Ordering::Equal => (),
-            o => return o
+            o => return o,
         };
 
         match self.minor.cmp(&other.minor) {
             Ordering::Equal => (),
-            o => return o
+            o => return o,
         };
 
         self.patch.cmp(&other.patch)
@@ -52,7 +52,7 @@ impl Version {
         Version {
             major: ((value & 0xffc00000) >> 22) as u16,
             minor: ((value & 0x003ff000) >> 12) as u16,
-            patch:  (value & 0x00000fff) as u16,
+            patch: (value & 0x00000fff) as u16,
         }
     }
 
@@ -77,28 +77,56 @@ mod tests {
 
     #[test]
     fn into_vk_version() {
-        let version = Version { major: 1, minor: 0, patch: 0 };
+        let version = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
         assert_eq!(version.into_vulkan_version(), 0x400000);
     }
 
     #[test]
     fn greater_major() {
-        let v1 = Version { major: 1, minor: 0, patch: 0 };
-        let v2 = Version { major: 2, minor: 0, patch: 0 };
+        let v1 = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        let v2 = Version {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        };
         assert!(v2 > v1);
     }
 
     #[test]
     fn greater_minor() {
-        let v1 = Version { major: 1, minor: 1, patch: 0 };
-        let v2 = Version { major: 1, minor: 3, patch: 0 };
+        let v1 = Version {
+            major: 1,
+            minor: 1,
+            patch: 0,
+        };
+        let v2 = Version {
+            major: 1,
+            minor: 3,
+            patch: 0,
+        };
         assert!(v2 > v1);
     }
 
     #[test]
     fn greater_patch() {
-        let v1 = Version { major: 1, minor: 0, patch: 4 };
-        let v2 = Version { major: 1, minor: 0, patch: 5 };
+        let v1 = Version {
+            major: 1,
+            minor: 0,
+            patch: 4,
+        };
+        let v2 = Version {
+            major: 1,
+            minor: 0,
+            patch: 5,
+        };
         assert!(v2 > v1);
     }
 }

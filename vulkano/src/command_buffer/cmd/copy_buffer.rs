@@ -24,7 +24,9 @@ use vk;
 /// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
 /// another.
 pub struct CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList,
+          S: Buffer,
+          D: Buffer
 {
     // Parent commands list.
     previous: L,
@@ -38,7 +40,9 @@ pub struct CmdCopyBuffer<L, S, D>
 }
 
 impl<L, S, D> CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList,
+          S: Buffer,
+          D: Buffer
 {
     /// Builds a new command.
     ///
@@ -49,11 +53,9 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
     ///
     /// - Panics if the source and destination were not created with the same device.
     // FIXME: type safety
-    pub fn new(previous: L, source: S, destination: D)
-               -> Result<CmdCopyBuffer<L, S, D>, CmdCopyBufferError>
-    {
+    pub fn new(previous: L, source: S, destination: D) -> Result<CmdCopyBuffer<L, S, D>, CmdCopyBufferError> {
         // TODO:
-        //assert!(previous.is_outside_render_pass());     // TODO: error
+        // assert!(previous.is_outside_render_pass());     // TODO: error
         assert_eq!(source.inner().buffer.device().internal_object(),
                    destination.inner().buffer.device().internal_object());
 
@@ -95,7 +97,9 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
 }
 
 unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+    where L: CommandsList,
+          S: Buffer,
+          D: Buffer
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -105,17 +109,20 @@ unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
                    builder.device().internal_object());
 
         {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.source, 0, self.size as usize, false,
-                                          stages, access);
+            let stages = PipelineStages { transfer: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { transfer_read: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.source, 0, self.size as usize, false, stages, access);
         }
-        
+
         {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.destination, 0, self.size as usize, true,
-                                          stages, access);
+            let stages = PipelineStages { transfer: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { transfer_write: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.destination,
+                                          0,
+                                          self.size as usize,
+                                          true,
+                                          stages,
+                                          access);
         }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
@@ -148,15 +155,9 @@ impl error::Error for CmdCopyBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdCopyBufferError::SourceMissingTransferUsage => {
-                "the source buffer is missing the transfer source usage"
-            },
-            CmdCopyBufferError::DestinationMissingTransferUsage => {
-                "the destination buffer is missing the transfer destination usage"
-            },
-            CmdCopyBufferError::OverlappingRanges => {
-                "the source and destination are overlapping"
-            },
+            CmdCopyBufferError::SourceMissingTransferUsage => "the source buffer is missing the transfer source usage",
+            CmdCopyBufferError::DestinationMissingTransferUsage => "the destination buffer is missing the transfer destination usage",
+            CmdCopyBufferError::OverlappingRanges => "the source and destination are overlapping",
         }
     }
 }

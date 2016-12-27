@@ -28,7 +28,10 @@ use vk;
 
 /// Wraps around a commands list and adds a command at the end of it that executes a secondary
 /// command buffer.
-pub struct CmdExecuteCommands<Cb, L> where Cb: SecondaryCommandBuffer, L: CommandsList {
+pub struct CmdExecuteCommands<Cb, L>
+    where Cb: SecondaryCommandBuffer,
+          L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // Raw list of command buffers to execute.
@@ -38,7 +41,8 @@ pub struct CmdExecuteCommands<Cb, L> where Cb: SecondaryCommandBuffer, L: Comman
 }
 
 impl<Cb, L> CmdExecuteCommands<Cb, L>
-    where Cb: SecondaryCommandBuffer, L: CommandsList
+    where Cb: SecondaryCommandBuffer,
+          L: CommandsList
 {
     /// See the documentation of the `execute_commands` method.
     #[inline]
@@ -61,7 +65,8 @@ impl<Cb, L> CmdExecuteCommands<Cb, L>
 
 // TODO: specialize the trait so that multiple calls to `execute` are grouped together?
 unsafe impl<Cb, L> CommandsList for CmdExecuteCommands<Cb, L>
-    where Cb: SecondaryCommandBuffer, L: CommandsList
+    where Cb: SecondaryCommandBuffer,
+          L: CommandsList
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -76,7 +81,7 @@ unsafe impl<Cb, L> CommandsList for CmdExecuteCommands<Cb, L>
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
-                
+
                 vk.CmdExecuteCommands(cmd, self.raw_list.len() as u32, self.raw_list.as_ptr());
 
                 // vkCmdExecuteCommands resets the state of the command buffer.
@@ -98,36 +103,39 @@ impl<'a, 'c: 'a> CommandsListSink<'c> for FilterOutCommands<'a, 'c> {
     }
 
     #[inline]
-    fn add_command(&mut self, _: Box<CommandsListSinkCaller<'c> + 'c>) {
-    }
+    fn add_command(&mut self, _: Box<CommandsListSinkCaller<'c> + 'c>) {}
 
     // FIXME: this is wrong since the underlying impl will try to perform transitions that are
     //        performed by the secondary command buffer
     #[inline]
-    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize,
-                             write: bool, stages: PipelineStages, access: AccessFlagBits)
-    {
+    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool, stages: PipelineStages, access: AccessFlagBits) {
         self.0.add_buffer_transition(buffer, offset, size, write, stages, access)
     }
 
     // FIXME: this is wrong since the underlying impl will try to perform transitions that are
     //        performed by the secondary command buffer
     #[inline]
-    fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
-                            stages: PipelineStages, access: AccessFlagBits)
-    {
-        self.0.add_image_transition(image, first_layer, num_layers, first_mipmap, num_mipmaps,
-                                    write, layout, stages, access)
+    fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout, stages: PipelineStages, access: AccessFlagBits) {
+        self.0.add_image_transition(image,
+                                    first_layer,
+                                    num_layers,
+                                    first_mipmap,
+                                    num_mipmaps,
+                                    write,
+                                    layout,
+                                    stages,
+                                    access)
     }
 
     #[inline]
-    fn add_image_transition_notification(&mut self, image: &'c Image, first_layer: u32,
-                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                                         layout: Layout, stages: PipelineStages,
-                                         access: AccessFlagBits)
-    {
-        self.0.add_image_transition_notification(image, first_layer, num_layers, first_mipmap,
-                                                 num_mipmaps, layout, stages, access)
+    fn add_image_transition_notification(&mut self, image: &'c Image, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32, layout: Layout, stages: PipelineStages, access: AccessFlagBits) {
+        self.0.add_image_transition_notification(image,
+                                                 first_layer,
+                                                 num_layers,
+                                                 first_mipmap,
+                                                 num_mipmaps,
+                                                 layout,
+                                                 stages,
+                                                 access)
     }
 }

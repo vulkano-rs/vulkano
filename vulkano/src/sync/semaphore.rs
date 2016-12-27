@@ -20,16 +20,20 @@ use check_errors;
 use vk;
 
 /// Used to provide synchronization between command buffers during their execution.
-/// 
+///
 /// It is similar to a fence, except that it is purely on the GPU side. The CPU can't query a
 /// semaphore's status or wait for it to be signaled.
 #[derive(Debug)]
-pub struct Semaphore<D = Arc<Device>> where D: SafeDeref<Target = Device> {
+pub struct Semaphore<D = Arc<Device>>
+    where D: SafeDeref<Target = Device>
+{
     semaphore: vk::Semaphore,
     device: D,
 }
 
-impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
+impl<D> Semaphore<D>
+    where D: SafeDeref<Target = Device>
+{
     /// See the docs of new().
     #[inline]
     pub fn raw(device: D) -> Result<Semaphore<D>, OomError> {
@@ -37,8 +41,8 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-                pNext: 0 as *const _,   // ptr::null()
-                flags: 0,   // reserved
+                pNext: 0 as *const _, // ptr::null()
+                flags: 0, // reserved
             };
 
             let vk = device.pointers();
@@ -66,7 +70,9 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     }
 }
 
-unsafe impl<D> VulkanObject for Semaphore<D> where D: SafeDeref<Target = Device> {
+unsafe impl<D> VulkanObject for Semaphore<D>
+    where D: SafeDeref<Target = Device>
+{
     type Object = vk::Semaphore;
 
     #[inline]
@@ -75,7 +81,9 @@ unsafe impl<D> VulkanObject for Semaphore<D> where D: SafeDeref<Target = Device>
     }
 }
 
-impl<D> Drop for Semaphore<D> where D: SafeDeref<Target = Device> {
+impl<D> Drop for Semaphore<D>
+    where D: SafeDeref<Target = Device>
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {

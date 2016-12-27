@@ -83,8 +83,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// panic.
     #[inline]
     pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
-        where F: for<'r> FnOnce(&'r T) -> &'r R
-        // TODO: bounds on R
+        where F: for<'r> FnOnce(&'r T) -> &'r R // TODO: bounds on R
     {
         let data: &T = mem::zeroed();
         let result = f(data);
@@ -116,7 +115,9 @@ impl<T, B> BufferSlice<[T], B> {
     /// Returns `None` if out of range.
     #[inline]
     pub fn index(self, index: usize) -> Option<BufferSlice<T, B>> {
-        if index >= self.len() { return None; }
+        if index >= self.len() {
+            return None;
+        }
 
         Some(BufferSlice {
             marker: PhantomData,
@@ -131,7 +132,9 @@ impl<T, B> BufferSlice<[T], B> {
     /// Returns `None` if out of range.
     #[inline]
     pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<[T], B>> {
-        if range.end > self.len() { return None; }
+        if range.end > self.len() {
+            return None;
+        }
 
         Some(BufferSlice {
             marker: PhantomData,
@@ -142,7 +145,9 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B>
+    where B: Buffer
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         let inner = self.resource.inner();
@@ -158,9 +163,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &Buffer, other_offset: usize, other_size: usize) -> bool {
         let self_offset = self.offset + self_offset;
         debug_assert!(self_size + self_offset <= self.size);
         self.resource.conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
@@ -174,12 +177,16 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
+unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B>
+    where B: Buffer,
+          T: 'static
+{
     type Content = T;
 }
 
 impl<T: ?Sized, B> From<B> for BufferSlice<T, B>
-    where B: TypedBuffer<Content = T>, T: 'static
+    where B: TypedBuffer<Content = T>,
+          T: 'static
 {
     #[inline]
     fn from(r: B) -> BufferSlice<T, B> {

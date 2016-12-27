@@ -194,13 +194,9 @@ impl From<Error> for SupportedExtensionsError {
     #[inline]
     fn from(err: Error) -> SupportedExtensionsError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            },
-            err @ Error::OutOfDeviceMemory => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            },
-            _ => panic!("unexpected error: {:?}", err)
+            err @ Error::OutOfHostMemory => SupportedExtensionsError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => SupportedExtensionsError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

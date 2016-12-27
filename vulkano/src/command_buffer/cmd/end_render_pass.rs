@@ -18,24 +18,28 @@ use VulkanPointers;
 /// Wraps around a commands list and adds to the end of it a command that ends the current render
 /// pass.
 #[derive(Debug, Copy, Clone)]
-pub struct CmdEndRenderPass<L> where L: CommandsList {
+pub struct CmdEndRenderPass<L>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
 }
 
-impl<L> CmdEndRenderPass<L> where L: CommandsList {
+impl<L> CmdEndRenderPass<L>
+    where L: CommandsList
+{
     /// See the documentation of the `end_render_pass` method.
     #[inline]
     pub fn new(previous: L) -> Result<CmdEndRenderPass<L>, CmdEndRenderPassError> {
         // TODO: check that we're in a render pass and that the next subpass is correct
 
-        Ok(CmdEndRenderPass {
-            previous: previous,
-        })
+        Ok(CmdEndRenderPass { previous: previous })
     }
 }
 
-unsafe impl<L> CommandsList for CmdEndRenderPass<L> where L: CommandsList {
+unsafe impl<L> CommandsList for CmdEndRenderPass<L>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
@@ -61,9 +65,7 @@ impl error::Error for CmdEndRenderPassError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdEndRenderPassError::SubpassesRemaining => {
-                "it's not possible to end the render pass before you went over all the subpasses"
-            },
+            CmdEndRenderPassError::SubpassesRemaining => "it's not possible to end the render pass before you went over all the subpasses",
         }
     }
 }

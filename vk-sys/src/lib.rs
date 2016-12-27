@@ -958,11 +958,29 @@ pub type DebugReportFlagsEXT = Flags;
 
 
 pub type PFN_vkAllocationFunction = extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void,
+                                                         *mut c_void,
+                                                         usize,
+                                                         usize,
+                                                         SystemAllocationScope) -> *mut c_void;
 pub type PFN_vkFreeFunction = extern "system" fn(*mut c_void, *mut c_void);
-pub type PFN_vkInternalAllocationNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkInternalFreeNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkDebugReportCallbackEXT = extern "system" fn(DebugReportFlagsEXT, DebugReportObjectTypeEXT, u64, usize, i32, *const c_char, *const c_char, *mut c_void) -> Bool32;
+pub type PFN_vkInternalAllocationNotification = extern "system" fn(*mut c_void,
+                                                                   usize,
+                                                                   InternalAllocationType,
+                                                                   SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkInternalFreeNotification = extern "system" fn(*mut c_void,
+                                                             usize,
+                                                             InternalAllocationType,
+                                                             SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkDebugReportCallbackEXT = extern "system" fn(DebugReportFlagsEXT,
+                                                           DebugReportObjectTypeEXT,
+                                                           u64,
+                                                           usize,
+                                                           i32,
+                                                           *const c_char,
+                                                           *const c_char,
+                                                           *mut c_void)
+                                                           -> Bool32;
 
 pub type PFN_vkVoidFunction = extern "system" fn() -> ();
 
@@ -2040,13 +2058,31 @@ pub struct BufferImageCopy {
 pub struct ClearColorValue([u32; 4]);
 
 impl ClearColorValue {
-    #[inline] pub fn as_float32(&self) -> &[f32; 4] { unsafe { mem::transmute(&self.0) } }
-    #[inline] pub fn as_int32(&self) -> &[i32; 4] { unsafe { mem::transmute(&self.0) } }
-    #[inline] pub fn as_uint32(&self) -> &[u32; 4] { &self.0 }
+    #[inline]
+    pub fn as_float32(&self) -> &[f32; 4] {
+        unsafe { mem::transmute(&self.0) }
+    }
+    #[inline]
+    pub fn as_int32(&self) -> &[i32; 4] {
+        unsafe { mem::transmute(&self.0) }
+    }
+    #[inline]
+    pub fn as_uint32(&self) -> &[u32; 4] {
+        &self.0
+    }
 
-    #[inline] pub fn float32(val: [f32; 4]) -> ClearColorValue { ClearColorValue(unsafe { mem::transmute(val) }) }
-    #[inline] pub fn int32(val: [i32; 4]) -> ClearColorValue { ClearColorValue(unsafe { mem::transmute(val) }) }
-    #[inline] pub fn uint32(val: [u32; 4]) -> ClearColorValue { ClearColorValue(val) }
+    #[inline]
+    pub fn float32(val: [f32; 4]) -> ClearColorValue {
+        ClearColorValue(unsafe { mem::transmute(val) })
+    }
+    #[inline]
+    pub fn int32(val: [i32; 4]) -> ClearColorValue {
+        ClearColorValue(unsafe { mem::transmute(val) })
+    }
+    #[inline]
+    pub fn uint32(val: [u32; 4]) -> ClearColorValue {
+        ClearColorValue(val)
+    }
 }
 
 #[repr(C)]
@@ -2059,11 +2095,24 @@ pub struct ClearDepthStencilValue {
 pub struct ClearValue(ClearColorValue);
 
 impl ClearValue {
-    #[inline] pub fn as_color(&self) -> &ClearColorValue { &self.0 }
-    #[inline] pub fn as_depth_stencil(&self) -> &ClearDepthStencilValue { unsafe { mem::transmute(&self.0) } }
+    #[inline]
+    pub fn as_color(&self) -> &ClearColorValue {
+        &self.0
+    }
+    #[inline]
+    pub fn as_depth_stencil(&self) -> &ClearDepthStencilValue {
+        unsafe { mem::transmute(&self.0) }
+    }
 
-    #[inline] pub fn color(val: ClearColorValue) -> ClearValue { ClearValue(val) }
-    #[inline] pub fn depth_stencil(val: ClearDepthStencilValue) -> ClearValue { let val = (val, [0u32, 0u32]); ClearValue(unsafe { mem::transmute(val) }) }
+    #[inline]
+    pub fn color(val: ClearColorValue) -> ClearValue {
+        ClearValue(val)
+    }
+    #[inline]
+    pub fn depth_stencil(val: ClearDepthStencilValue) -> ClearValue {
+        let val = (val, [0u32, 0u32]);
+        ClearValue(unsafe { mem::transmute(val) })
+    }
 }
 
 #[repr(C)]

@@ -53,18 +53,23 @@ impl UnsafeCommandPool {
     ///
     /// - Panics if the queue family doesn't belong to the same physical device as `device`.
     ///
-    pub fn new(device: &Arc<Device>, queue_family: QueueFamily, transient: bool,
-               reset_cb: bool) -> Result<UnsafeCommandPool, OomError>
-    {
+    pub fn new(device: &Arc<Device>, queue_family: QueueFamily, transient: bool, reset_cb: bool) -> Result<UnsafeCommandPool, OomError> {
         assert_eq!(device.physical_device().internal_object(),
                    queue_family.physical_device().internal_object());
 
         let vk = device.pointers();
 
         let flags = {
-            let flag1 = if transient { vk::COMMAND_POOL_CREATE_TRANSIENT_BIT } else { 0 };
-            let flag2 = if reset_cb { vk::COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT }
-                        else { 0 };
+            let flag1 = if transient {
+                vk::COMMAND_POOL_CREATE_TRANSIENT_BIT
+            } else {
+                0
+            };
+            let flag2 = if reset_cb {
+                vk::COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+            } else {
+                0
+            };
             flag1 | flag2
         };
 
@@ -77,8 +82,7 @@ impl UnsafeCommandPool {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateCommandPool(device.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateCommandPool(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -98,8 +102,11 @@ impl UnsafeCommandPool {
     ///
     #[inline]
     pub unsafe fn reset(&self, release_resources: bool) -> Result<(), OomError> {
-        let flags = if release_resources { vk::COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT }
-                    else { 0 };
+        let flags = if release_resources {
+            vk::COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+        } else {
+            0
+        };
 
         let vk = self.device.pointers();
         try!(check_errors(vk.ResetCommandPool(self.device.internal_object(), self.pool, flags)));
@@ -110,9 +117,7 @@ impl UnsafeCommandPool {
     ///
     /// If `secondary` is true, allocates secondary command buffers. Otherwise, allocates primary
     /// command buffers.
-    pub fn alloc_command_buffers(&self, secondary: bool, count: usize)
-                                 -> Result<UnsafeCommandPoolAllocIter, OomError>
-    {
+    pub fn alloc_command_buffers(&self, secondary: bool, count: usize) -> Result<UnsafeCommandPoolAllocIter, OomError> {
         if count == 0 {
             return Ok(UnsafeCommandPoolAllocIter(None));
         }
@@ -121,16 +126,18 @@ impl UnsafeCommandPool {
             sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             pNext: ptr::null(),
             commandPool: self.pool,
-            level: if secondary { vk::COMMAND_BUFFER_LEVEL_SECONDARY }
-                   else { vk::COMMAND_BUFFER_LEVEL_PRIMARY },
+            level: if secondary {
+                vk::COMMAND_BUFFER_LEVEL_SECONDARY
+            } else {
+                vk::COMMAND_BUFFER_LEVEL_PRIMARY
+            },
             commandBufferCount: count as u32,
         };
 
         unsafe {
             let vk = self.device.pointers();
             let mut out = Vec::with_capacity(count);
-            try!(check_errors(vk.AllocateCommandBuffers(self.device.internal_object(), &infos,
-                                                        out.as_mut_ptr())));
+            try!(check_errors(vk.AllocateCommandBuffers(self.device.internal_object(), &infos, out.as_mut_ptr())));
 
             out.set_len(count);
 
@@ -149,8 +156,10 @@ impl UnsafeCommandPool {
     {
         let command_buffers: SmallVec<[_; 4]> = command_buffers.map(|cb| cb.0).collect();
         let vk = self.device.pointers();
-        vk.FreeCommandBuffers(self.device.internal_object(), self.pool,
-                              command_buffers.len() as u32, command_buffers.as_ptr())
+        vk.FreeCommandBuffers(self.device.internal_object(),
+                              self.pool,
+                              command_buffers.len() as u32,
+                              command_buffers.as_ptr())
     }
 
     /// Returns the device this command pool was created with.

@@ -49,8 +49,10 @@ unsafe impl<L> CommandsList for CmdClearAttachments<L>
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
 
-                vk.CmdClearAttachments(cmd, self.attachments.len() as u32,
-                                       self.attachments.as_ptr(), self.rects.len() as u32,
+                vk.CmdClearAttachments(cmd,
+                                       self.attachments.len() as u32,
+                                       self.attachments.as_ptr(),
+                                       self.rects.len() as u32,
                                        self.rects.as_ptr());
             }
         }));

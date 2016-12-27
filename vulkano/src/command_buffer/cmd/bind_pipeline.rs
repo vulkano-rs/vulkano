@@ -25,7 +25,9 @@ use vk;
 /// > after it is executed. In other words, if the command is aware that the same pipeline is
 /// > already bound, then it won't bind it again. This optimization is essential, as binding a
 /// > pipeline has a non-negligible overhead.
-pub struct CmdBindPipeline<L, P> where L: CommandsList {
+pub struct CmdBindPipeline<L, P>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // The raw pipeline object to bind.
@@ -39,14 +41,14 @@ pub struct CmdBindPipeline<L, P> where L: CommandsList {
     pipeline: P,
 }
 
-impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
+impl<L> CmdBindPipeline<L, ()>
+    where L: CommandsList
+{
     /// Builds a command that binds a compute pipeline to the compute pipeline bind point.
     ///
     /// Use this command right before a compute dispatch.
     #[inline]
-    pub fn bind_compute_pipeline<Pl>(previous: L, pipeline: Arc<ComputePipeline<Pl>>)
-                                     -> CmdBindPipeline<L, Arc<ComputePipeline<Pl>>>
-    {
+    pub fn bind_compute_pipeline<Pl>(previous: L, pipeline: Arc<ComputePipeline<Pl>>) -> CmdBindPipeline<L, Arc<ComputePipeline<Pl>>> {
         let raw_pipeline = pipeline.internal_object();
         let device = pipeline.device().clone();
 
@@ -63,9 +65,7 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     ///
     /// Use this command right before a draw command.
     #[inline]
-    pub fn bind_graphics_pipeline<V, Pl, R>(previous: L, pipeline: Arc<GraphicsPipeline<V, Pl, R>>)
-                                            -> CmdBindPipeline<L, Arc<GraphicsPipeline<V, Pl, R>>>
-    {
+    pub fn bind_graphics_pipeline<V, Pl, R>(previous: L, pipeline: Arc<GraphicsPipeline<V, Pl, R>>) -> CmdBindPipeline<L, Arc<GraphicsPipeline<V, Pl, R>>> {
         let raw_pipeline = pipeline.internal_object();
         let device = pipeline.device().clone();
 
@@ -79,7 +79,9 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     }
 }
 
-impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
+impl<L, P> CmdBindPipeline<L, P>
+    where L: CommandsList
+{
     /// Returns the device the pipeline is assocated with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -87,12 +89,15 @@ impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
     }
 }
 
-unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
+unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+        assert_eq!(self.device.internal_object(),
+                   builder.device().internal_object());
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             // Returning now if the pipeline object is already bound.
@@ -105,15 +110,15 @@ unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
                     } else {
                         raw.bound_graphics_pipeline = self.raw_pipeline;
                     }
-                },
+                }
                 vk::PIPELINE_BIND_POINT_COMPUTE => {
                     if raw.bound_compute_pipeline == self.raw_pipeline {
                         return;
                     } else {
                         raw.bound_compute_pipeline = self.raw_pipeline;
                     }
-                },
-                _ => unreachable!()
+                }
+                _ => unreachable!(),
             }
 
             // Binding for real.
@@ -127,14 +132,14 @@ unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
 }
 
 // TODO:
-/*unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
-    for CmdUnsyncedUpdate<'a, L, B, D>
-    where B: Buffer,
-          L: CommandsList,
-          D: Copy + 'static,
-{
-    #[inline]
-    fn is_outside_render_pass(&self) -> bool {
-        true
-    }
-}*/
+// unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
+// for CmdUnsyncedUpdate<'a, L, B, D>
+// where B: Buffer,
+// L: CommandsList,
+// D: Copy + 'static,
+// {
+// #[inline]
+// fn is_outside_render_pass(&self) -> bool {
+// true
+// }
+// }

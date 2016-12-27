@@ -21,7 +21,9 @@ use VulkanObject;
 use VulkanPointers;
 
 /// Wraps around a commands list and adds at the end of it a command that updates push constants.
-pub struct CmdPushConstants<L, Pc, Pl> where L: CommandsList {
+pub struct CmdPushConstants<L, Pc, Pl>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // The device of the pipeline object, so that we can compare it with the command buffer's
@@ -34,15 +36,14 @@ pub struct CmdPushConstants<L, Pc, Pl> where L: CommandsList {
 }
 
 impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
-    where L: CommandsList, Pl: PipelineLayoutRef
+    where L: CommandsList,
+          Pl: PipelineLayoutRef
 {
     /// Builds the command.
     ///
     /// Returns an error if the push constants are not compatible with the pipeline layout.
     #[inline]
-    pub fn new(previous: L, pipeline_layout: Pl, push_constants: Pc)
-               -> Result<CmdPushConstants<L, Pc, Pl>, CmdPushConstantsError> 
-    {
+    pub fn new(previous: L, pipeline_layout: Pl, push_constants: Pc) -> Result<CmdPushConstants<L, Pc, Pl>, CmdPushConstantsError> {
         if !PipelineLayoutPushConstantsCompatible::is_compatible(pipeline_layout.desc(), &push_constants) {
             return Err(CmdPushConstantsError::IncompatibleData);
         }
@@ -59,13 +60,15 @@ impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
 }
 
 unsafe impl<L, Pc, Pl> CommandsList for CmdPushConstants<L, Pc, Pl>
-    where L: CommandsList, Pl: PipelineLayoutRef
+    where L: CommandsList,
+          Pl: PipelineLayoutRef
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+        assert_eq!(self.device.internal_object(),
+                   builder.device().internal_object());
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
@@ -73,18 +76,21 @@ unsafe impl<L, Pc, Pl> CommandsList for CmdPushConstants<L, Pc, Pl>
                 let cmd = raw.command_buffer.clone().take().unwrap();
 
                 let data_raw = &self.push_constants as *const Pc as *const u8;
-                
-                for num_range in 0 .. self.pipeline_layout.desc().num_push_constants_ranges() {
+
+                for num_range in 0..self.pipeline_layout.desc().num_push_constants_ranges() {
                     let range = match self.pipeline_layout.desc().push_constants_range(num_range) {
                         Some(r) => r,
-                        None => continue
+                        None => continue,
                     };
 
                     debug_assert_eq!(range.offset % 4, 0);
                     debug_assert_eq!(range.size % 4, 0);
 
-                    vk.CmdPushConstants(cmd, self.pipeline_layout.sys().internal_object(),
-                                        range.stages.into(), range.offset as u32, range.size as u32,
+                    vk.CmdPushConstants(cmd,
+                                        self.pipeline_layout.sys().internal_object(),
+                                        range.stages.into(),
+                                        range.offset as u32,
+                                        range.size as u32,
                                         data_raw.offset(range.offset as isize) as *const _);
                 }
             }
@@ -96,7 +102,6 @@ unsafe impl<L, Pc, Pl> CommandsList for CmdPushConstants<L, Pc, Pl>
 #[derive(Debug, Copy, Clone)]
 pub enum CmdPushConstantsError {
     /// The push constants are not compatible with the pipeline layout.
-    // TODO: inner error
     IncompatibleData,
 }
 
@@ -104,9 +109,7 @@ impl error::Error for CmdPushConstantsError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdPushConstantsError::IncompatibleData => {
-                "the push constants are not compatible with the pipeline layout"
-            },
+            CmdPushConstantsError::IncompatibleData => "the push constants are not compatible with the pipeline layout",
         }
     }
 }

@@ -32,7 +32,10 @@ pub unsafe trait Buffer {
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
+    fn len(&self) -> usize
+        where Self: TypedBuffer,
+              Self::Content: Content
+    {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 
@@ -74,10 +77,7 @@ pub unsafe trait Buffer {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize)
-                        -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &Buffer, other_offset: usize, other_size: usize) -> bool {
         // TODO: should we really provide a default implementation?
 
         debug_assert!(self_size <= self.size());
@@ -106,11 +106,10 @@ pub unsafe trait Buffer {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image,
-                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
-        let other_key = other.conflict_key(other_first_layer, other_num_layers, other_first_mipmap,
+    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image, other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32, other_num_mipmaps: u32) -> bool {
+        let other_key = other.conflict_key(other_first_layer,
+                                           other_num_layers,
+                                           other_first_mipmap,
                                            other_num_mipmaps);
         self.conflict_key(self_offset, self_size) == other_key
     }
@@ -142,7 +141,9 @@ pub struct BufferInner<'a> {
     pub offset: usize,
 }
 
-unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
+unsafe impl<'a, B: ?Sized> Buffer for &'a B
+    where B: Buffer + 'a
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -154,9 +155,7 @@ unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &Buffer, other_offset: usize, other_size: usize) -> bool {
         (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
@@ -166,7 +165,9 @@ unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
     }
 }
 
-unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
+unsafe impl<B: ?Sized> Buffer for Arc<B>
+    where B: Buffer
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -178,9 +179,7 @@ unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &Buffer, other_offset: usize, other_size: usize) -> bool {
         (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
@@ -194,10 +193,14 @@ pub unsafe trait TypedBuffer: Buffer {
     type Content: ?Sized + 'static;
 }
 
-unsafe impl<B: ?Sized> TypedBuffer for Arc<B> where B: TypedBuffer {
+unsafe impl<B: ?Sized> TypedBuffer for Arc<B>
+    where B: TypedBuffer
+{
     type Content = B::Content;
 }
 
-unsafe impl<'a, B: ?Sized + 'a> TypedBuffer for &'a B where B: TypedBuffer {
+unsafe impl<'a, B: ?Sized + 'a> TypedBuffer for &'a B
+    where B: TypedBuffer
+{
     type Content = B::Content;
 }

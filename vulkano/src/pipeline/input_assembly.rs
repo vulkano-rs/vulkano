@@ -86,7 +86,7 @@ impl PrimitiveTopology {
             PrimitiveTopology::TriangleFan => true,
             PrimitiveTopology::LineStripWithAdjacency => true,
             PrimitiveTopology::TriangleStripWithAdjacency => true,
-            _ => false
+            _ => false,
         }
     }
 }

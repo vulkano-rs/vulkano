@@ -20,6 +20,5 @@ pub struct EmptyCommandsList;
 
 unsafe impl CommandsList for EmptyCommandsList {
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-    }
+    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {}
 }

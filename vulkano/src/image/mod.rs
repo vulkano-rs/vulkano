@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Images storage (1D, 2D, 3D, arrays, etc.).
-//! 
+//!
 //! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
 //! most common usage is to store a 2D array of color pixels (in other words an *image* in the
 //! everyday language), but it can also be used to store arbitrary data.
@@ -142,7 +142,11 @@ pub enum Dimensions {
     Dim1d { width: u32 },
     Dim1dArray { width: u32, array_layers: u32 },
     Dim2d { width: u32, height: u32 },
-    Dim2dArray { width: u32, height: u32, array_layers: u32 },
+    Dim2dArray {
+        width: u32,
+        height: u32,
+        array_layers: u32,
+    },
     Dim3d { width: u32, height: u32, depth: u32 },
     Cubemap { size: u32 },
     CubemapArray { size: u32, array_layers: u32 },
@@ -169,7 +173,7 @@ impl Dimensions {
             Dimensions::Dim1dArray { .. } => 1,
             Dimensions::Dim2d { height, .. } => height,
             Dimensions::Dim2dArray { height, .. } => height,
-            Dimensions::Dim3d { height, .. }  => height,
+            Dimensions::Dim3d { height, .. } => height,
             Dimensions::Cubemap { size } => size,
             Dimensions::CubemapArray { size, .. } => size,
         }
@@ -187,7 +191,7 @@ impl Dimensions {
             Dimensions::Dim1dArray { .. } => 1,
             Dimensions::Dim2d { .. } => 1,
             Dimensions::Dim2dArray { .. } => 1,
-            Dimensions::Dim3d { depth, .. }  => depth,
+            Dimensions::Dim3d { depth, .. } => depth,
             Dimensions::Cubemap { .. } => 1,
             Dimensions::CubemapArray { .. } => 1,
         }
@@ -200,7 +204,7 @@ impl Dimensions {
             Dimensions::Dim1dArray { array_layers, .. } => array_layers,
             Dimensions::Dim2d { .. } => 1,
             Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. }  => 1,
+            Dimensions::Dim3d { .. } => 1,
             Dimensions::Cubemap { .. } => 1,
             Dimensions::CubemapArray { array_layers, .. } => array_layers,
         }
@@ -213,7 +217,7 @@ impl Dimensions {
             Dimensions::Dim1dArray { array_layers, .. } => array_layers,
             Dimensions::Dim2d { .. } => 1,
             Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. }  => 1,
+            Dimensions::Dim3d { .. } => 1,
             Dimensions::Cubemap { .. } => 6,
             Dimensions::CubemapArray { array_layers, .. } => array_layers * 6,
         }
@@ -224,30 +228,56 @@ impl Dimensions {
     pub fn to_image_dimensions(&self) -> ImageDimensions {
         match *self {
             Dimensions::Dim1d { width } => {
-                ImageDimensions::Dim1d { width: width, array_layers: 1 }
-            },
+                ImageDimensions::Dim1d {
+                    width: width,
+                    array_layers: 1,
+                }
+            }
             Dimensions::Dim1dArray { width, array_layers } => {
-                ImageDimensions::Dim1d { width: width, array_layers: array_layers }
-            },
+                ImageDimensions::Dim1d {
+                    width: width,
+                    array_layers: array_layers,
+                }
+            }
             Dimensions::Dim2d { width, height } => {
-                ImageDimensions::Dim2d { width: width, height: height, array_layers: 1,
-                                         cubemap_compatible: false }
-            },
+                ImageDimensions::Dim2d {
+                    width: width,
+                    height: height,
+                    array_layers: 1,
+                    cubemap_compatible: false,
+                }
+            }
             Dimensions::Dim2dArray { width, height, array_layers } => {
-                ImageDimensions::Dim2d { width: width, height: height,
-                                         array_layers: array_layers, cubemap_compatible: false }
-            },
+                ImageDimensions::Dim2d {
+                    width: width,
+                    height: height,
+                    array_layers: array_layers,
+                    cubemap_compatible: false,
+                }
+            }
             Dimensions::Dim3d { width, height, depth } => {
-                ImageDimensions::Dim3d { width: width, height: height, depth: depth }
-            },
+                ImageDimensions::Dim3d {
+                    width: width,
+                    height: height,
+                    depth: depth,
+                }
+            }
             Dimensions::Cubemap { size } => {
-                ImageDimensions::Dim2d { width: size, height: size, array_layers: 6,
-                                         cubemap_compatible: true }
-            },
+                ImageDimensions::Dim2d {
+                    width: size,
+                    height: size,
+                    array_layers: 6,
+                    cubemap_compatible: true,
+                }
+            }
             Dimensions::CubemapArray { size, array_layers } => {
-                ImageDimensions::Dim2d { width: size, height: size, array_layers: array_layers * 6,
-                                         cubemap_compatible: true }
-            },
+                ImageDimensions::Dim2d {
+                    width: size,
+                    height: size,
+                    array_layers: array_layers * 6,
+                    cubemap_compatible: true,
+                }
+            }
         }
     }
 
@@ -280,8 +310,13 @@ pub enum ViewType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ImageDimensions {
     Dim1d { width: u32, array_layers: u32 },
-    Dim2d { width: u32, height: u32, array_layers: u32, cubemap_compatible: bool },
-    Dim3d { width: u32, height: u32, depth: u32 }
+    Dim2d {
+        width: u32,
+        height: u32,
+        array_layers: u32,
+        cubemap_compatible: bool,
+    },
+    Dim3d { width: u32, height: u32, depth: u32 },
 }
 
 impl ImageDimensions {
@@ -290,7 +325,7 @@ impl ImageDimensions {
         match *self {
             ImageDimensions::Dim1d { width, .. } => width,
             ImageDimensions::Dim2d { width, .. } => width,
-            ImageDimensions::Dim3d { width, .. }  => width,
+            ImageDimensions::Dim3d { width, .. } => width,
         }
     }
 
@@ -299,7 +334,7 @@ impl ImageDimensions {
         match *self {
             ImageDimensions::Dim1d { .. } => 1,
             ImageDimensions::Dim2d { height, .. } => height,
-            ImageDimensions::Dim3d { height, .. }  => height,
+            ImageDimensions::Dim3d { height, .. } => height,
         }
     }
 
@@ -313,7 +348,7 @@ impl ImageDimensions {
         match *self {
             ImageDimensions::Dim1d { .. } => 1,
             ImageDimensions::Dim2d { .. } => 1,
-            ImageDimensions::Dim3d { depth, .. }  => depth,
+            ImageDimensions::Dim3d { depth, .. } => depth,
         }
     }
 
@@ -322,7 +357,7 @@ impl ImageDimensions {
         match *self {
             ImageDimensions::Dim1d { array_layers, .. } => array_layers,
             ImageDimensions::Dim2d { array_layers, .. } => array_layers,
-            ImageDimensions::Dim3d { .. }  => 1,
+            ImageDimensions::Dim3d { .. } => 1,
         }
     }
 }

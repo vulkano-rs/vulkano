@@ -43,13 +43,12 @@ impl Event {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
                 sType: vk::STRUCTURE_TYPE_EVENT_CREATE_INFO,
-                pNext: 0 as *const _, //ptr::null(),
-                flags: 0,   // reserved
+                pNext: 0 as *const _, // ptr::null(),
+                flags: 0, // reserved
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
-                                             ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS, ptr::null(), &mut output)));
             output
         };
 
@@ -58,7 +57,7 @@ impl Event {
             event: event,
         })
     }
-    
+
     /// Builds a new event.
     ///
     /// # Panic
@@ -75,12 +74,11 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             self.event)));
+            let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(), self.event)));
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }

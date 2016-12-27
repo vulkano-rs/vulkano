@@ -30,7 +30,7 @@ use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
-/// descriptor sets and push constants available to your shaders 
+/// descriptor sets and push constants available to your shaders
 pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
@@ -38,7 +38,9 @@ pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
     desc: L,
 }
 
-impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
+impl<L> PipelineLayout<L>
+    where L: PipelineLayoutDesc
+{
     /// Creates a new `PipelineLayout`.
     ///
     /// # Panic
@@ -46,35 +48,33 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     /// - Panics if one of the layout returned by `provided_set_layout()` belongs to a different
     ///   device than the one passed as parameter.
     #[inline]
-    pub fn new(device: &Arc<Device>, desc: L)
-               -> Result<PipelineLayout<L>, PipelineLayoutCreationError>
-    {
+    pub fn new(device: &Arc<Device>, desc: L) -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
         let vk = device.pointers();
         let limits = device.physical_device().limits();
 
         // Building the list of `UnsafeDescriptorSetLayout` objects.
         let layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
-            for num in 0 .. desc.num_sets() {
+            for num in 0..desc.num_sets() {
                 layouts.push(match desc.provided_set_layout(num) {
                     Some(l) => {
                         assert_eq!(l.device().internal_object(), device.internal_object());
                         l
-                    },
+                    }
                     None => {
-                        let sets_iter = 0 .. desc.num_bindings_in_set(num).unwrap_or(0);
+                        let sets_iter = 0..desc.num_bindings_in_set(num).unwrap_or(0);
                         let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
                         Arc::new(try!(UnsafeDescriptorSetLayout::new(device.clone(), desc_iter)))
-                    },
+                    }
                 });
             }
             layouts
         };
 
         // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
-        let layouts_ids = layouts.iter().map(|l| {
-            l.internal_object()
-        }).collect::<SmallVec<[_; 16]>>();
+        let layouts_ids = layouts.iter()
+            .map(|l| l.internal_object())
+            .collect::<SmallVec<[_; 16]>>();
 
         // FIXME: must also check per-descriptor-type limits (eg. max uniform buffer descriptors)
 
@@ -86,7 +86,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
-            for pc_id in 0 .. desc.num_push_constants_ranges() {
+            for pc_id in 0..desc.num_push_constants_ranges() {
                 let PipelineLayoutDescPcRange { offset, size, stages } = {
                     match desc.push_constants_range(pc_id) {
                         Some(o) => o,
@@ -136,7 +136,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             let infos = vk::PipelineLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 setLayoutCount: layouts_ids.len() as u32,
                 pSetLayouts: layouts_ids.as_ptr(),
                 pushConstantRangeCount: push_constants.len() as u32,
@@ -144,8 +144,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreatePipelineLayout(device.internal_object(), &infos,
-                                                      ptr::null(), &mut output)));
+            try!(check_errors(vk.CreatePipelineLayout(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -158,7 +157,9 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     }
 }
 
-impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
+impl<L> PipelineLayout<L>
+    where L: PipelineLayoutDesc
+{
     /// Returns the description of the pipeline layout.
     #[inline]
     pub fn desc(&self) -> &L {
@@ -166,7 +167,9 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     }
 }
 
-unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDescNames {
+unsafe impl<D> PipelineLayoutRef for PipelineLayout<D>
+    where D: PipelineLayoutDescNames
+{
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         PipelineLayoutSys(&self.layout)
@@ -232,18 +235,10 @@ impl error::Error for PipelineLayoutCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            PipelineLayoutCreationError::OomError(_) => {
-                "not enough memory available"
-            },
-            PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded => {
-                "the maximum number of descriptor sets has been exceeded"
-            },
-            PipelineLayoutCreationError::MaxPushConstantsSizeExceeded => {
-                "the maximum size of push constants has been exceeded"
-            },
-            PipelineLayoutCreationError::InvalidPushConstant => {
-                "one of the push constants range didn't obey the rules"
-            },
+            PipelineLayoutCreationError::OomError(_) => "not enough memory available",
+            PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded => "the maximum number of descriptor sets has been exceeded",
+            PipelineLayoutCreationError::MaxPushConstantsSizeExceeded => "the maximum size of push constants has been exceeded",
+            PipelineLayoutCreationError::InvalidPushConstant => "one of the push constants range didn't obey the rules",
         }
     }
 
@@ -251,7 +246,7 @@ impl error::Error for PipelineLayoutCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             PipelineLayoutCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -274,13 +269,9 @@ impl From<Error> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: Error) -> PipelineLayoutCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                PipelineLayoutCreationError::OomError(OomError::from(err))
-            },
-            err @ Error::OutOfDeviceMemory => {
-                PipelineLayoutCreationError::OomError(OomError::from(err))
-            },
-            _ => panic!("unexpected error: {:?}", err)
+            err @ Error::OutOfHostMemory => PipelineLayoutCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => PipelineLayoutCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -308,7 +299,7 @@ mod tests {
 
         let set = match UnsafeDescriptorSetLayout::raw(device1, iter::empty()) {
             Ok(s) => Arc::new(s),
-            Err(_) => return
+            Err(_) => return,
         };
 
         let _ = PipelineLayout::new(&device2, Some(&set), iter::empty());
@@ -322,7 +313,7 @@ mod tests {
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -334,7 +325,7 @@ mod tests {
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -346,7 +337,7 @@ mod tests {
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(PipelineLayoutCreationError::InvalidPushConstant) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }
