@@ -52,7 +52,7 @@ use vk;
 /// > will be checked when you create a pipeline layout, a descriptor set, or when you try to bind
 /// > a descriptor set.
 // TODO: add example
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct DescriptorDesc {
     /// Describes the content and layout of each array element of a descriptor.
     pub ty: DescriptorDescTy,
@@ -101,7 +101,7 @@ impl DescriptorDesc {
 }
 
 /// Describes the content and layout of each array element of a descriptor.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorDescTy {
     Sampler,                // TODO: the sampler has some restrictions as well
     CombinedImageSampler(DescriptorImageDesc),               // TODO: the sampler has some restrictions as well
@@ -133,12 +133,12 @@ impl DescriptorDescTy {
         Some(match *self {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,
             DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
-            DescriptorDescTy::Image(desc) => {
+            DescriptorDescTy::Image(ref desc) => {
                 if desc.sampled { DescriptorType::SampledImage }
                 else { DescriptorType::StorageImage }
             },
             DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
-            DescriptorDescTy::Buffer(desc) => {
+            DescriptorDescTy::Buffer(ref desc) => {
                 let dynamic = match desc.dynamic { Some(d) => d, None => return None };
                 match (desc.storage, dynamic) {
                     (false, false) => DescriptorType::UniformBuffer,
@@ -158,24 +158,24 @@ impl DescriptorDescTy {
     // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDescTy) -> bool {
-        match (*self, *other) {
-            (DescriptorDescTy::Sampler, DescriptorDescTy::Sampler) => true,
+        match (self, other) {
+            (&DescriptorDescTy::Sampler, &DescriptorDescTy::Sampler) => true,
 
-            (DescriptorDescTy::CombinedImageSampler(ref me),
-             DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
+            (&DescriptorDescTy::CombinedImageSampler(ref me),
+             &DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
 
-            (DescriptorDescTy::Image(ref me),
-             DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
+            (&DescriptorDescTy::Image(ref me),
+             &DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
 
-            (DescriptorDescTy::InputAttachment { multisampled: me_multisampled,
-                                                 array_layers: me_array_layers },
-             DescriptorDescTy::InputAttachment { multisampled: other_multisampled,
-                                                 array_layers: other_array_layers }) =>
+            (&DescriptorDescTy::InputAttachment { multisampled: me_multisampled,
+                                                  array_layers: me_array_layers },
+             &DescriptorDescTy::InputAttachment { multisampled: other_multisampled,
+                                                  array_layers: other_array_layers }) =>
             {
                 me_multisampled == other_multisampled && me_array_layers == other_array_layers
             },
 
-            (DescriptorDescTy::Buffer(ref me), DescriptorDescTy::Buffer(ref other)) => {
+            (&DescriptorDescTy::Buffer(ref me), &DescriptorDescTy::Buffer(ref other)) => {
                 if me.storage != other.storage {
                     return false;
                 }
@@ -188,8 +188,8 @@ impl DescriptorDescTy {
                 }
             },
 
-            (DescriptorDescTy::TexelBuffer { storage: me_storage, format: me_format },
-             DescriptorDescTy::TexelBuffer { storage: other_storage, format: other_format }) =>
+            (&DescriptorDescTy::TexelBuffer { storage: me_storage, format: me_format },
+             &DescriptorDescTy::TexelBuffer { storage: other_storage, format: other_format }) =>
             {
                 if me_storage != other_storage {
                     return false;
@@ -281,11 +281,24 @@ pub enum DescriptorImageDescDimensions {
 }
 
 // TODO: documentation
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DescriptorBufferDesc {
     pub dynamic: Option<bool>,
     pub storage: bool,
-    // FIXME: store content
+    pub content: DescriptorBufferContentDesc,
+}
+
+// TODO: documentation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptorBufferContentDesc {
+    F32,
+    F64,
+    Struct {
+
+    },
+    Array {
+        len: Box<DescriptorBufferContentDesc>, num_array: usize
+    },
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.

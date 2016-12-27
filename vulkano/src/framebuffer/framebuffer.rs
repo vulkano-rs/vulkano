@@ -479,7 +479,7 @@ mod tests {
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let _ = Framebuffer::new(&render_pass, [1024, 768, 1], example::AList {
+        let _ = Framebuffer::new(render_pass, [1024, 768, 1], example::AList {
             color: image.clone()
         }).unwrap();
     }
@@ -495,7 +495,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
-        match Framebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
+        match Framebuffer::new(render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
             _ => panic!()
         }
@@ -512,7 +512,7 @@ mod tests {
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
-        match Framebuffer::new(&render_pass, [600, 600, 1], alist) {
+        match Framebuffer::new(render_pass, [600, 600, 1], alist) {
             Err(FramebufferCreationError::AttachmentTooSmall) => (),
             _ => panic!()
         }
