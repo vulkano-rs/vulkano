@@ -347,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Tried to wait for multiple fences that didn't belong to the same device"]
+    #[should_panic(expected = "Tried to wait for multiple fences that didn't belong to the same device")]
     fn multiwait_different_devices() {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Tried to reset multiple fences that didn't belong to the same device"]
+    #[should_panic(expected = "Tried to reset multiple fences that didn't belong to the same device")]
     fn multireset_different_devices() {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();

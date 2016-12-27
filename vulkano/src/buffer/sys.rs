@@ -547,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse residency without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse residency without enabling sparse binding as well")]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: true, sparse_aliased: false };
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse aliasing without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse binding as well")]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: false, sparse_aliased: true };
