@@ -285,6 +285,7 @@ impl From<Error> for PipelineLayoutCreationError {
     }
 }
 
+/* TODO: restore
 #[cfg(test)]
 mod tests {
     use std::iter;
@@ -349,4 +350,4 @@ mod tests {
             _ => panic!()
         }
     }
-}
+}*/

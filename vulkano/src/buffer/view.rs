@@ -360,7 +360,7 @@ mod tests {
         let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &Usage::none(),
                                                          Some(queue.family())).unwrap();
 
-        match BufferView::new(&buffer, format::R8G8B8A8Unorm) {
+        match BufferView::new(buffer, format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!()
         }
@@ -380,7 +380,7 @@ mod tests {
                                                           Some(queue.family())).unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?
-        match BufferView::new(&buffer, format::R64G64B64A64Sfloat) {
+        match BufferView::new(buffer, format::R64G64B64A64Sfloat) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!()
         }
