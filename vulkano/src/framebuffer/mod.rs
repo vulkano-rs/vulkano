@@ -8,11 +8,11 @@
 // according to those terms.
 
 //! Targets on which your draw commands are executed.
-//! 
+//!
 //! # Render passes and framebuffers
 //!
 //! There are two concepts in Vulkan:
-//! 
+//!
 //! - A `RenderPass` is a collection of one or multiples passes called subpasses. Each subpass
 //!   contains the format and dimensions of the attachments that are part of the subpass. The
 //!   render pass only defines the layout of the rendering process.
@@ -88,6 +88,8 @@ pub use self::traits::Subpass;
 #[macro_use]
 mod macros;
 mod empty;
-#[doc(hidden)] pub mod framebuffer;
+#[doc(hidden)]
+pub mod framebuffer;
 mod sys;
-#[doc(hidden)] pub mod traits;      // TODO: pub-hidden because of that trait visibility bug
+#[doc(hidden)]
+pub mod traits;      // TODO: pub-hidden because of that trait visibility bug

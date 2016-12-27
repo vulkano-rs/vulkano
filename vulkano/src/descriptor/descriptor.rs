@@ -8,14 +8,14 @@
 // according to those terms.
 
 //! Description of a single descriptor.
-//! 
+//!
 //! This module contains traits and structs related to describing a single descriptor. A descriptor
 //! is a slot where you can bind a buffer or an image so that it can be accessed from your shaders.
 //! In order to specify which buffer or image to bind to a descriptor, see the `descriptor_set`
 //! module.
-//! 
+//!
 //! There are four different kinds of descriptors that give access to buffers:
-//! 
+//!
 //! - Uniform texel buffers. Gives read-only access to the content of a buffer. Only supports
 //!   certain buffer formats.
 //! - Storage texel buffers. Gives read and/or write access to the content of a buffer. Only
@@ -25,9 +25,9 @@
 //!   sometimes slower than uniform texel buffers.
 //! - Storage buffers. Gives read and/or write access to the content of a buffer. Less restrictive
 //!   but sometimes slower than uniform buffers and storage texel buffers.
-//! 
+//!
 //! There are five different kinds of descriptors related to images:
-//! 
+//!
 //! - Storage images. Gives read and/or write access to individual pixels in an image. The image
 //!   cannot be sampled. In other words, you have exactly specify which pixel to read or write.
 //! - Sampled images. Gives read-only access to an image. Before you can use a sampled image in a
@@ -36,10 +36,10 @@
 //! - Samplers. Doesn't contain an image but a sampler object that describes how an image will be
 //!   accessed. This is meant to be combined with a sampled image (see above).
 //! - Combined image and sampler. Similar to a sampled image, but also directly includes the
-//!   sampler which indicates how the sampling is done. 
+//!   sampler which indicates how the sampling is done.
 //! - Input attachments. The fastest but also most restrictive access to images. Must be integrated
 //!   in a render pass. Can only give access to the same pixel as the one you're processing.
-//! 
+//!
 
 use std::cmp;
 use std::ops::BitOr;
@@ -77,9 +77,7 @@ impl DescriptorDesc {
     // TODO: return Result instead of bool
     #[inline]
     pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
-        self.ty.is_superset_of(&other.ty) &&
-        self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) &&
-        (!self.readonly || other.readonly)
+        self.ty.is_superset_of(&other.ty) && self.array_count >= other.array_count && self.stages.is_superset_of(&other.stages) && (!self.readonly || other.readonly)
     }
 
     /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
@@ -89,7 +87,9 @@ impl DescriptorDesc {
     // TODO: add example
     #[inline]
     pub fn union(&self, other: &DescriptorDesc) -> Option<DescriptorDesc> {
-        if self.ty != other.ty { return None; }
+        if self.ty != other.ty {
+            return None;
+        }
 
         Some(DescriptorDesc {
             ty: self.ty.clone(),
@@ -103,8 +103,8 @@ impl DescriptorDesc {
 /// Describes the content and layout of each array element of a descriptor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorDescTy {
-    Sampler,                // TODO: the sampler has some restrictions as well
-    CombinedImageSampler(DescriptorImageDesc),               // TODO: the sampler has some restrictions as well
+    Sampler, // TODO: the sampler has some restrictions as well
+    CombinedImageSampler(DescriptorImageDesc), // TODO: the sampler has some restrictions as well
     Image(DescriptorImageDesc),
     TexelBuffer {
         /// If `true`, this describes a storage texel buffer.
@@ -134,23 +134,32 @@ impl DescriptorDescTy {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,
             DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
             DescriptorDescTy::Image(ref desc) => {
-                if desc.sampled { DescriptorType::SampledImage }
-                else { DescriptorType::StorageImage }
-            },
+                if desc.sampled {
+                    DescriptorType::SampledImage
+                } else {
+                    DescriptorType::StorageImage
+                }
+            }
             DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
             DescriptorDescTy::Buffer(ref desc) => {
-                let dynamic = match desc.dynamic { Some(d) => d, None => return None };
+                let dynamic = match desc.dynamic {
+                    Some(d) => d,
+                    None => return None,
+                };
                 match (desc.storage, dynamic) {
                     (false, false) => DescriptorType::UniformBuffer,
                     (true, false) => DescriptorType::StorageBuffer,
                     (false, true) => DescriptorType::UniformBufferDynamic,
                     (true, true) => DescriptorType::StorageBufferDynamic,
                 }
-            },
+            }
             DescriptorDescTy::TexelBuffer { storage, .. } => {
-                if storage { DescriptorType::StorageTexelBuffer }
-                else { DescriptorType::UniformTexelBuffer }
-            },
+                if storage {
+                    DescriptorType::StorageTexelBuffer
+                } else {
+                    DescriptorType::UniformTexelBuffer
+                }
+            }
         })
     }
 
@@ -161,19 +170,11 @@ impl DescriptorDescTy {
         match (self, other) {
             (&DescriptorDescTy::Sampler, &DescriptorDescTy::Sampler) => true,
 
-            (&DescriptorDescTy::CombinedImageSampler(ref me),
-             &DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
+            (&DescriptorDescTy::CombinedImageSampler(ref me), &DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
 
-            (&DescriptorDescTy::Image(ref me),
-             &DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
+            (&DescriptorDescTy::Image(ref me), &DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
 
-            (&DescriptorDescTy::InputAttachment { multisampled: me_multisampled,
-                                                  array_layers: me_array_layers },
-             &DescriptorDescTy::InputAttachment { multisampled: other_multisampled,
-                                                  array_layers: other_array_layers }) =>
-            {
-                me_multisampled == other_multisampled && me_array_layers == other_array_layers
-            },
+            (&DescriptorDescTy::InputAttachment { multisampled: me_multisampled, array_layers: me_array_layers }, &DescriptorDescTy::InputAttachment { multisampled: other_multisampled, array_layers: other_array_layers }) => me_multisampled == other_multisampled && me_array_layers == other_array_layers,
 
             (&DescriptorDescTy::Buffer(ref me), &DescriptorDescTy::Buffer(ref other)) => {
                 if me.storage != other.storage {
@@ -186,11 +187,9 @@ impl DescriptorDescTy {
                     (None, None) => true,
                     (None, Some(_)) => false,
                 }
-            },
+            }
 
-            (&DescriptorDescTy::TexelBuffer { storage: me_storage, format: me_format },
-             &DescriptorDescTy::TexelBuffer { storage: other_storage, format: other_format }) =>
-            {
+            (&DescriptorDescTy::TexelBuffer { storage: me_storage, format: me_format }, &DescriptorDescTy::TexelBuffer { storage: other_storage, format: other_format }) => {
                 if me_storage != other_storage {
                     return false;
                 }
@@ -201,10 +200,10 @@ impl DescriptorDescTy {
                     (None, None) => true,
                     (None, Some(_)) => false,
                 }
-            },
+            }
 
             // Any other combination is invalid.
-            _ => false
+            _ => false,
         }
     }
 }
@@ -240,7 +239,11 @@ impl DescriptorImageDesc {
         }
 
         match (self.format, other.format) {
-            (Some(a), Some(b)) => if a != b { return false; },
+            (Some(a), Some(b)) => {
+                if a != b {
+                    return false;
+                }
+            }
             (Some(_), None) => (),
             (None, None) => (),
             (None, Some(_)) => return false,
@@ -248,16 +251,18 @@ impl DescriptorImageDesc {
 
         match (self.array_layers, other.array_layers) {
             (DescriptorImageDescArray::NonArrayed, DescriptorImageDescArray::NonArrayed) => (),
-            (DescriptorImageDescArray::Arrayed { max_layers: my_max },
-             DescriptorImageDescArray::Arrayed { max_layers: other_max }) =>
-            {
+            (DescriptorImageDescArray::Arrayed { max_layers: my_max }, DescriptorImageDescArray::Arrayed { max_layers: other_max }) => {
                 match (my_max, other_max) {
-                    (Some(m), Some(o)) => if m < o { return false; },
+                    (Some(m), Some(o)) => {
+                        if m < o {
+                            return false;
+                        }
+                    }
                     (Some(_), None) => (),
                     (None, _) => return false,
                 };
-            },
-            _ => return false
+            }
+            _ => return false,
         };
 
         true
@@ -268,7 +273,7 @@ impl DescriptorImageDesc {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescriptorImageDescArray {
     NonArrayed,
-    Arrayed { max_layers: Option<u32> }
+    Arrayed { max_layers: Option<u32> },
 }
 
 // TODO: documentation
@@ -297,7 +302,8 @@ pub enum DescriptorBufferContentDesc {
 
     },
     Array {
-        len: Box<DescriptorBufferContentDesc>, num_array: usize
+        len: Box<DescriptorBufferContentDesc>,
+        num_array: usize,
     },
 }
 
@@ -399,24 +405,14 @@ impl ShaderStages {
     // TODO: add example
     #[inline]
     pub fn is_superset_of(&self, other: &ShaderStages) -> bool {
-        (self.vertex || !other.vertex) &&
-        (self.tessellation_control || !other.tessellation_control) &&
-        (self.tessellation_evaluation || !other.tessellation_evaluation) &&
-        (self.geometry || !other.geometry) &&
-        (self.fragment || !other.fragment) &&
-        (self.compute || !other.compute)
+        (self.vertex || !other.vertex) && (self.tessellation_control || !other.tessellation_control) && (self.tessellation_evaluation || !other.tessellation_evaluation) && (self.geometry || !other.geometry) && (self.fragment || !other.fragment) && (self.compute || !other.compute)
     }
 
     /// Checks whether any of the stages in `self` are also present in `other`.
     // TODO: add example
     #[inline]
     pub fn intersects(&self, other: &ShaderStages) -> bool {
-        (self.vertex && other.vertex) ||
-        (self.tessellation_control && other.tessellation_control) ||
-        (self.tessellation_evaluation && other.tessellation_evaluation) ||
-        (self.geometry && other.geometry) ||
-        (self.fragment && other.fragment) ||
-        (self.compute && other.compute)
+        (self.vertex && other.vertex) || (self.tessellation_control && other.tessellation_control) || (self.tessellation_evaluation && other.tessellation_evaluation) || (self.geometry && other.geometry) || (self.fragment && other.fragment) || (self.compute && other.compute)
     }
 }
 
@@ -441,12 +437,24 @@ impl Into<vk::ShaderStageFlags> for ShaderStages {
     #[inline]
     fn into(self) -> vk::ShaderStageFlags {
         let mut result = 0;
-        if self.vertex { result |= vk::SHADER_STAGE_VERTEX_BIT; }
-        if self.tessellation_control { result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT; }
-        if self.tessellation_evaluation { result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT; }
-        if self.geometry { result |= vk::SHADER_STAGE_GEOMETRY_BIT; }
-        if self.fragment { result |= vk::SHADER_STAGE_FRAGMENT_BIT; }
-        if self.compute { result |= vk::SHADER_STAGE_COMPUTE_BIT; }
+        if self.vertex {
+            result |= vk::SHADER_STAGE_VERTEX_BIT;
+        }
+        if self.tessellation_control {
+            result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        }
+        if self.tessellation_evaluation {
+            result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        }
+        if self.geometry {
+            result |= vk::SHADER_STAGE_GEOMETRY_BIT;
+        }
+        if self.fragment {
+            result |= vk::SHADER_STAGE_FRAGMENT_BIT;
+        }
+        if self.compute {
+            result |= vk::SHADER_STAGE_COMPUTE_BIT;
+        }
         result
     }
 }

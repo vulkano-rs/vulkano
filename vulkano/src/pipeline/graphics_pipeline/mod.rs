@@ -62,9 +62,7 @@ use pipeline::viewport::ViewportsState;
 mod tests;
 
 /// Description of a `GraphicsPipeline`.
-pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                                  Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-{
+pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp> {
     /// Describes the layout of the vertex input.
     ///
     /// For example if you want to pass a vertex buffer and an instance buffer, this parameter
@@ -160,31 +158,27 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will only use a vertex shader and a fragment shader. See
     /// the other constructors for other possibilities.
     #[inline]
-    pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
-                                              (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
-                                              Fs, Fi, Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>>, GraphicsPipelineCreationError>
+    pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>(device: &Arc<Device>, params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, Fs, Fi, Fo, Fl, Rp>) -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Vo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassSubpassInterface<Fo>
     {
         if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
-           return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
         }
 
-        let pl = params.vertex_shader.layout().clone()
-                    .union(params.fragment_shader.layout().clone())
-                    .build(device).unwrap();      // TODO: error
+        let pl = params.vertex_shader
+            .layout()
+            .clone()
+            .union(params.fragment_shader.layout().clone())
+            .build(device)
+            .unwrap();      // TODO: error
 
-        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipelineDesc, (), (), (),
-                                      EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, _, _, _, _>
-                                      (device, params, pl)
+        GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, _, _, _, _>(device, params, pl)
     }
 
     /// Builds a new graphics pipeline object with a geometry shader.
@@ -195,12 +189,9 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will use a vertex shader, a geometry shader and a fragment
     /// shader. See the other constructors for other possibilities.
     #[inline]
-    pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
-                                              (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
-                                              Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>>, GraphicsPipelineCreationError>
+    pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>(device: &Arc<Device>,
+                                                                                      params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>)
+                                                                                      -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -210,7 +201,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Go: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassSubpassInterface<Fo>
     {
         if let Some(ref geometry_shader) = params.geometry_shader {
             if let Err(err) = geometry_shader.input().matches(params.vertex_shader.output()) {
@@ -218,11 +209,11 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
             };
 
             if let Err(err) = params.fragment_shader.input().matches(geometry_shader.output()) {
-               return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
             }
         } else {
             if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
-               return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+                return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
             }
         }
 
@@ -243,13 +234,9 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// tessellation evaluation shader and a fragment shader. See the other constructors for other
     /// possibilities.
     #[inline]
-    pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
-                            Fo, Fl>
-              (device: &Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
-                                              Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
-                                              Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>>, GraphicsPipelineCreationError>
+    pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi, Fo, Fl>(device: &Arc<Device>,
+                                                                                                          params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi, Fo, Fl, Rp>)
+                                                                                                          -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -262,7 +249,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Teo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassSubpassInterface<Fo>
     {
         if let Some(ref tess) = params.tessellation {
             if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
@@ -277,7 +264,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 
         } else {
             if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
-               return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+                return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
             }
         }
 
@@ -292,15 +279,10 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
+    where L: PipelineLayoutRef,
+          Rp: RenderPass + RenderPassDesc
 {
-    fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
-                 Fi, Fo, Fl>
-                (device: &Arc<Device>,
-                 params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
-                                                Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>,
-                 pipeline_layout: L)
-                 -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+    fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>(device: &Arc<Device>, params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>, pipeline_layout: L) -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
               Vl: PipelineLayoutDescNames,
@@ -308,46 +290,36 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gl: PipelineLayoutDescNames,
               Tcl: PipelineLayoutDescNames,
               Tel: PipelineLayoutDescNames,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassSubpassInterface<Fo>
     {
         let vk = device.pointers();
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.vertex_shader.layout())
-        {
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), params.vertex_shader.layout()) {
             return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
         }
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.fragment_shader.layout())
-        {
+        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), params.fragment_shader.layout()) {
             return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
         }
         if let Some(ref geometry_shader) = params.geometry_shader {
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       geometry_shader.layout())
-            {
+            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), geometry_shader.layout()) {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
         }
         if let Some(ref tess) = params.tessellation {
             if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_control_shader.layout())
-            {
+                                                       tess.tessellation_control_shader.layout()) {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
             if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_evaluation_shader.layout())
-            {
+                                                       tess.tessellation_evaluation_shader.layout()) {
                 return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
             }
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
-                                                                params.fragment_shader.output())
-        {
+        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(), params.fragment_shader.output()) {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
 
@@ -361,21 +333,21 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             stages.push(vk::PipelineShaderStageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 stage: vk::SHADER_STAGE_VERTEX_BIT,
                 module: params.vertex_shader.module().internal_object(),
                 pName: params.vertex_shader.name().as_ptr(),
-                pSpecializationInfo: ptr::null(),       // TODO:
+                pSpecializationInfo: ptr::null(), // TODO:
             });
 
             stages.push(vk::PipelineShaderStageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 stage: vk::SHADER_STAGE_FRAGMENT_BIT,
                 module: params.fragment_shader.module().internal_object(),
                 pName: params.fragment_shader.name().as_ptr(),
-                pSpecializationInfo: ptr::null(),       // TODO:
+                pSpecializationInfo: ptr::null(), // TODO:
             });
 
             if let Some(ref gs) = params.geometry_shader {
@@ -386,11 +358,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 stages.push(vk::PipelineShaderStageCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     pNext: ptr::null(),
-                    flags: 0,   // reserved
+                    flags: 0, // reserved
                     stage: vk::SHADER_STAGE_GEOMETRY_BIT,
                     module: gs.module().internal_object(),
                     pName: gs.name().as_ptr(),
-                    pSpecializationInfo: ptr::null(),       // TODO:
+                    pSpecializationInfo: ptr::null(), // TODO:
                 });
             }
 
@@ -404,21 +376,21 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 stages.push(vk::PipelineShaderStageCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     pNext: ptr::null(),
-                    flags: 0,   // reserved
+                    flags: 0, // reserved
                     stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
                     module: tess.tessellation_control_shader.module().internal_object(),
                     pName: tess.tessellation_control_shader.name().as_ptr(),
-                    pSpecializationInfo: ptr::null(),       // TODO:
+                    pSpecializationInfo: ptr::null(), // TODO:
                 });
 
                 stages.push(vk::PipelineShaderStageCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                     pNext: ptr::null(),
-                    flags: 0,   // reserved
+                    flags: 0, // reserved
                     stage: vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
                     module: tess.tessellation_evaluation_shader.module().internal_object(),
                     pName: tess.tessellation_evaluation_shader.name().as_ptr(),
-                    pSpecializationInfo: ptr::null(),       // TODO:
+                    pSpecializationInfo: ptr::null(), // TODO:
                 });
             }
 
@@ -470,18 +442,20 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             (binding_descriptions, attribute_descriptions)
         };
 
-        if binding_descriptions.len() > device.physical_device().limits()
-                                              .max_vertex_input_bindings() as usize
-        {
+        if binding_descriptions.len() >
+           device.physical_device()
+            .limits()
+            .max_vertex_input_bindings() as usize {
             return Err(GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
                 max: device.physical_device().limits().max_vertex_input_bindings() as usize,
                 obtained: binding_descriptions.len(),
             });
         }
 
-        if attribute_descriptions.len() > device.physical_device().limits()
-                                                .max_vertex_input_attributes() as usize
-        {
+        if attribute_descriptions.len() >
+           device.physical_device()
+            .limits()
+            .max_vertex_input_attributes() as usize {
             return Err(GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
                 max: device.physical_device().limits().max_vertex_input_attributes() as usize,
                 obtained: attribute_descriptions.len(),
@@ -491,19 +465,15 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
+            flags: 0, // reserved
             vertexBindingDescriptionCount: binding_descriptions.len() as u32,
             pVertexBindingDescriptions: binding_descriptions.as_ptr(),
             vertexAttributeDescriptionCount: attribute_descriptions.len() as u32,
             pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
         };
 
-        if params.input_assembly.primitive_restart_enable &&
-           !params.input_assembly.topology.supports_primitive_restart()
-        {
-            return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                primitive: params.input_assembly.topology
-            });
+        if params.input_assembly.primitive_restart_enable && !params.input_assembly.topology.supports_primitive_restart() {
+            return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { primitive: params.input_assembly.topology });
         }
 
         // TODO: should check from the tess eval shader instead of the input assembly
@@ -516,7 +486,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
+            flags: 0, // reserved
             topology: params.input_assembly.topology.into(),
             primitiveRestartEnable: if params.input_assembly.primitive_restart_enable {
                 vk::TRUE
@@ -530,19 +500,20 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 if params.tessellation.is_none() {
                     return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
                 }
-                if vertices_per_patch > device.physical_device().limits()
-                                              .max_tessellation_patch_size()
-                {
+                if vertices_per_patch >
+                   device.physical_device()
+                    .limits()
+                    .max_tessellation_patch_size() {
                     return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
                 }
 
                 Some(vk::PipelineTessellationStateCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
                     pNext: ptr::null(),
-                    flags: 0,   // reserved,
+                    flags: 0, // reserved,
                     patchControlPoints: vertices_per_patch,
                 })
-            },
+            }
             _ => {
                 if params.tessellation.is_some() {
                     return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
@@ -553,30 +524,28 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         };
 
         let (vp_vp, vp_sc, vp_num) = match params.viewport {
-            ViewportsState::Fixed { ref data } => (
-                data.iter().map(|e| e.0.clone().into()).collect::<SmallVec<[vk::Viewport; 4]>>(),
-                data.iter().map(|e| e.1.clone().into()).collect::<SmallVec<[vk::Rect2D; 4]>>(),
-                data.len() as u32
-            ),
+            ViewportsState::Fixed { ref data } => (data.iter().map(|e| e.0.clone().into()).collect::<SmallVec<[vk::Viewport; 4]>>(), data.iter().map(|e| e.1.clone().into()).collect::<SmallVec<[vk::Rect2D; 4]>>(), data.len() as u32),
             ViewportsState::DynamicViewports { ref scissors } => {
                 let num = scissors.len() as u32;
-                let scissors = scissors.iter().map(|e| e.clone().into())
-                                       .collect::<SmallVec<[vk::Rect2D; 4]>>();
+                let scissors = scissors.iter()
+                    .map(|e| e.clone().into())
+                    .collect::<SmallVec<[vk::Rect2D; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 (SmallVec::new(), scissors, num)
-            },
+            }
             ViewportsState::DynamicScissors { ref viewports } => {
                 let num = viewports.len() as u32;
-                let viewports = viewports.iter().map(|e| e.clone().into())
-                                         .collect::<SmallVec<[vk::Viewport; 4]>>();
+                let viewports = viewports.iter()
+                    .map(|e| e.clone().into())
+                    .collect::<SmallVec<[vk::Viewport; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (viewports, SmallVec::new(), num)
-            },
+            }
             ViewportsState::Dynamic { num } => {
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (SmallVec::new(), SmallVec::new(), num)
-            },
+            }
         };
 
         if vp_num > 1 && !device.enabled_features().multi_viewport {
@@ -591,17 +560,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         }
 
         for vp in vp_vp.iter() {
-            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32 ||
-               vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
-            {
+            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32 || vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32 {
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
 
-            if vp.x < device.physical_device().limits().viewport_bounds_range()[0] ||
-               vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1] ||
-               vp.y < device.physical_device().limits().viewport_bounds_range()[0] ||
-               vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
-            {
+            if vp.x < device.physical_device().limits().viewport_bounds_range()[0] || vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1] || vp.y < device.physical_device().limits().viewport_bounds_range()[0] || vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1] {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }
         }
@@ -609,11 +572,19 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         let viewport_info = vk::PipelineViewportStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
+            flags: 0, // reserved
             viewportCount: vp_num,
-            pViewports: if vp_vp.is_empty() { ptr::null() } else { vp_vp.as_ptr() },    // validation layer crashes if you just pass the pointer
+            pViewports: if vp_vp.is_empty() {
+                ptr::null()
+            } else {
+                vp_vp.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
             scissorCount: vp_num,
-            pScissors: if vp_sc.is_empty() { ptr::null() } else { vp_sc.as_ptr() },     // validation layer crashes if you just pass the pointer
+            pScissors: if vp_sc.is_empty() {
+                ptr::null()
+            } else {
+                vp_sc.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
         };
 
         if let Some(line_width) = params.raster.line_width {
@@ -628,35 +599,39 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             DepthBiasControl::Dynamic => {
                 dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
                 (vk::TRUE, 0.0, 0.0, 0.0)
-            },
-            DepthBiasControl::Disabled => {
-                (vk::FALSE, 0.0, 0.0, 0.0)
-            },
+            }
+            DepthBiasControl::Disabled => (vk::FALSE, 0.0, 0.0, 0.0),
             DepthBiasControl::Static(bias) => {
                 if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
                     return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
                 }
 
                 (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
-            },
+            }
         };
 
         if params.raster.depth_clamp && !device.enabled_features().depth_clamp {
             return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
         }
 
-        if params.raster.polygon_mode != PolygonMode::Fill &&
-           !device.enabled_features().fill_mode_non_solid
-        {
+        if params.raster.polygon_mode != PolygonMode::Fill && !device.enabled_features().fill_mode_non_solid {
             return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
         }
 
         let rasterization = vk::PipelineRasterizationStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
-            depthClampEnable: if params.raster.depth_clamp { vk::TRUE } else { vk::FALSE },
-            rasterizerDiscardEnable: if params.raster.rasterizer_discard { vk::TRUE } else { vk::FALSE },
+            flags: 0, // reserved
+            depthClampEnable: if params.raster.depth_clamp {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            rasterizerDiscardEnable: if params.raster.rasterizer_discard {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
             polygonMode: params.raster.polygon_mode as u32,
             cullMode: params.raster.cull_mode as u32,
             frontFace: params.raster.front_face as u32,
@@ -669,17 +644,31 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         assert!(params.multisample.rasterization_samples >= 1);
         // FIXME: check that rasterization_samples is equal to what's in the renderpass
-        if let Some(s) = params.multisample.sample_shading { assert!(s >= 0.0 && s <= 1.0); }
+        if let Some(s) = params.multisample.sample_shading {
+            assert!(s >= 0.0 && s <= 1.0);
+        }
         let multisample = vk::PipelineMultisampleStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
+            flags: 0, // reserved
             rasterizationSamples: params.multisample.rasterization_samples,
-            sampleShadingEnable: if params.multisample.sample_shading.is_some() { vk::TRUE } else { vk::FALSE },
+            sampleShadingEnable: if params.multisample.sample_shading.is_some() {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
             minSampleShading: params.multisample.sample_shading.unwrap_or(1.0),
-            pSampleMask: ptr::null(),   //params.multisample.sample_mask.as_ptr(),     // FIXME:
-            alphaToCoverageEnable: if params.multisample.alpha_to_coverage { vk::TRUE } else { vk::FALSE },
-            alphaToOneEnable: if params.multisample.alpha_to_one { vk::TRUE } else { vk::FALSE },
+            pSampleMask: ptr::null(), // params.multisample.sample_mask.as_ptr(),     // FIXME:
+            alphaToCoverageEnable: if params.multisample.alpha_to_coverage {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            alphaToOneEnable: if params.multisample.alpha_to_one {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
         };
 
         let depth_stencil = {
@@ -691,7 +680,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     }
 
                     (vk::TRUE, range.start, range.end)
-                },
+                }
                 DepthBounds::Dynamic => {
                     if !device.enabled_features().depth_bounds {
                         return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
@@ -700,53 +689,42 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BOUNDS);
 
                     (vk::TRUE, 0.0, 1.0)
-                },
+                }
             };
 
-            match (params.depth_stencil.stencil_front.compare_mask,
-                   params.depth_stencil.stencil_back.compare_mask)
-            {
+            match (params.depth_stencil.stencil_front.compare_mask, params.depth_stencil.stencil_back.compare_mask) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_COMPARE_MASK);
-                },
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
-            match (params.depth_stencil.stencil_front.write_mask,
-                   params.depth_stencil.stencil_back.write_mask)
-            {
+            match (params.depth_stencil.stencil_front.write_mask, params.depth_stencil.stencil_back.write_mask) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_WRITE_MASK);
-                },
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
-            match (params.depth_stencil.stencil_front.reference,
-                   params.depth_stencil.stencil_back.reference)
-            {
+            match (params.depth_stencil.stencil_front.reference, params.depth_stencil.stencil_back.reference) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_REFERENCE);
-                },
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState)
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
             if params.depth_stencil.depth_write && !params.render_pass.has_writable_depth() {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
-            if params.depth_stencil.depth_compare != Compare::Always &&
-               !params.render_pass.has_depth()
-            {
+            if params.depth_stencil.depth_compare != Compare::Always && !params.render_pass.has_depth() {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
-            if (!params.depth_stencil.stencil_front.always_keep() ||
-                !params.depth_stencil.stencil_back.always_keep()) &&
-                !params.render_pass.has_stencil()
-            {
+            if (!params.depth_stencil.stencil_front.always_keep() || !params.depth_stencil.stencil_back.always_keep()) && !params.render_pass.has_stencil() {
                 return Err(GraphicsPipelineCreationError::NoStencilAttachment);
             }
 
@@ -755,17 +733,24 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             vk::PipelineDepthStencilStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
-                depthTestEnable: if !params.depth_stencil.depth_write &&
-                                    params.depth_stencil.depth_compare == Compare::Always
-                                 { vk::FALSE } else { vk::TRUE },
-                depthWriteEnable: if params.depth_stencil.depth_write { vk::TRUE }
-                                  else { vk::FALSE },
+                flags: 0, // reserved
+                depthTestEnable: if !params.depth_stencil.depth_write && params.depth_stencil.depth_compare == Compare::Always {
+                    vk::FALSE
+                } else {
+                    vk::TRUE
+                },
+                depthWriteEnable: if params.depth_stencil.depth_write {
+                    vk::TRUE
+                } else {
+                    vk::FALSE
+                },
                 depthCompareOp: params.depth_stencil.depth_compare as u32,
                 depthBoundsTestEnable: db.0,
-                stencilTestEnable: if params.depth_stencil.stencil_front.always_keep() &&
-                                      params.depth_stencil.stencil_back.always_keep()
-                                      { vk::FALSE } else { vk::TRUE },
+                stencilTestEnable: if params.depth_stencil.stencil_front.always_keep() && params.depth_stencil.stencil_back.always_keep() {
+                    vk::FALSE
+                } else {
+                    vk::TRUE
+                },
                 front: vk::StencilOpState {
                     failOp: params.depth_stencil.stencil_front.fail_op as u32,
                     passOp: params.depth_stencil.stencil_front.pass_op as u32,
@@ -782,7 +767,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     compareOp: params.depth_stencil.stencil_back.compare as u32,
                     compareMask: params.depth_stencil.stencil_back.compare_mask.unwrap_or(u32::MAX),
                     writeMask: params.depth_stencil.stencil_back.write_mask.unwrap_or(u32::MAX),
-                    reference: params.depth_stencil.stencil_back.reference.unwrap_or(0)
+                    reference: params.depth_stencil.stencil_back.reference.unwrap_or(0),
                 },
                 minDepthBounds: db.1,
                 maxDepthBounds: db.2,
@@ -793,9 +778,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             let num_atch = params.render_pass.num_color_attachments();
 
             match params.blend.attachments {
-                AttachmentsBlend::Collective(blend) => {
-                    (0 .. num_atch).map(|_| blend.clone().into()).collect()
-                },
+                AttachmentsBlend::Collective(blend) => (0..num_atch).map(|_| blend.clone().into()).collect(),
                 AttachmentsBlend::Individual(blend) => {
                     if blend.len() != num_atch as usize {
                         return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
@@ -806,14 +789,14 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     }
 
                     blend.iter().map(|b| b.clone().into()).collect()
-                },
+                }
             }
         };
 
         let blend = vk::PipelineColorBlendStateCreateInfo {
             sType: vk::STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
             pNext: ptr::null(),
-            flags: 0,   // reserved
+            flags: 0, // reserved
             logicOpEnable: if params.blend.logic_op.is_some() {
                 if !device.enabled_features().logic_op {
                     return Err(GraphicsPipelineCreationError::LogicOpFeatureNotEnabled);
@@ -830,14 +813,14 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             } else {
                 dynamic_states.push(vk::DYNAMIC_STATE_BLEND_CONSTANTS);
                 [0.0, 0.0, 0.0, 0.0]
-            }
+            },
         };
 
         let dynamic_states = if !dynamic_states.is_empty() {
             Some(vk::PipelineDynamicStateCreateInfo {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 dynamicStateCount: dynamic_states.len() as u32,
                 pDynamicStates: dynamic_states.as_ptr(),
             })
@@ -849,30 +832,36 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             let infos = vk::GraphicsPipelineCreateInfo {
                 sType: vk::STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,       // TODO: some flags are available but none are critical
+                flags: 0, // TODO: some flags are available but none are critical
                 stageCount: stages.len() as u32,
                 pStages: stages.as_ptr(),
                 pVertexInputState: &vertex_input_state,
                 pInputAssemblyState: &input_assembly,
-                pTessellationState: tessellation.as_ref().map(|t| t as *const _)
-                                                .unwrap_or(ptr::null()),
+                pTessellationState: tessellation.as_ref()
+                    .map(|t| t as *const _)
+                    .unwrap_or(ptr::null()),
                 pViewportState: &viewport_info,
                 pRasterizationState: &rasterization,
                 pMultisampleState: &multisample,
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
-                pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
-                                             .unwrap_or(ptr::null()),
+                pDynamicState: dynamic_states.as_ref()
+                    .map(|s| s as *const _)
+                    .unwrap_or(ptr::null()),
                 layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
-                basePipelineHandle: 0,    // TODO:
-                basePipelineIndex: -1,       // TODO:
+                basePipelineHandle: 0, // TODO:
+                basePipelineIndex: -1, // TODO:
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateGraphicsPipelines(device.internal_object(), 0,
-                                                         1, &infos, ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
+                                                         0,
+                                                         1,
+                                                         &infos,
+                                                         ptr::null(),
+                                                         &mut output)));
             output
         };
 
@@ -1054,7 +1043,7 @@ pub enum GraphicsPipelineCreationError {
     /// The interface between the vertex shader and the fragment shader mismatches.
     VertexFragmentStagesMismatch(ShaderInterfaceMismatchError),
 
-    /// The interface between the tessellation control shader and the tessellation evaluation 
+    /// The interface between the tessellation control shader and the tessellation evaluation
     /// shader mismatches.
     TessControlTessEvalStagesMismatch(ShaderInterfaceMismatchError),
 
@@ -1115,7 +1104,7 @@ pub enum GraphicsPipelineCreationError {
     /// The user requested to use primitive restart, but the primitive topology doesn't support it.
     PrimitiveDoesntSupportPrimitiveRestart {
         /// The topology that doesn't support primitive restart.
-        primitive: PrimitiveTopology
+        primitive: PrimitiveTopology,
     },
 
     /// The `multi_viewport` feature must be enabled in order to use multiple viewports at once.
@@ -1126,7 +1115,7 @@ pub enum GraphicsPipelineCreationError {
         /// Maximum allowed value.
         max: u32,
         /// Value that was passed.
-        obtained: u32
+        obtained: u32,
     },
 
     /// The maximum dimensions of viewports has been exceeded.
@@ -1197,126 +1186,41 @@ impl error::Error for GraphicsPipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
-            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(_) => {
-                "the interface between the vertex shader and the geometry shader mismatches"
-            },
-            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(_) => {
-                "the interface between the vertex shader and the tessellation control shader \
-                 mismatches"
-            },
-            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(_) => {
-                "the interface between the vertex shader and the fragment shader mismatches"
-            },
-            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(_) => {
-                "the interface between the tessellation control shader and the tessellation \
-                 evaluation shader mismatches"
-            },
-            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(_) => {
-                "the interface between the tessellation evaluation shader and the geometry \
-                 shader mismatches"
-            },
-            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(_) => {
-                "the interface between the tessellation evaluation shader and the fragment \
-                 shader mismatches"
-            },
-            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => {
-                "the interface between the geometry shader and the fragment shader mismatches"
-            },
-            GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
-                "the pipeline layout is not compatible with what the shaders expect"
-            },
-            GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
-                "the output of the fragment shader is not compatible with what the render pass \
-                 subpass expects"
-            },
-            GraphicsPipelineCreationError::IncompatibleVertexDefinition(_) => {
-                "the vertex definition is not compatible with the input of the vertex shader"
-            },
-            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
-                "the maximum stride value for vertex input (ie. the distance between two vertex \
-                 elements) has been exceeded"
-            },
-            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => {
-                "the maximum number of vertex sources has been exceeded"
-            },
-            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => {
-                "the maximum offset for a vertex attribute has been exceeded"
-            },
-            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => {
-                "the maximum number of vertex attributes has been exceeded"
-            },
-            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. } => {
-                "the user requested to use primitive restart, but the primitive topology \
-                 doesn't support it"
-            },
-            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => {
-                "the `multi_viewport` feature must be enabled in order to use multiple viewports \
-                 at once"
-            },
-            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => {
-                "the maximum number of viewports has been exceeded"
-            },
-            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => {
-                "the maximum dimensions of viewports has been exceeded"
-            },
-            GraphicsPipelineCreationError::ViewportBoundsExceeded => {
-                "the minimum or maximum bounds of viewports have been exceeded"
-            },
-            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => {
-                "the `wide_lines` feature must be enabled in order to use a line width \
-                 superior to 1.0"
-            },
-            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => {
-                "the `depth_clamp` feature must be enabled in order to use depth clamping"
-            },
-            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => {
-                "the `depth_bias_clamp` feature must be enabled in order to use a depth bias \
-                 clamp different from 0.0."
-            },
-            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => {
-                "the `fill_mode_non_solid` feature must be enabled in order to use a polygon mode \
-                 different from `Fill`"
-            },
-            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => {
-                "the `depth_bounds` feature must be enabled in order to use depth bounds testing"
-            },
-            GraphicsPipelineCreationError::WrongStencilState => {
-                "the requested stencil test is invalid"
-            },
-            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => {
-                "the primitives topology does not match what the geometry shader expects"
-            },
-            GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => {
-                "the `geometry_shader` feature must be enabled in order to use geometry shaders"
-            },
-            GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled => {
-                "the `tessellation_shader` feature must be enabled in order to use tessellation \
-                 shaders"
-            },
-            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => {
-                "the number of attachments specified in the blending does not match the number of \
-                 attachments in the subpass"
-            },
-            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled => {
-                "the `independent_blend` feature must be enabled in order to use different \
-                 blending operations per attachment"
-            },
-            GraphicsPipelineCreationError::LogicOpFeatureNotEnabled => {
-                "the `logic_op` feature must be enabled in order to use logic operations"
-            },
-            GraphicsPipelineCreationError::NoDepthAttachment => {
-                "the depth attachment of the render pass does not match the depth test"
-            },
-            GraphicsPipelineCreationError::NoStencilAttachment => {
-                "the stencil attachment of the render pass does not match the stencil test"
-            },
-            GraphicsPipelineCreationError::InvalidPrimitiveTopology => {
-                "trying to use a patch list without a tessellation shader, or a non-patch-list \
-                 with a tessellation shader"
-            },
-            GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded => {
-                "the maximum tessellation patch size was exceeded"
-            },
+            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(_) => "the interface between the vertex shader and the geometry shader mismatches",
+            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(_) => "the interface between the vertex shader and the tessellation control shader mismatches",
+            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(_) => "the interface between the vertex shader and the fragment shader mismatches",
+            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(_) => "the interface between the tessellation control shader and the tessellation evaluation shader mismatches",
+            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(_) => "the interface between the tessellation evaluation shader and the geometry shader mismatches",
+            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(_) => "the interface between the tessellation evaluation shader and the fragment shader mismatches",
+            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => "the interface between the geometry shader and the fragment shader mismatches",
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is not compatible with what the shaders expect",
+            GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => "the output of the fragment shader is not compatible with what the render pass subpass expects",
+            GraphicsPipelineCreationError::IncompatibleVertexDefinition(_) => "the vertex definition is not compatible with the input of the vertex shader",
+            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded",
+            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => "the maximum number of vertex sources has been exceeded",
+            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => "the maximum offset for a vertex attribute has been exceeded",
+            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => "the maximum number of vertex attributes has been exceeded",
+            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. } => "the user requested to use primitive restart, but the primitive topology doesn't support it",
+            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => "the `multi_viewport` feature must be enabled in order to use multiple viewports at once",
+            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => "the maximum number of viewports has been exceeded",
+            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => "the maximum dimensions of viewports has been exceeded",
+            GraphicsPipelineCreationError::ViewportBoundsExceeded => "the minimum or maximum bounds of viewports have been exceeded",
+            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => "the `wide_lines` feature must be enabled in order to use a line width superior to 1.0",
+            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => "the `depth_clamp` feature must be enabled in order to use depth clamping",
+            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => "the `depth_bias_clamp` feature must be enabled in order to use a depth bias clamp different from 0.0.",
+            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => "the `fill_mode_non_solid` feature must be enabled in order to use a polygon mode different from `Fill`",
+            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => "the `depth_bounds` feature must be enabled in order to use depth bounds testing",
+            GraphicsPipelineCreationError::WrongStencilState => "the requested stencil test is invalid",
+            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => "the primitives topology does not match what the geometry shader expects",
+            GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => "the `geometry_shader` feature must be enabled in order to use geometry shaders",
+            GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled => "the `tessellation_shader` feature must be enabled in order to use tessellation shaders",
+            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => "the number of attachments specified in the blending does not match the number of attachments in the subpass",
+            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled => "the `independent_blend` feature must be enabled in order to use different blending operations per attachment",
+            GraphicsPipelineCreationError::LogicOpFeatureNotEnabled => "the `logic_op` feature must be enabled in order to use logic operations",
+            GraphicsPipelineCreationError::NoDepthAttachment => "the depth attachment of the render pass does not match the depth test",
+            GraphicsPipelineCreationError::NoStencilAttachment => "the stencil attachment of the render pass does not match the stencil test",
+            GraphicsPipelineCreationError::InvalidPrimitiveTopology => "trying to use a patch list without a tessellation shader, or a non-patch-list with a tessellation shader",
+            GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded => "the maximum tessellation patch size was exceeded",
         }
     }
 
@@ -1332,7 +1236,7 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -1362,13 +1266,9 @@ impl From<Error> for GraphicsPipelineCreationError {
     #[inline]
     fn from(err: Error) -> GraphicsPipelineCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                GraphicsPipelineCreationError::OomError(OomError::from(err))
-            },
-            err @ Error::OutOfDeviceMemory => {
-                GraphicsPipelineCreationError::OomError(OomError::from(err))
-            },
-            _ => panic!("unexpected error: {:?}", err)
+            err @ Error::OutOfHostMemory => GraphicsPipelineCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => GraphicsPipelineCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

@@ -42,9 +42,7 @@ pub struct ComputePipeline<Pl> {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
-                         specialization: &Css) 
-                         -> Result<Arc<ComputePipeline<PipelineLayout<Csl>>>, ComputePipelineCreationError>
+    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css) -> Result<Arc<ComputePipeline<PipelineLayout<Csl>>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
@@ -91,8 +89,12 @@ impl ComputePipeline<()> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateComputePipelines(device.internal_object(), 0,
-                                                        1, &infos, ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateComputePipelines(device.internal_object(),
+                                                        0,
+                                                        1,
+                                                        &infos,
+                                                        ptr::null(),
+                                                        &mut output)));
             output
         };
 
@@ -118,7 +120,9 @@ impl<Pl> ComputePipeline<Pl> {
     }
 }
 
-unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayoutRef {
+unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl>
+    where Pl: PipelineLayoutRef
+{
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         self.layout().sys()
@@ -173,9 +177,9 @@ impl error::Error for ComputePipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             ComputePipelineCreationError::OomError(_) => "not enough memory available",
-            ComputePipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is \
-                                                                         not compatible with what \
-                                                                         the shader expects",
+            ComputePipelineCreationError::IncompatiblePipelineLayout => {
+                "the pipeline layout is not compatible with what the shader expects"
+            }
         }
     }
 
@@ -183,7 +187,7 @@ impl error::Error for ComputePipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -206,13 +210,9 @@ impl From<Error> for ComputePipelineCreationError {
     #[inline]
     fn from(err: Error) -> ComputePipelineCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                ComputePipelineCreationError::OomError(OomError::from(err))
-            },
-            err @ Error::OutOfDeviceMemory => {
-                ComputePipelineCreationError::OomError(OomError::from(err))
-            },
-            _ => panic!("unexpected error: {:?}", err)
+            err @ Error::OutOfHostMemory => ComputePipelineCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => ComputePipelineCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

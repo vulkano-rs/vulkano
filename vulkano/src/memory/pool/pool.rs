@@ -52,9 +52,7 @@ impl StdMemoryPool {
 unsafe impl MemoryPool for Arc<StdMemoryPool> {
     type Alloc = StdMemoryPoolAlloc;
 
-    fn alloc(&self, memory_type: MemoryType, size: usize, alignment: usize,
-             layout: AllocLayout) -> Result<StdMemoryPoolAlloc, OomError>
-    {
+    fn alloc(&self, memory_type: MemoryType, size: usize, alignment: usize, layout: AllocLayout) -> Result<StdMemoryPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
         match pools.entry((memory_type.id(), layout)) {
@@ -63,15 +61,21 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
                     &Pool::HostVisible(ref pool) => {
                         let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
-                    },
+                        Ok(StdMemoryPoolAlloc {
+                            inner: inner,
+                            pool: self.clone(),
+                        })
+                    }
                     &Pool::NonHostVisible(ref pool) => {
                         let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
-                    },
+                        Ok(StdMemoryPoolAlloc {
+                            inner: inner,
+                            pool: self.clone(),
+                        })
+                    }
                 }
-            },
+            }
 
             Entry::Vacant(entry) => {
                 match memory_type.is_host_visible() {
@@ -80,17 +84,23 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
                         entry.insert(Pool::HostVisible(pool.clone()));
                         let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
-                    },
+                        Ok(StdMemoryPoolAlloc {
+                            inner: inner,
+                            pool: self.clone(),
+                        })
+                    }
                     false => {
                         let pool = StdNonHostVisibleMemoryTypePool::new(&self.device, memory_type);
                         entry.insert(Pool::NonHostVisible(pool.clone()));
                         let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
-                    },
+                        Ok(StdMemoryPoolAlloc {
+                            inner: inner,
+                            pool: self.clone(),
+                        })
+                    }
                 }
-            },
+            }
         }
     }
 }

@@ -54,8 +54,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPass` implementation is used.
-    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
-                   attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
+    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia) -> Result<Arc<StdFramebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPass + RenderPassAttachmentsList<Ia>,
               Ia: IntoAttachmentsList<List = A>,
               A: AttachmentsList
@@ -71,11 +70,8 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         // Checking the dimensions against the limits.
         {
             let limits = render_pass.inner().device().physical_device().limits();
-            let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
-                          limits.max_framebuffer_layers()];
-            if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
-               dimensions[2] > limits[2]
-            {
+            let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(), limits.max_framebuffer_layers()];
+            if dimensions[0] > limits[0] || dimensions[1] > limits[1] || dimensions[2] > limits[2] {
                 return Err(FramebufferCreationError::DimensionsTooLarge);
             }
         }
@@ -83,25 +79,25 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         let ids = attachments.raw_image_view_handles();
 
         // FIXME: restore dimensions check
-        /*let ids = {
-            let mut ids = SmallVec::<[_; 8]>::new();
-
-            for &(ref a, _, _, _) in attachments.iter() {
-                debug_assert!(a.identity_swizzle());
-                // TODO: add more checks with debug_assert!
-
-                let atch_dims = a.parent().dimensions();
-                if atch_dims.width() < dimensions[0] || atch_dims.height() < dimensions[1] ||
-                   atch_dims.array_layers() < dimensions[2]      // TODO: wrong, since it must be the array layers of the view and not of the image
-                {
-                    return Err(FramebufferCreationError::AttachmentTooSmall);
-                }
-
-                ids.push(a.inner().internal_object());
-            }
-
-            ids
-        };*/
+        // let ids = {
+        // let mut ids = SmallVec::<[_; 8]>::new();
+        //
+        // for &(ref a, _, _, _) in attachments.iter() {
+        // debug_assert!(a.identity_swizzle());
+        // TODO: add more checks with debug_assert!
+        //
+        // let atch_dims = a.parent().dimensions();
+        // if atch_dims.width() < dimensions[0] || atch_dims.height() < dimensions[1] ||
+        // atch_dims.array_layers() < dimensions[2]      // TODO: wrong, since it must be the array layers of the view and not of the image
+        // {
+        // return Err(FramebufferCreationError::AttachmentTooSmall);
+        // }
+        //
+        // ids.push(a.inner().internal_object());
+        // }
+        //
+        // ids
+        // };
 
         let framebuffer = unsafe {
             let vk = render_pass.inner().device().pointers();
@@ -109,7 +105,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 renderPass: render_pass.inner().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
@@ -119,8 +115,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFramebuffer(device.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateFramebuffer(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -139,9 +134,7 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
         where R: RenderPass,
               Rp: RenderPass + RenderPassCompatible<R>
     {
-        (&*self.render_pass.inner() as *const UnsafeRenderPass as usize ==
-         &*render_pass.inner() as *const UnsafeRenderPass as usize) ||
-            self.render_pass.is_compatible_with(render_pass)
+        (&*self.render_pass.inner() as *const UnsafeRenderPass as usize == &*render_pass.inner() as *const UnsafeRenderPass as usize) || self.render_pass.is_compatible_with(render_pass)
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -181,7 +174,9 @@ impl<Rp, A> StdFramebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A> where Rp: RenderPass {
+unsafe impl<Rp, A> FramebufferTrait for StdFramebuffer<Rp, A>
+    where Rp: RenderPass
+{
     type RenderPass = Rp;
 
     #[inline]
@@ -215,7 +210,8 @@ impl<Rp, A> Drop for StdFramebuffer<Rp, A> {
 }
 
 unsafe impl<Rp, A> TrackedFramebuffer for StdFramebuffer<Rp, A>
-    where Rp: RenderPass, A: AttachmentsList
+    where Rp: RenderPass,
+          A: AttachmentsList
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -253,11 +249,13 @@ unsafe impl AttachmentsList for EmptyAttachmentsList {
     }
 
     #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-    }
+    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {}
 }
 
-pub struct List<A, R> { pub first: A, pub rest: R }
+pub struct List<A, R> {
+    pub first: A,
+    pub rest: R,
+}
 
 unsafe impl<A, R> AttachmentsList for List<A, R>
     where A: ImageView,
@@ -274,17 +272,10 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
     fn min_dimensions(&self) -> Option<[u32; 3]> {
         let my_view_dims = self.first.parent().dimensions();
         debug_assert_eq!(my_view_dims.depth(), 1);
-        let my_view_dims = [my_view_dims.width(), my_view_dims.height(),
-                            my_view_dims.array_layers()];       // FIXME: should be the view's layers, not the image's
+        let my_view_dims = [my_view_dims.width(), my_view_dims.height(), my_view_dims.array_layers()];       // FIXME: should be the view's layers, not the image's
 
         match self.rest.min_dimensions() {
-            Some(r_dims) => {
-                Some([
-                    cmp::min(r_dims[0], my_view_dims[0]),
-                    cmp::min(r_dims[1], my_view_dims[1]),
-                    cmp::min(r_dims[2], my_view_dims[2])
-                ])
-            },
+            Some(r_dims) => Some([cmp::min(r_dims[0], my_view_dims[0]), cmp::min(r_dims[1], my_view_dims[1]), cmp::min(r_dims[2], my_view_dims[2])]),
             None => Some(my_view_dims),
         }
     }
@@ -295,20 +286,27 @@ unsafe impl<A, R> AttachmentsList for List<A, R>
         let stages = PipelineStages {
             color_attachment_output: true,
             late_fragment_tests: true,
-            .. PipelineStages::none()
+            ..PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             color_attachment_read: true,
             color_attachment_write: true,
             depth_stencil_attachment_read: true,
             depth_stencil_attachment_write: true,
-            .. AccessFlagBits::none()
+            ..AccessFlagBits::none()
         };
 
         // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
-                                  stages, access);
+        sink.add_image_transition(self.first.parent(),
+                                  0,
+                                  1,
+                                  0,
+                                  1,
+                                  true,
+                                  Layout::General, // FIXME: wrong
+                                  stages,
+                                  access);
         self.rest.add_transition(sink);
     }
 }
@@ -322,14 +320,14 @@ pub trait IntoAttachmentsList {
     fn into_attachments_list(self) -> Self::List;
 }
 
-/*impl<S, T> IntoAttachmentsList for T where T: AttachmentsList<S> {
-    type List = T;
-
-    #[inline]
-    fn into_attachments_list(self) -> T {
-        self
-    }
-}*/
+// impl<S, T> IntoAttachmentsList for T where T: AttachmentsList<S> {
+// type List = T;
+//
+// #[inline]
+// fn into_attachments_list(self) -> T {
+// self
+// }
+// }
 
 impl IntoAttachmentsList for () {
     type List = EmptyAttachmentsList;
@@ -372,7 +370,32 @@ macro_rules! impl_into_atch_list {
     );
 }
 
-impl_into_atch_list!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
+impl_into_atch_list!(A,
+                     B,
+                     C,
+                     D,
+                     E,
+                     F,
+                     G,
+                     H,
+                     I,
+                     J,
+                     K,
+                     L,
+                     M,
+                     N,
+                     O,
+                     P,
+                     Q,
+                     R,
+                     S,
+                     T,
+                     U,
+                     V,
+                     W,
+                     X,
+                     Y,
+                     Z);
 
 /// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -400,15 +423,11 @@ impl error::Error for FramebufferCreationError {
     fn description(&self) -> &str {
         match *self {
             FramebufferCreationError::OomError(_) => "no memory available",
-            FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
-                                                             are too large",
-            FramebufferCreationError::AttachmentNotIdentitySwizzled => {
-                "one of the attachments has a component swizzle that is different from identity"
-            },
-            FramebufferCreationError::AttachmentTooSmall => {
-                "one of the attachments is too small compared to the requested framebuffer \
-                 dimensions"
-            },
+            FramebufferCreationError::DimensionsTooLarge => {
+                "the dimensions of the framebuffer are too large"
+            }
+            FramebufferCreationError::AttachmentNotIdentitySwizzled => "one of the attachments has a component swizzle that is different from identity",
+            FramebufferCreationError::AttachmentTooSmall => "one of the attachments is too small compared to the requested framebuffer dimensions",
         }
     }
 
@@ -464,31 +483,28 @@ mod tests {
     fn simple_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
-            color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats { color: (R8G8B8A8Unorm, 1) }).unwrap();
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
-        let _ = StdFramebuffer::new(&render_pass, [1024, 768, 1], example::AList {
-            color: image.clone()
-        }).unwrap();
+        let _ = StdFramebuffer::new(&render_pass,
+                                    [1024, 768, 1],
+                                    example::AList { color: image.clone() })
+            .unwrap();
     }
 
     #[test]
     fn framebuffer_too_large() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
-            color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats { color: (R8G8B8A8Unorm, 1) }).unwrap();
 
         let image = AttachmentImage::new(&device, [1024, 768], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
         match StdFramebuffer::new(&render_pass, [0xffffffff, 0xffffffff, 0xffffffff], alist) {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -496,16 +512,14 @@ mod tests {
     fn attachment_too_small() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = example::CustomRenderPass::new(&device, &example::Formats {
-            color: (R8G8B8A8Unorm, 1)
-        }).unwrap();
+        let render_pass = example::CustomRenderPass::new(&device, &example::Formats { color: (R8G8B8A8Unorm, 1) }).unwrap();
 
         let image = AttachmentImage::new(&device, [512, 512], R8G8B8A8Unorm).unwrap();
 
         let alist = example::AList { color: image.clone() };
         match StdFramebuffer::new(&render_pass, [600, 600, 1], alist) {
             Err(FramebufferCreationError::AttachmentTooSmall) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

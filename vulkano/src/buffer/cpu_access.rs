@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! Buffer whose content is accessible to the CPU.
-//! 
+//!
 //! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
 //! but may not perform as well as other buffer types.
-//! 
+//!
 //! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
 //! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
 //! or write and write simultaneously will block.
@@ -55,7 +55,9 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -76,32 +78,26 @@ pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: Memor
 #[derive(Debug)]
 struct LatestSubmission {
     read_submissions: Mutex<Vec<Weak<Submission>>>,
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
+    write_submission: Option<Weak<Submission>>, // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<T> CpuAccessibleBuffer<T> {
     /// Deprecated. Use `from_data` instead.
     #[deprecated]
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 
     /// Builds a new buffer with some data in it. Only allowed for sized data.
-    pub fn from_data<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I, data: T)
-                            -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+    pub fn from_data<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I, data: T) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
-              T: Content + 'static,
+              T: Content + 'static
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-            );
+            let uninitialized = try!(CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families));
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -118,8 +114,7 @@ impl<T> CpuAccessibleBuffer<T> {
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
-    pub unsafe fn uninitialized<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
-                                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+    pub unsafe fn uninitialized<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
@@ -129,16 +124,13 @@ impl<T> CpuAccessibleBuffer<T> {
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
-    pub fn from_iter<'a, I, Q>(device: &Arc<Device>, usage: &Usage, queue_families: Q, data: I)
-                               -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+    pub fn from_iter<'a, I, Q>(device: &Arc<Device>, usage: &Usage, queue_families: Q, data: I) -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static,
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
-            );
+            let uninitialized = try!(CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families));
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -160,20 +152,15 @@ impl<T> CpuAccessibleBuffer<[T]> {
     // TODO: remove
     #[inline]
     #[deprecated]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I) -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families)
-        }
+        unsafe { CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families) }
     }
 
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub unsafe fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage,
-                                             queue_families: I)
-                                             -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+    pub unsafe fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I) -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
@@ -187,12 +174,12 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
-                             -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families.into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
@@ -204,18 +191,23 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
-                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                // errors can't happen
+                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                // errors can't happen
             }
         };
 
-        let mem_ty = device.physical_device().memory_types()
-                           .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                           .filter(|t| t.is_host_visible())
-                           .next().unwrap();    // Vk specs guarantee that this can't fail
+        let mem_ty = device.physical_device()
+            .memory_types()
+            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+            .filter(|t| t.is_host_visible())
+            .next()
+            .unwrap();    // Vk specs guarantee that this can't fail
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device),
+                                         mem_ty,
+                                         mem_reqs.size,
+                                         mem_reqs.alignment,
+                                         AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
         try!(buffer.bind_memory(mem.memory(), mem.offset()));
@@ -233,7 +225,9 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     }
 }
 
-impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where A: MemoryPool {
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
+    where A: MemoryPool
+{
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -244,13 +238,17 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where A: MemoryPool {
     // TODO: use a custom iterator
     #[inline]
     pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
+        self.queue_families
+            .iter()
+            .map(|&num| self.device().physical_device().queue_family_by_id(num).unwrap())
+            .collect()
     }
 }
 
-impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: MemoryPool {
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
+    where T: Content + 'static,
+          A: MemoryPool
+{
     /// Locks the buffer in order to write its content.
     ///
     /// If the buffer is currently in use by the GPU, this function will block until either the
@@ -270,7 +268,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
         }
 
         let offset = self.memory.offset();
-        let range = offset .. offset + self.inner.size();
+        let range = offset..offset + self.inner.size();
 
         Ok(ReadLock {
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
@@ -305,7 +303,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
         }
 
         let offset = self.memory.offset();
-        let range = offset .. offset + self.inner.size();
+        let range = offset..offset + self.inner.size();
 
         Ok(WriteLock {
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
@@ -315,7 +313,8 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
 }
 
 unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -330,138 +329,139 @@ unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
         self.inner.key()
     }
 
-    /*fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
-                  write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> Option<TrackedBufferPipelineBarrierRequest>
-    {
-        debug_assert!(!stage.host);
-        debug_assert!(!access.host_read);
-        debug_assert!(!access.host_write);
-
-        // We don't know when the user is going to write to the buffer from the CPU, so we just
-        // assume that it's happened all the time.
-        let mut state = states.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferClState {
-            size: self.size(),
-            stages: PipelineStages { host: true, .. PipelineStages::none() },
-            access: AccessFlagBits { host_write: true, .. AccessFlagBits::none() },
-            first_stages: None,
-            write: true,
-            earliest_previous_transition: 0,
-            needs_flush_at_the_end: false,
-        });
-
-        if write {
-            // Write after read or write after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: state.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
-                write: true,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: true,
-            };
-
-            let barrier = TrackedBufferPipelineBarrierRequest {
-                after_command_num: state.earliest_previous_transition,
-                source_stage: state.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: if state.write {
-                    Some(TrackedBufferPipelineMemoryBarrierRequest {
-                        offset: 0,
-                        size: state.size,
-                        source_access: state.access,
-                        destination_access: access,
-                    })
-                } else {
-                    None
-                },
-            };
-
-            *state = new_state;
-            Some(barrier)
-
-        } else if state.write {
-            // Read after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: state.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: state.needs_flush_at_the_end,
-            };
-
-            let barrier = TrackedBufferPipelineBarrierRequest {
-                after_command_num: state.earliest_previous_transition,
-                source_stage: state.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: state.size,
-                    source_access: state.access,
-                    destination_access: access,
-                }),
-            };
-
-            *state = new_state;
-            Some(barrier)
-
-        } else {
-            // Read after read.
-            *state = CpuAccessibleBufferClState {
-                size: state.size,
-                stages: state.stages | stage,
-                access: state.access | access,
-                first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: state.earliest_previous_transition,
-                needs_flush_at_the_end: state.needs_flush_at_the_end,
-            };
-
-            None
-        }
-    }
-
-    fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
-              -> Option<TrackedBufferPipelineBarrierRequest>
-    {
-        let state: CpuAccessibleBufferClState = in_s.remove_buffer(self.inner().buffer, 0).unwrap();
-
-        let barrier = if state.needs_flush_at_the_end {
-            let barrier = TrackedBufferPipelineBarrierRequest {
-                after_command_num: state.earliest_previous_transition,
-                source_stage: state.stages,
-                destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
-                by_region: true,
-                memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: state.size,
-                    source_access: state.access,
-                    destination_access: AccessFlagBits { host_read: true,
-                                                         .. AccessFlagBits::none() },
-                }),
-            };
-
-            Some(barrier)
-        } else {
-            None
-        };
-
-        out.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferFinished {
-            first_stages: state.first_stages.unwrap_or(PipelineStages::none()),
-            write: state.needs_flush_at_the_end,
-        });
-
-        barrier
-    }*/
+    // fn transition(&self, states: &mut StatesManager, num_command: usize, _: usize, _: usize,
+    // write: bool, stage: PipelineStages, access: AccessFlagBits)
+    // -> Option<TrackedBufferPipelineBarrierRequest>
+    // {
+    // debug_assert!(!stage.host);
+    // debug_assert!(!access.host_read);
+    // debug_assert!(!access.host_write);
+    //
+    // We don't know when the user is going to write to the buffer from the CPU, so we just
+    // assume that it's happened all the time.
+    // let mut state = states.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferClState {
+    // size: self.size(),
+    // stages: PipelineStages { host: true, .. PipelineStages::none() },
+    // access: AccessFlagBits { host_write: true, .. AccessFlagBits::none() },
+    // first_stages: None,
+    // write: true,
+    // earliest_previous_transition: 0,
+    // needs_flush_at_the_end: false,
+    // });
+    //
+    // if write {
+    // Write after read or write after write.
+    // let new_state = CpuAccessibleBufferClState {
+    // size: state.size,
+    // stages: stage,
+    // access: access,
+    // first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+    // write: true,
+    // earliest_previous_transition: num_command,
+    // needs_flush_at_the_end: true,
+    // };
+    //
+    // let barrier = TrackedBufferPipelineBarrierRequest {
+    // after_command_num: state.earliest_previous_transition,
+    // source_stage: state.stages,
+    // destination_stages: stage,
+    // by_region: true,
+    // memory_barrier: if state.write {
+    // Some(TrackedBufferPipelineMemoryBarrierRequest {
+    // offset: 0,
+    // size: state.size,
+    // source_access: state.access,
+    // destination_access: access,
+    // })
+    // } else {
+    // None
+    // },
+    // };
+    //
+    // state = new_state;
+    // Some(barrier)
+    //
+    // } else if state.write {
+    // Read after write.
+    // let new_state = CpuAccessibleBufferClState {
+    // size: state.size,
+    // stages: stage,
+    // access: access,
+    // first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+    // write: false,
+    // earliest_previous_transition: num_command,
+    // needs_flush_at_the_end: state.needs_flush_at_the_end,
+    // };
+    //
+    // let barrier = TrackedBufferPipelineBarrierRequest {
+    // after_command_num: state.earliest_previous_transition,
+    // source_stage: state.stages,
+    // destination_stages: stage,
+    // by_region: true,
+    // memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
+    // offset: 0,
+    // size: state.size,
+    // source_access: state.access,
+    // destination_access: access,
+    // }),
+    // };
+    //
+    // state = new_state;
+    // Some(barrier)
+    //
+    // } else {
+    // Read after read.
+    // state = CpuAccessibleBufferClState {
+    // size: state.size,
+    // stages: state.stages | stage,
+    // access: state.access | access,
+    // first_stages: Some(state.first_stages.clone().unwrap_or(stage)),
+    // write: false,
+    // earliest_previous_transition: state.earliest_previous_transition,
+    // needs_flush_at_the_end: state.needs_flush_at_the_end,
+    // };
+    //
+    // None
+    // }
+    // }
+    //
+    // fn finish(&self, in_s: &mut StatesManager, out: &mut StatesManager)
+    // -> Option<TrackedBufferPipelineBarrierRequest>
+    // {
+    // let state: CpuAccessibleBufferClState = in_s.remove_buffer(self.inner().buffer, 0).unwrap();
+    //
+    // let barrier = if state.needs_flush_at_the_end {
+    // let barrier = TrackedBufferPipelineBarrierRequest {
+    // after_command_num: state.earliest_previous_transition,
+    // source_stage: state.stages,
+    // destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
+    // by_region: true,
+    // memory_barrier: Some(TrackedBufferPipelineMemoryBarrierRequest {
+    // offset: 0,
+    // size: state.size,
+    // source_access: state.access,
+    // destination_access: AccessFlagBits { host_read: true,
+    // .. AccessFlagBits::none() },
+    // }),
+    // };
+    //
+    // Some(barrier)
+    // } else {
+    // None
+    // };
+    //
+    // out.buffer_or(self.inner().buffer, 0, || CpuAccessibleBufferFinished {
+    // first_stages: state.first_stages.unwrap_or(PipelineStages::none()),
+    // write: state.needs_flush_at_the_end,
+    // });
+    //
+    // barrier
+    // }
 }
 
 unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     type Content = T;
 }

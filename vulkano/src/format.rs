@@ -49,11 +49,11 @@
 //!   conversion.
 //!
 //! # Choosing a format
-//! 
+//!
 //! The following formats are guaranteed to be supported for everything that is related to
 //! texturing (ie. blitting source and sampling them linearly). You should choose one of these
 //! formats if you have an image that you are going to sample from:
-//! 
+//!
 //! // TODO: use vulkano enums
 //! - B4G4R4A4_UNORM_PACK16
 //! - R5G6B5_UNORM_PACK16
@@ -120,11 +120,15 @@ pub unsafe trait Data {
 // TODO: that's just an example ; implement for all common data types
 unsafe impl Data for i8 {
     #[inline]
-    fn ty() -> Format { Format::R8Sint }
+    fn ty() -> Format {
+        Format::R8Sint
+    }
 }
 unsafe impl Data for u8 {
     #[inline]
-    fn ty() -> Format { Format::R8Uint }
+    fn ty() -> Format {
+        Format::R8Uint
+    }
 }
 
 macro_rules! formats {
@@ -572,7 +576,7 @@ unsafe impl FormatDesc for Format {
             (FormatTy::Depth, f @ ClearValue::Depth(_)) => f,
             (FormatTy::Stencil, f @ ClearValue::Stencil(_)) => f,
             (FormatTy::DepthStencil, f @ ClearValue::DepthStencil(_)) => f,
-            _ => panic!("Wrong clear value")
+            _ => panic!("Wrong clear value"),
         }
     }
 }
@@ -585,7 +589,9 @@ pub unsafe trait PossibleFloatFormatDesc: FormatDesc {
 
 unsafe impl PossibleFloatFormatDesc for Format {
     #[inline]
-    fn is_float(&self) -> bool { self.ty() == FormatTy::Float }
+    fn is_float(&self) -> bool {
+        self.ty() == FormatTy::Float
+    }
 }
 
 pub unsafe trait PossibleUintFormatDesc: FormatDesc {
@@ -594,7 +600,9 @@ pub unsafe trait PossibleUintFormatDesc: FormatDesc {
 
 unsafe impl PossibleUintFormatDesc for Format {
     #[inline]
-    fn is_uint(&self) -> bool { self.ty() == FormatTy::Uint }
+    fn is_uint(&self) -> bool {
+        self.ty() == FormatTy::Uint
+    }
 }
 
 pub unsafe trait PossibleSintFormatDesc: FormatDesc {
@@ -603,7 +611,9 @@ pub unsafe trait PossibleSintFormatDesc: FormatDesc {
 
 unsafe impl PossibleSintFormatDesc for Format {
     #[inline]
-    fn is_sint(&self) -> bool { self.ty() == FormatTy::Sint }
+    fn is_sint(&self) -> bool {
+        self.ty() == FormatTy::Sint
+    }
 }
 
 pub unsafe trait PossibleDepthFormatDesc: FormatDesc {
@@ -612,7 +622,9 @@ pub unsafe trait PossibleDepthFormatDesc: FormatDesc {
 
 unsafe impl PossibleDepthFormatDesc for Format {
     #[inline]
-    fn is_depth(&self) -> bool { self.ty() == FormatTy::Depth }
+    fn is_depth(&self) -> bool {
+        self.ty() == FormatTy::Depth
+    }
 }
 
 pub unsafe trait PossibleStencilFormatDesc: FormatDesc {
@@ -621,7 +633,9 @@ pub unsafe trait PossibleStencilFormatDesc: FormatDesc {
 
 unsafe impl PossibleStencilFormatDesc for Format {
     #[inline]
-    fn is_stencil(&self) -> bool { self.ty() == FormatTy::Stencil }
+    fn is_stencil(&self) -> bool {
+        self.ty() == FormatTy::Stencil
+    }
 }
 
 pub unsafe trait PossibleDepthStencilFormatDesc: FormatDesc {
@@ -630,7 +644,9 @@ pub unsafe trait PossibleDepthStencilFormatDesc: FormatDesc {
 
 unsafe impl PossibleDepthStencilFormatDesc for Format {
     #[inline]
-    fn is_depth_stencil(&self) -> bool { self.ty() == FormatTy::DepthStencil }
+    fn is_depth_stencil(&self) -> bool {
+        self.ty() == FormatTy::DepthStencil
+    }
 }
 
 pub unsafe trait PossibleCompressedFormatDesc: FormatDesc {
@@ -639,7 +655,9 @@ pub unsafe trait PossibleCompressedFormatDesc: FormatDesc {
 
 unsafe impl PossibleCompressedFormatDesc for Format {
     #[inline]
-    fn is_compressed(&self) -> bool { self.ty() == FormatTy::Compressed }
+    fn is_compressed(&self) -> bool {
+        self.ty() == FormatTy::Compressed
+    }
 }
 
 /// Trait for types that can possibly describe a float or compressed attachment.

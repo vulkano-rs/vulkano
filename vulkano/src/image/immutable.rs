@@ -37,7 +37,9 @@ use sync::Sharing;
 /// but then you must only ever read from it. TODO: clarify because of blit operations
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct ImmutableImage<F, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     image: UnsafeImage,
     view: UnsafeImageView,
     dimensions: Dimensions,
@@ -48,25 +50,26 @@ pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
 #[derive(Debug)]
 struct PerLayer {
-    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
+    latest_write_submission: Mutex<Option<Weak<Submission>>>, // TODO: can use `Weak::new()` once it's stabilized
     started_reading: AtomicBool,
 }
 
 impl<F> ImmutableImage<F> {
     /// Builds a new immutable image.
-    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
-                      -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
-        where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
+    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
     {
         let usage = Usage {
-            transfer_source: true,  // for blits
+            transfer_source: true, // for blits
             transfer_dest: true,
             sampled: true,
-            .. Usage::none()
+            ..Usage::none()
         };
 
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families.into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (image, mem_reqs) = unsafe {
             let sharing = if queue_families.len() >= 2 {
@@ -80,18 +83,22 @@ impl<F> ImmutableImage<F> {
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
         let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe {
+            try!(image.bind_memory(mem.memory(), mem.offset()));
+        }
 
         let view = unsafe {
             try!(UnsafeImageView::raw(&image, dimensions.to_view_type(), 0 .. image.mipmap_levels(),
@@ -106,7 +113,7 @@ impl<F> ImmutableImage<F> {
             format: format,
             per_layer: {
                 let mut v = SmallVec::new();
-                for _ in 0 .. dimensions.array_layers_with_cube() {
+                for _ in 0..dimensions.array_layers_with_cube() {
                     v.push(PerLayer {
                         latest_write_submission: Mutex::new(None),
                         started_reading: AtomicBool::new(false),
@@ -118,7 +125,9 @@ impl<F> ImmutableImage<F> {
     }
 }
 
-impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
+impl<F, A> ImmutableImage<F, A>
+    where A: MemoryPool
+{
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
@@ -126,7 +135,10 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> Image for ImmutableImage<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -139,7 +151,8 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
 }
 
 unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -148,7 +161,8 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
 }
 
 unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn parent(&self) -> &Image {

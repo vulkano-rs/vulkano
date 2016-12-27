@@ -26,21 +26,12 @@ use VulkanPointers;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
 pub struct CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
-    previous: CmdBindVertexBuffers<
-                CmdPushConstants<
-                    CmdBindDescriptorSets<
-                        CmdSetState<
-                            CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>
-                        >,
-                        S, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                    >,
-                    Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                >,
-                V
-              >,
+    previous: CmdBindVertexBuffers<CmdPushConstants<CmdBindDescriptorSets<CmdSetState<CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>>, S, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, V>,
 
     // Parameters for vkCmdDraw.
     vertex_count: u32,
@@ -50,12 +41,12 @@ pub struct CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
 }
 
 impl<L, V, Pv, Pl, Prp, S, Pc> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     /// See the documentation of the `draw` method.
-    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-               dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc)
-               -> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
+    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>, dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc) -> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
         let (_, vertex_count, instance_count) = pipeline.vertex_definition().decode(&vertices);
@@ -80,7 +71,9 @@ impl<L, V, Pv, Pl, Prp, S, Pc> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
 }
 
 unsafe impl<L, V, Pv, Pl, Prp, S, Pc> CommandsList for CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -90,7 +83,10 @@ unsafe impl<L, V, Pv, Pl, Prp, S, Pc> CommandsList for CmdDraw<L, V, Pv, Pl, Prp
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdDraw(cmd, self.vertex_count, self.instance_count, self.first_vertex,
+                vk.CmdDraw(cmd,
+                           self.vertex_count,
+                           self.instance_count,
+                           self.first_vertex,
                            self.first_instance);
             }
         }));

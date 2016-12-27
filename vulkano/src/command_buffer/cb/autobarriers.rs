@@ -39,16 +39,18 @@ use vk;
 
 use OomError;
 
-pub struct AutobarriersCommandBuffer<L, P> where P: CommandPool {
-    // The actual command buffer. 
-    inner: UnsyncedCommandBuffer<WrappedCommandsList<L>, P>
+pub struct AutobarriersCommandBuffer<L, P>
+    where P: CommandPool
+{
+    // The actual command buffer.
+    inner: UnsyncedCommandBuffer<WrappedCommandsList<L>, P>,
 }
 
 impl<L, P> CommandsListBuildPrimaryPool<L, P> for AutobarriersCommandBuffer<L, P>
-    where L: CommandsList, P: CommandPool
+    where L: CommandsList,
+          P: CommandPool
 {
-    fn build_primary_with_pool(pool: P, list: L)
-                               -> Result<AutobarriersCommandBuffer<L, P>, OomError>
+    fn build_primary_with_pool(pool: P, list: L) -> Result<AutobarriersCommandBuffer<L, P>, OomError>
         where Self: Sized
     {
         let kind = Kind::primary();
@@ -59,23 +61,20 @@ impl<L, P> CommandsListBuildPrimaryPool<L, P> for AutobarriersCommandBuffer<L, P
             try!(UnsyncedCommandBuffer::new(WrappedCommandsList(list, device), pool, kind, flags))
         };
 
-        Ok(AutobarriersCommandBuffer {
-            inner: cmd,
-        })
+        Ok(AutobarriersCommandBuffer { inner: cmd })
     }
 }
 
 unsafe impl<L, P> Submit for AutobarriersCommandBuffer<L, P>
-    where L: CommandsList, P: CommandPool
+    where L: CommandsList,
+          P: CommandPool
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>) -> Result<SubmitBuilder<'a>, Box<Error>> {
         // FIXME: totally unsynchronized here
         Ok(base.add_command_buffer(&self.inner))
     }
@@ -83,7 +82,8 @@ unsafe impl<L, P> Submit for AutobarriersCommandBuffer<L, P>
 
 // TODO: we're not necessarily a secondary command buffer
 unsafe impl<L, P> SecondaryCommandBuffer for AutobarriersCommandBuffer<L, P>
-    where L: CommandsList, P: CommandPool
+    where L: CommandsList,
+          P: CommandPool
 {
     #[inline]
     fn inner(&self) -> vk::CommandBuffer {
@@ -102,7 +102,9 @@ unsafe impl<L, P> SecondaryCommandBuffer for AutobarriersCommandBuffer<L, P>
 }
 
 struct WrappedCommandsList<L>(L, Arc<Device>);
-unsafe impl<L> CommandsList for WrappedCommandsList<L> where L: CommandsList {
+unsafe impl<L> CommandsList for WrappedCommandsList<L>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         let mut sink = Sink {
@@ -137,7 +139,10 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
         for (key, accesses) in self.pending_accesses.drain() {
             let prev_accesses = match self.accesses.entry(key) {
                 Entry::Occupied(e) => e.into_mut(),     // TODO: for images, need to transition from initial layout
-                Entry::Vacant(e) => { e.insert(accesses); continue; }
+                Entry::Vacant(e) => {
+                    e.insert(accesses);
+                    continue;
+                }
             };
 
             for prev_access in mem::replace(prev_accesses, SmallVec::new()).into_iter() {
@@ -145,15 +150,8 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
 
                 for access in accesses.iter() {
                     match (&prev_access.inner, &access.inner) {
-                        (&ElementInner::Buffer { buffer: old_buffer, offset: old_offset,
-                                                 size: old_size, write: old_write },
-                         &ElementInner::Buffer { buffer: new_buffer, offset: new_offset,
-                                                 size: new_size, write: new_write }) =>
-                        {
-                            if (!old_write && !new_write) ||
-                                !old_buffer.conflicts_buffer(old_offset, old_size,
-                                                             new_buffer, new_offset, new_size)
-                            {
+                        (&ElementInner::Buffer { buffer: old_buffer, offset: old_offset, size: old_size, write: old_write }, &ElementInner::Buffer { buffer: new_buffer, offset: new_offset, size: new_size, write: new_write }) => {
+                            if (!old_write && !new_write) || !old_buffer.conflicts_buffer(old_offset, old_size, new_buffer, new_offset, new_size) {
                                 continue;
                             }
 
@@ -161,8 +159,7 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
 
                             if !old_write {
                                 unsafe {
-                                    pipeline_barrier.add_execution_dependency(prev_access.stages,
-                                                                              access.stages, true);
+                                    pipeline_barrier.add_execution_dependency(prev_access.stages, access.stages, true);
                                 }
                             } else {
                                 let real_offset = cmp::min(old_offset, new_offset);
@@ -173,35 +170,38 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                                 };
 
                                 unsafe {
-                                    pipeline_barrier.add_buffer_memory_barrier(old_buffer, prev_access.stages,
-                                                                               prev_access.access, access.stages,
-                                                                               access.access, true, None,
-                                                                               real_offset, real_size);
+                                    pipeline_barrier.add_buffer_memory_barrier(old_buffer,
+                                                                               prev_access.stages,
+                                                                               prev_access.access,
+                                                                               access.stages,
+                                                                               access.access,
+                                                                               true,
+                                                                               None,
+                                                                               real_offset,
+                                                                               real_size);
                                 }
                             }
-                        },
+                        }
 
-                        (&ElementInner::Image { image: self_image, first_layer: self_fl, num_layers: self_nl,
-                                                first_mipmap: self_fm, num_mipmaps: self_nm,
-                                                write: self_write, layout: self_layout },
-                         &ElementInner::Image { image: other_image, first_layer: other_fl, num_layers: other_nl,
-                                                first_mipmap: other_fm, num_mipmaps: other_nm,
-                                                write: other_write, layout: other_layout }) =>
-                        {
+                        (&ElementInner::Image { image: self_image, first_layer: self_fl, num_layers: self_nl, first_mipmap: self_fm, num_mipmaps: self_nm, write: self_write, layout: self_layout }, &ElementInner::Image { image: other_image, first_layer: other_fl, num_layers: other_nl, first_mipmap: other_fm, num_mipmaps: other_nm, write: other_write, layout: other_layout }) => {
                             if (self_layout == other_layout && !self_write && !other_write) ||
-                                !self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm,
-                                                            other_image, other_fl, other_nl,
-                                                            other_fm, other_nm)
-                            {
+                               !self_image.conflicts_image(self_fl,
+                                                           self_nl,
+                                                           self_fm,
+                                                           self_nm,
+                                                           other_image,
+                                                           other_fl,
+                                                           other_nl,
+                                                           other_fm,
+                                                           other_nm) {
                                 continue;
                             }
 
                             found_conflict = true;
-                            
+
                             if !self_write && self_layout == other_layout {
                                 unsafe {
-                                    pipeline_barrier.add_execution_dependency(prev_access.stages,
-                                                                              access.stages, true);
+                                    pipeline_barrier.add_execution_dependency(prev_access.stages, access.stages, true);
                                 }
                             } else {
                                 let real_first_layer = cmp::min(self_fl, other_fl);
@@ -219,32 +219,33 @@ impl<'c: 'o, 'o> Sink<'c, 'o> {
                                 };
 
                                 unsafe {
-                                    pipeline_barrier.add_image_memory_barrier(self_image, real_first_layer .. real_first_layer + real_num_layers,
-                                                                              real_first_mipmap .. real_first_mipmap + real_num_mipmaps, prev_access.stages,
-                                                                              prev_access.access, access.stages,
-                                                                              access.access, true, None,
-                                                                              self_layout, other_layout);
+                                    pipeline_barrier.add_image_memory_barrier(self_image,
+                                                                              real_first_layer..real_first_layer + real_num_layers,
+                                                                              real_first_mipmap..real_first_mipmap + real_num_mipmaps,
+                                                                              prev_access.stages,
+                                                                              prev_access.access,
+                                                                              access.stages,
+                                                                              access.access,
+                                                                              true,
+                                                                              None,
+                                                                              self_layout,
+                                                                              other_layout);
                                 }
                             }
-                        },
+                        }
 
-                        (&ElementInner::Buffer { buffer, offset, size, write: self_write },
-                         &ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps,
-                                                write: other_write, .. }) |
-                        (&ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps,
-                                                write: other_write, .. },
-                         &ElementInner::Buffer { buffer, offset, size, write: self_write }) =>
-                        {
+                        (&ElementInner::Buffer { buffer, offset, size, write: self_write }, &ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps, write: other_write, .. }) |
+                        (&ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps, write: other_write, .. }, &ElementInner::Buffer { buffer, offset, size, write: self_write }) => {
                             // TODO: think about this situation
-                            /*if !buffer.conflicts_image(offset, size, self_write, image, first_layer, num_layers,
-                                                       first_mipmap, num_mipmaps, other_write)
-                            {
-                                continue;
-                            }*/
-                            
-                            //found_conflict = true;    // there's a warning if we uncomment that
+                            // if !buffer.conflicts_image(offset, size, self_write, image, first_layer, num_layers,
+                            // first_mipmap, num_mipmaps, other_write)
+                            // {
+                            // continue;
+                            // }
+
+                            // found_conflict = true;    // there's a warning if we uncomment that
                             unimplemented!()        // TODO:
-                        },
+                        }
                     }
                 }
 
@@ -277,9 +278,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     }
 
     #[inline]
-    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool,
-                             stages: PipelineStages, access: AccessFlagBits)
-    {
+    fn add_buffer_transition(&mut self, buffer: &'c Buffer, offset: usize, size: usize, write: bool, stages: PipelineStages, access: AccessFlagBits) {
         let key = buffer.conflict_key(offset, size);
 
         let element = Element {
@@ -301,10 +300,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     }
 
     #[inline]
-    fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
-                            stages: PipelineStages, access: AccessFlagBits)
-    {
+    fn add_image_transition(&mut self, image: &'c Image, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout, stages: PipelineStages, access: AccessFlagBits) {
         let key = image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps);
 
         let element = Element {
@@ -329,9 +325,7 @@ impl<'c: 'o, 'o> CommandsListSink<'c> for Sink<'c, 'o> {
     }
 
     #[inline]
-    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32,
-                                         _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
-    {
+    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits) {
         // FIXME: unimplemented
     }
 }
@@ -346,39 +340,39 @@ struct Element<'a> {
 impl<'a> Element<'a> {
     fn conflicts(&self, other: &Element<'a>) -> bool {
         match (&self.inner, &other.inner) {
-            (&ElementInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size,
-                                     write: self_write },
-             &ElementInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size,
-                                     write: other_write }) =>
-            {
+            (&ElementInner::Buffer { buffer: self_buffer, offset: self_offset, size: self_size, write: self_write }, &ElementInner::Buffer { buffer: other_buffer, offset: other_offset, size: other_size, write: other_write }) => {
                 (self_write || other_write) &&
-                    self_buffer.conflicts_buffer(self_offset, self_size, other_buffer,
-                                                 other_offset, other_size)
-            },
+                self_buffer.conflicts_buffer(self_offset,
+                                             self_size,
+                                             other_buffer,
+                                             other_offset,
+                                             other_size)
+            }
 
-            (&ElementInner::Buffer { buffer, offset, size, write: self_write },
-             &ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps,
-                                    write: other_write, .. }) |
-            (&ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps,
-                                    write: other_write, .. },
-             &ElementInner::Buffer { buffer, offset, size, write: self_write }) =>
-            {
+            (&ElementInner::Buffer { buffer, offset, size, write: self_write }, &ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps, write: other_write, .. }) |
+            (&ElementInner::Image { image, first_layer, num_layers, first_mipmap, num_mipmaps, write: other_write, .. }, &ElementInner::Buffer { buffer, offset, size, write: self_write }) => {
                 (self_write || other_write) &&
-                    buffer.conflicts_image(offset, size, image, first_layer, num_layers,
-                                           first_mipmap, num_mipmaps)
-            },
+                buffer.conflicts_image(offset,
+                                       size,
+                                       image,
+                                       first_layer,
+                                       num_layers,
+                                       first_mipmap,
+                                       num_mipmaps)
+            }
 
-            (&ElementInner::Image { image: self_image, first_layer: self_fl, num_layers: self_nl,
-                                    first_mipmap: self_fm, num_mipmaps: self_nm,
-                                    write: self_write, layout: self_layout },
-             &ElementInner::Image { image: other_image, first_layer: other_fl, num_layers: other_nl,
-                                    first_mipmap: other_fm, num_mipmaps: other_nm,
-                                    write: other_write, layout: other_layout }) =>
-            {
+            (&ElementInner::Image { image: self_image, first_layer: self_fl, num_layers: self_nl, first_mipmap: self_fm, num_mipmaps: self_nm, write: self_write, layout: self_layout }, &ElementInner::Image { image: other_image, first_layer: other_fl, num_layers: other_nl, first_mipmap: other_fm, num_mipmaps: other_nm, write: other_write, layout: other_layout }) => {
                 (self_layout != other_layout || self_write || other_write) &&
-                    self_image.conflicts_image(self_fl, self_nl, self_fm, self_nm,
-                                               other_image, other_fl, other_nl, other_fm, other_nm)
-            },
+                self_image.conflicts_image(self_fl,
+                                           self_nl,
+                                           self_fm,
+                                           self_nm,
+                                           other_image,
+                                           other_fl,
+                                           other_nl,
+                                           other_fm,
+                                           other_nm)
+            }
         }
     }
 }

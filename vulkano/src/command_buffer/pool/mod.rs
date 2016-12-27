@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! In the Vulkan API, command buffers must be allocated from *command pools*.
-//! 
+//!
 //! A command pool holds and manages the memory of one or more command buffers. If you destroy a
 //! command pool, all of its command buffers are automatically destroyed.
-//! 
+//!
 //! In vulkano, creating a command buffer requires passing an implementation of the `CommandPool`
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
@@ -52,8 +52,7 @@ pub unsafe trait CommandPool {
     /// - The command buffers must have been allocated from this pool.
     /// - `secondary` must have the same value as what was passed to `alloc`.
     ///
-    unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>;
+    unsafe fn free<I>(&self, secondary: bool, command_buffers: I) where I: Iterator<Item = AllocatedCommandBuffer>;
 
     /// Once a command buffer has finished being built, it should call this method in order to
     /// produce a `Finished` object.
@@ -91,8 +90,7 @@ pub unsafe trait CommandPoolFinished {
     /// - The command buffers must have been allocated from this pool.
     /// - `secondary` must have the same value as what was passed to `alloc`.
     ///
-    unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>;
+    unsafe fn free<I>(&self, secondary: bool, command_buffers: I) where I: Iterator<Item = AllocatedCommandBuffer>;
 
     /// Returns the device used to create this pool.
     fn device(&self) -> &Arc<Device>;

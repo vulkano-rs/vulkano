@@ -27,7 +27,7 @@ pub fn required_extensions() -> InstanceExtensions {
 
     match InstanceExtensions::supported_by_core() {
         Ok(supported) => supported.intersection(&ideal),
-        Err(_) => InstanceExtensions::none()
+        Err(_) => InstanceExtensions::none(),
     }
 }
 
@@ -113,17 +113,13 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
-                           win: &winit::Window)
-                           -> Result<Arc<Surface>, SurfaceCreationError> {
+unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::android::WindowExt;
     Surface::from_anativewindow(instance, win.get_native_window())
 }
 
 #[cfg(all(unix, not(target_os = "android")))]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
-                           win: &winit::Window)
-                           -> Result<Arc<Surface>, SurfaceCreationError> {
+unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::unix::WindowExt;
     match (win.get_wayland_display(), win.get_wayland_surface()) {
         (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface),
@@ -136,17 +132,15 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
                                    win.get_xlib_window().unwrap() as _)
             } else {
                 Surface::from_xcb(instance,
-                                   win.get_xcb_connection().unwrap(),
-                                   win.get_xlib_window().unwrap() as _)
+                                  win.get_xcb_connection().unwrap(),
+                                  win.get_xlib_window().unwrap() as _)
             }
         }
     }
 }
 
 #[cfg(windows)]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
-                           win: &winit::Window)
-                           -> Result<Arc<Surface>, SurfaceCreationError> {
+unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window) -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::windows::WindowExt;
     Surface::from_hwnd(instance,
                        ptr::null() as *const (), // FIXME

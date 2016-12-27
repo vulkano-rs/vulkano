@@ -40,7 +40,9 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -61,32 +63,26 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryP
 #[derive(Debug)]
 struct LatestSubmission {
     read_submissions: SmallVec<[Weak<Submission>; 4]>,
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
+    write_submission: Option<Weak<Submission>>, // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I) -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
+    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I) -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
@@ -97,12 +93,12 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
-                             -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I) -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families.into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
@@ -114,22 +110,27 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
-                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                // errors can't happen
+                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                // errors can't happen
             }
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device),
+                                         mem_ty,
+                                         mem_reqs.size,
+                                         mem_reqs.alignment,
+                                         AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         try!(buffer.bind_memory(mem.memory(), mem.offset()));
 
@@ -146,7 +147,9 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     }
 }
 
-impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
+impl<T: ?Sized, A> DeviceLocalBuffer<T, A>
+    where A: MemoryPool
+{
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -157,14 +160,16 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
     // TODO: use a custom iterator
     #[inline]
     pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
+        self.queue_families
+            .iter()
+            .map(|&num| self.device().physical_device().queue_family_by_id(num).unwrap())
+            .collect()
     }
 }
 
 unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -176,7 +181,8 @@ unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBuffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     type Content = T;
 }

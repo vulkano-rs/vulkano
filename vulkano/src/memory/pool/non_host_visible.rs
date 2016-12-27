@@ -35,12 +35,11 @@ impl StdNonHostVisibleMemoryTypePool {
     /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, memory_type: MemoryType)
-               -> Arc<StdNonHostVisibleMemoryTypePool>
-    {
+    pub fn new(device: &Arc<Device>, memory_type: MemoryType) -> Arc<StdNonHostVisibleMemoryTypePool> {
         assert_eq!(&**device.physical_device().instance() as *const Instance,
                    &**memory_type.physical_device().instance() as *const Instance);
-        assert_eq!(device.physical_device().index(), memory_type.physical_device().index());
+        assert_eq!(device.physical_device().index(),
+                   memory_type.physical_device().index());
 
         Arc::new(StdNonHostVisibleMemoryTypePool {
             device: device.clone(),
@@ -56,13 +55,14 @@ impl StdNonHostVisibleMemoryTypePool {
     /// - Panics if `size` is 0.
     /// - Panics if `alignment` is 0.
     ///
-    pub fn alloc(me: &Arc<Self>, size: usize, alignment: usize)
-                 -> Result<StdNonHostVisibleMemoryTypePoolAlloc, OomError>
-    {
+    pub fn alloc(me: &Arc<Self>, size: usize, alignment: usize) -> Result<StdNonHostVisibleMemoryTypePoolAlloc, OomError> {
         assert!(size != 0);
         assert!(alignment != 0);
 
-        #[inline] fn align(val: usize, al: usize) -> usize { al * (1 + (val - 1) / al) }
+        #[inline]
+        fn align(val: usize, al: usize) -> usize {
+            al * (1 + (val - 1) / al)
+        }
 
         // Find a location.
         let mut occupied = me.occupied.lock().unwrap();
@@ -70,12 +70,12 @@ impl StdNonHostVisibleMemoryTypePool {
         // Try finding an entry in already-allocated chunks.
         for &mut (ref dev_mem, ref mut entries) in occupied.iter_mut() {
             // Try find some free space in-between two entries.
-            for i in 0 .. entries.len().saturating_sub(1) {
+            for i in 0..entries.len().saturating_sub(1) {
                 let entry1 = entries[i].clone();
                 let entry1_end = align(entry1.end, alignment);
                 let entry2 = entries[i + 1].clone();
                 if entry1_end + size <= entry2.start {
-                    entries.insert(i + 1, entry1_end .. entry1_end + size);
+                    entries.insert(i + 1, entry1_end..entry1_end + size);
                     return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
                         pool: me.clone(),
                         memory: dev_mem.clone(),
@@ -88,7 +88,7 @@ impl StdNonHostVisibleMemoryTypePool {
             // Try append at the end.
             let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
             if last_end + size <= dev_mem.size() {
-                entries.push(last_end .. last_end + size);
+                entries.push(last_end..last_end + size);
                 return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
                     pool: me.clone(),
                     memory: dev_mem.clone(),
@@ -106,7 +106,7 @@ impl StdNonHostVisibleMemoryTypePool {
             Arc::new(new_block)
         };
 
-        occupied.push((new_block.clone(), vec![0 .. size]));
+        occupied.push((new_block.clone(), vec![0..size]));
         Ok(StdNonHostVisibleMemoryTypePoolAlloc {
             pool: me.clone(),
             memory: new_block,
@@ -158,7 +158,8 @@ impl Drop for StdNonHostVisibleMemoryTypePoolAlloc {
         let mut occupied = self.pool.occupied.lock().unwrap();
 
         let entries = occupied.iter_mut()
-                              .find(|e| &*e.0 as *const DeviceMemory == &*self.memory).unwrap();
+            .find(|e| &*e.0 as *const DeviceMemory == &*self.memory)
+            .unwrap();
 
         entries.1.retain(|e| e.start != self.offset);
     }

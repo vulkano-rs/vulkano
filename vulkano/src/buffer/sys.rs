@@ -8,15 +8,15 @@
 // according to those terms.
 
 //! Low level implementation of buffers.
-//! 
+//!
 //! Wraps directly around Vulkan buffers, with the exceptions of a few safety checks.
-//! 
+//!
 //! The `UnsafeBuffer` type is the lowest-level buffer object provided by this library. It is used
 //! internally by the higher-level buffer types. You are strongly encouraged to have excellent
 //! knowledge of the Vulkan specs if you want to use an `UnsafeBuffer`.
-//! 
+//!
 //! Here is what you must take care of when you use an `UnsafeBuffer`:
-//! 
+//!
 //! - Synchronization, ie. avoid reading and writing simultaneously to the same buffer.
 //! - Memory aliasing considerations. If you use the same memory to back multiple resources, you
 //!   must ensure that they are not used together and must enable some additional flags.
@@ -62,9 +62,7 @@ impl UnsafeBuffer {
     /// Panics if `sparse.sparse` is false and `sparse.sparse_residency` or
     /// `sparse.sparse_aliased` is true.
     ///
-    pub unsafe fn new<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, sharing: Sharing<I>,
-                             sparse: SparseLevel)
-                             -> Result<(UnsafeBuffer, MemoryRequirements), BufferCreationError>
+    pub unsafe fn new<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, sharing: Sharing<I>, sparse: SparseLevel) -> Result<(UnsafeBuffer, MemoryRequirements), BufferCreationError>
         where I: Iterator<Item = u32>
     {
         let vk = device.pointers();
@@ -72,10 +70,10 @@ impl UnsafeBuffer {
         let usage_bits = usage.to_usage_bits();
 
         // Checking sparse features.
-        assert!(sparse.sparse || !sparse.sparse_residency, "Can't enable sparse residency without \
-                                                            enabling sparse binding as well");
-        assert!(sparse.sparse || !sparse.sparse_aliased, "Can't enable sparse aliasing without \
-                                                          enabling sparse binding as well");
+        assert!(sparse.sparse || !sparse.sparse_residency,
+                "Can't enable sparse residency without enabling sparse binding as well");
+        assert!(sparse.sparse || !sparse.sparse_aliased,
+                "Can't enable sparse aliasing without enabling sparse binding as well");
         if sparse.sparse && !device.enabled_features().sparse_binding {
             return Err(BufferCreationError::SparseBindingFeatureNotEnabled);
         }
@@ -104,13 +102,15 @@ impl UnsafeBuffer {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBuffer(device.internal_object(), &infos,
-                                              ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateBuffer(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
         let mem_reqs = {
-            #[inline] fn align(val: usize, al: usize) -> usize { al * (1 + (val - 1) / al) }
+            #[inline]
+            fn align(val: usize, al: usize) -> usize {
+                al * (1 + (val - 1) / al)
+            }
 
             let mut output: vk::MemoryRequirements = mem::uninitialized();
             vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
@@ -149,19 +149,14 @@ impl UnsafeBuffer {
         Ok((obj, mem_reqs))
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
-                              -> Result<(), OomError>
-    {
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
         let vk = self.device.pointers();
 
         // We check for correctness in debug mode.
         debug_assert!({
             let mut mem_reqs = mem::uninitialized();
-            vk.GetBufferMemoryRequirements(self.device.internal_object(), self.buffer,
-                                           &mut mem_reqs);
-            mem_reqs.size <= (memory.size() - offset) as u64 &&
-            (offset as u64 % mem_reqs.alignment) == 0 &&
-            mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+            vk.GetBufferMemoryRequirements(self.device.internal_object(), self.buffer, &mut mem_reqs);
+            mem_reqs.size <= (memory.size() - offset) as u64 && (offset as u64 % mem_reqs.alignment) == 0 && mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
         });
 
         // Check for alignment correctness.
@@ -178,8 +173,10 @@ impl UnsafeBuffer {
             }
         }
 
-        try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
-                                              memory.internal_object(), offset as vk::DeviceSize)));
+        try!(check_errors(vk.BindBufferMemory(self.device.internal_object(),
+                                              self.buffer,
+                                              memory.internal_object(),
+                                              offset as vk::DeviceSize)));
         Ok(())
     }
 
@@ -286,9 +283,15 @@ impl SparseLevel {
     #[inline]
     fn to_flags(&self) -> vk::BufferCreateFlagBits {
         let mut result = 0;
-        if self.sparse { result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT; }
-        if self.sparse_residency { result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT; }
-        if self.sparse_aliased { result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT; }
+        if self.sparse {
+            result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT;
+        }
+        if self.sparse_residency {
+            result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
+        }
+        if self.sparse_aliased {
+            result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT;
+        }
         result
     }
 }
@@ -348,28 +351,19 @@ impl Usage {
     /// Builds a `Usage` with `transfer_source` set to true and the rest to false.
     #[inline]
     pub fn transfer_source() -> Usage {
-        Usage {
-            transfer_source: true,
-            .. Usage::none()
-        }
+        Usage { transfer_source: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `transfer_dest` set to true and the rest to false.
     #[inline]
     pub fn transfer_dest() -> Usage {
-        Usage {
-            transfer_dest: true,
-            .. Usage::none()
-        }
+        Usage { transfer_dest: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `vertex_buffer` set to true and the rest to false.
     #[inline]
     pub fn vertex_buffer() -> Usage {
-        Usage {
-            vertex_buffer: true,
-            .. Usage::none()
-        }
+        Usage { vertex_buffer: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `vertex_buffer` and `transfer_dest` set to true and the rest to false.
@@ -378,17 +372,14 @@ impl Usage {
         Usage {
             vertex_buffer: true,
             transfer_dest: true,
-            .. Usage::none()
+            ..Usage::none()
         }
     }
 
     /// Builds a `Usage` with `index_buffer` set to true and the rest to false.
     #[inline]
     pub fn index_buffer() -> Usage {
-        Usage {
-            index_buffer: true,
-            .. Usage::none()
-        }
+        Usage { index_buffer: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `index_buffer` and `transfer_dest` set to true and the rest to false.
@@ -397,17 +388,14 @@ impl Usage {
         Usage {
             index_buffer: true,
             transfer_dest: true,
-            .. Usage::none()
+            ..Usage::none()
         }
     }
 
     /// Builds a `Usage` with `uniform_buffer` set to true and the rest to false.
     #[inline]
     pub fn uniform_buffer() -> Usage {
-        Usage {
-            uniform_buffer: true,
-            .. Usage::none()
-        }
+        Usage { uniform_buffer: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `uniform_buffer` and `transfer_dest` set to true and the rest
@@ -417,17 +405,14 @@ impl Usage {
         Usage {
             uniform_buffer: true,
             transfer_dest: true,
-            .. Usage::none()
+            ..Usage::none()
         }
     }
 
     /// Builds a `Usage` with `indirect_buffer` set to true and the rest to false.
     #[inline]
     pub fn indirect_buffer() -> Usage {
-        Usage {
-            indirect_buffer: true,
-            .. Usage::none()
-        }
+        Usage { indirect_buffer: true, ..Usage::none() }
     }
 
     /// Builds a `Usage` with `indirect_buffer` and `transfer_dest` set to true and the rest
@@ -437,22 +422,40 @@ impl Usage {
         Usage {
             indirect_buffer: true,
             transfer_dest: true,
-            .. Usage::none()
+            ..Usage::none()
         }
     }
 
     #[inline]
     fn to_usage_bits(&self) -> vk::BufferUsageFlagBits {
         let mut result = 0;
-        if self.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
-        if self.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
-        if self.uniform_texel_buffer { result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT; }
-        if self.storage_texel_buffer { result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT; }
-        if self.uniform_buffer { result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT; }
-        if self.storage_buffer { result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT; }
-        if self.index_buffer { result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT; }
-        if self.vertex_buffer { result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT; }
-        if self.indirect_buffer { result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT; }
+        if self.transfer_source {
+            result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
+        if self.transfer_dest {
+            result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
+        }
+        if self.uniform_texel_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        }
+        if self.storage_texel_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+        }
+        if self.uniform_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        }
+        if self.storage_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+        if self.index_buffer {
+            result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+        if self.vertex_buffer {
+            result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
+        if self.indirect_buffer {
+            result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
         result
     }
 }
@@ -475,15 +478,9 @@ impl error::Error for BufferCreationError {
     fn description(&self) -> &str {
         match *self {
             BufferCreationError::OomError(_) => "not enough memory available",
-            BufferCreationError::SparseBindingFeatureNotEnabled => {
-                "sparse binding was requested but the corresponding feature wasn't enabled"
-            },
-            BufferCreationError::SparseResidencyBufferFeatureNotEnabled => {
-                "sparse residency was requested but the corresponding feature wasn't enabled"
-            },
-            BufferCreationError::SparseResidencyAliasedFeatureNotEnabled => {
-                "sparse aliasing was requested but the corresponding feature wasn't enabled"
-            },
+            BufferCreationError::SparseBindingFeatureNotEnabled => "sparse binding was requested but the corresponding feature wasn't enabled",
+            BufferCreationError::SparseResidencyBufferFeatureNotEnabled => "sparse residency was requested but the corresponding feature wasn't enabled",
+            BufferCreationError::SparseResidencyAliasedFeatureNotEnabled => "sparse aliasing was requested but the corresponding feature wasn't enabled",
         }
     }
 
@@ -491,7 +488,7 @@ impl error::Error for BufferCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             BufferCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -516,7 +513,7 @@ impl From<Error> for BufferCreationError {
         match err {
             err @ Error::OutOfHostMemory => BufferCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => BufferCreationError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -537,9 +534,13 @@ mod tests {
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let (buf, reqs) = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
-                              SparseLevel::none())
-        }.unwrap();
+                UnsafeBuffer::new(&device,
+                                  128,
+                                  &Usage::all(),
+                                  Sharing::Exclusive::<Empty<_>>,
+                                  SparseLevel::none())
+            }
+            .unwrap();
 
         assert!(reqs.size >= 128);
         assert_eq!(buf.size(), 128);
@@ -550,9 +551,16 @@ mod tests {
     #[should_panic = "Can't enable sparse residency without enabling sparse binding as well"]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: false, sparse_residency: true, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: false,
+            sparse_residency: true,
+            sparse_aliased: false,
+        };
         let _ = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(&device,
+                              128,
+                              &Usage::all(),
+                              Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
@@ -561,9 +569,16 @@ mod tests {
     #[should_panic = "Can't enable sparse aliasing without enabling sparse binding as well"]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: false, sparse_residency: false, sparse_aliased: true };
+        let sparse = SparseLevel {
+            sparse: false,
+            sparse_residency: false,
+            sparse_aliased: true,
+        };
         let _ = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(&device,
+                              128,
+                              &Usage::all(),
+                              Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
@@ -571,13 +586,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_binding() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: false,
+            sparse_aliased: false,
+        };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(&device,
+                                    128,
+                                    &Usage::all(),
+                                    Sharing::Exclusive::<Empty<_>>,
+                                    sparse) {
                 Err(BufferCreationError::SparseBindingFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }
@@ -585,13 +606,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
-        let sparse = SparseLevel { sparse: true, sparse_residency: true, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: true,
+            sparse_aliased: false,
+        };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(&device,
+                                    128,
+                                    &Usage::all(),
+                                    Sharing::Exclusive::<Empty<_>>,
+                                    sparse) {
                 Err(BufferCreationError::SparseResidencyBufferFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }
@@ -599,13 +626,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
-        let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: true };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: false,
+            sparse_aliased: true,
+        };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(&device,
+                                    128,
+                                    &Usage::all(),
+                                    Sharing::Exclusive::<Empty<_>>,
+                                    sparse) {
                 Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }

@@ -88,9 +88,12 @@ fn main() {
     // For the sake of the example we are just going to use the first device, which should work
     // most of the time.
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
-                            .next().expect("no device available");
+        .next()
+        .expect("no device available");
     // Some little debug infos.
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+    println!("Using device: {} (type: {:?})",
+             physical.name(),
+             physical.ty());
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
@@ -114,10 +117,12 @@ fn main() {
     // queue to handle data transfers in parallel. In this example we only use one queue.
     //
     // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue = physical.queue_families().find(|q| {
-        // We take the first queue that supports drawing to our window.
-        q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false)
-    }).expect("couldn't find a graphical queue family");
+    let queue = physical.queue_families()
+        .find(|q| {
+            // We take the first queue that supports drawing to our window.
+            q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false)
+        })
+        .expect("couldn't find a graphical queue family");
 
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
@@ -139,13 +144,13 @@ fn main() {
     //
     // The list of created queues is returned by the function alongside with the device.
     let (device, mut queues) = {
-        let device_ext = vulkano::device::DeviceExtensions {
-            khr_swapchain: true,
-            .. vulkano::device::DeviceExtensions::none()
-        };
+        let device_ext = vulkano::device::DeviceExtensions { khr_swapchain: true, ..vulkano::device::DeviceExtensions::none() };
 
-        Device::new(&physical, physical.supported_features(), &device_ext,
-                    [(queue, 0.5)].iter().cloned()).expect("failed to create device")
+        Device::new(&physical,
+                    physical.supported_features(),
+                    &device_ext,
+                    [(queue, 0.5)].iter().cloned())
+            .expect("failed to create device")
     };
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
@@ -159,8 +164,9 @@ fn main() {
     let (swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = window.surface().get_capabilities(&physical)
-                         .expect("failed to get surface capabilities");
+        let caps = window.surface()
+            .get_capabilities(&physical)
+            .expect("failed to get surface capabilities");
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
@@ -180,22 +186,37 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(&device, &window.surface(), 2, format, dimensions, 1,
-                       &caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
-                       present, true, None).expect("failed to create swapchain")
+        Swapchain::new(&device,
+                       &window.surface(),
+                       2,
+                       format,
+                       dimensions,
+                       1,
+                       &caps.supported_usage_flags,
+                       &queue,
+                       SurfaceTransform::Identity,
+                       alpha,
+                       present,
+                       true,
+                       None)
+            .expect("failed to create swapchain")
     };
 
     // We now create a buffer that will store the shape of our triangle.
     let vertex_buffer = {
         #[derive(Debug, Clone)]
-        struct Vertex { position: [f32; 2] }
+        struct Vertex {
+            position: [f32; 2],
+        }
         impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(&device, &BufferUsage::all(), Some(queue.family()), [
-            Vertex { position: [-0.5, -0.25] },
-            Vertex { position: [0.0, 0.5] },
-            Vertex { position: [0.25, -0.1] }
-        ].iter().cloned()).expect("failed to create buffer")
+        CpuAccessibleBuffer::from_iter(&device,
+                                       &BufferUsage::all(),
+                                       Some(queue.family()),
+                                       [Vertex { position: [-0.5, -0.25] }, Vertex { position: [0.0, 0.5] }, Vertex { position: [0.25, -0.1] }]
+                                           .iter()
+                                           .cloned())
+            .expect("failed to create buffer")
     };
 
     // The next step is to create the shaders.
@@ -214,9 +235,13 @@ fn main() {
     // can now use to load the shader.
     //
     // Because of some restrictions with the `include!` macro, we need to use a module.
-    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_vs.glsl")} }
+    mod vs {
+        include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_vs.glsl")}
+    }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_fs.glsl")} }
+    mod fs {
+        include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_fs.glsl")}
+    }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
@@ -269,84 +294,90 @@ fn main() {
     // to actually instanciate that struct.
     //
     // To do so, we have to pass the actual values of the formats of the attachments.
-    let render_pass = render_pass::CustomRenderPass::new(&device, &render_pass::Formats {
-        // Use the format of the images and one sample.
-        color: (images[0].format(), 1)
-    }).unwrap();
+    let render_pass = render_pass::CustomRenderPass::new(&device,
+                                                         &render_pass::Formats {
+                                                             // Use the format of the images and one sample.
+                                                             color: (images[0].format(), 1),
+                                                         })
+        .unwrap();
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
-        // We need to indicate the layout of the vertices.
-        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
-        // to the type of each vertex. But in this code it is automatically inferred.
-        vertex_input: SingleBufferDefinition::new(),
+    let pipeline = GraphicsPipeline::new(&device,
+                                         GraphicsPipelineParams {
+                                             // We need to indicate the layout of the vertices.
+                                             // The type `SingleBufferDefinition` actually contains a template parameter corresponding
+                                             // to the type of each vertex. But in this code it is automatically inferred.
+                                             vertex_input: SingleBufferDefinition::new(),
 
-        // A Vulkan shader can in theory contain multiple entry points, so we have to specify
-        // which one. The `main` word of `main_entry_point` actually corresponds to the name of
-        // the entry point.
-        vertex_shader: vs.main_entry_point(),
+                                             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
+                                             // which one. The `main` word of `main_entry_point` actually corresponds to the name of
+                                             // the entry point.
+                                             vertex_shader: vs.main_entry_point(),
 
-        // `InputAssembly::triangle_list()` is a shortcut to build a `InputAssembly` struct that
-        // describes a list of triangles.
-        input_assembly: InputAssembly::triangle_list(),
+                                             // `InputAssembly::triangle_list()` is a shortcut to build a `InputAssembly` struct that
+                                             // describes a list of triangles.
+                                             input_assembly: InputAssembly::triangle_list(),
 
-        // No tessellation shader.
-        tessellation: None,
+                                             // No tessellation shader.
+                                             tessellation: None,
 
-        // No geometry shader.
-        geometry_shader: None,
+                                             // No geometry shader.
+                                             geometry_shader: None,
 
-        // TODO: switch to dynamic viewports and explain how it works
-        viewport: ViewportsState::Fixed {
-            data: vec![(
-                Viewport {
-                    origin: [0.0, 0.0],
-                    depth_range: 0.0 .. 1.0,
-                    dimensions: [images[0].dimensions()[0] as f32,
-                                 images[0].dimensions()[1] as f32],
-                },
-                Scissor::irrelevant()
-            )],
-        },
+                                             // TODO: switch to dynamic viewports and explain how it works
+                                             viewport: ViewportsState::Fixed {
+                                                 data: vec![(Viewport {
+                                                                 origin: [0.0, 0.0],
+                                                                 depth_range: 0.0..1.0,
+                                                                 dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+                                                             },
+                                                             Scissor::irrelevant())],
+                                             },
 
-        // The `Raster` struct can be used to customize parameters such as polygon mode or backface
-        // culling.
-        raster: Default::default(),
+                                             // The `Raster` struct can be used to customize parameters such as polygon mode or backface
+                                             // culling.
+                                             raster: Default::default(),
 
-        // If we use multisampling, we can pass additional configuration.
-        multisample: Multisample::disabled(),
+                                             // If we use multisampling, we can pass additional configuration.
+                                             multisample: Multisample::disabled(),
 
-        // See `vertex_shader`.
-        fragment_shader: fs.main_entry_point(),
+                                             // See `vertex_shader`.
+                                             fragment_shader: fs.main_entry_point(),
 
-        // `DepthStencil::disabled()` is a shortcut to build a `DepthStencil` struct that describes
-        // the fact that depth and stencil testing are disabled.
-        depth_stencil: DepthStencil::disabled(),
+                                             // `DepthStencil::disabled()` is a shortcut to build a `DepthStencil` struct that describes
+                                             // the fact that depth and stencil testing are disabled.
+                                             depth_stencil: DepthStencil::disabled(),
 
-        // `Blend::pass_through()` is a shortcut to build a `Blend` struct that describes the fact
-        // that colors must be directly transferred from the fragment shader output to the
-        // attachments without any change.
-        blend: Blend::pass_through(),
+                                             // `Blend::pass_through()` is a shortcut to build a `Blend` struct that describes the fact
+                                             // that colors must be directly transferred from the fragment shader output to the
+                                             // attachments without any change.
+                                             blend: Blend::pass_through(),
 
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
-        render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
-    }).unwrap();
+                                             // We have to indicate which subpass of which render pass this pipeline is going to be used
+                                             // in. The pipeline will only be usable from this particular subpass.
+                                             render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
+                                         })
+        .unwrap();
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let framebuffers = images.iter().map(|image| {
-        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        StdFramebuffer::new(render_pass.clone(), dimensions, render_pass::AList {
-            // The `AList` struct was generated by the render pass macro above, and contains one
-            // member for each attachment.
-            color: image.clone()
-        }).unwrap()
-    }).collect::<Vec<_>>();
+    let framebuffers = images.iter()
+        .map(|image| {
+            let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
+            StdFramebuffer::new(render_pass.clone(),
+                                dimensions,
+                                render_pass::AList {
+                                    // The `AList` struct was generated by the render pass macro above, and contains one
+                                    // member for each attachment.
+                                    color: image.clone(),
+                                })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
 
     // Initialization is finally finished!
 
@@ -428,7 +459,7 @@ fn main() {
         for ev in window.window().poll_events() {
             match ev {
                 winit::Event::Closed => return,
-                _ => ()
+                _ => (),
             }
         }
     }

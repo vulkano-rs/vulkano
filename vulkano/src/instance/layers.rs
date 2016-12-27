@@ -28,7 +28,7 @@ use version::Version;
 /// to pass its name (returned by `LayerProperties::name()`) when creating the
 /// [`Instance`](struct.Instance.html).
 ///
-/// This function returns an error if it failed to load the Vulkan library. 
+/// This function returns an error if it failed to load the Vulkan library.
 ///
 /// > **Note**: It is possible that one of the layers enumerated here is no longer available when
 /// > you create the `Instance`. This will lead to an error when calling `Instance::new`. The
@@ -59,9 +59,7 @@ pub fn layers_list() -> Result<LayersIterator, LayersListError> {
         }));
         layers.set_len(num as usize);
 
-        Ok(LayersIterator {
-            iter: layers.into_iter()
-        })
+        Ok(LayersIterator { iter: layers.into_iter() })
     }
 }
 
@@ -200,7 +198,7 @@ impl From<Error> for LayersListError {
         match err {
             err @ Error::OutOfHostMemory => LayersListError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => LayersListError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -208,7 +206,7 @@ impl From<Error> for LayersListError {
 /// Iterator that produces the list of layers that are available.
 // TODO: #[derive(Debug, Clone)]
 pub struct LayersIterator {
-    iter: IntoIter<vk::LayerProperties>
+    iter: IntoIter<vk::LayerProperties>,
 }
 
 impl Iterator for LayersIterator {
@@ -225,8 +223,7 @@ impl Iterator for LayersIterator {
     }
 }
 
-impl ExactSizeIterator for LayersIterator {
-}
+impl ExactSizeIterator for LayersIterator {}
 
 #[cfg(test)]
 mod tests {
@@ -236,7 +233,7 @@ mod tests {
     fn layers_list() {
         let mut list = match instance::layers_list() {
             Ok(l) => l,
-            Err(_) => return
+            Err(_) => return,
         };
 
         while let Some(_) = list.next() {}

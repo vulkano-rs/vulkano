@@ -20,7 +20,9 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
-pub struct CmdBindVertexBuffers<L, B> where L: CommandsList {
+pub struct CmdBindVertexBuffers<L, B>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // Raw handles of the buffers to bind.
@@ -33,7 +35,9 @@ pub struct CmdBindVertexBuffers<L, B> where L: CommandsList {
     buffers: B,
 }
 
-impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
+impl<L, B> CmdBindVertexBuffers<L, B>
+    where L: CommandsList
+{
     /// Builds the command.
     #[inline]
     pub fn new<S>(previous: L, source_def: &S, buffers: B) -> CmdBindVertexBuffers<L, B>
@@ -62,12 +66,15 @@ impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
     }
 }
 
-unsafe impl<L, B> CommandsList for CmdBindVertexBuffers<L, B> where L: CommandsList {
+unsafe impl<L, B> CommandsList for CmdBindVertexBuffers<L, B>
+    where L: CommandsList
+{
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+        assert_eq!(self.device.internal_object(),
+                   builder.device().internal_object());
         debug_assert_eq!(self.raw_buffers.len(), self.offsets.len());
 
         // FIXME: perform buffer transitions
@@ -77,8 +84,11 @@ unsafe impl<L, B> CommandsList for CmdBindVertexBuffers<L, B> where L: CommandsL
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
                 // TODO: don't bind if not necessary
-                vk.CmdBindVertexBuffers(cmd, 0, self.raw_buffers.len() as u32,
-                                        self.raw_buffers.as_ptr(), self.offsets.as_ptr());
+                vk.CmdBindVertexBuffers(cmd,
+                                        0,
+                                        self.raw_buffers.len() as u32,
+                                        self.raw_buffers.as_ptr(),
+                                        self.offsets.as_ptr());
             }
         }));
     }

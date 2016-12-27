@@ -47,11 +47,9 @@ impl EmptySinglePassRenderPass {
             UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
         });
 
-        Ok(EmptySinglePassRenderPass {
-            render_pass: rp
-        })
+        Ok(EmptySinglePassRenderPass { render_pass: rp })
     }
-    
+
     /// Builds the render pass.
     ///
     /// # Panic
@@ -114,11 +112,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
 
     #[inline]
     fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-        if subpass == 0 {
-            Some(0)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(0) } else { None }
     }
 
     #[inline]
@@ -137,38 +131,22 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
 
     #[inline]
     fn has_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 }
 

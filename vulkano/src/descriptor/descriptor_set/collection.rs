@@ -65,8 +65,7 @@ unsafe impl DescriptorSetsCollection for () {
 
 unsafe impl TrackedDescriptorSetsCollection for () {
     #[inline]
-    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {
-    }
+    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {}
 }
 
 unsafe impl<T> DescriptorSetsCollection for T
@@ -81,7 +80,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
         match set {
             0 => Some(self.inner()),
-            _ => None
+            _ => None,
         }
     }
 
@@ -97,7 +96,9 @@ unsafe impl<T> DescriptorSetsCollection for T
 }
 
 // TODO: we can't be generic over the State because we get a conflicting implementation :-/
-unsafe impl<T> TrackedDescriptorSetsCollection for T where T: TrackedDescriptorSet {
+unsafe impl<T> TrackedDescriptorSetsCollection for T
+    where T: TrackedDescriptorSet
+{
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
         self.add_transition(sink);
@@ -169,4 +170,29 @@ macro_rules! impl_collection {
     () => ();
 }
 
-impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
+impl_collection!(Z,
+                 Y,
+                 X,
+                 W,
+                 V,
+                 U,
+                 T,
+                 S,
+                 R,
+                 Q,
+                 P,
+                 O,
+                 N,
+                 M,
+                 L,
+                 K,
+                 J,
+                 I,
+                 H,
+                 G,
+                 F,
+                 E,
+                 D,
+                 C,
+                 B,
+                 A);

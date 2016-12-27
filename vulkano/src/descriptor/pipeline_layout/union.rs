@@ -32,7 +32,8 @@ impl<A, B> PipelineLayoutDescUnion<A, B> {
 }
 
 unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDesc, B: PipelineLayoutDesc
+    where A: PipelineLayoutDesc,
+          B: PipelineLayoutDesc
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -73,10 +74,11 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
     #[inline]
     fn num_push_constants_ranges(&self) -> usize {
         // We simply call `push_constants_range` repeatidely to determine when it is over.
-        // TODO: consider caching this 
-        (self.a.num_push_constants_ranges() ..).filter(|&n| {
-            self.push_constants_range(n).is_none()
-        }).next().unwrap()
+        // TODO: consider caching this
+        (self.a.num_push_constants_ranges()..)
+            .filter(|&n| self.push_constants_range(n).is_none())
+            .next()
+            .unwrap()
     }
 
     // TODO: needs tests
@@ -91,7 +93,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
 
         if let Some(mut pc) = self.a.push_constants_range(num) {
             // We try to find the ranges in `self.b` that share the same stages as us.
-            for n in 0 .. self.b.num_push_constants_ranges() {
+            for n in 0..self.b.num_push_constants_ranges() {
                 let other_pc = self.b.push_constants_range(n).unwrap();
 
                 if other_pc.stages.intersects(&pc.stages) {
@@ -110,29 +112,30 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
         }
 
         let mut num = num - self.a.num_push_constants_ranges();
-        'outer_loop: for b_r in 0 .. self.b.num_push_constants_ranges() {
+        'outer_loop: for b_r in 0..self.b.num_push_constants_ranges() {
             let pc = self.b.push_constants_range(b_r).unwrap();
 
-            for n in 0 .. self.a.num_push_constants_ranges() {
+            for n in 0..self.a.num_push_constants_ranges() {
                 let other_pc = self.a.push_constants_range(n).unwrap();
                 if other_pc.stages.intersects(&pc.stages) {
                     continue 'outer_loop;
                 }
             }
-            
+
             if num == 0 {
                 return Some(pc);
             } else {
                 num -= 1;
             }
         }
-        
+
         None
     }
 }
 
 unsafe impl<A, B> PipelineLayoutDescNames for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDescNames, B: PipelineLayoutDescNames
+    where A: PipelineLayoutDescNames,
+          B: PipelineLayoutDescNames
 {
     #[inline]
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
@@ -143,7 +146,10 @@ unsafe impl<A, B> PipelineLayoutDescNames for PipelineLayoutDescUnion<A, B>
             (None, None) => None,
             (Some(r), None) => Some(r),
             (None, Some(r)) => Some(r),
-            (Some(a), Some(b)) => { assert_eq!(a, b); Some(a) }
+            (Some(a), Some(b)) => {
+                assert_eq!(a, b);
+                Some(a)
+            }
         }
     }
 }

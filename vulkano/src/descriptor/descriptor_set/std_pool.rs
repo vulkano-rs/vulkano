@@ -56,9 +56,7 @@ pub struct StdDescriptorPoolAlloc {
 unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
-    fn alloc(&self, layout: &UnsafeDescriptorSetLayout)
-             -> Result<StdDescriptorPoolAlloc, OomError>
-    {
+    fn alloc(&self, layout: &UnsafeDescriptorSetLayout) -> Result<StdDescriptorPoolAlloc, OomError> {
         // TODO: eventually use a non-locking system
         let mut pools = self.pools.lock().unwrap();
 
@@ -101,10 +99,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                 Ok(mut sets) => sets.next().unwrap(),
                 Err(DescriptorPoolAllocError::OutOfHostMemory) => {
                     return Err(OomError::OutOfHostMemory);
-                },
+                }
                 Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
                     return Err(OomError::OutOfDeviceMemory);
-                },
+                }
                 Err(DescriptorPoolAllocError::FragmentedPool) => unreachable!(),
             }
         };

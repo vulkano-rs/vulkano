@@ -44,21 +44,21 @@
 //! use vulkano::pipeline::vertex::;
 //! # let device: Arc<Device> = unsafe { std::mem::uninitialized() };
 //! # let queue: Arc<Queue> = unsafe { std::mem::uninitialized() };
-//! 
+//!
 //! struct Vertex {
 //!     position: [f32; 2]
 //! }
-//! 
+//!
 //! impl_vertex!(Vertex, position);
-//! 
+//!
 //! let usage = BufferUsage {
 //!     vertex_buffer: true,
 //!     .. BufferUsage::none()
 //! };
-//! 
+//!
 //! let vertex_buffer = Buffer::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)
 //!                                                     .expect("failed to create buffer");
-//! 
+//!
 //! // TODO: finish example
 //! # }
 //! ```
@@ -170,8 +170,7 @@ pub unsafe trait Definition<I>: 'static + Send + Sync {
 
     /// Builds the vertex definition to use to link this definition to a vertex shader's input
     /// interface.
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>;
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError>;
 }
 
 /// Error that can happen when the vertex definition doesn't match the input of the vertex shader.
@@ -199,9 +198,7 @@ impl error::Error for IncompatibleVertexDefinitionError {
     fn description(&self) -> &str {
         match *self {
             IncompatibleVertexDefinitionError::MissingAttribute { .. } => "an attribute is missing",
-            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
-                "the format of an attribute does not match"
-            },
+            IncompatibleVertexDefinitionError::FormatMismatch { .. } => "the format of an attribute does not match",
         }
     }
 }
@@ -229,48 +226,53 @@ pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
 
 impl<T> SingleBufferDefinition<T> {
     #[inline]
-    pub fn new() -> SingleBufferDefinition<T> { SingleBufferDefinition(PhantomData) }
+    pub fn new() -> SingleBufferDefinition<T> {
+        SingleBufferDefinition(PhantomData)
+    }
 }
 
 unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
-    where T: Vertex, I: ShaderInterfaceDef
+    where T: Vertex,
+          I: ShaderInterfaceDef
 {
     type BuffersIter = OptionIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>
-    {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         let attrib = {
-            let mut attribs = Vec::with_capacity(interface.elements().len());
-            for e in interface.elements() {
-                let name = e.name.as_ref().unwrap();
+                let mut attribs = Vec::with_capacity(interface.elements().len());
+                for e in interface.elements() {
+                    let name = e.name.as_ref().unwrap();
 
-                let infos = match <T as Vertex>::member(name) {
-                    Some(m) => m,
-                    None => return Err(IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone().into_owned()
-                    })
-                };
+                    let infos = match <T as Vertex>::member(name) {
+                        Some(m) => m,
+                        None => return Err(IncompatibleVertexDefinitionError::MissingAttribute { attribute: name.clone().into_owned() }),
+                    };
 
-                if !infos.ty.matches(infos.array_size, e.format,
-                                     e.location.end - e.location.start)
-                {
-                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                        attribute: name.clone().into_owned(),
-                        shader: (e.format, (e.location.end - e.location.start) as usize),
-                        definition: (infos.ty, infos.array_size),
-                    })
+                    if !infos.ty.matches(infos.array_size,
+                                         e.format,
+                                         e.location.end - e.location.start) {
+                        return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                            attribute: name.clone().into_owned(),
+                            shader: (e.format, (e.location.end - e.location.start) as usize),
+                            definition: (infos.ty, infos.array_size),
+                        });
+                    }
+
+                    let mut offset = infos.offset;
+                    for loc in e.location.clone() {
+                        attribs.push((loc,
+                                      0,
+                                      AttributeInfo {
+                                          offset: offset,
+                                          format: e.format,
+                                      }));
+                        offset += e.format.size().unwrap();
+                    }
                 }
-
-                let mut offset = infos.offset;
-                for loc in e.location.clone() {
-                    attribs.push((loc, 0, AttributeInfo { offset: offset, format: e.format }));
-                    offset += e.format.size().unwrap();
-                }
+                attribs
             }
-            attribs
-        }.into_iter();      // TODO: meh
+            .into_iter();      // TODO: meh
 
         let buffers = Some((0, mem::size_of::<T>(), InputRate::Vertex)).into_iter();
         Ok((buffers, attrib))
@@ -278,7 +280,8 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
 }
 
 unsafe impl<'a, B, V> Source<B> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = [V]>, V: Vertex
+    where B: TypedBuffer<Content = [V]>,
+          V: Vertex
 {
     #[inline]
     fn decode<'l>(&self, source: &'l B) -> (Vec<BufferInner<'l>>, usize, usize) {
@@ -292,64 +295,73 @@ pub struct TwoBuffersDefinition<T, U>(pub PhantomData<(T, U)>);
 
 impl<T, U> TwoBuffersDefinition<T, U> {
     #[inline]
-    pub fn new() -> TwoBuffersDefinition<T, U> { TwoBuffersDefinition(PhantomData) }
+    pub fn new() -> TwoBuffersDefinition<T, U> {
+        TwoBuffersDefinition(PhantomData)
+    }
 }
 
 unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
-    where T: Vertex, U: Vertex, I: ShaderInterfaceDef
+    where T: Vertex,
+          U: Vertex,
+          I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>
-    {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         let attrib = {
-            let mut attribs = Vec::with_capacity(interface.elements().len());
-            for e in interface.elements() {
-                let name = e.name.as_ref().unwrap();
+                let mut attribs = Vec::with_capacity(interface.elements().len());
+                for e in interface.elements() {
+                    let name = e.name.as_ref().unwrap();
 
-                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
-                    (infos, 0)
-                } else if let Some(infos) = <U as Vertex>::member(name) {
-                    (infos, 1)
-                } else {
-                    return Err(IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone().into_owned()
-                    });
-                };
+                    let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
+                        (infos, 0)
+                    } else if let Some(infos) = <U as Vertex>::member(name) {
+                        (infos, 1)
+                    } else {
+                        return Err(IncompatibleVertexDefinitionError::MissingAttribute { attribute: name.clone().into_owned() });
+                    };
 
-                if !infos.ty.matches(infos.array_size, e.format,
-                                     e.location.end - e.location.start)
-                {
-                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                        attribute: name.clone().into_owned(),
-                        shader: (e.format, (e.location.end - e.location.start) as usize),
-                        definition: (infos.ty, infos.array_size),
-                    })
+                    if !infos.ty.matches(infos.array_size,
+                                         e.format,
+                                         e.location.end - e.location.start) {
+                        return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                            attribute: name.clone().into_owned(),
+                            shader: (e.format, (e.location.end - e.location.start) as usize),
+                            definition: (infos.ty, infos.array_size),
+                        });
+                    }
+
+                    let mut offset = infos.offset;
+                    for loc in e.location.clone() {
+                        attribs.push((loc,
+                                      buf_offset,
+                                      AttributeInfo {
+                                          offset: offset,
+                                          format: e.format,
+                                      }));
+                        offset += e.format.size().unwrap();
+                    }
                 }
-
-                let mut offset = infos.offset;
-                for loc in e.location.clone() {
-                    attribs.push((loc, buf_offset, AttributeInfo { offset: offset, format: e.format }));
-                    offset += e.format.size().unwrap();
-                }
+                attribs
             }
-            attribs
-        }.into_iter();      // TODO: meh
+            .into_iter();      // TODO: meh
 
         let buffers = vec![
             (0, mem::size_of::<T>(), InputRate::Vertex),
             (1, mem::size_of::<U>(), InputRate::Vertex)
-        ].into_iter();
+        ]
+            .into_iter();
 
         Ok((buffers, attrib))
     }
 }
 
 unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for TwoBuffersDefinition<T, U>
-    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
-          U: Vertex, Bu: TypedBuffer<Content = [U]>
+    where T: Vertex,
+          Bt: TypedBuffer<Content = [T]>,
+          U: Vertex,
+          Bu: TypedBuffer<Content = [U]>
 {
     #[inline]
     fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
@@ -364,64 +376,73 @@ pub struct OneVertexOneInstanceDefinition<T, U>(pub PhantomData<(T, U)>);
 
 impl<T, U> OneVertexOneInstanceDefinition<T, U> {
     #[inline]
-    pub fn new() -> OneVertexOneInstanceDefinition<T, U> { OneVertexOneInstanceDefinition(PhantomData) }
+    pub fn new() -> OneVertexOneInstanceDefinition<T, U> {
+        OneVertexOneInstanceDefinition(PhantomData)
+    }
 }
 
 unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex, U: Vertex, I: ShaderInterfaceDef
+    where T: Vertex,
+          U: Vertex,
+          I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>
-    {
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         let attrib = {
-            let mut attribs = Vec::with_capacity(interface.elements().len());
-            for e in interface.elements() {
-                let name = e.name.as_ref().unwrap();
+                let mut attribs = Vec::with_capacity(interface.elements().len());
+                for e in interface.elements() {
+                    let name = e.name.as_ref().unwrap();
 
-                let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
-                    (infos, 0)
-                } else if let Some(infos) = <U as Vertex>::member(name) {
-                    (infos, 1)
-                } else {
-                    return Err(IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone().into_owned()
-                    });
-                };
+                    let (infos, buf_offset) = if let Some(infos) = <T as Vertex>::member(name) {
+                        (infos, 0)
+                    } else if let Some(infos) = <U as Vertex>::member(name) {
+                        (infos, 1)
+                    } else {
+                        return Err(IncompatibleVertexDefinitionError::MissingAttribute { attribute: name.clone().into_owned() });
+                    };
 
-                if !infos.ty.matches(infos.array_size, e.format,
-                                     e.location.end - e.location.start)
-                {
-                    return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                        attribute: name.clone().into_owned(),
-                        shader: (e.format, (e.location.end - e.location.start) as usize),
-                        definition: (infos.ty, infos.array_size),
-                    })
+                    if !infos.ty.matches(infos.array_size,
+                                         e.format,
+                                         e.location.end - e.location.start) {
+                        return Err(IncompatibleVertexDefinitionError::FormatMismatch {
+                            attribute: name.clone().into_owned(),
+                            shader: (e.format, (e.location.end - e.location.start) as usize),
+                            definition: (infos.ty, infos.array_size),
+                        });
+                    }
+
+                    let mut offset = infos.offset;
+                    for loc in e.location.clone() {
+                        attribs.push((loc,
+                                      buf_offset,
+                                      AttributeInfo {
+                                          offset: offset,
+                                          format: e.format,
+                                      }));
+                        offset += e.format.size().unwrap();
+                    }
                 }
-
-                let mut offset = infos.offset;
-                for loc in e.location.clone() {
-                    attribs.push((loc, buf_offset, AttributeInfo { offset: offset, format: e.format }));
-                    offset += e.format.size().unwrap();
-                }
+                attribs
             }
-            attribs
-        }.into_iter();      // TODO: meh
+            .into_iter();      // TODO: meh
 
         let buffers = vec![
             (0, mem::size_of::<T>(), InputRate::Vertex),
             (1, mem::size_of::<U>(), InputRate::Instance)
-        ].into_iter();
+        ]
+            .into_iter();
 
         Ok((buffers, attrib))
     }
 }
 
 unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
-          U: Vertex, Bu: TypedBuffer<Content = [U]>
+    where T: Vertex,
+          Bt: TypedBuffer<Content = [T]>,
+          U: Vertex,
+          Bu: TypedBuffer<Content = [U]>
 {
     #[inline]
     fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {

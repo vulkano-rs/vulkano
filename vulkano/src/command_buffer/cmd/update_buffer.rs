@@ -24,7 +24,9 @@ use vk;
 
 /// Wraps around a commands list and adds an update buffer command at the end of it.
 pub struct CmdUpdateBuffer<'a, L, B, D: ?Sized>
-    where B: Buffer, L: CommandsList, D: 'static
+    where B: Buffer,
+          L: CommandsList,
+          D: 'static
 {
     // Parent commands list.
     previous: L,
@@ -43,7 +45,7 @@ pub struct CmdUpdateBuffer<'a, L, B, D: ?Sized>
 impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
     where B: Buffer,
           L: CommandsList + CommandsListPossibleOutsideRenderPass,
-          D: Copy + 'static,
+          D: Copy + 'static
 {
     /// Builds a command that writes data to a buffer.
     ///
@@ -52,9 +54,7 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
     ///
     /// The size of the modification must not exceed 65536 bytes. The offset and size must be
     /// multiples of four.
-    pub fn new(previous: L, buffer: B, data: &'a D)
-               -> Result<CmdUpdateBuffer<'a, L, B, D>, CmdUpdateBufferError>
-    {
+    pub fn new(previous: L, buffer: B, data: &'a D) -> Result<CmdUpdateBuffer<'a, L, B, D>, CmdUpdateBufferError> {
         assert!(previous.is_outside_render_pass());     // TODO: error
 
         let size = buffer.size();
@@ -92,7 +92,7 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
 unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBuffer<'d, L, B, D>
     where B: Buffer,
           L: CommandsList,
-          D: Copy + 'static,
+          D: Copy + 'static
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -102,28 +102,29 @@ unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBuffer<'d, L, B, D>
                    builder.device().internal_object());
 
         {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true,
-                                          stages, access);
+            let stages = PipelineStages { transfer: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { transfer_write: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true, stages, access);
         }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdUpdateBuffer(cmd, self.buffer_handle, self.offset, self.size,
+                vk.CmdUpdateBuffer(cmd,
+                                   self.buffer_handle,
+                                   self.offset,
+                                   self.size,
                                    self.data as *const D as *const _);
             }
         }));
     }
 }
 
-unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
-    for CmdUpdateBuffer<'a, L, B, D>
+unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass for CmdUpdateBuffer<'a, L, B, D>
     where B: Buffer,
           L: CommandsList,
-          D: Copy + 'static,
+          D: Copy + 'static
 {
     #[inline]
     fn is_outside_render_pass(&self) -> bool {
@@ -146,12 +147,8 @@ impl error::Error for CmdUpdateBufferError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdUpdateBufferError::BufferMissingUsage => {
-                "the transfer destination usage must be enabled on the buffer"
-            },
-            CmdUpdateBufferError::WrongAlignment => {
-                "the offset or size are not aligned to 4 bytes"
-            },
+            CmdUpdateBufferError::BufferMissingUsage => "the transfer destination usage must be enabled on the buffer",
+            CmdUpdateBufferError::WrongAlignment => "the offset or size are not aligned to 4 bytes",
             CmdUpdateBufferError::DataTooLarge => "data is too large",
         }
     }

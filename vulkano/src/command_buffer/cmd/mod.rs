@@ -55,7 +55,7 @@ pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
 pub use self::join::CommandsListJoin;
 pub use self::next_subpass::{CmdNextSubpass, CmdNextSubpassError};
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
-pub use self::set_state::{CmdSetState};
+pub use self::set_state::CmdSetState;
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
 mod begin_render_pass;
@@ -96,9 +96,10 @@ pub unsafe trait CommandsList {
     /// amounts of data. For large amounts of data, you are encouraged to write the data to a
     /// buffer and use `copy_buffer` instead.
     #[inline]
-    fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D)
-                                       -> Result<CmdUpdateBuffer<'a, Self, B, D>, CmdUpdateBufferError>
-        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: Buffer, D: Copy + 'static
+    fn update_buffer<'a, B, D: ?Sized>(self, buffer: B, data: &'a D) -> Result<CmdUpdateBuffer<'a, Self, B, D>, CmdUpdateBufferError>
+        where Self: Sized + CommandsListPossibleOutsideRenderPass,
+              B: Buffer,
+              D: Copy + 'static
     {
         CmdUpdateBuffer::new(self, buffer, data)
     }
@@ -108,10 +109,10 @@ pub unsafe trait CommandsList {
     /// If `source` is smaller than `destination`, only the beginning of `destination` will be
     /// modified.
     #[inline]
-    fn copy_buffer<S, D>(self, source: S, destination: D)
-                         -> Result<CmdCopyBuffer<Self, S, D>, CmdCopyBufferError>
+    fn copy_buffer<S, D>(self, source: S, destination: D) -> Result<CmdCopyBuffer<Self, S, D>, CmdCopyBufferError>
         where Self: Sized + CommandsListPossibleOutsideRenderPass,
-              S: Buffer, D: Buffer
+              S: Buffer,
+              D: Buffer
     {
         CmdCopyBuffer::new(self, source, destination)
     }
@@ -126,9 +127,9 @@ pub unsafe trait CommandsList {
     /// > But unless your buffer actually contains only 32-bits integers, you are encouraged to use
     /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     #[inline]
-    fn fill_buffer<B>(self, buffer: B, data: u32)
-                      -> Result<CmdFillBuffer<Self, B>, CmdFillBufferError>
-        where Self: Sized + CommandsListPossibleOutsideRenderPass, B: Buffer
+    fn fill_buffer<B>(self, buffer: B, data: u32) -> Result<CmdFillBuffer<Self, B>, CmdFillBufferError>
+        where Self: Sized + CommandsListPossibleOutsideRenderPass,
+              B: Buffer
     {
         CmdFillBuffer::new(self, buffer, data)
     }
@@ -143,7 +144,8 @@ pub unsafe trait CommandsList {
     /// you can use `execute` is to make a primary command buffer call a secondary command buffer.
     #[inline]
     fn execute_commands<Cb>(self, command_buffer: Cb) -> CmdExecuteCommands<Cb, Self>
-        where Self: Sized, Cb: SecondaryCommandBuffer
+        where Self: Sized,
+              Cb: SecondaryCommandBuffer
     {
         CmdExecuteCommands::new(self, command_buffer)
     }
@@ -156,10 +158,9 @@ pub unsafe trait CommandsList {
     /// The `pipeline` is the compute pipeline that will be executed, and the sets and push
     /// constants will be accessible to all the invocations.
     #[inline]
-    fn dispatch<Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S,
-                           dimensions: [u32; 3], push_constants: Pc)
-                           -> Result<CmdDispatch<Self, Pl, S, Pc>, CmdDispatchError>
-        where Self: Sized + CommandsList, Pl: PipelineLayoutRef,
+    fn dispatch<Pl, S, Pc>(self, pipeline: Arc<ComputePipeline<Pl>>, sets: S, dimensions: [u32; 3], push_constants: Pc) -> Result<CmdDispatch<Self, Pl, S, Pc>, CmdDispatchError>
+        where Self: Sized + CommandsList,
+              Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection
     {
         CmdDispatch::new(self, pipeline, sets, dimensions, push_constants)
@@ -173,9 +174,9 @@ pub unsafe trait CommandsList {
     ///
     /// You must call this before you can add draw commands.
     #[inline]
-    fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C)
-                               -> CmdBeginRenderPass<Self, F::RenderPass, F>
-        where Self: Sized, F: TrackedFramebuffer,
+    fn begin_render_pass<F, C>(self, framebuffer: F, secondary: bool, clear_values: C) -> CmdBeginRenderPass<Self, F::RenderPass, F>
+        where Self: Sized,
+              F: TrackedFramebuffer,
               F::RenderPass: RenderPass + RenderPassClearValues<C>
     {
         CmdBeginRenderPass::new(self, framebuffer, secondary, clear_values)
@@ -204,10 +205,7 @@ pub unsafe trait CommandsList {
     ///
     /// Can only be used from inside a render pass.
     #[inline]
-    fn draw<Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-                                   dynamic: DynamicState, vertices: V, sets: S,
-                                   push_constants: Pc)
-                                   -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
+    fn draw<Pv, Pl, Prp, S, Pc, V>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>, dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc) -> CmdDraw<Self, V, Pv, Pl, Prp, S, Pc>
         where Self: Sized + CommandsList,
               Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection,
@@ -220,10 +218,7 @@ pub unsafe trait CommandsList {
     ///
     /// Can only be used from inside a render pass.
     #[inline]
-    fn draw_indexed<Pv, Pl, Prp, S, Pc, V, Ib, I>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-                                               dynamic: DynamicState, vertices: V, indices: Ib,
-                                               sets: S, push_constants: Pc)
-                                               -> CmdDrawIndexed<Self, V, Ib, Pv, Pl, Prp, S, Pc>
+    fn draw_indexed<Pv, Pl, Prp, S, Pc, V, Ib, I>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>, dynamic: DynamicState, vertices: V, indices: Ib, sets: S, push_constants: Pc) -> CmdDrawIndexed<Self, V, Ib, Pv, Pl, Prp, S, Pc>
         where Self: Sized + CommandsList,
               Pl: PipelineLayoutRef,
               S: TrackedDescriptorSetsCollection,
@@ -231,19 +226,27 @@ pub unsafe trait CommandsList {
               Ib: Buffer + TypedBuffer<Content = [I]>,
               I: Index + 'static
     {
-        CmdDrawIndexed::new(self, pipeline, dynamic, vertices, indices, sets, push_constants)
+        CmdDrawIndexed::new(self,
+                            pipeline,
+                            dynamic,
+                            vertices,
+                            indices,
+                            sets,
+                            push_constants)
     }
 
     /// Appends another list at the end of this one.
     #[inline]
-    fn join<L>(self, other: L) -> CommandsListJoin<Self, L> where Self: Sized, L: CommandsList {
+    fn join<L>(self, other: L) -> CommandsListJoin<Self, L>
+        where Self: Sized,
+              L: CommandsList
+    {
         CommandsListJoin::new(self, other)
     }
 
     /// Builds the list as a primary command buffer.
     #[inline]
-    fn build_primary(self, device: &Arc<Device>, queue_family: QueueFamily)
-                     -> Result<AutobarriersCommandBuffer<Self, Arc<StandardCommandPool>>, OomError>
+    fn build_primary(self, device: &Arc<Device>, queue_family: QueueFamily) -> Result<AutobarriersCommandBuffer<Self, Arc<StandardCommandPool>>, OomError>
         where Self: Sized
     {
         self.build_primary_custom(device, queue_family)
@@ -251,9 +254,9 @@ pub unsafe trait CommandsList {
 
     /// Builds the list as a primary command buffer.
     #[inline]
-    fn build_primary_custom<C>(self, device: &Arc<Device>, queue_family: QueueFamily)
-                               -> Result<C, OomError>
-        where C: CommandsListBuildPrimary<Self>, Self: Sized
+    fn build_primary_custom<C>(self, device: &Arc<Device>, queue_family: QueueFamily) -> Result<C, OomError>
+        where C: CommandsListBuildPrimary<Self>,
+              Self: Sized
     {
         CommandsListBuildPrimary::build_primary(device, queue_family, self)
     }
@@ -261,7 +264,8 @@ pub unsafe trait CommandsList {
     /// Builds the list as a primary command buffer and with the given pool.
     #[inline]
     fn build_primary_with_pool<C, P>(self, pool: P) -> Result<C, OomError>
-        where C: CommandsListBuildPrimaryPool<Self, P>, Self: Sized
+        where C: CommandsListBuildPrimaryPool<Self, P>,
+              Self: Sized
     {
         CommandsListBuildPrimaryPool::build_primary_with_pool(pool, self)
     }
@@ -313,25 +317,19 @@ pub trait CommandsListSink<'a> {
     /// The parameters are the buffer, and its offset and size, plus a `write` boolean that is
     /// `true` if the buffer must be transitionned to a writable state or `false` if it must be
     /// transitionned to a readable state.
-    fn add_buffer_transition(&mut self, buffer: &'a Buffer, offset: usize, size: usize,
-                             write: bool, stages: PipelineStages, access: AccessFlagBits);
+    fn add_buffer_transition(&mut self, buffer: &'a Buffer, offset: usize, size: usize, write: bool, stages: PipelineStages, access: AccessFlagBits);
 
     /// Requests that an image must be transitionned to a given state.
     ///
     /// If necessary, you must transition the image to the `layout`.
-    fn add_image_transition(&mut self, image: &'a Image, first_layer: u32, num_layers: u32,
-                            first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout,
-                            stages: PipelineStages, access: AccessFlagBits);
+    fn add_image_transition(&mut self, image: &'a Image, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32, write: bool, layout: Layout, stages: PipelineStages, access: AccessFlagBits);
 
     /// Notifies the sink that an image has been transitionned by one of the previous commands
     /// added with `add_command`.
     ///
     /// The sink doesn't need to perform any operation when this method is called, but should
     /// modify its internal state in order to keep track of the state of that image.
-    fn add_image_transition_notification(&mut self, image: &'a Image, first_layer: u32,
-                                         num_layers: u32, first_mipmap: u32, num_mipmaps: u32,
-                                         layout: Layout, stages: PipelineStages,
-                                         access: AccessFlagBits);
+    fn add_image_transition_notification(&mut self, image: &'a Image, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32, layout: Layout, stages: PipelineStages, access: AccessFlagBits);
 }
 
 /// This trait is equivalent to `FnOnce(&mut RawCommandBufferPrototype<'a>)`. It is necessary
@@ -385,5 +383,5 @@ pub unsafe trait CommandsListPossibleInsideRenderPass {
     // TODO: return a trait object instead?
     fn render_pass(&self) -> &Self::RenderPass;
 
-    //fn current_subpass(&self) -> Subpass<&Self::RenderPass>;
+    // fn current_subpass(&self) -> Subpass<&Self::RenderPass>;
 }

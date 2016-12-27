@@ -28,10 +28,7 @@ fn main() {
     //
     // .. but if you just want a template of code that has everything ready to go then follow
     // this example. First, enable debugging using this extension: VK_EXT_debug_report
-    let extensions = InstanceExtensions {
-        ext_debug_report: true,
-        ..InstanceExtensions::none()
-    };
+    let extensions = InstanceExtensions { ext_debug_report: true, ..InstanceExtensions::none() };
 
     // You also need to specify (unless you've used the methods linked above) which debugging layers
     // your code should use. Each layer is a bunch of checks or messages that provide information of
@@ -56,9 +53,9 @@ fn main() {
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // After creating the instance we must register the debugging callback.                                      //
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// After creating the instance we must register the debugging callback.                                      //
+    /// ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Note: If you let this debug_callback binding fall out of scope then the callback will stop providing events
     // Note: There is a helper method too: DebugCallback::errors_and_warnings(&instance, |msg| {...
@@ -72,34 +69,42 @@ fn main() {
     };
 
     let _debug_callback = DebugCallback::new(&instance, all, |msg| {
-        let ty = if msg.ty.error {
-            "error"
-        } else if msg.ty.warning {
-            "warning"
-        } else if msg.ty.performance_warning {
-            "performance_warning"
-        } else if msg.ty.information {
-            "information"
-        } else if msg.ty.debug {
-            "debug"
-        } else {
-            panic!("no-impl");
-        };
-        println!("{} {}: {}", msg.layer_prefix, ty, msg.description);
-    }).ok();
+            let ty = if msg.ty.error {
+                "error"
+            } else if msg.ty.warning {
+                "warning"
+            } else if msg.ty.performance_warning {
+                "performance_warning"
+            } else if msg.ty.information {
+                "information"
+            } else if msg.ty.debug {
+                "debug"
+            } else {
+                panic!("no-impl");
+            };
+            println!("{} {}: {}", msg.layer_prefix, ty, msg.description);
+        })
+        .ok();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Create vulkan objects in the same way as the other examples                                               //
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// Create vulkan objects in the same way as the other examples                                               //
+    /// ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
     let queue = physical.queue_families().next().expect("couldn't find a queue family");
-    let (device, mut queues) = Device::new(&physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
+    let (device, mut queues) = Device::new(&physical,
+                                           physical.supported_features(),
+                                           &DeviceExtensions::none(),
+                                           vec![(queue, 0.5)])
+        .expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
-    let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
+    let dimensions = Dimensions::Dim2d {
+        width: 4096,
+        height: 4096,
+    };
     ImmutableImage::new(&device, dimensions, pixel_format, Some(queue.family())).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)

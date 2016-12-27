@@ -22,7 +22,7 @@
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
 //!
-//! // Creating the instance. See the documentation of the `instance` module. 
+//! // Creating the instance. See the documentation of the `instance` module.
 //! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
@@ -49,23 +49,23 @@
 //!
 //! Two of the parameters that you pass to `Device::new` are the list of the features and the list
 //! of extensions to enable on the newly-created device.
-//! 
+//!
 //! > **Note**: Device extensions are the same as instance extensions, except for the device.
 //! > Features are similar to extensions, except that they are part of the core Vulkan
 //! > specifications instead of being separate documents.
-//! 
+//!
 //! Some Vulkan capabilities, such as swapchains (that allow you to render on the screen) or
 //! geometry shaders for example, require that you enable a certain feature or extension when you
 //! create the device. Contrary to OpenGL, you can't use the functions provided by a feature or an
 //! extension if you didn't explicitly enable it when creating the device.
-//! 
+//!
 //! Not all physical devices support all possible features and extensions. For example mobile
 //! devices tend to not support geometry shaders, because their hardware is not capable of it. You
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
 //! TODO: oops, there's no method for querying supported extensions in vulkan yet.
 //!
 //! > **Note**: The fact that you need to manually enable features at initialization also means
-//! > that you don't need to worry about a capability not being supported later on in your code.  
+//! > that you don't need to worry about a capability not being supported later on in your code.
 //!
 //! # Queues
 //!
@@ -74,7 +74,7 @@
 //!
 //! > **Note**: You can think of a queue like a CPU thread. Each queue executes its commands one
 //! > after the other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
-//! > technology, in the sense that queues will only run partially in parallel. 
+//! > technology, in the sense that queues will only run partially in parallel.
 //!
 //! The Vulkan API requires that you specify the list of queues that you are going to use at the
 //! same time as when you create the device. This is done in vulkano by passing an iterator where
@@ -160,9 +160,7 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features,
-                      extensions: &DeviceExtensions, queue_families: I)
-                      -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
+    pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features, extensions: &DeviceExtensions, queue_families: I) -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>
     {
         let queue_families = queue_families.into_iter();
@@ -185,14 +183,15 @@ impl Device {
         // Because there's no way to query the list of layers enabled for an instance, we need
         // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
         // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = phys.instance().loaded_layers().map(|layer| {
-            layer.as_ptr()
-        }).collect::<SmallVec<[_; 16]>>();
+        let layers_ptr = phys.instance()
+            .loaded_layers()
+            .map(|layer| layer.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
 
         let extensions_list = extensions.build_extensions_list();
-        let extensions_list = extensions_list.iter().map(|extension| {
-            extension.as_ptr()
-        }).collect::<SmallVec<[_; 16]>>();
+        let extensions_list = extensions_list.iter()
+            .map(|extension| extension.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
 
         // device creation
         let device = unsafe {
@@ -222,16 +221,18 @@ impl Device {
             }
 
             // turning `queues` into an array of `vkDeviceQueueCreateInfo` suitable for Vulkan
-            let queues = queues.iter().map(|&(queue_id, ref priorities)| {
-                vk::DeviceQueueCreateInfo {
-                    sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    pNext: ptr::null(),
-                    flags: 0,   // reserved
-                    queueFamilyIndex: queue_id,
-                    queueCount: priorities.len() as u32,
-                    pQueuePriorities: priorities.as_ptr()
-                }
-            }).collect::<SmallVec<[_; 16]>>();
+            let queues = queues.iter()
+                .map(|&(queue_id, ref priorities)| {
+                    vk::DeviceQueueCreateInfo {
+                        sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                        pNext: ptr::null(),
+                        flags: 0, // reserved
+                        queueFamilyIndex: queue_id,
+                        queueCount: priorities.len() as u32,
+                        pQueuePriorities: priorities.as_ptr(),
+                    }
+                })
+                .collect::<SmallVec<[_; 16]>>();
 
             // TODO: The plan regarding `robustBufferAccess` is to check the shaders' code to see
             //       if they can possibly perform out-of-bounds reads and writes. If the user tries
@@ -255,7 +256,7 @@ impl Device {
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
                 enabledLayerCount: layers_ptr.len() as u32,
@@ -266,15 +267,12 @@ impl Device {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk_i.CreateDevice(phys.internal_object(), &infos,
-                                                ptr::null(), &mut output)));
+            try!(check_errors(vk_i.CreateDevice(phys.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
         // loading the function pointers of the newly-created device
-        let vk = vk::DevicePointers::load(|name| {
-            unsafe { vk_i.GetDeviceProcAddr(device, name.as_ptr()) as *const _ }
-        });
+        let vk = vk::DevicePointers::load(|name| { unsafe { vk_i.GetDeviceProcAddr(device, name.as_ptr()) as *const _ } });
 
         let device = Arc::new(Device {
             instance: phys.instance().clone(),
@@ -394,7 +392,7 @@ impl Device {
                 let new_pool = Arc::new(StandardCommandPool::new(me, queue));
                 *entry.get_mut() = Arc::downgrade(&new_pool);
                 new_pool
-            },
+            }
             Entry::Vacant(entry) => {
                 let new_pool = Arc::new(StandardCommandPool::new(me, queue));
                 entry.insert(Arc::downgrade(&new_pool));
@@ -453,7 +451,7 @@ impl Iterator for QueuesIter {
         unsafe {
             let &(family, id) = match self.families_and_ids.get(self.next_queue) {
                 Some(a) => a,
-                None => return None
+                None => return None,
             };
 
             self.next_queue += 1;
@@ -499,18 +497,10 @@ impl error::Error for DeviceCreationError {
     fn description(&self) -> &str {
         match *self {
             DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-            DeviceCreationError::OutOfDeviceMemory => {
-                "no memory available on the graphical device"
-            },
-            DeviceCreationError::TooManyQueuesForFamily => {
-                "tried to create too many queues for a given family"
-            },
-            DeviceCreationError::UnsupportedFeatures => {
-                "some of the requested features are unsupported by the physical device"
-            },
-            DeviceCreationError::PriorityOutOfRange => {
-                "the priority of one of the queues is out of the [0.0; 1.0] range"
-            },
+            DeviceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
+            DeviceCreationError::TooManyQueuesForFamily => "tried to create too many queues for a given family",
+            DeviceCreationError::UnsupportedFeatures => "some of the requested features are unsupported by the physical device",
+            DeviceCreationError::PriorityOutOfRange => "the priority of one of the queues is out of the [0.0; 1.0] range",
         }
     }
 }
@@ -528,7 +518,7 @@ impl From<Error> for DeviceCreationError {
         match err {
             Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
             Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
-            _ => panic!("Unexpected error value: {}", err as i32)
+            _ => panic!("Unexpected error value: {}", err as i32),
         }
     }
 }
@@ -540,7 +530,7 @@ pub struct Queue {
     queue: Mutex<vk::Queue>,
     device: Arc<Device>,
     family: u32,
-    id: u32,    // id within family
+    id: u32, // id within family
 }
 
 impl Queue {
@@ -572,7 +562,7 @@ impl Queue {
             Ok(())
         }
     }
-    
+
     /// Waits until all work on this queue has finished.
     ///
     /// Just like `Device::wait()`, you shouldn't have to call this function.
@@ -616,15 +606,18 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
-        let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
+        let queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
 
-        match Device::new(&physical, &Features::none(), &DeviceExtensions::none(), queues) {
+        match Device::new(&physical,
+                          &Features::none(),
+                          &DeviceExtensions::none(),
+                          queues) {
             Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 
@@ -633,7 +626,7 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
@@ -644,9 +637,12 @@ mod tests {
             return;
         }
 
-        match Device::new(&physical, &features, &DeviceExtensions::none(), Some((family, 1.0))) {
+        match Device::new(&physical,
+                          &features,
+                          &DeviceExtensions::none(),
+                          Some((family, 1.0))) {
             Err(DeviceCreationError::UnsupportedFeatures) => return,     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 
@@ -655,23 +651,25 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
 
-        match Device::new(&physical, &Features::none(),
-                          &DeviceExtensions::none(), Some((family, 1.4)))
-        {
+        match Device::new(&physical,
+                          &Features::none(),
+                          &DeviceExtensions::none(),
+                          Some((family, 1.4))) {
             Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
-            _ => panic!()
+            _ => panic!(),
         };
 
-        match Device::new(&physical, &Features::none(),
-                          &DeviceExtensions::none(), Some((family, -0.2)))
-        {
+        match Device::new(&physical,
+                          &Features::none(),
+                          &DeviceExtensions::none(),
+                          Some((family, -0.2))) {
             Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 }

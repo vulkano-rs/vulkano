@@ -65,7 +65,9 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct AttachmentImage<F, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // Inner implementation.
     image: UnsafeImage,
 
@@ -92,7 +94,7 @@ struct Guarded {
     correct_layout: bool,
 
     // The latest submission that used the image. Used for synchronization purposes.
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
+    latest_submission: Option<Weak<Submission>>, // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<F> AttachmentImage<F> {
@@ -100,15 +102,14 @@ impl<F> AttachmentImage<F> {
     ///
     /// Returns an error if the dimensions are too large or if the backend doesn't support this
     /// format as a framebuffer attachment.
-    pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
-               -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = Usage {
             transfer_source: true,
             transfer_dest: true,
             sampled: true,
-            .. Usage::none()
+            ..Usage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage)
@@ -118,20 +119,15 @@ impl<F> AttachmentImage<F> {
     ///
     /// A transient image is special because its content is undefined outside of a render pass.
     /// This means that the implementation has the possibility to not allocate any memory for it.
-    pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        let base_usage = Usage {
-            transient_attachment: true,
-            .. Usage::none()
-        };
+        let base_usage = Usage { transient_attachment: true, ..Usage::none() };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage)
     }
 
-    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: Usage)
-                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: Usage) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let is_depth = match format.format().ty() {
@@ -139,47 +135,66 @@ impl<F> AttachmentImage<F> {
             FormatTy::DepthStencil => true,
             FormatTy::Stencil => true,
             FormatTy::Compressed => panic!(),
-            _ => false
+            _ => false,
         };
 
         let usage = Usage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            .. base_usage
+            ..base_usage
         };
 
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device, &usage, format.format(),
-                                  ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
-                                  1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            try!(UnsafeImage::new(device,
+                                  &usage,
+                                  format.format(),
+                                  ImageDimensions::Dim2d {
+                                      width: dimensions[0],
+                                      height: dimensions[1],
+                                      array_layers: 1,
+                                      cubemap_compatible: false,
+                                  },
+                                  1,
+                                  1,
+                                  Sharing::Exclusive::<Empty<u32>>,
+                                  false,
+                                  false))
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device.physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device),
+                                         mem_ty,
+                                         mem_reqs.size,
+                                         mem_reqs.alignment,
+                                         AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe {
+            try!(image.bind_memory(mem.memory(), mem.offset()));
+        }
 
-        let view = unsafe {
-            try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1))
-        };
+        let view = unsafe { try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1)) };
 
         Ok(Arc::new(AttachmentImage {
             image: image,
             view: view,
             memory: mem,
             format: format,
-            attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
-                               else { Layout::ColorAttachmentOptimal },
+            attachment_layout: if is_depth {
+                Layout::DepthStencilAttachmentOptimal
+            } else {
+                Layout::ColorAttachmentOptimal
+            },
             guarded: Mutex::new(Guarded {
                 correct_layout: false,
                 latest_submission: None,
@@ -188,7 +203,9 @@ impl<F> AttachmentImage<F> {
     }
 }
 
-impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
+impl<F, A> AttachmentImage<F, A>
+    where A: MemoryPool
+{
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
@@ -197,7 +214,10 @@ impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> Image for AttachmentImage<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -210,7 +230,8 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
-    where F: FormatDesc + 'static + Send + Sync, A: MemoryPool
+    where F: FormatDesc + 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
@@ -219,7 +240,8 @@ unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
 }
 
 unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -228,7 +250,8 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
 }
 
 unsafe impl<F, A> ImageView for AttachmentImage<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn parent(&self) -> &Image {
@@ -238,7 +261,10 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
     #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.image.dimensions();
-        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+        Dimensions::Dim2d {
+            width: dims.width(),
+            height: dims.height(),
+        }
     }
 
     #[inline]

@@ -8,11 +8,11 @@
 // according to those terms.
 
 //! Stage of a graphics pipeline.
-//! 
+//!
 //! In Vulkan, shaders are grouped in *shader modules*. Each shader module is built from SPIR-V
 //! code and can contain one or more entry points. Note that for the moment the official
 //! GLSL-to-SPIR-V compiler does not support multiple entry points.
-//! 
+//!
 //! The vulkano library does not provide any functionnality that checks and introspects the SPIR-V
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
@@ -45,14 +45,18 @@ use vk;
 /// Note that it is advised to wrap around a `ShaderModule` with a struct that is different for
 /// each shader.
 #[derive(Debug)]
-pub struct ShaderModule<P = Arc<Device>> where P: SafeDeref<Target = Device> {
+pub struct ShaderModule<P = Arc<Device>>
+    where P: SafeDeref<Target = Device>
+{
     // The module.
     module: vk::ShaderModule,
     // Pointer to the device.
     device: P,
 }
 
-impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
+impl<P> ShaderModule<P>
+    where P: SafeDeref<Target = Device>
+{
     /// Builds a new shader module from SPIR-V.
     ///
     /// # Safety
@@ -68,15 +72,14 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
             let infos = vk::ShaderModuleCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 codeSize: spirv.len(),
                 pCode: spirv.as_ptr() as *const _,
             };
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateShaderModule(device.internal_object(), &infos,
-                                                    ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateShaderModule(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -98,10 +101,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn vertex_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> VertexShaderEntryPoint<'a, S, I, O, L, P>
-    {
+    pub unsafe fn vertex_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L) -> VertexShaderEntryPoint<'a, S, I, O, L, P> {
         VertexShaderEntryPoint {
             module: self,
             name: name,
@@ -124,10 +124,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> TessControlShaderEntryPoint<'a, S, I, O, L, P>
-    {
+    pub unsafe fn tess_control_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessControlShaderEntryPoint<'a, S, I, O, L, P> {
         TessControlShaderEntryPoint {
             module: self,
             name: name,
@@ -150,10 +147,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
-    {
+    pub unsafe fn tess_evaluation_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L) -> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P> {
         TessEvaluationShaderEntryPoint {
             module: self,
             name: name,
@@ -176,10 +170,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I,
-         output: O, layout: L) -> GeometryShaderEntryPoint<'a, S, I, O, L, P>
-    {
+    pub unsafe fn geometry_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, primitives: GeometryShaderExecutionMode, input: I, output: O, layout: L) -> GeometryShaderEntryPoint<'a, S, I, O, L, P> {
         GeometryShaderEntryPoint {
             module: self,
             name: name,
@@ -203,10 +194,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>
-        (&'a self, name: &'a CStr, input: I, output: O, layout: L)
-        -> FragmentShaderEntryPoint<'a, S, I, O, L, P>
-    {
+    pub unsafe fn fragment_shader_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O, layout: L) -> FragmentShaderEntryPoint<'a, S, I, O, L, P> {
         FragmentShaderEntryPoint {
             module: self,
             name: name,
@@ -229,9 +217,7 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_shader_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L)
-                                                       -> ComputeShaderEntryPoint<'a, S, L, P>
-    {
+    pub unsafe fn compute_shader_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L) -> ComputeShaderEntryPoint<'a, S, L, P> {
         ComputeShaderEntryPoint {
             module: self,
             name: name,
@@ -241,7 +227,9 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
     }
 }
 
-unsafe impl<P> VulkanObject for ShaderModule<P> where P: SafeDeref<Target = Device> {
+unsafe impl<P> VulkanObject for ShaderModule<P>
+    where P: SafeDeref<Target = Device>
+{
     type Object = vk::ShaderModule;
 
     #[inline]
@@ -250,7 +238,9 @@ unsafe impl<P> VulkanObject for ShaderModule<P> where P: SafeDeref<Target = Devi
     }
 }
 
-impl<P> Drop for ShaderModule<P> where P: SafeDeref<Target = Device> {
+impl<P> Drop for ShaderModule<P>
+    where P: SafeDeref<Target = Device>
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -264,7 +254,7 @@ impl<P> Drop for ShaderModule<P> where P: SafeDeref<Target = Device> {
 ///
 /// Can be obtained by calling `vertex_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct VertexShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct VertexShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -314,7 +304,7 @@ impl<'a, S, I, O, L, P> VertexShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `tess_control_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -325,7 +315,7 @@ pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -363,7 +353,7 @@ impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `tess_evaluation_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -374,7 +364,7 @@ pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -412,7 +402,7 @@ impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `geometry_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -424,7 +414,7 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> GeometryShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> GeometryShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -483,17 +473,13 @@ impl GeometryShaderExecutionMode {
             (GeometryShaderExecutionMode::Points, PrimitiveTopology::PointList) => true,
             (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineList) => true,
             (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineStrip) => true,
-            (GeometryShaderExecutionMode::LinesWithAdjacency,
-             PrimitiveTopology::LineListWithAdjacency) => true,
-            (GeometryShaderExecutionMode::LinesWithAdjacency,
-             PrimitiveTopology::LineStripWithAdjacency) => true,
+            (GeometryShaderExecutionMode::LinesWithAdjacency, PrimitiveTopology::LineListWithAdjacency) => true,
+            (GeometryShaderExecutionMode::LinesWithAdjacency, PrimitiveTopology::LineStripWithAdjacency) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleList) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleStrip) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleFan) => true,
-            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
-             PrimitiveTopology::TriangleListWithAdjacency) => true,
-            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
-             PrimitiveTopology::TriangleStripWithAdjacency) => true,
+            (GeometryShaderExecutionMode::TrianglesWithAdjacency, PrimitiveTopology::TriangleListWithAdjacency) => true,
+            (GeometryShaderExecutionMode::TrianglesWithAdjacency, PrimitiveTopology::TriangleStripWithAdjacency) => true,
             _ => false,
         }
     }
@@ -503,7 +489,7 @@ impl GeometryShaderExecutionMode {
 ///
 /// Can be obtained by calling `fragment_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -514,7 +500,7 @@ pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -552,7 +538,7 @@ impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>> 
+pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -561,7 +547,7 @@ pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, L, P> ComputeShaderEntryPoint<'a, S, L, P> 
+impl<'a, S, L, P> ComputeShaderEntryPoint<'a, S, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -625,14 +611,17 @@ unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
 
 /// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
 /// compatible with another one.
-pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef where I: ShaderInterfaceDef {
+pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef
+    where I: ShaderInterfaceDef
+{
     /// Returns `Ok` if the two definitions match.
     fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError>;
 }
 
 // TODO: turn this into a default impl that can be specialized
 unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
-    where T: ShaderInterfaceDef, I: ShaderInterfaceDef
+    where T: ShaderInterfaceDef,
+          I: ShaderInterfaceDef
 {
     fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
@@ -651,10 +640,10 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
                 }
 
                 // TODO: enforce this?
-                /*match (a.name, b.name) {
-                    (Some(ref an), Some(ref bn)) => if an != bn { return false },
-                    _ => ()
-                };*/
+                // match (a.name, b.name) {
+                // (Some(ref an), Some(ref bn)) => if an != bn { return false },
+                // _ => ()
+                // };
             }
         }
 
@@ -675,11 +664,13 @@ impl error::Error for ShaderInterfaceMismatchError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            ShaderInterfaceMismatchError::ElementsCountMismatch => "the number of elements \
-                                                                    mismatches",
+            ShaderInterfaceMismatchError::ElementsCountMismatch => {
+                "the number of elements mismatches"
+            }
             ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
-            ShaderInterfaceMismatchError::FormatMismatch => "the format of an element does not \
-                                                             match",
+            ShaderInterfaceMismatchError::FormatMismatch => {
+                "the format of an element does not match"
+            }
         }
     }
 }

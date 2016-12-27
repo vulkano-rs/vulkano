@@ -80,8 +80,11 @@ impl<'a> PipelineBarrierBuilder<'a> {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
 
-                vk.CmdPipelineBarrier(cmd, self.src_stage_mask, self.dst_stage_mask,
-                                      self.dependency_flags, self.memory_barriers.len() as u32,
+                vk.CmdPipelineBarrier(cmd,
+                                      self.src_stage_mask,
+                                      self.dst_stage_mask,
+                                      self.dependency_flags,
+                                      self.memory_barriers.len() as u32,
                                       self.memory_barriers.as_ptr(),
                                       self.buffer_barriers.len() as u32,
                                       self.buffer_barriers.as_ptr(),
@@ -113,9 +116,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     /// - There are certain rules regarding the pipeline barriers inside render passes.
     ///
     #[inline]
-    pub unsafe fn add_execution_dependency(&mut self, source: PipelineStages, dest: PipelineStages,
-                                           by_region: bool)
-    {
+    pub unsafe fn add_execution_dependency(&mut self, source: PipelineStages, dest: PipelineStages, by_region: bool) {
         if !by_region {
             self.dependency_flags = 0;
         }
@@ -136,10 +137,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     ///   features must have been enabled.
     /// - There are certain rules regarding the pipeline barriers inside render passes.
     ///
-    pub unsafe fn add_memory_barrier(&mut self, source_stage: PipelineStages,
-                                     source_access: AccessFlagBits, dest_stage: PipelineStages,
-                                     dest_access: AccessFlagBits, by_region: bool)
-    {
+    pub unsafe fn add_memory_barrier(&mut self, source_stage: PipelineStages, source_access: AccessFlagBits, dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool) {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         self.memory_barriers.push(vk::MemoryBarrier {
@@ -167,11 +165,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     ///   is added.
     /// - Queue ownership transfers must be correct.
     ///
-    pub unsafe fn add_buffer_memory_barrier<B: ?Sized>
-                  (&mut self, buffer: &'a B, source_stage: PipelineStages,
-                   source_access: AccessFlagBits, dest_stage: PipelineStages,
-                   dest_access: AccessFlagBits, by_region: bool,
-                   queue_transfer: Option<(u32, u32)>, offset: usize, size: usize)
+    pub unsafe fn add_buffer_memory_barrier<B: ?Sized>(&mut self, buffer: &'a B, source_stage: PipelineStages, source_access: AccessFlagBits, dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool, queue_transfer: Option<(u32, u32)>, offset: usize, size: usize)
         where B: Buffer
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
@@ -216,10 +210,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
     /// - Image layouts transfers must be correct.
     /// - Access flags must be compatible with the image usage flags passed at image creation.
     ///
-    pub unsafe fn add_image_memory_barrier<I: ?Sized>(&mut self, image: &'a I, mipmaps: Range<u32>,
-                  layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
-                  dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
-                  queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)
+    pub unsafe fn add_image_memory_barrier<I: ?Sized>(&mut self, image: &'a I, mipmaps: Range<u32>, layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits, dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool, queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)
         where I: Image
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
@@ -246,7 +237,7 @@ impl<'a> PipelineBarrierBuilder<'a> {
             dstQueueFamilyIndex: dest_queue,
             image: image.inner().internal_object(),
             subresourceRange: vk::ImageSubresourceRange {
-                aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
+                aspectMask: 1 | 2 | 4 | 8, // FIXME: wrong
                 baseMipLevel: mipmaps.start,
                 levelCount: mipmaps.end - mipmaps.start,
                 baseArrayLayer: layers.start,

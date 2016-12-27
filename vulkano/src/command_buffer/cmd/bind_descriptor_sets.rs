@@ -25,7 +25,9 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that binds descriptor sets.
-pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
+pub struct CmdBindDescriptorSets<L, S, P>
+    where L: CommandsList
+{
     // Parent commands list.
     previous: L,
     // The raw Vulkan enum representing the kind of pipeline.
@@ -45,7 +47,9 @@ pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
 }
 
 impl<L, S, P> CmdBindDescriptorSets<L, S, P>
-    where L: CommandsList, S: TrackedDescriptorSetsCollection, P: PipelineLayoutRef
+    where L: CommandsList,
+          S: TrackedDescriptorSetsCollection,
+          P: PipelineLayoutRef
 {
     /// Builds the command.
     ///
@@ -54,9 +58,7 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     ///
     /// Returns an error if the sets are not compatible with the pipeline layout.
     #[inline]
-    pub fn new(previous: L, graphics: bool, pipeline_layout: P, sets: S)
-               -> Result<CmdBindDescriptorSets<L, S, P>, CmdBindDescriptorSetsError> 
-    {
+    pub fn new(previous: L, graphics: bool, pipeline_layout: P, sets: S) -> Result<CmdBindDescriptorSets<L, S, P>, CmdBindDescriptorSetsError> {
         if !PipelineLayoutSetsCompatible::is_compatible(pipeline_layout.desc(), &sets) {
             return Err(CmdBindDescriptorSetsError::IncompatibleSets);
         }
@@ -67,14 +69,18 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
         let raw_sets = {
             let mut raw_sets: SmallVec<[(u32, SmallVec<[_; 8]>); 4]> = SmallVec::new();
             let mut add_new = true;
-            for set_num in 0 .. sets.num_sets() {
+            for set_num in 0..sets.num_sets() {
                 let set = match sets.descriptor_set(set_num) {
                     Some(set) => set.internal_object(),
-                    None => { add_new = true; continue; },
+                    None => {
+                        add_new = true;
+                        continue;
+                    }
                 };
-                
+
                 if add_new {
-                    let mut v = SmallVec::new(); v.push(set);
+                    let mut v = SmallVec::new();
+                    v.push(set);
                     raw_sets.push((set_num as u32, v));
                     add_new = false;
                 } else {
@@ -88,8 +94,11 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
             previous: previous,
             raw_pipeline_layout: raw_pipeline_layout,
             raw_sets: raw_sets,
-            pipeline_ty: if graphics { vk::PIPELINE_BIND_POINT_GRAPHICS }
-                         else { vk::PIPELINE_BIND_POINT_COMPUTE },
+            pipeline_ty: if graphics {
+                vk::PIPELINE_BIND_POINT_GRAPHICS
+            } else {
+                vk::PIPELINE_BIND_POINT_COMPUTE
+            },
             device: device,
             sets: sets,
             pipeline_layout: pipeline_layout,
@@ -98,7 +107,8 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
 }
 
 unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P>
-    where L: CommandsList, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          S: TrackedDescriptorSetsCollection
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
@@ -114,9 +124,14 @@ unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P>
                 let cmd = raw.command_buffer.clone().take().unwrap();
 
                 for &(first_set, ref sets) in self.raw_sets.iter() {
-                    vk.CmdBindDescriptorSets(cmd, self.pipeline_ty, self.raw_pipeline_layout,
-                                            first_set, sets.len() as u32, sets.as_ptr(),
-                                            0, ptr::null());        // TODO: dynamic offset not supported
+                    vk.CmdBindDescriptorSets(cmd,
+                                             self.pipeline_ty,
+                                             self.raw_pipeline_layout,
+                                             first_set,
+                                             sets.len() as u32,
+                                             sets.as_ptr(),
+                                             0,
+                                             ptr::null());        // TODO: dynamic offset not supported
                 }
             }
         }));
@@ -127,7 +142,6 @@ unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P>
 #[derive(Debug, Copy, Clone)]
 pub enum CmdBindDescriptorSetsError {
     /// The sets are not compatible with the pipeline layout.
-    // TODO: inner error
     IncompatibleSets,
 }
 
@@ -135,9 +149,7 @@ impl error::Error for CmdBindDescriptorSetsError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdBindDescriptorSetsError::IncompatibleSets => {
-                "the sets are not compatible with the pipeline layout"
-            },
+            CmdBindDescriptorSetsError::IncompatibleSets => "the sets are not compatible with the pipeline layout",
         }
     }
 }

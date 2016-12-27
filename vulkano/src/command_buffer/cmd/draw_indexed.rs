@@ -30,24 +30,12 @@ use VulkanPointers;
 
 /// Wraps around a commands list and adds a draw command at the end of it.
 pub struct CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
-    previous: CmdBindIndexBuffer<
-                CmdBindVertexBuffers<
-                    CmdPushConstants<
-                        CmdBindDescriptorSets<
-                            CmdSetState<
-                                CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>
-                            >,
-                            S, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                        >,
-                        Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                    >,
-                    V
-                >,
-                Ib
-              >,
+    previous: CmdBindIndexBuffer<CmdBindVertexBuffers<CmdPushConstants<CmdBindDescriptorSets<CmdSetState<CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>>, S, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, V>, Ib>,
 
     // Parameters for vkCmdDrawIndexedIndexed.
     index_count: u32,
@@ -65,9 +53,7 @@ impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, P
           I: Index + 'static
 {
     /// See the documentation of the `draw` method.
-    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-               dynamic: DynamicState, vertices: V, index_buffer: Ib, sets: S, push_constants: Pc)
-               -> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
+    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>, dynamic: DynamicState, vertices: V, index_buffer: Ib, sets: S, push_constants: Pc) -> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
         let index_count = index_buffer.len();
@@ -95,7 +81,9 @@ impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, P
 }
 
 unsafe impl<L, V, Ib, Pv, Pl, Prp, S, Pc> CommandsList for CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection,
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection,
           Ib: Buffer
 {
     #[inline]
@@ -106,8 +94,12 @@ unsafe impl<L, V, Ib, Pv, Pl, Prp, S, Pc> CommandsList for CmdDrawIndexed<L, V, 
             unsafe {
                 let vk = raw.device.pointers();
                 let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdDrawIndexed(cmd, self.index_count, self.instance_count, self.first_index,
-                                  self.vertex_offset, self.first_instance);
+                vk.CmdDrawIndexed(cmd,
+                                  self.index_count,
+                                  self.instance_count,
+                                  self.first_index,
+                                  self.vertex_offset,
+                                  self.first_instance);
             }
         }));
     }

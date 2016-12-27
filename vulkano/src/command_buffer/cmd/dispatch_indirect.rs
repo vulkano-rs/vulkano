@@ -34,16 +34,12 @@ use vk;
 
 /// Wraps around a commands list and adds an indirect dispatch command at the end of it.
 pub struct CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
-    previous: CmdPushConstants<
-                CmdBindDescriptorSets<
-                    CmdBindPipeline<L, Arc<ComputePipeline<Pl>>>,
-                    S, Arc<ComputePipeline<Pl>>
-                >,
-                Pc, Arc<ComputePipeline<Pl>>
-              >,
+    previous: CmdPushConstants<CmdBindDescriptorSets<CmdBindPipeline<L, Arc<ComputePipeline<Pl>>>, S, Arc<ComputePipeline<Pl>>>, Pc, Arc<ComputePipeline<Pl>>>,
 
     raw_buffer: vk::Buffer,
     raw_offset: vk::DeviceSize,
@@ -53,13 +49,13 @@ pub struct CmdDispatchIndirect<L, B, Pl, S, Pc>
 }
 
 impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     /// This function is unsafe because the values in the buffer must be less or equal than
     /// `VkPhysicalDeviceLimits::maxComputeWorkGroupCount`.
-    pub unsafe fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, push_constants: Pc,
-                      buffer: B)
-                      -> Result<CmdDispatchIndirect<L, B, Pl, S, Pc>, CmdDispatchIndirectError>
+    pub unsafe fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, push_constants: Pc, buffer: B) -> Result<CmdDispatchIndirect<L, B, Pl, S, Pc>, CmdDispatchIndirectError>
         where B: TypedBuffer<Content = DispatchIndirectCommand>
     {
         let previous = CmdBindPipeline::bind_compute_pipeline(previous, pipeline.clone());
@@ -91,19 +87,24 @@ impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
 }
 
 unsafe impl<L, B, Pl, S, Pc> CommandsList for CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, B: Buffer,
-          Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList,
+          B: Buffer,
+          Pl: PipelineLayoutRef,
+          S: TrackedDescriptorSetsCollection
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
         self.previous.append(builder);
 
         {
-            let stages = PipelineStages { compute_shader: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0,
-                                          mem::size_of::<DispatchIndirectCommand>(), false,
-                                          stages, access);
+            let stages = PipelineStages { compute_shader: true, ..PipelineStages::none() };
+            let access = AccessFlagBits { indirect_command_read: true, ..AccessFlagBits::none() };
+            builder.add_buffer_transition(&self.buffer,
+                                          0,
+                                          mem::size_of::<DispatchIndirectCommand>(),
+                                          false,
+                                          stages,
+                                          access);
         }
 
         builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
@@ -147,18 +148,10 @@ impl error::Error for CmdDispatchIndirectError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdDispatchIndirectError::MissingBufferUsage => {
-                "the buffer must have the indirect usage."
-            },
-            CmdDispatchIndirectError::WrongAlignment => {
-                "the buffer must be 4-bytes-aligned"
-            },
-            CmdDispatchIndirectError::BindDescriptorSetsError(_) => {
-                "error while binding descriptor sets"
-            },
-            CmdDispatchIndirectError::PushConstantsError(_) => {
-                "error while setting push constants"
-            },
+            CmdDispatchIndirectError::MissingBufferUsage => "the buffer must have the indirect usage.",
+            CmdDispatchIndirectError::WrongAlignment => "the buffer must be 4-bytes-aligned",
+            CmdDispatchIndirectError::BindDescriptorSetsError(_) => "error while binding descriptor sets",
+            CmdDispatchIndirectError::PushConstantsError(_) => "error while setting push constants",
         }
     }
 

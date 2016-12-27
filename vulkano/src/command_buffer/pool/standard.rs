@@ -33,7 +33,9 @@ use VulkanObject;
 // value of the pointer will be used as a thread id.
 thread_local!(static THREAD_ID: Box<u8> = Box::new(0));
 #[inline]
-fn curr_thread_id() -> usize { THREAD_ID.with(|data| &**data as *const u8 as usize) }
+fn curr_thread_id() -> usize {
+    THREAD_ID.with(|data| &**data as *const u8 as usize)
+}
 
 /// Standard implementation of a command pool.
 ///
@@ -108,16 +110,19 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                     available_primary_command_buffers: Vec::new(),
                     available_secondary_command_buffers: Vec::new(),
                 })
-            },
+            }
         };
 
         // Which list of already-existing command buffers we are going to pick CBs from.
-        let mut existing = if secondary { &mut per_thread.available_secondary_command_buffers }
-                           else { &mut per_thread.available_primary_command_buffers };
+        let mut existing = if secondary {
+            &mut per_thread.available_secondary_command_buffers
+        } else {
+            &mut per_thread.available_primary_command_buffers
+        };
 
         // Build an iterator to pick from already-existing command buffers.
         let num_from_existing = cmp::min(count as usize, existing.len());
-        let from_existing = existing.drain(0 .. num_from_existing).collect::<Vec<_>>().into_iter();
+        let from_existing = existing.drain(0..num_from_existing).collect::<Vec<_>>().into_iter();
 
         // Build an iterator to construct the missing command buffers from the Vulkan pool.
         let num_new = count as usize - num_from_existing;

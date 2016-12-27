@@ -66,13 +66,13 @@
 //!
 //! ```no_run
 //! use vulkano::memory::DeviceMemory;
-//! 
+//!
 //! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { std::mem::uninitialized() };
 //! // Taking the first memory type for the sake of this example.
 //! let ty = device.physical_device().memory_types().next().unwrap();
-//! 
+//!
 //! let alloc = DeviceMemory::alloc(&device, ty, 1024).expect("Failed to allocate memory");
-//! 
+//!
 //! // The memory is automatically free'd when `alloc` is destroyed.
 //! ```
 //!
@@ -179,14 +179,13 @@ unsafe impl<T> Content for [T] {
     }
 }
 
-/*
-TODO: do this when it's possible
-unsafe impl Content for .. {}
-impl<'a, T> !Content for &'a T {}
-impl<'a, T> !Content for &'a mut T {}
-impl<T> !Content for *const T {}
-impl<T> !Content for *mut T {}
-impl<T> !Content for Box<T> {}
-impl<T> !Content for UnsafeCell<T> {}
-
-*/
+// TODO: do this when it's possible
+// unsafe impl Content for .. {}
+// impl<'a, T> !Content for &'a T {}
+// impl<'a, T> !Content for &'a mut T {}
+// impl<T> !Content for *const T {}
+// impl<T> !Content for *mut T {}
+// impl<T> !Content for Box<T> {}
+// impl<T> !Content for UnsafeCell<T> {}
+//
+//

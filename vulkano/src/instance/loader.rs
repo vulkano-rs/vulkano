@@ -82,7 +82,7 @@ pub fn entry_points() -> Result<&'static vk::EntryPoints, LoadingError> {
 #[derive(Debug, Clone)]
 pub enum LoadingError {
     /// Failed to load the Vulkan shared library.
-    LibraryLoadFailure(String),         // TODO: meh for error type, but this needs changes in shared_library
+    LibraryLoadFailure(String), // TODO: meh for error type, but this needs changes in shared_library
 
     /// One of the entry points required to be supported by the Vulkan implementation is missing.
     MissingEntryPoint(String),
@@ -92,23 +92,18 @@ impl error::Error for LoadingError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            LoadingError::LibraryLoadFailure(_) => {
-                "failed to load the Vulkan shared library"
-            },
-            LoadingError::MissingEntryPoint(_) => {
-                "one of the entry points required to be supported by the Vulkan implementation \
-                 is missing"
-            },
+            LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
+            LoadingError::MissingEntryPoint(_) => "one of the entry points required to be supported by the Vulkan implementation is missing",
         }
     }
 
-    /*#[inline]
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            LoadingError::LibraryLoadFailure(ref err) => Some(err),
-            _ => None
-        }
-    }*/
+    // #[inline]
+    // fn cause(&self) -> Option<&error::Error> {
+    // match *self {
+    // LoadingError::LibraryLoadFailure(ref err) => Some(err),
+    // _ => None
+    // }
+    // }
 }
 
 impl fmt::Display for LoadingError {

@@ -56,17 +56,15 @@ pub struct SwapchainImage {
 #[derive(Debug)]
 struct Guarded {
     present_layout: bool,
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
+    latest_submission: Option<Weak<Submission>>, // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl SwapchainImage {
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
-    pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
-                           -> Result<Arc<SwapchainImage>, OomError>
-    {
-        let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1));
+    pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32) -> Result<Arc<SwapchainImage>, OomError> {
+        let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1));
 
         Ok(Arc::new(SwapchainImage {
             image: image,
@@ -116,8 +114,7 @@ unsafe impl Image for SwapchainImage {
     }
 }
 
-unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage
-{
+unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage {
     #[inline]
     fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
         Some(self.format.decode_clear_value(value))
@@ -140,7 +137,10 @@ unsafe impl ImageView for SwapchainImage {
     #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.image.dimensions();
-        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+        Dimensions::Dim2d {
+            width: dims.width(),
+            height: dims.height(),
+        }
     }
 
     #[inline]

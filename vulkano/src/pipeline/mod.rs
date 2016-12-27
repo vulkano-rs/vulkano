@@ -11,7 +11,7 @@
 //!
 //! In Vulkan before you can add a draw or a compute command to a command buffer, you have to
 //! create a *pipeline object* that describes it.
-//! 
+//!
 //! There are two kinds of pipelines:
 //!
 //! - `ComputePipeline`s, for compute operations that reads/write raw pixels from images and

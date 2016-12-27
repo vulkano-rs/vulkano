@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! This module provides support for query pools.
-//! 
+//!
 //! In Vulkan, queries are not created individually. Instead you manipulate **query pools**, which
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.
@@ -29,17 +29,19 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-pub struct UnsafeQueryPool<P = Arc<Device>> where P: SafeDeref<Target = Device> {
+pub struct UnsafeQueryPool<P = Arc<Device>>
+    where P: SafeDeref<Target = Device>
+{
     pool: vk::QueryPool,
     device: P,
     num_slots: u32,
 }
 
-impl<P> UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
+impl<P> UnsafeQueryPool<P>
+    where P: SafeDeref<Target = Device>
+{
     /// Builds a new query pool.
-    pub fn new(device: P, ty: QueryType, num_slots: u32)
-               -> Result<UnsafeQueryPool<P>, QueryPoolCreationError>
-    {
+    pub fn new(device: P, ty: QueryType, num_slots: u32) -> Result<UnsafeQueryPool<P>, QueryPoolCreationError> {
         let (vk_ty, statistics) = match ty {
             QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
             QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
@@ -49,14 +51,14 @@ impl<P> UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
                 }
 
                 (vk::QUERY_TYPE_PIPELINE_STATISTICS, flags.into())
-            },
+            }
         };
 
         let pool = unsafe {
             let infos = vk::QueryPoolCreateInfo {
                 sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 queryType: vk_ty,
                 queryCount: num_slots,
                 pipelineStatistics: statistics,
@@ -64,8 +66,7 @@ impl<P> UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
 
             let mut output = mem::uninitialized();
             let vk = device.pointers();
-            try!(check_errors(vk.CreateQueryPool(device.internal_object(), &infos,
-                                                 ptr::null(), &mut output)));
+            try!(check_errors(vk.CreateQueryPool(device.internal_object(), &infos, ptr::null(), &mut output)));
             output
         };
 
@@ -170,7 +171,9 @@ impl Into<vk::QueryPipelineStatisticFlags> for QueryPipelineStatisticFlags {
     }
 }
 
-impl<P> Drop for UnsafeQueryPool<P> where P: SafeDeref<Target = Device> {
+impl<P> Drop for UnsafeQueryPool<P>
+    where P: SafeDeref<Target = Device>
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -194,10 +197,7 @@ impl error::Error for QueryPoolCreationError {
     fn description(&self) -> &str {
         match *self {
             QueryPoolCreationError::OomError(_) => "not enough memory available",
-            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
-                "a pipeline statistics pool was requested but the corresponding feature \
-                 wasn't enabled"
-            },
+            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => "a pipeline statistics pool was requested but the corresponding feature wasn't enabled",
         }
     }
 
@@ -205,7 +205,7 @@ impl error::Error for QueryPoolCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -230,7 +230,7 @@ impl From<Error> for QueryPoolCreationError {
         match err {
             err @ Error::OutOfHostMemory => QueryPoolCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => QueryPoolCreationError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -241,17 +241,13 @@ pub struct OcclusionQueriesPool {
 
 impl OcclusionQueriesPool {
     /// See the docs of new().
-    pub fn raw(device: &Arc<Device>, num_slots: u32)
-               -> Result<OcclusionQueriesPool, OomError>
-    {
+    pub fn raw(device: &Arc<Device>, num_slots: u32) -> Result<OcclusionQueriesPool, OomError> {
         Ok(OcclusionQueriesPool {
             inner: match UnsafeQueryPool::new(device.clone(), QueryType::Occlusion, num_slots) {
                 Ok(q) => q,
                 Err(QueryPoolCreationError::OomError(err)) => return Err(err),
-                Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
-                    unreachable!()
-                },
-            }
+                Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => unreachable!(),
+            },
         })
     }
 
@@ -262,10 +258,8 @@ impl OcclusionQueriesPool {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, num_slots: u32)
-               -> Arc<OcclusionQueriesPool>
-    {
-       Arc::new(OcclusionQueriesPool::raw(device, num_slots).unwrap())
+    pub fn new(device: &Arc<Device>, num_slots: u32) -> Arc<OcclusionQueriesPool> {
+        Arc::new(OcclusionQueriesPool::raw(device, num_slots).unwrap())
     }
 
     /// Returns the number of slots of that query pool.
@@ -302,7 +296,7 @@ mod tests {
         let ty = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
         match UnsafeQueryPool::new(device, ty, 256) {
             Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => (),
-            _ => panic!()
+            _ => panic!(),
         };
     }
 }
