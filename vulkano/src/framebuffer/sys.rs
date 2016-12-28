@@ -16,10 +16,8 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
-use framebuffer::RenderPass;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDescription;
-use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassRef;
 use framebuffer::LoadOp;
 
 use Error;
@@ -30,26 +28,22 @@ use check_errors;
 use vk;
 
 /// Defines the layout of multiple subpasses.
-pub struct UnsafeRenderPass {
+pub struct RenderPass<D = Box<RenderPassDesc>> {
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
 
     // Device this render pass was created from.
     device: Arc<Device>,
 
+    // Description of the render pass.
+    desc: D,
+
     // Cache of the granularity of the render pass.
     granularity: Mutex<Option<[u32; 2]>>,
 }
 
-impl UnsafeRenderPass {
+impl<D> RenderPass<D> where D: RenderPassDesc {
     /// Builds a new renderpass.
-    ///
-    /// # Safety
-    ///
-    /// This function doesn't check whether all the restrictions in the attachments, passes and
-    /// passes dependencies were enforced.
-    ///
-    /// See the documentation of the structs of this module for more info about these restrictions.
     ///
     /// # Panic
     ///
@@ -57,24 +51,20 @@ impl UnsafeRenderPass {
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///
-    pub unsafe fn new<Ia, Ip, Id>(device: &Arc<Device>, attachments: Ia, passes: Ip,
-                                  pass_dependencies: Id)
-                                  -> Result<UnsafeRenderPass, RenderPassCreationError>
-        where Ia: ExactSizeIterator<Item = LayoutAttachmentDescription> + Clone,        // with specialization we can handle the "Clone" restriction internally
-              Ip: ExactSizeIterator<Item = LayoutPassDescription> + Clone,      // with specialization we can handle the "Clone" restriction internally
-              Id: ExactSizeIterator<Item = LayoutPassDependencyDescription>
+    pub fn new(device: Arc<Device>, description: D)
+               -> Result<RenderPass<D>, RenderPassCreationError>
     {
         let vk = device.pointers();
 
         // If the first use of an attachment in this render pass is as an input attachment, and
         // the attachment is not also used as a color or depth/stencil attachment in the same
         // subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
-        debug_assert!(attachments.clone().enumerate().all(|(atch_num, attachment)| {
+        debug_assert!(description.attachments().enumerate().all(|(atch_num, attachment)| {
             if attachment.load != LoadOp::Clear {
                 return true;
             }
 
-            for p in passes.clone() {
+            for p in description.subpasses() {
                 if p.color_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return true; }
                 if let Some((a, _)) = p.depth_stencil { if a == atch_num { return true; } }
                 if p.input_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return false; }
@@ -83,7 +73,7 @@ impl UnsafeRenderPass {
             true
         }));
 
-        let attachments = attachments.clone().map(|attachment| {
+        let attachments = description.attachments().map(|attachment| {
             debug_assert!(attachment.samples.is_power_of_two());
 
             vk::AttachmentDescription {
@@ -105,7 +95,7 @@ impl UnsafeRenderPass {
         // This block allocates, for each pass, in order, all color attachment references, then all
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
-        let attachment_references = passes.clone().flat_map(|pass| {
+        let attachment_references = description.subpasses().flat_map(|pass| {
             // Performing some validation with debug asserts.
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
@@ -167,12 +157,12 @@ impl UnsafeRenderPass {
         // Same as `attachment_references` but only for the preserve attachments.
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
-        let preserve_attachments_references = passes.clone().flat_map(|pass| {
+        let preserve_attachments_references = description.subpasses().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<SmallVec<[_; 16]>>();
 
         // Now iterating over passes.
-        let passes = {
+        let passes = unsafe {
             // `ref_index` and `preserve_ref_index` are increased during the loop and point to the
             // next element to use in respectively `attachment_references` and
             // `preserve_attachments_references`.
@@ -180,7 +170,7 @@ impl UnsafeRenderPass {
             let mut preserve_ref_index = 0usize;
             let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
-            for pass in passes.clone() {
+            for pass in description.subpasses() {
                 if pass.color_attachments.len() as u32 >
                    device.physical_device().limits().max_color_attachments()
                 {
@@ -231,7 +221,7 @@ impl UnsafeRenderPass {
             out
         };
 
-        let dependencies = pass_dependencies.map(|dependency| {
+        let dependencies = description.dependencies().map(|dependency| {
             debug_assert!(dependency.source_subpass < passes.len());
             debug_assert!(dependency.destination_subpass < passes.len());
 
@@ -246,7 +236,7 @@ impl UnsafeRenderPass {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        let renderpass = {
+        let renderpass = unsafe {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
                 pNext: ptr::null(),
@@ -267,13 +257,16 @@ impl UnsafeRenderPass {
             output
         };
 
-        Ok(UnsafeRenderPass {
+        Ok(RenderPass {
             device: device.clone(),
             renderpass: renderpass,
+            desc: description,
             granularity: Mutex::new(None),
         })
     }
+}
 
+impl<D> RenderPass<D> {
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
@@ -303,9 +296,27 @@ impl UnsafeRenderPass {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
+
+    /// Returns the description of the render pass.
+    ///
+    /// > **Note**: You must not somehow modify the description. This shouldn't be possible anyway
+    /// > if `RenderPassDesc` was implemented correctly.
+    #[inline]
+    pub fn desc(&self) -> &D {
+        &self.desc
+    }
 }
 
-unsafe impl VulkanObject for UnsafeRenderPass {
+unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
+    type Desc = D;
+
+    #[inline]
+    fn inner(&self) -> &RenderPass<D> {
+        self
+    }
+}
+
+unsafe impl<D> VulkanObject for RenderPass<D> where D: RenderPassDesc {
     type Object = vk::RenderPass;
 
     #[inline]
@@ -314,14 +325,7 @@ unsafe impl VulkanObject for UnsafeRenderPass {
     }
 }
 
-unsafe impl RenderPass for UnsafeRenderPass {
-    #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
-        self
-    }
-}
-
-impl Drop for UnsafeRenderPass {
+impl<D> Drop for RenderPass<D> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

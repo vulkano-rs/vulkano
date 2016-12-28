@@ -7,71 +7,29 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::iter::Empty as EmptyIter;
-use std::sync::Arc;
-
-use device::Device;
-use format::ClearValue;
-use framebuffer::framebuffer::FramebufferCreationError;
-use framebuffer::sys::UnsafeRenderPass;
-use framebuffer::sys::RenderPassCreationError;
-use framebuffer::traits::RenderPass;
 use framebuffer::traits::RenderPassDesc;
-use framebuffer::traits::RenderPassAttachmentsList;
-use framebuffer::traits::RenderPassClearValues;
 use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
 
-/// Implementation of `RenderPass` with no attachment at all and a single pass.
+/// Description of an empty render pass.
 ///
-/// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
-/// be `()`.
-pub struct EmptySinglePassRenderPass {
-    render_pass: UnsafeRenderPass,
-}
+/// Can be used to create a render pass with one subpass and no attachment.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+/// use vulkano::framebuffer::RenderPassDesc;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
+/// ```
+///
+#[derive(Debug, Copy, Clone)]
+pub struct EmptySinglePassRenderPassDesc;
 
-impl EmptySinglePassRenderPass {
-    /// See the docs of new().
-    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
-        let rp = try!(unsafe {
-            let pass = LayoutPassDescription {
-                color_attachments: vec![],
-                depth_stencil: None,
-                input_attachments: vec![],
-                resolve_attachments: vec![],
-                preserve_attachments: vec![],
-            };
-
-            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
-        });
-
-        Ok(EmptySinglePassRenderPass {
-            render_pass: rp
-        })
-    }
-    
-    /// Builds the render pass.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<EmptySinglePassRenderPass> {
-        Arc::new(EmptySinglePassRenderPass::raw(device).unwrap())
-    }
-}
-
-unsafe impl RenderPass for EmptySinglePassRenderPass {
-    #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
-        &self.render_pass
-    }
-}
-
-unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
+unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     #[inline]
     fn num_attachments(&self) -> usize {
         0
@@ -169,33 +127,5 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
         } else {
             None
         }
-    }
-}
-
-unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    #[inline]
-    fn check_attachments_list(&self, _: &()) -> Result<(), FramebufferCreationError> {
-        Ok(())
-    }
-}
-
-unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
-    type ClearValuesIter = EmptyIter<ClearValue>;
-
-    #[inline]
-    fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
-        iter::empty()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use framebuffer::EmptySinglePassRenderPass;
-
-    #[test]
-    #[ignore]       // TODO: crashes on AMD+Windows
-    fn create() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _ = EmptySinglePassRenderPass::new(&device);
     }
 }

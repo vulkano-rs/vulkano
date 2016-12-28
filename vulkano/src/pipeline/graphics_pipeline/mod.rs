@@ -25,8 +25,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
-use framebuffer::RenderPass;
-use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassRef;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
 use Error;
@@ -150,7 +149,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
 }
 
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
-    where Rp: RenderPass + RenderPassDesc
+    where Rp: RenderPassRef
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -172,7 +171,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Vo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp::Desc: RenderPassSubpassInterface<Fo>,
     {
         if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
@@ -292,7 +291,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef, Rp: RenderPass + RenderPassDesc
+    where L: PipelineLayoutRef, Rp: RenderPassRef
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
@@ -308,7 +307,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gl: PipelineLayoutDescNames,
               Tcl: PipelineLayoutDescNames,
               Tel: PipelineLayoutDescNames,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp::Desc: RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
@@ -345,8 +344,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
-                                                                params.fragment_shader.output())
+        if !params.render_pass.render_pass().inner().desc().is_compatible_with(params.render_pass.index(),
+                                                                               params.fragment_shader.output())
         {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
@@ -928,7 +927,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPass + RenderPassDesc
+    where Rp: RenderPassRef
 {
     /// Returns the render pass used in the constructor.
     #[inline]

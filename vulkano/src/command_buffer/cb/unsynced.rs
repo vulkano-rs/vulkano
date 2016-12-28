@@ -21,11 +21,12 @@ use command_buffer::CommandsListSinkCaller;
 use command_buffer::DynamicState;
 use command_buffer::RawCommandBufferPrototype;
 use device::Device;
-use framebuffer::EmptySinglePassRenderPass;
+use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::RenderPass;
-use framebuffer::StdFramebuffer;
+use framebuffer::RenderPassRef;
+use framebuffer::Framebuffer;
 use framebuffer::Subpass;
-use framebuffer::traits::Framebuffer;
+use framebuffer::FramebufferRef;
 use image::Layout;
 use image::Image;
 use sync::AccessFlagBits;
@@ -58,14 +59,14 @@ pub enum Kind<'a, R, F: 'a> {
     },
 }
 
-impl<'a> Kind<'a, EmptySinglePassRenderPass, StdFramebuffer<EmptySinglePassRenderPass, ()>> {
+impl<'a> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<'a, EmptySinglePassRenderPass, StdFramebuffer<EmptySinglePassRenderPass, ()>> {
+    pub fn primary() -> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
         Kind::Primary
     }
 }
@@ -114,7 +115,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     /// Creates a new builder.
     pub unsafe fn new<R, F>(list: L, pool: P, kind: Kind<R, F>, flags: Flags)
                             -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: FramebufferRef
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -143,7 +144,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     pub unsafe fn already_allocated<R, F>(list: L, pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
                                           -> Result<UnsyncedCommandBuffer<L, P>, OomError>
-        where R: RenderPass, F: Framebuffer
+        where R: RenderPassRef, F: FramebufferRef
     {
         let device = pool.device().clone();
         let vk = device.pointers();
@@ -175,7 +176,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
         let framebuffer = if let Kind::SecondaryRenderPass { ref subpass, framebuffer: Some(ref framebuffer) } = kind {
             // TODO: restore check
             //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
-            framebuffer.internal_object()
+            framebuffer.inner().internal_object()
         } else {
             0
         };
