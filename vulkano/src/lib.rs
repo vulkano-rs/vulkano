@@ -18,30 +18,34 @@
 //!   (eg. a graphics card, a CPU implementation, multiple graphics card working together, etc.).
 //!   Physical devices can be enumerated from an instance with `PhysicalDevice::enumerate()`.
 //!
-//! - Once you have chosen a physical device to use, you can a `Device` object from it. The
+//! - Once you have chosen a physical device to use, you can create a `Device` object from it. The
 //!   `Device` is the most important object of Vulkan, as it represents an open channel of
-//!   communicaton with a physical device.
+//!   communicaton with a physical device. You always need to have one before you can do something
+//!   interesting things with Vulkan.
 //!
-//! - `Buffer`s and `Image`s can be used to store data on memory accessible from the GPU (or
-//!   Vulkan implementation). Buffers are usually used to store vertices, lights, etc. or
-//!   arbitrary data, while images are used to store textures or multi-dimensional data.
+//! - `Buffer`s and `Image`s can be used to store data on memory accessible by the GPU (or
+//!   more generally by the Vulkan implementation). Buffers are usually used to store information
+//!   about vertices, lights, etc. or arbitrary data, while images are used to store textures or
+//!   multi-dimensional data.
 //!
 //! - In order to show something on the screen, you need a `Swapchain`. A `Swapchain` contains
 //!   special `Image`s that correspond to the content of the window or the monitor. When you
 //!   *present* a swapchain, the content of one of these special images is shown on the screen.
-//!
-//! - `ComputePipeline`s and `GraphicsPipeline`s describe the way the GPU must perform a certain
-//!   operation. `Shader`s are programs that the GPU will execute as part of a pipeline.
-//!   Descriptors can be used to access the content of buffers or images from within shaders.
-//!
-//! - For graphical operations, `RenderPass`es and `Framebuffer`s describe on which images the
-//!   implementation must draw upon.
 //!
 //! - In order to ask the GPU to do something, you must create a `CommandBuffer`. A `CommandBuffer`
 //!   contains a list of commands that the GPU must perform. This can include copies between
 //!   buffers, compute operations, or graphics operations. For the work to start, the
 //!   `CommandBuffer` must then be submitted to a `Queue`, which is obtained when you create
 //!   the `Device`.
+//!
+//! - In order to be able to add a compute operation or a graphics operation to a command buffer,
+//!   you need to have created a `ComputePipeline` or a `GraphicsPipeline` object that describes
+//!   the operation you want. `Shader`s are programs that the GPU will execute as part of a
+//!   pipeline. Descriptors can be used to access the content of buffers or images from within
+//!   shaders.
+//!
+//! - For graphical operations, `RenderPass`es and `Framebuffer`s describe on which images the
+//!   implementation must draw upon.
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
