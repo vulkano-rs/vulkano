@@ -41,30 +41,22 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::barrier::PipelineBarrierBuilder;
-pub use self::cmd::empty;
-pub use self::cmd::CommandsList;
-pub use self::cmd::CommandsListSink;
-pub use self::cmd::CommandsListSinkCaller;
+pub use self::auto::AutoCommandBufferBuilder;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitChain;
+pub use self::helper_trait::CommandBufferBuilder;
 
-use std::sync::Arc;
-use std::marker::PhantomData;
-
-use device::Device;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
-
-use vk;
 
 pub mod cb;
 pub mod cmd;
 pub mod pool;
 
-mod barrier;
+mod auto;
+mod helper_trait;
 mod submit;
 
 #[repr(C)]
@@ -118,28 +110,4 @@ impl Default for DynamicState {
     fn default() -> DynamicState {
         DynamicState::none()
     }
-}
-
-pub unsafe trait SecondaryCommandBuffer {
-    // TODO: crappy API
-    fn inner(&self) -> vk::CommandBuffer;
-
-    // TODO: necessary only because inner() has a bad return type
-    fn device(&self) -> &Arc<Device>;
-
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>);
-}
-
-/// Opaque struct that contains a command buffer in construction. You cannot create a
-/// `RawCommandBufferPrototype` yourself.
-pub struct RawCommandBufferPrototype<'a> {
-    device: Arc<Device>,
-    command_buffer: Option<vk::CommandBuffer>,
-    current_state: DynamicState,
-    bound_graphics_pipeline: vk::Pipeline,
-    bound_compute_pipeline: vk::Pipeline,
-    bound_index_buffer: (vk::Buffer, vk::DeviceSize, vk::IndexType),
-    // Note: if fields are added here, don't forget to reset them
-    // when vkCmdExecuteCommands is called.
-    marker: PhantomData<&'a ()>,
 }

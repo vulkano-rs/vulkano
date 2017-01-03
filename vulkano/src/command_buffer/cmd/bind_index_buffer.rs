@@ -11,21 +11,17 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::TypedBuffer;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use device::Device;
 use pipeline::input_assembly::Index;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 use VulkanObject;
 use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
-pub struct CmdBindIndexBuffer<L, B> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdBindIndexBuffer<B> {
     // Raw handle of the buffer to bind.
     raw_buffer: vk::Buffer,
     // Raw offset of the buffer to bind.
@@ -38,14 +34,13 @@ pub struct CmdBindIndexBuffer<L, B> where L: CommandsList {
     buffer: B,
 }
 
-impl<L, B, I> CmdBindIndexBuffer<L, B>
-    where L: CommandsList,
-          B: Buffer + TypedBuffer<Content = [I]>,
+impl<B, I> CmdBindIndexBuffer<B>
+    where B: Buffer + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// Builds the command.
     #[inline]
-    pub fn new(previous: L, buffer: B) -> CmdBindIndexBuffer<L, B> {
+    pub fn new(buffer: B) -> CmdBindIndexBuffer<B> {
         let device;
         let raw_buffer;
         let offset;
@@ -61,7 +56,6 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
         }
 
         CmdBindIndexBuffer {
-            previous: previous,
             raw_buffer: raw_buffer,
             offset: offset,
             index_type: I::ty() as vk::IndexType,
@@ -71,35 +65,19 @@ impl<L, B, I> CmdBindIndexBuffer<L, B>
     }
 }
 
-unsafe impl<L, B> CommandsList for CmdBindIndexBuffer<L, B>
-    where L: CommandsList, B: Buffer
+unsafe impl<'a, P, B> AddCommand<&'a CmdBindIndexBuffer<B>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-
-        {
-            let stages = PipelineStages { vertex_input: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { index_read: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), false,
-                                          stages, access);
+    fn add(self, command: &'a CmdBindIndexBuffer<B>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdBindIndexBuffer(cmd, command.raw_buffer, command.offset, command.index_type);
         }
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            let params = (self.raw_buffer, self.offset, self.index_type);
-            if raw.bound_index_buffer == params {
-                return;
-            }
-
-            raw.bound_index_buffer = params;
-
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdBindIndexBuffer(cmd, self.raw_buffer, self.offset, self.index_type);
-            }
-        }));
+        self
     }
 }

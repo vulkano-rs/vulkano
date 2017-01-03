@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::cmp;
-use command_buffer::cmd::CommandsListSink;
 use image::ImageView;
 use image::sys::UnsafeImageView;
 //use sync::AccessFlagBits;
@@ -27,8 +26,6 @@ pub unsafe trait AttachmentsList {
     /// For example if one view is 256x256x2 and another one is 128x512x3, then this function
     /// should return 128x256x2.
     fn intersection_dimensions(&self) -> Option<[u32; 3]>;
-
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>);
 }
 
 unsafe impl AttachmentsList for () {
@@ -40,10 +37,6 @@ unsafe impl AttachmentsList for () {
     #[inline]
     fn intersection_dimensions(&self) -> Option<[u32; 3]> {
         None
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
     }
 }
 
@@ -90,30 +83,6 @@ macro_rules! impl_into_atch_list {
                 )*
 
                 Some(dims)
-            }
-
-            #[inline]
-            fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-                // FIXME: implement
-                /*// TODO: "wrong" values
-                let stages = PipelineStages {
-                    color_attachment_output: true,
-                    late_fragment_tests: true,
-                    .. PipelineStages::none()
-                };
-                
-                let access = AccessFlagBits {
-                    color_attachment_read: true,
-                    color_attachment_write: true,
-                    depth_stencil_attachment_read: true,
-                    depth_stencil_attachment_write: true,
-                    .. AccessFlagBits::none()
-                };
-
-                // FIXME: adjust layers & mipmaps with the view's parameters
-                sink.add_image_transition(self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
-                                        stages, access);
-                self.rest.add_transition(sink);*/
             }
         }
 

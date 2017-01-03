@@ -7,76 +7,45 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
+use VulkanObject;
 use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds to the end of it a command that goes to the next subpass
 /// of the current render pass.
 #[derive(Debug, Copy, Clone)]
-pub struct CmdNextSubpass<L> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdNextSubpass{
     // The parameter for vkCmdNextSubpass.
     contents: vk::SubpassContents,
 }
 
-impl<L> CmdNextSubpass<L> where L: CommandsList {
+impl CmdNextSubpass {
     /// See the documentation of the `next_subpass` method.
     #[inline]
-    pub fn new(previous: L, secondary: bool) -> Result<CmdNextSubpass<L>, CmdNextSubpassError> {
-        // TODO: check that we're in a render pass and that the next subpass is correct
-
-        Ok(CmdNextSubpass {
-            previous: previous,
+    pub fn new(secondary: bool) -> CmdNextSubpass {
+        CmdNextSubpass {
             contents: if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
-                      else { vk::SUBPASS_CONTENTS_INLINE },
-        })
-    }
-}
-
-unsafe impl<L> CommandsList for CmdNextSubpass<L> where L: CommandsList {
-    #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                
-                vk.CmdNextSubpass(cmd, self.contents);
-            }
-        }));
-    }
-}
-
-/// Error that can happen when creating a `CmdNextSubpass`.
-#[derive(Debug, Copy, Clone)]
-pub enum CmdNextSubpassError {
-    /// It's not possible to go to the next subpass if none are remaining.
-    NoSubpassRemaining,
-}
-
-impl error::Error for CmdNextSubpassError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CmdNextSubpassError::NoSubpassRemaining => {
-                "it's not possible to go to the next subpass if none are remaining"
-            },
+                      else { vk::SUBPASS_CONTENTS_INLINE }
         }
     }
 }
 
-impl fmt::Display for CmdNextSubpassError {
+unsafe impl<'a, P> AddCommand<&'a CmdNextSubpass> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
+{
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+    fn add(self, command: &'a CmdNextSubpass) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdNextSubpass(cmd, command.contents);
+        }
+
+        self
     }
 }

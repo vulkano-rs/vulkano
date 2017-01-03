@@ -7,31 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::marker::PhantomData;
+use std::error::Error;
 use std::ptr;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use buffer::Buffer;
+use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use command_buffer::CommandsListSinkCaller;
-use command_buffer::DynamicState;
-use command_buffer::RawCommandBufferPrototype;
+use command_buffer::Submit;
+use command_buffer::SubmitBuilder;
 use device::Device;
+use device::Queue;
 use framebuffer::EmptySinglePassRenderPassDesc;
+use framebuffer::Framebuffer;
+use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
-use framebuffer::Framebuffer;
 use framebuffer::Subpass;
-use framebuffer::FramebufferRef;
-use image::Layout;
-use image::Image;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
-
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -40,7 +33,7 @@ use vk;
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Debug, Clone)]
-pub enum Kind<'a, R, F: 'a> {
+pub enum Kind<R, F> {
     /// A primary command buffer can execute all commands and can call secondary command buffers.
     Primary,
 
@@ -53,20 +46,21 @@ pub enum Kind<'a, R, F: 'a> {
     SecondaryRenderPass {
         /// Which subpass this secondary command buffer can be called from.
         subpass: Subpass<R>,
+
         /// The framebuffer object that will be used when calling the command buffer.
         /// This parameter is optional and is an optimization hint for the implementation.
-        framebuffer: Option<&'a F>,
+        framebuffer: Option<F>,
     },
 }
 
-impl<'a> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
+impl Kind<RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<'a, RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
+    pub fn primary() -> Kind<RenderPass<EmptySinglePassRenderPassDesc>, Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
         Kind::Primary
     }
 }
@@ -87,34 +81,38 @@ pub enum Flags {
     OneTimeSubmit,
 }
 
-pub struct UnsyncedCommandBuffer<L, P> where P: CommandPool {
-    // The Vulkan command buffer.
+pub struct UnsafeCommandBufferBuilder<P> where P: CommandPool {
+    // The Vulkan command buffer. Will be 0 if `build()` has been called.
     cmd: vk::CommandBuffer,
 
     // Device that owns the command buffer.
     device: Arc<Device>,
 
     // Pool that owns the command buffer.
-    pool: P::Finished,
+    pool: Option<P>,
 
     // Flags that were used at creation.
     flags: Flags,
 
-    // True if the command buffer has always been submitted once. Only relevant if `flags` is
-    // `OneTimeSubmit`.
-    already_submitted: AtomicBool,
-
     // True if we are a secondary command buffer.
     secondary_cb: bool,
-
-    // The commands list. Holds resources of the resources list alive. 
-    commands_list: L,
 }
 
-impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
+impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// Creates a new builder.
-    pub unsafe fn new<R, F>(list: L, pool: P, kind: Kind<R, F>, flags: Flags)
-                            -> Result<UnsyncedCommandBuffer<L, P>, OomError>
+    ///
+    /// # Safety
+    ///
+    /// Creating and destroying an unsafe command buffer is not unsafe per se, but the commands
+    /// that you add to it are unchecked and do not have any synchronization.
+    ///
+    /// In other words, it is your job to make sure that the commands you add are valid and that
+    /// they do not introduce any race condition.
+    ///
+    /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
+    /// > be able to submit invalid commands.
+    pub unsafe fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
+                            -> Result<UnsafeCommandBufferBuilder<P>, OomError>
         where R: RenderPassRef, F: FramebufferRef
     {
         let secondary = match kind {
@@ -124,7 +122,7 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
 
         let cmd = try!(pool.alloc(secondary, 1)).next().unwrap();
         
-        match UnsyncedCommandBuffer::already_allocated(list, pool, cmd, kind, flags) {
+        match UnsafeCommandBufferBuilder::already_allocated(pool, cmd, kind, flags) {
             Ok(cmd) => Ok(cmd),
             Err(err) => {
                 // FIXME: uncomment this and solve the fact that `pool` has been moved
@@ -138,12 +136,14 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     ///
     /// # Safety
     ///
-    /// - The allocated command buffer must belong to the pool and must not be used anywhere else
-    ///   in the code for the duration of this command buffer.
+    /// See also `new`.
     ///
-    pub unsafe fn already_allocated<R, F>(list: L, pool: P, cmd: AllocatedCommandBuffer,
+    /// The allocated command buffer must belong to the pool and must not be used anywhere else
+    /// in the code for the duration of this command buffer.
+    ///
+    pub unsafe fn already_allocated<R, F>(pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
-                                          -> Result<UnsyncedCommandBuffer<L, P>, OomError>
+                                          -> Result<UnsafeCommandBufferBuilder<P>, OomError>
         where R: RenderPassRef, F: FramebufferRef
     {
         let device = pool.device().clone();
@@ -201,33 +201,15 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
 
         try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
 
-        {
-            let mut builder = RawCommandBufferPrototype {
-                device: device.clone(),
-                command_buffer: Some(cmd),
-                current_state: DynamicState::none(),
-                bound_graphics_pipeline: 0,
-                bound_compute_pipeline: 0,
-                bound_index_buffer: (0, 0, 0),
-                marker: PhantomData,
-            };
-
-            list.append(&mut Sink(&mut builder, &device));
-        };
-
-        try!(check_errors(vk.EndCommandBuffer(cmd)));
-
-        Ok(UnsyncedCommandBuffer {
+        Ok(UnsafeCommandBufferBuilder {
             device: device.clone(),
-            pool: pool.finish(),
+            pool: Some(pool),
             cmd: cmd,
             flags: flags,
             secondary_cb: match kind {
                 Kind::Primary => false,
                 Kind::Secondary | Kind::SecondaryRenderPass { .. } => true,
             },
-            already_submitted: AtomicBool::new(false),
-            commands_list: list,
         })
     }
 
@@ -236,22 +218,9 @@ impl<L, P> UnsyncedCommandBuffer<L, P> where L: CommandsList, P: CommandPool {
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
-
-    /// Returns the list of commands of this command buffer.
-    ///
-    /// > **Note**: It is important that this getter is not used to modify the list of commands
-    /// > with interior mutability so that `append` returns something different. Doing so is
-    /// > unsafe. However this function is not unsafe, because this corner case is already covered
-    /// > by the unsafetiness of the `CommandsList` trait.
-    #[inline]
-    pub fn commands_list(&self) -> &L {
-        &self.commands_list
-    }
 }
 
-unsafe impl<L, P> VulkanObject for UnsyncedCommandBuffer<L, P>
-    where P: CommandPool
-{
+unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> where P: CommandPool {
     type Object = vk::CommandBuffer;
 
     #[inline]
@@ -260,34 +229,81 @@ unsafe impl<L, P> VulkanObject for UnsyncedCommandBuffer<L, P>
     }
 }
 
-// Helper object for UnsyncedCommandBuffer. Implementation detail.
-struct Sink<'a>(&'a mut RawCommandBufferPrototype<'a>, &'a Arc<Device>);
-impl<'a> CommandsListSink<'a> for Sink<'a> {
+impl<P> Drop for UnsafeCommandBufferBuilder<P> where P: CommandPool {
+    #[inline]
+    fn drop(&mut self) {
+        //unsafe {
+            if self.cmd == 0 {
+                return;
+            }
+
+            // FIXME: vk.FreeCommandBuffers()
+        //}
+    }
+}
+
+unsafe impl<P> CommandBufferBuild for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
+{
+    type Out = UnsafeCommandBuffer<P>;
+
+    #[inline]
+    fn build(mut self) -> Self::Out {
+        unsafe {
+            debug_assert_ne!(self.cmd, 0);
+            let cmd = self.cmd;
+            let vk = self.device.pointers();
+            check_errors(vk.EndCommandBuffer(cmd)).unwrap();       // TODO: handle error
+            self.cmd = 0;       // Prevents the `Drop` impl of the builder from destroying the cb.
+
+            UnsafeCommandBuffer {
+                cmd: cmd,
+                device: self.device.clone(),
+                pool: self.pool.take().unwrap().finish(),
+                flags: self.flags,
+                already_submitted: AtomicBool::new(false),
+            }
+        }
+    }
+}
+
+pub struct UnsafeCommandBuffer<P> where P: CommandPool {
+    // The Vulkan command buffer.
+    cmd: vk::CommandBuffer,
+
+    // Device that owns the command buffer.
+    device: Arc<Device>,
+
+    // Pool that owns the command buffer.
+    pool: P::Finished,
+
+    // Flags that were used at creation.
+    flags: Flags,
+
+    // True if the command buffer has always been submitted once. Only relevant if `flags` is
+    // `OneTimeSubmit`.
+    already_submitted: AtomicBool,
+}
+
+unsafe impl<P> Submit for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.1
+        &self.device
     }
 
     #[inline]
-    fn add_command(&mut self, f: Box<CommandsListSinkCaller<'a> + 'a>) {
-        f.call(self.0)
-    }
-
-    #[inline]
-    fn add_buffer_transition(&mut self, _: &Buffer, _: usize, _: usize, _: bool,
-                             _: PipelineStages, _: AccessFlagBits)
+    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, _queue: &Arc<Queue>)
+                                    -> Result<SubmitBuilder<'a>, Box<Error>>
     {
+        Ok(base.add_command_buffer(self))
     }
+}
+
+unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> where P: CommandPool {
+    type Object = vk::CommandBuffer;
 
     #[inline]
-    fn add_image_transition(&mut self, _: &Image, _: u32, _: u32, _: u32, _: u32,
-                            _: bool, _: Layout, _: PipelineStages, _: AccessFlagBits)
-    {
-    }
-
-    #[inline]
-    fn add_image_transition_notification(&mut self, _: &Image, _: u32, _: u32, _: u32,
-                                         _: u32, _: Layout, _: PipelineStages, _: AccessFlagBits)
-    {
+    fn internal_object(&self) -> vk::CommandBuffer {
+        self.cmd
     }
 }

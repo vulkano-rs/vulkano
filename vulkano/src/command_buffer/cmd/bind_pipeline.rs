@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use device::Device;
 use pipeline::ComputePipeline;
 use pipeline::GraphicsPipeline;
@@ -25,9 +25,7 @@ use vk;
 /// > after it is executed. In other words, if the command is aware that the same pipeline is
 /// > already bound, then it won't bind it again. This optimization is essential, as binding a
 /// > pipeline has a non-negligible overhead.
-pub struct CmdBindPipeline<L, P> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdBindPipeline<P> {
     // The raw pipeline object to bind.
     raw_pipeline: vk::Pipeline,
     // The raw Vulkan enum representing the kind of pipeline.
@@ -39,19 +37,18 @@ pub struct CmdBindPipeline<L, P> where L: CommandsList {
     pipeline: P,
 }
 
-impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
+impl CmdBindPipeline<()> {
     /// Builds a command that binds a compute pipeline to the compute pipeline bind point.
     ///
     /// Use this command right before a compute dispatch.
     #[inline]
-    pub fn bind_compute_pipeline<Pl>(previous: L, pipeline: Arc<ComputePipeline<Pl>>)
-                                     -> CmdBindPipeline<L, Arc<ComputePipeline<Pl>>>
+    pub fn bind_compute_pipeline<Pl>(pipeline: Arc<ComputePipeline<Pl>>)
+                                     -> CmdBindPipeline<Arc<ComputePipeline<Pl>>>
     {
         let raw_pipeline = pipeline.internal_object();
         let device = pipeline.device().clone();
 
         CmdBindPipeline {
-            previous: previous,
             raw_pipeline: raw_pipeline,
             pipeline_ty: vk::PIPELINE_BIND_POINT_COMPUTE,
             device: device,
@@ -63,14 +60,13 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     ///
     /// Use this command right before a draw command.
     #[inline]
-    pub fn bind_graphics_pipeline<V, Pl, R>(previous: L, pipeline: Arc<GraphicsPipeline<V, Pl, R>>)
-                                            -> CmdBindPipeline<L, Arc<GraphicsPipeline<V, Pl, R>>>
+    pub fn bind_graphics_pipeline<V, Pl, R>(pipeline: Arc<GraphicsPipeline<V, Pl, R>>)
+                                            -> CmdBindPipeline<Arc<GraphicsPipeline<V, Pl, R>>>
     {
         let raw_pipeline = pipeline.internal_object();
         let device = pipeline.device().clone();
 
         CmdBindPipeline {
-            previous: previous,
             raw_pipeline: raw_pipeline,
             pipeline_ty: vk::PIPELINE_BIND_POINT_GRAPHICS,
             device: device,
@@ -79,62 +75,54 @@ impl<L> CmdBindPipeline<L, ()> where L: CommandsList {
     }
 }
 
-impl<L, P> CmdBindPipeline<L, P> where L: CommandsList {
+impl<P> CmdBindPipeline<P> {
+    /// This disables the command but keeps it alive. All getters still return the same value, but
+    /// executing the command will not do anything.
+    #[inline]
+    pub fn disabled(mut self) -> CmdBindPipeline<P> {
+        self.raw_pipeline = 0;
+        self
+    }
+
     /// Returns the device the pipeline is assocated with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
-}
 
-unsafe impl<L, P> CommandsList for CmdBindPipeline<L, P> where L: CommandsList {
+    /// True if this is the graphics pipeline. False if the compute pipeline.
+    // TODO: should be an enum?
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    pub fn is_graphics(&self) -> bool {
+        self.pipeline_ty == vk::PIPELINE_BIND_POINT_GRAPHICS
+    }
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            // Returning now if the pipeline object is already bound.
-            // Note that we need to perform this check after validating the device, otherwise the
-            // pipeline ID could match by mistake.
-            match self.pipeline_ty {
-                vk::PIPELINE_BIND_POINT_GRAPHICS => {
-                    if raw.bound_graphics_pipeline == self.raw_pipeline {
-                        return;
-                    } else {
-                        raw.bound_graphics_pipeline = self.raw_pipeline;
-                    }
-                },
-                vk::PIPELINE_BIND_POINT_COMPUTE => {
-                    if raw.bound_compute_pipeline == self.raw_pipeline {
-                        return;
-                    } else {
-                        raw.bound_compute_pipeline = self.raw_pipeline;
-                    }
-                },
-                _ => unreachable!()
-            }
-
-            // Binding for real.
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdBindPipeline(cmd, self.pipeline_ty, self.raw_pipeline);
-            }
-        }));
+    /// Returns the pipeline object that will be bound.
+    ///
+    /// # Safety
+    ///
+    /// Must not be used to modify the pipeline.
+    #[inline]
+    pub unsafe fn pipeline(&self) -> &P {
+        &self.pipeline
     }
 }
 
-// TODO:
-/*unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
-    for CmdUnsyncedUpdate<'a, L, B, D>
-    where B: Buffer,
-          L: CommandsList,
-          D: Copy + 'static,
+unsafe impl<'a, P, Pl> AddCommand<&'a CmdBindPipeline<Pl>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn is_outside_render_pass(&self) -> bool {
-        true
+    fn add(self, command: &'a CmdBindPipeline<Pl>) -> Self::Out {
+        if command.raw_pipeline != 0 {
+            unsafe {
+                let vk = self.device().pointers();
+                let cmd = self.internal_object();
+                vk.CmdBindPipeline(cmd, command.pipeline_ty, command.raw_pipeline);
+            }
+        }
+
+        self
     }
-}*/
+}

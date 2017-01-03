@@ -13,10 +13,10 @@ use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use descriptor::descriptor_set::TrackedDescriptorSetsCollection;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
+use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutSetsCompatible;
 use device::Device;
@@ -25,9 +25,7 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that binds descriptor sets.
-pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdBindDescriptorSets<S, P> {
     // The raw Vulkan enum representing the kind of pipeline.
     pipeline_ty: vk::PipelineBindPoint,
     // The raw pipeline object to bind.
@@ -44,8 +42,8 @@ pub struct CmdBindDescriptorSets<L, S, P> where L: CommandsList {
     pipeline_layout: P,
 }
 
-impl<L, S, P> CmdBindDescriptorSets<L, S, P>
-    where L: CommandsList, S: TrackedDescriptorSetsCollection, P: PipelineLayoutRef
+impl<S, P> CmdBindDescriptorSets<S, P>
+    where P: PipelineLayoutRef, S: DescriptorSetsCollection
 {
     /// Builds the command.
     ///
@@ -54,8 +52,8 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     ///
     /// Returns an error if the sets are not compatible with the pipeline layout.
     #[inline]
-    pub fn new(previous: L, graphics: bool, pipeline_layout: P, sets: S)
-               -> Result<CmdBindDescriptorSets<L, S, P>, CmdBindDescriptorSetsError> 
+    pub fn new(graphics: bool, pipeline_layout: P, sets: S)
+               -> Result<CmdBindDescriptorSets<S, P>, CmdBindDescriptorSetsError> 
     {
         if !PipelineLayoutSetsCompatible::is_compatible(pipeline_layout.desc(), &sets) {
             return Err(CmdBindDescriptorSetsError::IncompatibleSets);
@@ -85,7 +83,6 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
         };
 
         Ok(CmdBindDescriptorSets {
-            previous: previous,
             raw_pipeline_layout: raw_pipeline_layout,
             raw_sets: raw_sets,
             pipeline_ty: if graphics { vk::PIPELINE_BIND_POINT_GRAPHICS }
@@ -97,29 +94,25 @@ impl<L, S, P> CmdBindDescriptorSets<L, S, P>
     }
 }
 
-unsafe impl<L, S, P> CommandsList for CmdBindDescriptorSets<L, S, P>
-    where L: CommandsList, S: TrackedDescriptorSetsCollection
+unsafe impl<'a, P, Pl, S> AddCommand<&'a CmdBindDescriptorSets<S, Pl>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdBindDescriptorSets<S, Pl>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-
-        self.sets.add_transition(builder);
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-
-                for &(first_set, ref sets) in self.raw_sets.iter() {
-                    vk.CmdBindDescriptorSets(cmd, self.pipeline_ty, self.raw_pipeline_layout,
-                                            first_set, sets.len() as u32, sets.as_ptr(),
-                                            0, ptr::null());        // TODO: dynamic offset not supported
-                }
+            for &(first_set, ref sets) in command.raw_sets.iter() {
+                vk.CmdBindDescriptorSets(cmd, command.pipeline_ty, command.raw_pipeline_layout,
+                                         first_set, sets.len() as u32, sets.as_ptr(),
+                                         0, ptr::null());        // TODO: dynamic offset not supported
             }
-        }));
+        }
+
+        self
     }
 }
 

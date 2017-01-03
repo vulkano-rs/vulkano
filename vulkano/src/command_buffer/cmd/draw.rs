@@ -10,89 +10,74 @@
 use std::sync::Arc;
 
 use command_buffer::DynamicState;
+use command_buffer::cb::AddCommand;
 use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindPipeline;
 use command_buffer::cmd::CmdBindVertexBuffers;
+use command_buffer::cmd::CmdDrawRaw;
 use command_buffer::cmd::CmdPushConstants;
 use command_buffer::cmd::CmdSetState;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayoutRef;
-use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
-use VulkanPointers;
 
-/// Wraps around a commands list and adds a draw command at the end of it.
-pub struct CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
-{
-    // Parent commands list.
-    previous: CmdBindVertexBuffers<
-                CmdPushConstants<
-                    CmdBindDescriptorSets<
-                        CmdSetState<
-                            CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>
-                        >,
-                        S, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                    >,
-                    Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                >,
-                V
-              >,
-
-    // Parameters for vkCmdDraw.
-    vertex_count: u32,
-    instance_count: u32,
-    first_vertex: u32,
-    first_instance: u32,
+pub struct CmdDraw<V, Pv, Pl, Prp, S, Pc> {
+    vertex_buffers: CmdBindVertexBuffers<V>,
+    push_constants: CmdPushConstants<Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>>,
+    descriptor_sets: CmdBindDescriptorSets<S, Arc<GraphicsPipeline<Pv, Pl, Prp>>>,
+    set_state: CmdSetState,
+    bind_pipeline: CmdBindPipeline<Arc<GraphicsPipeline<Pv, Pl, Prp>>>,
+    draw_raw: CmdDrawRaw,
 }
 
-impl<L, V, Pv, Pl, Prp, S, Pc> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+impl<V, Pv, Pl, Prp, S, Pc> CmdDraw<V, Pv, Pl, Prp, S, Pc>
+    where Pl: PipelineLayoutRef, S: DescriptorSetsCollection
 {
     /// See the documentation of the `draw` method.
-    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
+    pub fn new(pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
                dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc)
-               -> CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
+               -> CmdDraw<V, Pv, Pl, Prp, S, Pc>
         where Pv: Source<V>
     {
         let (_, vertex_count, instance_count) = pipeline.vertex_definition().decode(&vertices);
 
-        let previous = CmdBindPipeline::bind_graphics_pipeline(previous, pipeline.clone());
-        let device = previous.device().clone();
-        let previous = CmdSetState::new(previous, device, dynamic);
-        let previous = CmdBindDescriptorSets::new(previous, true, pipeline.clone(), sets).unwrap() /* TODO: error */;
-        let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants).unwrap() /* TODO: error */;
-        let previous = CmdBindVertexBuffers::new(previous, pipeline.vertex_definition(), vertices);
-
-        // TODO: check that dynamic state is not missing some elements required by the pipeline
+        let bind_pipeline = CmdBindPipeline::bind_graphics_pipeline(pipeline.clone());
+        let device = bind_pipeline.device().clone();
+        let set_state = CmdSetState::new(device, dynamic);
+        let descriptor_sets = CmdBindDescriptorSets::new(true, pipeline.clone(), sets).unwrap() /* TODO: error */;
+        let push_constants = CmdPushConstants::new(pipeline.clone(), push_constants).unwrap() /* TODO: error */;
+        let vertex_buffers = CmdBindVertexBuffers::new(pipeline.vertex_definition(), vertices);
+        let draw_raw = unsafe { CmdDrawRaw::new(vertex_count as u32, instance_count as u32, 0, 0) };
 
         CmdDraw {
-            previous: previous,
-            vertex_count: vertex_count as u32,
-            instance_count: instance_count as u32,
-            first_vertex: 0,
-            first_instance: 0,
+            vertex_buffers: vertex_buffers,
+            push_constants: push_constants,
+            descriptor_sets: descriptor_sets,
+            set_state: set_state,
+            bind_pipeline: bind_pipeline,
+            draw_raw: draw_raw,
         }
     }
 }
 
-unsafe impl<L, V, Pv, Pl, Prp, S, Pc> CommandsList for CmdDraw<L, V, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+unsafe impl<Cb, V, Pv, Pl, Prp, S, Pc, O, O1, O2, O3, O4, O5> AddCommand<CmdDraw<V, Pv, Pl, Prp, S, Pc>> for Cb
+    where Cb: AddCommand<CmdBindVertexBuffers<V>, Out = O1>,
+          O1: AddCommand<CmdPushConstants<Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, Out = O2>,
+          O2: AddCommand<CmdBindDescriptorSets<S, Arc<GraphicsPipeline<Pv, Pl, Prp>>>, Out = O3>,
+          O3: AddCommand<CmdSetState, Out = O4>,
+          O4: AddCommand<CmdBindPipeline<Arc<GraphicsPipeline<Pv, Pl, Prp>>>, Out = O5>,
+          O5: AddCommand<CmdDrawRaw, Out = O>
 {
-    #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    type Out = O;
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdDraw(cmd, self.vertex_count, self.instance_count, self.first_vertex,
-                           self.first_instance);
-            }
-        }));
+    #[inline]
+    fn add(self, command: CmdDraw<V, Pv, Pl, Prp, S, Pc>) -> O {
+        self.add(command.vertex_buffers)
+            .add(command.push_constants)
+            .add(command.descriptor_sets)
+            .add(command.set_state)
+            .add(command.bind_pipeline)
+            .add(command.draw_raw)
     }
 }

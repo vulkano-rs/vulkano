@@ -7,70 +7,38 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
+use VulkanObject;
 use VulkanPointers;
 
 /// Wraps around a commands list and adds to the end of it a command that ends the current render
 /// pass.
 #[derive(Debug, Copy, Clone)]
-pub struct CmdEndRenderPass<L> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
-}
+pub struct CmdEndRenderPass;
 
-impl<L> CmdEndRenderPass<L> where L: CommandsList {
+impl CmdEndRenderPass {
     /// See the documentation of the `end_render_pass` method.
     #[inline]
-    pub fn new(previous: L) -> Result<CmdEndRenderPass<L>, CmdEndRenderPassError> {
-        // TODO: check that we're in a render pass and that the next subpass is correct
-
-        Ok(CmdEndRenderPass {
-            previous: previous,
-        })
+    pub fn new() -> CmdEndRenderPass {
+        CmdEndRenderPass
     }
 }
 
-unsafe impl<L> CommandsList for CmdEndRenderPass<L> where L: CommandsList {
+unsafe impl<'a, P> AddCommand<&'a CmdEndRenderPass> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
+{
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdEndRenderPass(cmd);
-            }
-        }));
-    }
-}
-
-/// Error that can happen when creating a `CmdEndRenderPass`.
-#[derive(Debug, Copy, Clone)]
-pub enum CmdEndRenderPassError {
-    /// It's not possible to end the render pass before you went over all the subpasses.
-    SubpassesRemaining,
-}
-
-impl error::Error for CmdEndRenderPassError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CmdEndRenderPassError::SubpassesRemaining => {
-                "it's not possible to end the render pass before you went over all the subpasses"
-            },
+    fn add(self, command: &'a CmdEndRenderPass) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdEndRenderPass(cmd);
         }
-    }
-}
 
-impl fmt::Display for CmdEndRenderPassError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        self
     }
 }

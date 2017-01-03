@@ -11,9 +11,9 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 use device::Device;
@@ -21,9 +21,7 @@ use VulkanObject;
 use VulkanPointers;
 
 /// Wraps around a commands list and adds at the end of it a command that updates push constants.
-pub struct CmdPushConstants<L, Pc, Pl> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdPushConstants<Pc, Pl> {
     // The device of the pipeline object, so that we can compare it with the command buffer's
     // device.
     device: Arc<Device>,
@@ -33,15 +31,15 @@ pub struct CmdPushConstants<L, Pc, Pl> where L: CommandsList {
     pipeline_layout: Pl,
 }
 
-impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
-    where L: CommandsList, Pl: PipelineLayoutRef
+impl<Pc, Pl> CmdPushConstants<Pc, Pl>
+    where Pl: PipelineLayoutRef
 {
     /// Builds the command.
     ///
     /// Returns an error if the push constants are not compatible with the pipeline layout.
     #[inline]
-    pub fn new(previous: L, pipeline_layout: Pl, push_constants: Pc)
-               -> Result<CmdPushConstants<L, Pc, Pl>, CmdPushConstantsError> 
+    pub fn new(pipeline_layout: Pl, push_constants: Pc)
+               -> Result<CmdPushConstants<Pc, Pl>, CmdPushConstantsError> 
     {
         if !PipelineLayoutPushConstantsCompatible::is_compatible(pipeline_layout.desc(), &push_constants) {
             return Err(CmdPushConstantsError::IncompatibleData);
@@ -50,7 +48,6 @@ impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
         let device = pipeline_layout.device().clone();
 
         Ok(CmdPushConstants {
-            previous: previous,
             device: device,
             push_constants: push_constants,
             pipeline_layout: pipeline_layout,
@@ -58,37 +55,36 @@ impl<L, Pc, Pl> CmdPushConstants<L, Pc, Pl>
     }
 }
 
-unsafe impl<L, Pc, Pl> CommandsList for CmdPushConstants<L, Pc, Pl>
-    where L: CommandsList, Pl: PipelineLayoutRef
+unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool,
+          Pl: PipelineLayoutRef
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdPushConstants<Pc, Pl>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
+            let data_raw = &command.push_constants as *const Pc as *const u8;
+            
+            for num_range in 0 .. command.pipeline_layout.desc().num_push_constants_ranges() {
+                let range = match command.pipeline_layout.desc().push_constants_range(num_range) {
+                    Some(r) => r,
+                    None => continue
+                };
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
+                debug_assert_eq!(range.offset % 4, 0);
+                debug_assert_eq!(range.size % 4, 0);
 
-                let data_raw = &self.push_constants as *const Pc as *const u8;
-                
-                for num_range in 0 .. self.pipeline_layout.desc().num_push_constants_ranges() {
-                    let range = match self.pipeline_layout.desc().push_constants_range(num_range) {
-                        Some(r) => r,
-                        None => continue
-                    };
-
-                    debug_assert_eq!(range.offset % 4, 0);
-                    debug_assert_eq!(range.size % 4, 0);
-
-                    vk.CmdPushConstants(cmd, self.pipeline_layout.sys().internal_object(),
-                                        range.stages.into(), range.offset as u32, range.size as u32,
-                                        data_raw.offset(range.offset as isize) as *const _);
-                }
+                vk.CmdPushConstants(cmd, command.pipeline_layout.sys().internal_object(),
+                                    range.stages.into(), range.offset as u32, range.size as u32,
+                                    data_raw.offset(range.offset as isize) as *const _);
             }
-        }));
+        }
+
+        self
     }
 }
 

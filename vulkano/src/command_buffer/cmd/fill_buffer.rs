@@ -12,22 +12,14 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds an update buffer command at the end of it.
-pub struct CmdFillBuffer<L, B>
-    where B: Buffer, L: CommandsList
-{
-    // Parent commands list.
-    previous: L,
+pub struct CmdFillBuffer<B> {
     // The buffer to update.
     buffer: B,
     // Raw buffer handle.
@@ -40,16 +32,12 @@ pub struct CmdFillBuffer<L, B>
     data: u32,
 }
 
-impl<L, B> CmdFillBuffer<L, B>
-    where B: Buffer,
-          L: CommandsList + CommandsListPossibleOutsideRenderPass
+impl<B> CmdFillBuffer<B>
+    where B: Buffer
 {
     /// Builds a command that writes data to a buffer.
-    pub fn new(previous: L, buffer: B, data: u32)
-               -> Result<CmdFillBuffer<L, B>, CmdFillBufferError>
-    {
-        assert!(previous.is_outside_render_pass());     // TODO: error
-
+    // TODO: not safe because of signalling NaNs
+    pub fn new(buffer: B, data: u32) -> Result<CmdFillBuffer<B>, CmdFillBufferError> {
         let size = buffer.size();
 
         let (buffer_handle, offset) = {
@@ -64,7 +52,6 @@ impl<L, B> CmdFillBuffer<L, B>
         };
 
         Ok(CmdFillBuffer {
-            previous: previous,
             buffer: buffer,
             buffer_handle: buffer_handle,
             offset: offset as vk::DeviceSize,
@@ -74,31 +61,21 @@ impl<L, B> CmdFillBuffer<L, B>
     }
 }
 
-unsafe impl<L, B> CommandsList for CmdFillBuffer<L, B>
-    where B: Buffer,
-          L: CommandsList,
+unsafe impl<'a, P, B> AddCommand<&'a CmdFillBuffer<B>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        assert_eq!(self.buffer.inner().buffer.device().internal_object(),
-                   builder.device().internal_object());
-
-        {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true,
-                                          stages, access);
+    fn add(self, command: &'a CmdFillBuffer<B>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdFillBuffer(cmd, command.buffer_handle, command.offset,
+                             command.size, command.data);
         }
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdFillBuffer(cmd, self.buffer_handle, self.offset, self.size, self.data);
-            }
-        }));
+        self
     }
 }
 

@@ -12,12 +12,11 @@ use std::ops::Range;
 use std::ptr;
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use device::Device;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
@@ -27,9 +26,7 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds to the end of it a command that enters a render pass.
-pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdBeginRenderPass<Rp, F> {
     // True if only secondary command buffers can be added.
     secondary: bool,
     // The draw area.
@@ -48,13 +45,13 @@ pub struct CmdBeginRenderPass<L, Rp, F> where L: CommandsList {
     framebuffer: F,
 }
 
-impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
-    where L: CommandsList, F: FramebufferRef
+impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
+    where F: FramebufferRef
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
-    pub fn new<C>(previous: L, framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<L, Arc<RenderPass>, F>
+    pub fn new<C>(framebuffer: F, secondary: bool, clear_values: C)
+                  -> CmdBeginRenderPass<Arc<RenderPass>, F>
         where <<F as FramebufferRef>::RenderPass as RenderPassRef>::Desc: RenderPassClearValues<C>
     {
         let raw_render_pass = framebuffer.inner().render_pass().inner().internal_object();
@@ -100,7 +97,6 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
                     0 .. framebuffer.inner().dimensions()[1]];
 
         CmdBeginRenderPass {
-            previous: previous,
             secondary: secondary,
             rect: rect,
             clear_values: clear_values,
@@ -113,49 +109,42 @@ impl<L, F> CmdBeginRenderPass<L, Arc<RenderPass>, F>
     }
 }
 
-unsafe impl<L, Rp, F> CommandsList for CmdBeginRenderPass<L, Rp, F>
-    where L: CommandsList, F: FramebufferRef, F::Attachments: AttachmentsList
+unsafe impl<'a, P, Rp, F> AddCommand<&'a CmdBeginRenderPass<Rp, F>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdBeginRenderPass<Rp, F>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-
-        debug_assert!(self.rect[0].start <= self.rect[0].end);
-        debug_assert!(self.rect[1].start <= self.rect[1].end);
-
-        self.framebuffer.inner().add_transition(builder);
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-
-                let begin = vk::RenderPassBeginInfo {
-                    sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                    pNext: ptr::null(),
-                    renderPass: self.raw_render_pass,
-                    framebuffer: self.raw_framebuffer,
-                    renderArea: vk::Rect2D {
-                        offset: vk::Offset2D {
-                            x: self.rect[0].start as i32,
-                            y: self.rect[1].start as i32,
-                        },
-                        extent: vk::Extent2D {
-                            width: self.rect[0].end - self.rect[0].start,
-                            height: self.rect[1].end - self.rect[1].start,
-                        },
+            let begin = vk::RenderPassBeginInfo {
+                sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                pNext: ptr::null(),
+                renderPass: command.raw_render_pass,
+                framebuffer: command.raw_framebuffer,
+                renderArea: vk::Rect2D {
+                    offset: vk::Offset2D {
+                        x: command.rect[0].start as i32,
+                        y: command.rect[1].start as i32,
                     },
-                    clearValueCount: self.clear_values.len() as u32,
-                    pClearValues: self.clear_values.as_ptr(),
-                };
+                    extent: vk::Extent2D {
+                        width: command.rect[0].end - command.rect[0].start,
+                        height: command.rect[1].end - command.rect[1].start,
+                    },
+                },
+                clearValueCount: command.clear_values.len() as u32,
+                pClearValues: command.clear_values.as_ptr(),
+            };
 
-                let contents = if self.secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
-                               else { vk::SUBPASS_CONTENTS_INLINE };
-                
-                vk.CmdBeginRenderPass(cmd, &begin, contents);
-            }
-        }));
+            let contents = if command.secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
+                            else { vk::SUBPASS_CONTENTS_INLINE };
+
+            vk.CmdBeginRenderPass(cmd, &begin, contents);
+        }
+
+        self
     }
 }
