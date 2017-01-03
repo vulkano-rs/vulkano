@@ -52,7 +52,7 @@ fn main() {
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
 
-        vulkano::swapchain::Swapchain::new(&device, &window.surface(), 3,
+        vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
