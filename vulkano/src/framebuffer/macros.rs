@@ -439,6 +439,16 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        impl<$first_param> $next<$first_param>
+            where $first_param: Into<ClearValue>
+        {
+            #[inline]
+            fn convert_clear_values(self) -> iter::Once<ClearValue> {
+                // FIXME: check format
+                iter::once(self.current.into())
+            }
+        }
+
         ordered_passes_renderpass!{[] __impl_clear_values__ [$next] [$first_param] [$($rest: $rest_load),*] [$($rest_params),*]}
     };
 
@@ -448,12 +458,11 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
         unsafe impl<$($prev_params,)*> RenderPassClearValues<$prev<$($prev_params,)*>> for CustomRenderPassDesc
-            //where $($prev_params)*
+            where $($prev_params: Into<ClearValue>)*
         {
             #[inline]
             fn convert_clear_values(&self, values: $prev<$($prev_params,)*>) -> Box<Iterator<Item = ClearValue>> {
-                //Box::new(iter::empty())     // FIXME: wrong
-                Box::new(Some([0.0, 0.0, 1.0, 1.0].into()).into_iter())
+                Box::new(values.convert_clear_values())
             }
         }
     };
@@ -470,6 +479,19 @@ macro_rules! ordered_passes_renderpass {
                     prev: self,
                     current: next,
                 }
+            }
+        }
+
+        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param>
+            where $first_param: Into<ClearValue>,
+                  $($prev_params: Into<ClearValue>,)*
+        {
+            #[inline]
+            fn convert_clear_values(self) -> Box<Iterator<Item = ClearValue>> {
+                // TODO: subopptimal iterator
+                let prev = self.prev.convert_clear_values();
+                // FIXME: check format
+                prev.chain(iter::once(self.current.into()))
             }
         }
 
