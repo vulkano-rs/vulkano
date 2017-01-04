@@ -357,6 +357,12 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
+        impl<$first_param> $next<$first_param> {
+            fn check_attachments_list(self) -> Result<($first_param,), FramebufferCreationError> {
+                Ok((self.current,))     // FIXME: check attachment
+            }
+        }
+
         ordered_passes_renderpass!{[] __impl_attachments__ [$next] [$first_param] [$($rest),*] [$($rest_params),*]}
     };
 
@@ -364,10 +370,12 @@ macro_rules! ordered_passes_renderpass {
         unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc
             where $($prev_params: ImageView,)*
         {
-            type List = ($($prev_params,)*);        // TODO: wrong
+            type List = ($($prev_params,)*);
 
             fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Self::List, FramebufferCreationError> {
-                unimplemented!()    // FIXME:
+                attachments.check_attachments_list()
+                
+                // FIXME:
                 /*$({
                     if !l.$atch_name.identity_swizzle() {
                         return Err(FramebufferCreationError::AttachmentNotIdentitySwizzled);
@@ -379,7 +387,7 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
         pub struct $next<$($prev_params,)* $first_param> {
-            prev: $prev,
+            prev: $prev<$($prev_params,)*>,
             current: $first_param,
         }
 
@@ -389,6 +397,14 @@ macro_rules! ordered_passes_renderpass {
                     prev: self,
                     current: next,
                 }
+            }
+        }
+
+        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param> {
+            fn check_attachments_list(self) -> Result<($first_param, $($prev_params,)*), FramebufferCreationError> {
+                let ($($prev_params,)*) = try!(self.prev.check_attachments_list());
+                // FIXME: check attachment
+                (self.current, $($prev_params,)*)
             }
         }
 
@@ -436,7 +452,8 @@ macro_rules! ordered_passes_renderpass {
         {
             #[inline]
             fn convert_clear_values(&self, values: $prev<$($prev_params,)*>) -> Box<Iterator<Item = ClearValue>> {
-                Box::new(iter::empty())     // FIXME: wrong
+                //Box::new(iter::empty())     // FIXME: wrong
+                Box::new(Some([0.0, 0.0, 1.0, 1.0].into()).into_iter())
             }
         }
     };

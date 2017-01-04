@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use command_buffer::cmd::CommandsListSink;
 use image::traits::ImageView;
 //use sync::AccessFlagBits;
@@ -68,28 +69,33 @@ macro_rules! impl_into_atch_list {
             }
 
             #[inline]
+            #[allow(non_snake_case)]
             fn min_dimensions(&self) -> Option<[u32; 3]> {
-                unimplemented!()
-                /*let my_view_dims = self.first.parent().dimensions();
-                debug_assert_eq!(my_view_dims.depth(), 1);
-                let my_view_dims = [my_view_dims.width(), my_view_dims.height(),
-                                    my_view_dims.array_layers()];       // FIXME: should be the view's layers, not the image's
+                let &(ref $first, $(ref $rest,)*) = self;
 
-                match self.rest.min_dimensions() {
-                    Some(r_dims) => {
-                        Some([
-                            cmp::min(r_dims[0], my_view_dims[0]),
-                            cmp::min(r_dims[1], my_view_dims[1]),
-                            cmp::min(r_dims[2], my_view_dims[2])
-                        ])
-                    },
-                    None => Some(my_view_dims),
-                }*/
+                // FIXME: should be the view's layers, not the image's
+                let dims = {
+                    let d = $first.parent().dimensions();
+                    debug_assert_eq!(d.depth(), 1);
+                    [d.width(), d.height(), d.array_layers()]
+                };
+
+                $(
+                    let dims = {
+                        // FIXME: should be the view's layers, not the image's
+                        let d = $rest.parent().dimensions();
+                        debug_assert_eq!(d.depth(), 1);
+                        [cmp::min(d.width(), dims[0]), cmp::min(d.height(), dims[1]),
+                         cmp::min(d.array_layers(), dims[2])]
+                    };
+                )*
+
+                Some(dims)
             }
 
             #[inline]
             fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-                unimplemented!()
+                // FIXME: implement
                 /*// TODO: "wrong" values
                 let stages = PipelineStages {
                     color_attachment_output: true,
