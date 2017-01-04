@@ -363,9 +363,8 @@ fn main() {
             //
             // The third parameter contains the list of values to clear the attachments with. Only
             // the attachments that use `load: Clear` appear in this struct.
-            .begin_render_pass(framebuffers[image_num].clone(), false, render_pass::ClearValues {
-                color: [0.0, 0.0, 1.0, 1.0]
-            })
+            .begin_render_pass(framebuffers[image_num].clone(), false,
+                               render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
 
             // We are now inside the first subpass of the render pass. We add a draw command.
             //
