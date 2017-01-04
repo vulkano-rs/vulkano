@@ -62,17 +62,13 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::RenderPassDesc;
 
         mod scope {
-            use std::sync::Arc;
-            use $crate::device::Device;
+            #![allow(non_camel_case_types)]
+
             use $crate::format::Format;
-            use $crate::framebuffer::RenderPass;
             use $crate::framebuffer::RenderPassDesc;
-            use $crate::framebuffer::RenderPassRef;
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
-            use $crate::framebuffer::FramebufferCreationError;
-            use $crate::framebuffer::RenderPassCreationError;
             use $crate::image::Layout;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;

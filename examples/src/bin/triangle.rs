@@ -321,8 +321,22 @@ fn main() {
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
     let framebuffers = images.iter().map(|image| {
+        // When we create the framebuffer we need to pass the actual list of images for the
+        // framebuffer's attachments.
+        //
+        // The type of data that corresponds to this list depends on the way you created the
+        // render pass. With the `single_pass_renderpass!` macro you need to call
+        // `.desc().start_attachments()`. The returned object will have a method whose name is the
+        // name of the first attachment. When called, it returns an object that will have a method
+        // whose name is the name of the second attachment. And so on. Only the object returned
+        // by the method of the last attachment can be passed to `Framebuffer::new`.
+        let attachments = render_pass.desc().start_attachments().color(image.clone());
+
+        // Actually creating the framebuffer. Note that we have to pass the dimensions of the
+        // framebuffer. These dimensions must be inferior or equal to the intersection of the
+        // dimensions of all the attachments.
         let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        Framebuffer::new(render_pass.clone(), dimensions, render_pass.desc().start_attachments().color(image.clone())).unwrap()
+        Framebuffer::new(render_pass.clone(), dimensions, attachments).unwrap()
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!
@@ -361,8 +375,9 @@ fn main() {
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
             //
-            // The third parameter contains the list of values to clear the attachments with. Only
-            // the attachments that use `load: Clear` appear in this struct.
+            // The third parameter builds the list of values to clear the attachments with. The API
+            // is similar to the list of attachments when building the framebuffers, except that
+            // only the attachments that use `load: Clear` appear in the list.
             .begin_render_pass(framebuffers[image_num].clone(), false,
                                render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
 
