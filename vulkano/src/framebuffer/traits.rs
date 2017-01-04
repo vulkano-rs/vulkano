@@ -373,8 +373,9 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R> where R: 
 
     fn next(&mut self) -> Option<LayoutAttachmentDescription> {
         if self.num < self.render_pass.num_attachments() {
-            Some(self.render_pass.attachment(self.num).expect("Wrong RenderPassDesc \
-                                                               implementation"))
+            let n = self.num;
+            self.num += 1;
+            Some(self.render_pass.attachment(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
@@ -392,8 +393,9 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R> where R: Re
 
     fn next(&mut self) -> Option<LayoutPassDescription> {
         if self.num < self.render_pass.num_subpasses() {
-            Some(self.render_pass.subpass(self.num).expect("Wrong RenderPassDesc \
-                                                            implementation"))
+            let n = self.num;
+            self.num += 1;
+            Some(self.render_pass.subpass(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
@@ -411,8 +413,9 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 
     fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
         if self.num < self.render_pass.num_dependencies() {
-            Some(self.render_pass.dependency(self.num).expect("Wrong RenderPassDesc \
-                                                               implementation"))
+            let n = self.num;
+            self.num += 1;
+            Some(self.render_pass.dependency(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
