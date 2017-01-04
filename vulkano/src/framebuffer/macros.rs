@@ -73,7 +73,6 @@ macro_rules! ordered_passes_renderpass {
         use $crate::framebuffer::LayoutPassDependencyDescription;
         use $crate::framebuffer::FramebufferCreationError;
         use $crate::framebuffer::RenderPassCreationError;
-        use $crate::framebuffer::IntoAttachmentsList;
         use $crate::image::Layout;
         use $crate::image::traits::ImageView;
         use $crate::sync::AccessFlagBits;
@@ -347,7 +346,9 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [] [] [] [$($params:ident),*]) => {
         unsafe impl RenderPassDescAttachmentsList<AttachmentsStart> for CustomRenderPassDesc {
-            fn check_attachments_list(&self, attachments: &AttachmentsStart) -> Result<(), FramebufferCreationError> {
+            type List = ();
+
+            fn check_attachments_list(&self, attachments: AttachmentsStart) -> Result<(), FramebufferCreationError> {
                 Ok(())        // FIXME:
             }
         }
@@ -370,9 +371,13 @@ macro_rules! ordered_passes_renderpass {
     };
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
-        unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc {
-            fn check_attachments_list(&self, attachments: &$prev<$($prev_params,)*>) -> Result<(), FramebufferCreationError> {
-                Ok(())        // FIXME:
+        unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc
+            where $($prev_params: ImageView,)*
+        {
+            type List = ($($prev_params,)*);        // TODO: wrong
+
+            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Self::List, FramebufferCreationError> {
+                unimplemented!()    // FIXME:
             }
         }
     };

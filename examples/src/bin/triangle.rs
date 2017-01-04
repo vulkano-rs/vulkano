@@ -322,7 +322,7 @@ fn main() {
     // each image.
     let framebuffers = images.iter().map(|image| {
         let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        Framebuffer::new(render_pass.clone(), dimensions, (image.clone(),)).unwrap()
+        Framebuffer::new(render_pass.clone(), dimensions, render_pass.desc().start_attachments().color(image.clone())).unwrap()
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!

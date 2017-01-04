@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -16,15 +15,12 @@ use std::sync::Arc;
 
 use command_buffer::cmd::CommandsListSink;
 use device::Device;
+use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassCompatible;
-use image::sys::Layout;
-use image::traits::ImageView;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 
 use Error;
 use OomError;
@@ -53,20 +49,17 @@ impl<Rp, A> Framebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
-    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3],
-                   attachments: Ia) -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
+    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
+               -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPassRef,
-              Rp::Desc: RenderPassDescAttachmentsList<Ia>,
-              Ia: IntoAttachmentsList<List = A>,
-              A: AttachmentsList
+              Rp::Desc: RenderPassDescAttachmentsList<Ia, List = A>,
+              A: AttachmentsList,
     {
         let device = render_pass.inner().device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
-        try!(render_pass.inner().desc().check_attachments_list(&attachments));
-
-        let attachments = attachments.into_attachments_list();
+        let attachments = try!(render_pass.inner().desc().check_attachments_list(attachments));
 
         // Checking the dimensions against the limits.
         {
@@ -215,173 +208,6 @@ impl<Rp, A> Drop for Framebuffer<Rp, A> {
         }
     }
 }
-
-pub unsafe trait AttachmentsList {
-    /// Returns the raw handles of the image views of this list.
-    // TODO: better return type
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView>;
-
-    /// Returns the minimal dimensions of the views. Returns `None` if the list is empty.
-    ///
-    /// Must be done for each component individually.
-    ///
-    /// For example if one view is 256x256x1 and another one is 128x512x2, then this function
-    /// should return 128x256x1.
-    fn min_dimensions(&self) -> Option<[u32; 3]>;
-
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>);
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyAttachmentsList;
-unsafe impl AttachmentsList for EmptyAttachmentsList {
-    #[inline]
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
-        vec![]
-    }
-
-    #[inline]
-    fn min_dimensions(&self) -> Option<[u32; 3]> {
-        None
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-    }
-}
-
-unsafe impl AttachmentsList for () {
-    #[inline]
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
-        vec![]
-    }
-
-    #[inline]
-    fn min_dimensions(&self) -> Option<[u32; 3]> {
-        None
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-    }
-}
-
-pub struct List<A, R> { pub first: A, pub rest: R }
-
-unsafe impl<A, R> AttachmentsList for List<A, R>
-    where A: ImageView,
-          R: AttachmentsList
-{
-    #[inline]
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
-        let mut list = self.rest.raw_image_view_handles();
-        list.insert(0, self.first.inner().internal_object());
-        list
-    }
-
-    #[inline]
-    fn min_dimensions(&self) -> Option<[u32; 3]> {
-        let my_view_dims = self.first.parent().dimensions();
-        debug_assert_eq!(my_view_dims.depth(), 1);
-        let my_view_dims = [my_view_dims.width(), my_view_dims.height(),
-                            my_view_dims.array_layers()];       // FIXME: should be the view's layers, not the image's
-
-        match self.rest.min_dimensions() {
-            Some(r_dims) => {
-                Some([
-                    cmp::min(r_dims[0], my_view_dims[0]),
-                    cmp::min(r_dims[1], my_view_dims[1]),
-                    cmp::min(r_dims[2], my_view_dims[2])
-                ])
-            },
-            None => Some(my_view_dims),
-        }
-    }
-
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        // TODO: "wrong" values
-        let stages = PipelineStages {
-            color_attachment_output: true,
-            late_fragment_tests: true,
-            .. PipelineStages::none()
-        };
-        
-        let access = AccessFlagBits {
-            color_attachment_read: true,
-            color_attachment_write: true,
-            depth_stencil_attachment_read: true,
-            depth_stencil_attachment_write: true,
-            .. AccessFlagBits::none()
-        };
-
-        // FIXME: adjust layers & mipmaps with the view's parameters
-        sink.add_image_transition(self.first.parent(), 0, 1, 0, 1, true, Layout::General /* FIXME: wrong */,
-                                  stages, access);
-        self.rest.add_transition(sink);
-    }
-}
-
-/// Trait for types that can be turned into a list of attachments.
-pub trait IntoAttachmentsList {
-    /// The list of attachments.
-    type List;
-
-    /// Performs the conversion.
-    fn into_attachments_list(self) -> Self::List;
-}
-
-/*impl<S, T> IntoAttachmentsList for T where T: AttachmentsList<S> {
-    type List = T;
-
-    #[inline]
-    fn into_attachments_list(self) -> T {
-        self
-    }
-}*/
-
-impl IntoAttachmentsList for () {
-    type List = EmptyAttachmentsList;
-
-    #[inline]
-    fn into_attachments_list(self) -> EmptyAttachmentsList {
-        EmptyAttachmentsList
-    }
-}
-
-macro_rules! impl_into_atch_list {
-    ($first:ident, $($rest:ident),+) => (
-        impl<$first, $($rest),+> IntoAttachmentsList for ($first, $($rest),+) {
-            type List = List<$first, <($($rest,)+) as IntoAttachmentsList>::List>;
-
-            #[inline]
-            #[allow(non_snake_case)]
-            fn into_attachments_list(self) -> Self::List {
-                let ($first, $($rest),+) = self;
-
-                List {
-                    first: $first,
-                    rest: IntoAttachmentsList::into_attachments_list(($($rest,)+))
-                }
-            }
-        }
-
-        impl_into_atch_list!($($rest),+);
-    );
-
-    ($alone:ident) => (
-        impl<A> IntoAttachmentsList for (A,) {
-            type List = List<A, EmptyAttachmentsList>;
-
-            #[inline]
-            fn into_attachments_list(self) -> Self::List {
-                List { first: self.0, rest: EmptyAttachmentsList }
-            }
-        }
-    );
-}
-
-impl_into_atch_list!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);
 
 /// Error that can happen when creating a framebuffer object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

@@ -77,9 +77,8 @@
 //!
 //! TODO
 
+pub use self::attachments_list::AttachmentsList;
 pub use self::empty::EmptySinglePassRenderPassDesc;
-pub use self::framebuffer::AttachmentsList;         // TODO: rework and remove
-pub use self::framebuffer::IntoAttachmentsList;     // TODO: rework and remove
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::sys::RenderPass;
@@ -100,6 +99,7 @@ pub use self::traits::Subpass;
 
 #[macro_use]
 mod macros;
+mod attachments_list;
 mod empty;
 mod framebuffer;
 mod sys;

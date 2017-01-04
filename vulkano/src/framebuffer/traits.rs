@@ -13,6 +13,7 @@ use device::Device;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
+use framebuffer::AttachmentsList;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPass;
@@ -436,10 +437,14 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 /// TODO: more stuff with aliasing
 ///
 pub unsafe trait RenderPassDescAttachmentsList<A>: RenderPassDesc {
+    /// The "compiled" list of attachments.
+    type List: AttachmentsList;
+
     /// Decodes a `A` into a list of attachments.
     ///
-    /// Returns an error if one of the attachments is wrong.
-    fn check_attachments_list(&self, &A) -> Result<(), FramebufferCreationError>;
+    /// Checks that the attachments match the render pass, and returns a list. Returns an error if
+    /// one of the attachments is wrong.
+    fn check_attachments_list(&self, A) -> Result<Self::List, FramebufferCreationError>;
 }
 
 /*unsafe impl<A, R> RenderPassDescAttachmentsList<A> for R where R: RenderPassDesc {
