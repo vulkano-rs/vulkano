@@ -13,7 +13,7 @@
 //!
 //! There are two concepts in Vulkan:
 //! 
-//! - A *render pass* describes the target which you are going to render to. It is a collection of
+//! - A *render pass* describes the target which you are going to render to. It is a collection
 //!   of descriptions of one or more attachments (ie. image that are rendered to), and of one or
 //!   multiples subpasses. The render pass contains the format and number of samples of each
 //!   attachment, and the attachments that are attached to each subpass. They are represented
@@ -23,27 +23,21 @@
 //!   `Framebuffer` object.
 //!
 //! Render passes are typically created at initialization only (for example during a loading
-//! screen), while framebuffers can be created and destroyed during the frame.
+//! screen) because they can be costly, while framebuffers can be created and destroyed either at
+//! initialization or during the frame.
 //!
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 //!
-//! > **Note**: While it is fast enough to create or destroy a framebuffer during a frame, it
-//! > doesn't mean that you *have to* create it during a frame. You can try to keep framebuffer
-//! > objects alive for as long as possible instead. But don't bother trying too hard if you can't.
-//!
 //! # Render passes
 //!
 //! In vulkano, a render pass is represented by the `RenderPass` struct. The `RenderPassRef` trait
-//! also exists and is implemented on objects that hold a render pass (eg. `Arc<RenderPass>`).
+//! also exists and is implemented on objects that hold a render pass (eg. `Arc<RenderPass<...>>`).
 //!
 //! The `RenderPass` struct has a template parameter that contains the description of the render
-//! pass. This template parameter must implement the `RenderPassDesc` trait. In order to create
-//! a render pass, you must first create an object that implements the `RenderPassDesc` trait, then
-//! call the `build_render_pass` method of that trait.
-//!
-//! For example the `EmptySinglePassRenderPassDesc` struct implements that trait. You can create
-//! a render pass like this:
+//! pass and which must implement the `RenderPassDesc` trait. In order to create a render pass, you
+//! must first create an object that implements the `RenderPassDesc` trait, then call the
+//! `build_render_pass` method of that trait. Example:
 //!
 //! ```
 //! use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
@@ -59,19 +53,49 @@
 //! on anything. While it's sometimes useful, most of the time it's not what you want.
 //!
 //! The easiest way to create a "real" render pass is to use the `single_pass_renderpass!` macro.
-//! See the documentation of the macro.
+//! Example:
+//!
+//! ```
+//! # #[macro_use] extern crate vulkano;
+//! # fn main() {
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! use vulkano::format::Format;
+//!
+//! let render_pass = single_pass_renderpass!(device.clone(),
+//!     attachments: {
+//!         // `foo` is a custom name we give to the first and only attachment.
+//!         foo: {
+//!             load: Clear,
+//!             store: Store,
+//!             format: Format::R8G8B8A8Unorm,
+//!             samples: 1,
+//!         }
+//!     },
+//!     pass: {
+//!         color: [foo],       // Repeat the attachment name here.
+//!         depth_stencil: {}
+//!     }
+//! ).unwrap();
+//! # }
+//! ```
+//!
+//! See the documentation of the macro for more details. TODO: put link here
 //!
 //! # Framebuffers
 //!
 //! Creating a framebuffer is done by passing the render pass object, the dimensions of the
 //! framebuffer, and the list of attachments to `Framebuffer::new()`.
 //!
-//! The tricky part is that the type that contains the list of attachments depends on the
-//! template parameter of the `RenderPass` object. For example if you use an
-//! `EmptySinglePassRenderPass`, you have to pass `()` for the list of attachments.
+//! One tricky part is that the type that contains the list of attachments depends on the
+//! render pass description you're using (ie. the template parameter of the `RenderPass` object).
+//! For example if you use an `EmptySinglePassRenderPass`, you have to pass `()` for the list of
+//! attachments.
 //!
 //! When it comes to `single_pass_renderpass!` and `ordered_passes_renderpass!` you can build a
-//! list of attachments by TODO.
+//! list of attachments by calling `start_attachment()`, which will return an object that has a
+//! method whose name is the name of the first attachment and that can be used to specify it. This
+//! method will return another object that has a method whose name is the name of the second
+//! attachment, and so on. See the documentation of the macro for more details. TODO: put link here
 //!
 //! ## Example
 //!
