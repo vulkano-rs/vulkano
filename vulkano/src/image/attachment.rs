@@ -134,6 +134,8 @@ impl<F> AttachmentImage<F> {
                 -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
+        // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+
         let is_depth = match format.format().ty() {
             FormatTy::Depth => true,
             FormatTy::DepthStencil => true,

@@ -22,13 +22,12 @@ pub unsafe trait AttachmentsList {
     // TODO: better return type
     fn raw_image_view_handles(&self) -> Vec<vk::ImageView>;
 
-    /// Returns the minimal dimensions of the views. Returns `None` if the list is empty.
+    /// Returns the dimensions of the intersection of the views. Returns `None` if the list is
+    /// empty.
     ///
-    /// Must be done for each component individually.
-    ///
-    /// For example if one view is 256x256x1 and another one is 128x512x2, then this function
-    /// should return 128x256x1.
-    fn min_dimensions(&self) -> Option<[u32; 3]>;
+    /// For example if one view is 256x256x2 and another one is 128x512x3, then this function
+    /// should return 128x256x2.
+    fn intersection_dimensions(&self) -> Option<[u32; 3]>;
 
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>);
 }
@@ -40,7 +39,7 @@ unsafe impl AttachmentsList for () {
     }
 
     #[inline]
-    fn min_dimensions(&self) -> Option<[u32; 3]> {
+    fn intersection_dimensions(&self) -> Option<[u32; 3]> {
         None
     }
 
@@ -70,23 +69,24 @@ macro_rules! impl_into_atch_list {
 
             #[inline]
             #[allow(non_snake_case)]
-            fn min_dimensions(&self) -> Option<[u32; 3]> {
+            fn intersection_dimensions(&self) -> Option<[u32; 3]> {
                 let &(ref $first, $(ref $rest,)*) = self;
 
-                // FIXME: should be the view's layers, not the image's
                 let dims = {
-                    let d = $first.parent().dimensions();
+                    let d = $first.dimensions();
                     debug_assert_eq!(d.depth(), 1);
                     [d.width(), d.height(), d.array_layers()]
                 };
 
                 $(
                     let dims = {
-                        // FIXME: should be the view's layers, not the image's
-                        let d = $rest.parent().dimensions();
+                        let d = $rest.dimensions();
                         debug_assert_eq!(d.depth(), 1);
-                        [cmp::min(d.width(), dims[0]), cmp::min(d.height(), dims[1]),
-                         cmp::min(d.array_layers(), dims[2])]
+                        [
+                            cmp::min(d.width(), dims[0]),
+                            cmp::min(d.height(), dims[1]),
+                            cmp::min(d.array_layers(), dims[2])
+                        ]
                     };
                 )*
 

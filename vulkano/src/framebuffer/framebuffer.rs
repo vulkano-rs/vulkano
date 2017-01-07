@@ -73,28 +73,16 @@ impl<Rp, A> Framebuffer<Rp, A> {
             }
         }
 
-        let ids = attachments.raw_image_view_handles();
-
-        // FIXME: restore dimensions check
-        /*let ids = {
-            let mut ids = SmallVec::<[_; 8]>::new();
-
-            for &(ref a, _, _, _) in attachments.iter() {
-                debug_assert!(a.identity_swizzle());
-                // TODO: add more checks with debug_assert!
-
-                let atch_dims = a.parent().dimensions();
-                if atch_dims.width() < dimensions[0] || atch_dims.height() < dimensions[1] ||
-                   atch_dims.array_layers() < dimensions[2]      // TODO: wrong, since it must be the array layers of the view and not of the image
-                {
-                    return Err(FramebufferCreationError::AttachmentTooSmall);
-                }
-
-                ids.push(a.inner().internal_object());
+        // Checking the dimensions against the attachments.
+        if let Some(dims_constraints) = attachments.intersection_dimensions() {
+            if dims_constraints[0] < dimensions[0] || dims_constraints[1] < dimensions[1] ||
+               dims_constraints[2] < dimensions[2]
+            {
+                return Err(FramebufferCreationError::AttachmentTooSmall);
             }
+        }
 
-            ids
-        };*/
+        let ids = attachments.raw_image_view_handles();
 
         let framebuffer = unsafe {
             let vk = render_pass.inner().device().pointers();
