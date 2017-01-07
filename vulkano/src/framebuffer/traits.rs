@@ -96,20 +96,30 @@ unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
     }
 }
 
-/// Trait for objects that contain the description of a a render pass.
+/// Trait for objects that contain the description of a render pass.
 ///
-/// See also `RenderPassDescAttachmentsList` and `RenderPassClearValues` which are extensions to this
-/// trait.
+/// See also all the traits whose name start with `RenderPassDesc` (eg. `RenderPassDescAttachments`
+/// or TODO: rename existing traits to match this). They are extensions to this trait.
 ///
 /// # Safety
 ///
-/// TODO:
+/// TODO: finish this section
 /// - All color and depth/stencil attachments used by any given subpass must have the same number
 ///   of samples.
+/// - The trait methods should always return the same values, unless you modify the description
+///   through a mutable borrow. Once you pass the `RenderPassDesc` object to vulkano, you can still
+///   access it through the `RenderPass::desc()` method that returns a shared borrow to the
+///   description. It must not be possible for a shared borrow to modify the description in such a
+///   way that the description changes.
+/// - The provided methods shouldn't be overriden with fancy implementations. For example
+///   `build_render_pass` must build a render pass from the description and not a different one.
+///
 pub unsafe trait RenderPassDesc {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
     /// Returns the description of an attachment.
+    ///
+    /// Returns `None` if `num` is superior to `num_attachments()`.
     fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription>;
     /// Returns an iterator to the list of attachments.
     #[inline]
@@ -120,6 +130,8 @@ pub unsafe trait RenderPassDesc {
     /// Returns the number of subpasses of the render pass.
     fn num_subpasses(&self) -> usize;
     /// Returns the description of a suvpass.
+    ///
+    /// Returns `None` if `num` is superior to `num_subpasses()`.
     fn subpass(&self, num: usize) -> Option<LayoutPassDescription>;
     /// Returns an iterator to the list of subpasses.
     #[inline]
@@ -130,6 +142,8 @@ pub unsafe trait RenderPassDesc {
     /// Returns the number of dependencies of the render pass.
     fn num_dependencies(&self) -> usize;
     /// Returns the description of a dependency.
+    ///
+    /// Returns `None` if `num` is superior to `num_dependencies()`.
     fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
     /// Returns an iterator to the list of dependencies.
     #[inline]
@@ -148,7 +162,7 @@ pub unsafe trait RenderPassDesc {
         RenderPass::new(device, self)
     }
 
-    /// Returns the number of color attachments in a subpass. Returns `None` if out of range.
+    /// Returns the number of color attachments of a subpass. Returns `None` if out of range.
     #[inline]
     fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
         (&self).subpasses().skip(subpass as usize).next().map(|p| p.color_attachments.len() as u32)
@@ -362,6 +376,7 @@ unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
     }
 }
 
+/// Iterator to the attachments of a `RenderPassDesc`.
 #[derive(Debug, Copy, Clone)]
 pub struct RenderPassDescAttachments<'a, R: ?Sized + 'a> {
     render_pass: &'a R,
@@ -382,6 +397,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R> where R: 
     }
 }
 
+/// Iterator to the subpasses of a `RenderPassDesc`.
 #[derive(Debug, Copy, Clone)]
 pub struct RenderPassDescSubpasses<'a, R: ?Sized + 'a> {
     render_pass: &'a R,
@@ -402,6 +418,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R> where R: Re
     }
 }
 
+/// Iterator to the subpass dependencies of a `RenderPassDesc`.
 #[derive(Debug, Copy, Clone)]
 pub struct RenderPassDescDependencies<'a, R: ?Sized + 'a> {
     render_pass: &'a R,
@@ -457,6 +474,18 @@ pub unsafe trait RenderPassDescAttachmentsList<A>: RenderPassDesc {
 }*/
 
 /// Extension trait for `RenderPassDesc`. Defines which types are allowed as a list of clear values.
+///
+/// When the user enters a render pass, they need to pass a list of clear values to apply to
+/// the attachments of the framebuffer. To do so, the `RenderPassDesc` of the framebuffer must
+/// implement `RenderPassClearValues<C>` where `C` is the parameter that the user passed. The
+/// trait method is then responsible for checking the correctness of these values and turning
+/// them into a list that can be processed by vulkano.
+///
+/// Only the attachments whose `LoadOp` is `Clear` should appear in the list returned by the
+/// method. Other attachments simply should not appear. TODO: check that this is correct
+/// For example if attachments 1, 2 and 4 are `Clear` and attachments 0 and 3 are `Load`, then
+/// the list returned by the function must have three elements which are the clear values of
+/// attachments 1, 2 and 4.
 ///
 /// # Safety
 ///
@@ -679,15 +708,19 @@ pub struct LayoutPassDependencyDescription {
 #[repr(u32)]
 pub enum StoreOp {
     /// The attachment will be stored. This is what you usually want.
+    ///
+    /// While this is the most intuitive option, it is also slower than `DontCare` because it can
+    /// take time to write the data back to memory.
     Store = vk::ATTACHMENT_STORE_OP_STORE,
 
     /// What happens is implementation-specific.
     ///
     /// This is purely an optimization compared to `Store`. The implementation doesn't need to copy
-    /// from the internal cache to the memory, which saves bandwidth.
+    /// from the internal cache to the memory, which saves memory bandwidth.
     ///
     /// This doesn't mean that the data won't be copied, as an implementation is also free to not
-    /// use a cache and write the output directly in memory.
+    /// use a cache and write the output directly in memory. In other words, the content of the
+    /// image will be undefined.
     DontCare = vk::ATTACHMENT_STORE_OP_DONT_CARE,
 }
 
@@ -695,12 +728,15 @@ pub enum StoreOp {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum LoadOp {
-    /// The attachment will be loaded. This is what you want if you want to draw over
-    /// something existing.
+    /// The content of the attachment will be loaded from memory. This is what you want if you want
+    /// to draw over something existing.
+    ///
+    /// While this is the most intuitive option, it is also the slowest because it uses a lot of
+    /// memory bandwidth.
     Load = vk::ATTACHMENT_LOAD_OP_LOAD,
 
-    /// The attachment will be cleared by the implementation with a uniform value that you must
-    /// provide when you start drawing.
+    /// The content of the attachment will be filled by the implementation with a uniform value
+    /// that you must provide when you start drawing.
     ///
     /// This is what you usually use at the start of a frame, in order to reset the content of
     /// the color, depth and/or stencil buffers.
@@ -710,7 +746,10 @@ pub enum LoadOp {
 
     /// The attachment will have undefined content.
     ///
-    /// This is what you should use for attachments that you intend to overwrite entirely.
+    /// This is what you should use for attachments that you intend to entirely cover with draw
+    /// commands.
+    /// If you are going to fill the attachment with a uniform value, it is better to use `Clear`
+    /// instead.
     DontCare = vk::ATTACHMENT_LOAD_OP_DONT_CARE,
 }
 
