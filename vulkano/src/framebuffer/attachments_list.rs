@@ -9,18 +9,17 @@
 
 use std::cmp;
 use command_buffer::cmd::CommandsListSink;
-use image::traits::ImageView;
+use image::ImageView;
+use image::sys::UnsafeImageView;
 //use sync::AccessFlagBits;
 //use sync::PipelineStages;
-use VulkanObject;
-use vk;
 
 /// A list of attachments.
 // TODO: rework this trait
 pub unsafe trait AttachmentsList {
-    /// Returns the raw handles of the image views of this list.
+    /// Returns the image views of this list.
     // TODO: better return type
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView>;
+    fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView>;
 
     /// Returns the dimensions of the intersection of the views. Returns `None` if the list is
     /// empty.
@@ -34,7 +33,7 @@ pub unsafe trait AttachmentsList {
 
 unsafe impl AttachmentsList for () {
     #[inline]
-    fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
+    fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
         vec![]
     }
 
@@ -56,13 +55,13 @@ macro_rules! impl_into_atch_list {
         {
             #[inline]
             #[allow(non_snake_case)]
-            fn raw_image_view_handles(&self) -> Vec<vk::ImageView> {
+            fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
                 let &(ref $first, $(ref $rest,)*) = self;
                 
                 vec![
-                    $first.inner().internal_object(),
+                    &$first.inner(),
                     $(
-                        $rest.inner().internal_object(),
+                        &$rest.inner(),
                     )*
                 ]
             }

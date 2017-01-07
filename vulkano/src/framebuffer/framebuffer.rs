@@ -12,6 +12,7 @@ use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 use command_buffer::cmd::CommandsListSink;
 use device::Device;
@@ -82,7 +83,8 @@ impl<Rp, A> Framebuffer<Rp, A> {
             }
         }
 
-        let ids = attachments.raw_image_view_handles();
+        let ids: SmallVec<[vk::ImageView; 8]> =
+            attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
 
         let framebuffer = unsafe {
             let vk = render_pass.inner().device().pointers();
