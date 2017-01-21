@@ -35,9 +35,13 @@ use vk;
 ///
 /// The template parameter contains the descriptor set to use with this pipeline.
 pub struct ComputePipeline<Pl> {
+    inner: Inner,
+    pipeline_layout: Pl,
+}
+
+struct Inner {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
-    pipeline_layout: Pl,
 }
 
 impl ComputePipeline<()> {
@@ -97,8 +101,10 @@ impl ComputePipeline<()> {
         };
 
         Ok(ComputePipeline {
-            device: device.clone(),
-            pipeline: pipeline,
+            inner: Inner {
+                device: device.clone(),
+                pipeline: pipeline,
+            },
             pipeline_layout: pipeline_layout,
         })
     }
@@ -108,13 +114,24 @@ impl<Pl> ComputePipeline<Pl> {
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
-        &self.device
+        &self.inner.device
     }
 
     /// Returns the pipeline layout used in this compute pipeline.
     #[inline]
     pub fn layout(&self) -> &Pl {
         &self.pipeline_layout
+    }
+
+    /// Puts the pipeline layout in a box.
+    #[inline]
+    pub fn boxed_layout(self) -> ComputePipeline<Box<PipelineLayoutRef>>
+        where Pl: PipelineLayoutRef + 'static
+    {
+        ComputePipeline {
+            inner: self.inner,
+            pipeline_layout: Box::new(self.pipeline_layout) as Box<_>,
+        }
     }
 }
 
@@ -145,11 +162,11 @@ unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
-        self.pipeline
+        self.inner.pipeline
     }
 }
 
-impl<Pl> Drop for ComputePipeline<Pl> {
+impl Drop for Inner {
     #[inline]
     fn drop(&mut self) {
         unsafe {

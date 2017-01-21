@@ -925,7 +925,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     where L: PipelineLayoutRef + 'static
 {
-    /// Returns the pipeline layout used in the constructor.
+    /// Puts the pipeline layout in a box.
     #[inline]
     pub fn boxed_layout(self) -> GraphicsPipeline<Mv, Box<PipelineLayoutRef>, Rp> {
         GraphicsPipeline {
