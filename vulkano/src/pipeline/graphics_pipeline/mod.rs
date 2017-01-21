@@ -126,8 +126,7 @@ pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel
 /// This object contains the shaders and the various fixed states that describe how the
 /// implementation should perform the various operations needed by a draw command.
 pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
-    pipeline: vk::Pipeline,
-    device: Arc<Device>,
+    inner: Inner,
     layout: Layout,
 
     render_pass: RenderP,
@@ -146,6 +145,11 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     dynamic_blend_constants: bool,
 
     num_viewports: u32,
+}
+
+struct Inner {
+    pipeline: vk::Pipeline,
+    device: Arc<Device>,
 }
 
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
@@ -878,8 +882,10 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         let (render_pass, render_pass_subpass) = params.render_pass.into();
 
         Ok(Arc::new(GraphicsPipeline {
-            device: device.clone(),
-            pipeline: pipeline,
+            inner: Inner {
+                device: device.clone(),
+                pipeline: pipeline,
+            },
             layout: pipeline_layout,
 
             vertex_definition: params.vertex_input,
@@ -912,7 +918,33 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     /// Returns the device used to create this pipeline.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
-        &self.device
+        &self.inner.device
+    }
+}
+
+impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutRef + 'static
+{
+    /// Returns the pipeline layout used in the constructor.
+    #[inline]
+    pub fn boxed_layout(self) -> GraphicsPipeline<Mv, Box<PipelineLayoutRef>, Rp> {
+        GraphicsPipeline {
+            inner: self.inner,
+            layout: Box::new(self.layout) as Box<_>,
+            render_pass: self.render_pass,
+            render_pass_subpass: self.render_pass_subpass,
+            vertex_definition: self.vertex_definition,
+            dynamic_line_width: self.dynamic_line_width,
+            dynamic_viewport: self.dynamic_viewport,
+            dynamic_scissor: self.dynamic_scissor,
+            dynamic_depth_bias: self.dynamic_depth_bias,
+            dynamic_depth_bounds: self.dynamic_depth_bounds,
+            dynamic_stencil_compare_mask: self.dynamic_stencil_compare_mask,
+            dynamic_stencil_write_mask: self.dynamic_stencil_write_mask,
+            dynamic_stencil_reference: self.dynamic_stencil_reference,
+            dynamic_blend_constants: self.dynamic_blend_constants,
+            num_viewports: self.num_viewports,
+        }
     }
 }
 
@@ -1007,7 +1039,7 @@ unsafe impl<Mv, L, Rp> PipelineLayoutRef for GraphicsPipeline<Mv, L, Rp>
 
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        &self.inner.device
     }
 
     #[inline]
@@ -1021,11 +1053,11 @@ unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
-        self.pipeline
+        self.inner.pipeline
     }
 }
 
-impl<Mv, L, Rp> Drop for GraphicsPipeline<Mv, L, Rp> {
+impl Drop for Inner {
     #[inline]
     fn drop(&mut self) {
         unsafe {
