@@ -21,6 +21,7 @@ use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
 use swapchain::SurfaceSwapchainLock;
+use swapchain::SupportedSurfaceTransforms;
 use swapchain::display::DisplayMode;
 use swapchain::display::DisplayPlane;
 
@@ -55,8 +56,7 @@ impl Surface {
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
                              -> Result<Arc<Surface>, SurfaceCreationError>
     {
-        unimplemented!()        // TODO:
-        /*if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
+        if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
             return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
         }
 
@@ -73,14 +73,14 @@ impl Surface {
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 displayMode: display_mode.internal_object(),
-                planeIndex: plane.index,
-                planeStackIndex: plane.properties.currentStackIndex,
+                planeIndex: plane.index(),
+                planeStackIndex: 0, // FIXME: plane.properties.currentStackIndex,
                 transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,      // TODO: let user choose
                 globalAlpha: 0.0,       // TODO: let user choose
                 alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,       // TODO: let user choose
                 imageExtent: vk::Extent2D {     // TODO: let user choose
-                    width: display_mode.parameters.visibleRegion.width,
-                    height: display_mode.parameters.visibleRegion.height,
+                    width: display_mode.visible_region()[0],
+                    height: display_mode.visible_region()[1],
                 },
             };
 
@@ -93,7 +93,8 @@ impl Surface {
         Ok(Arc::new(Surface {
             instance: instance.clone(),
             surface: surface,
-        }))*/
+            has_swapchain: AtomicBool::new(false),
+        }))
     }
 
     /// Creates a `Surface` from a Win32 window.
@@ -683,113 +684,6 @@ pub enum SurfaceTransform {
     HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
     /// Let the operating system or driver implementation choose.
     Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
-}
-
-/// List of supported composite alpha modes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedSurfaceTransforms {
-    pub identity: bool,
-    pub rotate90: bool,
-    pub rotate180: bool,
-    pub rotate270: bool,
-    pub horizontal_mirror: bool,
-    pub horizontal_mirror_rotate90: bool,
-    pub horizontal_mirror_rotate180: bool,
-    pub horizontal_mirror_rotate270: bool,
-    pub inherit: bool,
-}
-
-impl SupportedSurfaceTransforms {
-    /// Builds a `SupportedSurfaceTransforms` with all fields set to false.
-    #[inline]
-    pub fn none() -> SupportedSurfaceTransforms {
-        SupportedSurfaceTransforms {
-            identity: false,
-            rotate90: false,
-            rotate180: false,
-            rotate270: false,
-            horizontal_mirror: false,
-            horizontal_mirror_rotate90: false,
-            horizontal_mirror_rotate180: false,
-            horizontal_mirror_rotate270: false,
-            inherit: false,
-        }
-    }
-
-    #[inline]
-    fn from_bits(val: u32) -> SupportedSurfaceTransforms {
-        macro_rules! v {
-            ($val:expr, $out:ident, $e:expr, $f:ident) => (
-                if ($val & $e) != 0 { $out.$f = true; }
-            );
-        }
-
-        let mut result = SupportedSurfaceTransforms::none();
-        v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, identity);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, horizontal_mirror);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-                        horizontal_mirror_rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-                        horizontal_mirror_rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-                        horizontal_mirror_rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
-        result
-    }
-
-    /// Returns true if the given `SurfaceTransform` is in this list.
-    #[inline]
-    pub fn supports(&self, value: SurfaceTransform) -> bool {
-        match value {
-            SurfaceTransform::Identity => self.identity,
-            SurfaceTransform::Rotate90 => self.rotate90,
-            SurfaceTransform::Rotate180 => self.rotate180,
-            SurfaceTransform::Rotate270 => self.rotate270,
-            SurfaceTransform::HorizontalMirror => self.horizontal_mirror,
-            SurfaceTransform::HorizontalMirrorRotate90 => self.horizontal_mirror_rotate90,
-            SurfaceTransform::HorizontalMirrorRotate180 => self.horizontal_mirror_rotate180,
-            SurfaceTransform::HorizontalMirrorRotate270 => self.horizontal_mirror_rotate270,
-            SurfaceTransform::Inherit => self.inherit,
-        }
-    }
-
-    /// Returns an iterator to the list of supported composite alpha.
-    #[inline]
-    pub fn iter(&self) -> SupportedSurfaceTransformsIter {
-        SupportedSurfaceTransformsIter(self.clone())
-    }
-}
-
-/// Enumeration of the `SurfaceTransform` that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedSurfaceTransformsIter(SupportedSurfaceTransforms);
-
-impl Iterator for SupportedSurfaceTransformsIter {
-    type Item = SurfaceTransform;
-
-    #[inline]
-    fn next(&mut self) -> Option<SurfaceTransform> {
-        if self.0.identity { self.0.identity = false; return Some(SurfaceTransform::Identity); }
-        if self.0.rotate90 { self.0.rotate90 = false; return Some(SurfaceTransform::Rotate90); }
-        if self.0.rotate180 { self.0.rotate180 = false; return Some(SurfaceTransform::Rotate180); }
-        if self.0.rotate270 { self.0.rotate270 = false; return Some(SurfaceTransform::Rotate270); }
-        if self.0.horizontal_mirror { self.0.horizontal_mirror = false; return Some(SurfaceTransform::HorizontalMirror); }
-        if self.0.horizontal_mirror_rotate90 { self.0.horizontal_mirror_rotate90 = false; return Some(SurfaceTransform::HorizontalMirrorRotate90); }
-        if self.0.horizontal_mirror_rotate180 { self.0.horizontal_mirror_rotate180 = false; return Some(SurfaceTransform::HorizontalMirrorRotate180); }
-        if self.0.horizontal_mirror_rotate270 { self.0.horizontal_mirror_rotate270 = false; return Some(SurfaceTransform::HorizontalMirrorRotate270); }
-        if self.0.inherit { self.0.inherit = false; return Some(SurfaceTransform::Inherit); }
-        None
-    }
-}
-
-impl Default for SurfaceTransform {
-    #[inline]
-    fn default() -> SurfaceTransform {
-        SurfaceTransform::Identity
-    }
 }
 
 /// How the alpha values of the pixels of the window are treated.

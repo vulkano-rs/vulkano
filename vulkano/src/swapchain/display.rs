@@ -9,8 +9,21 @@
 
 //! Allows you to create surfaces that fill a whole display, outside of the windowing system.
 //! 
-//! As far as the author knows, no existing device supports these features. Therefore the code here
-//! is mostly a draft and needs rework in both the API and the implementation.
+//! **As far as the author knows, no existing device supports these features. Therefore the code
+//! here is mostly a draft and needs rework in both the API and the implementation.**
+//! 
+//! The purpose of the objects in this module is to let you create a `Surface` object that
+//! represents a location on the screen. This is done in four steps:
+//! 
+//! - Choose a `Display` where the surface will be located. A `Display` represents a display
+//!   display, usually a monitor. The available displays can be enumerated with
+//!   `Display::enumerate`.
+//! - Choose a `DisplayMode`, which is the combination of a display, a resolution and a refresh
+//!   rate. You can enumerate the modes available on a display with `Display::display_modes`, or
+//!   attempt to create your own mode with `TODO`.
+//! - Choose a `DisplayPlane`. A display can show multiple planes in a stacking fashion.
+//! - Create a `Surface` object with `Surface::from_display_mode` and pass the chosen `DisplayMode`
+//!   and `DisplayPlane`.
 
 #![allow(dead_code)]        // TODO: this module isn't finished
 #![allow(unused_variables)]        // TODO: this module isn't finished
@@ -22,6 +35,7 @@ use std::vec::IntoIter;
 
 use instance::Instance;
 use instance::PhysicalDevice;
+use swapchain::SupportedSurfaceTransforms;
 
 use check_errors;
 use OomError;
@@ -33,6 +47,7 @@ use vk;
 
 /// ?
 // TODO: plane capabilities
+// TODO: store properties in the instance?
 pub struct DisplayPlane {
     instance: Arc<Instance>,
     physical_device: usize,
@@ -111,6 +126,12 @@ impl DisplayPlane {
         PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
     }
 
+    /// Returns the index of the plane.
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+
     /// Returns true if this plane supports the given display.
     #[inline]
     pub fn supports(&self, display: &Display) -> bool {
@@ -124,6 +145,7 @@ impl DisplayPlane {
 }
 
 /// Represents a monitor connected to a physical device.
+// TODO: store properties in the instance?
 #[derive(Clone)]
 pub struct Display {
     instance: Arc<Instance>,
@@ -179,8 +201,9 @@ impl Display {
     #[inline]
     pub fn name(&self) -> &str {
         unsafe {
-            CStr::from_ptr(self.properties.displayName).to_str()
-                                                    .expect("non UTF-8 characters in display name")
+            CStr::from_ptr(self.properties.displayName)
+                .to_str()
+                .expect("non UTF-8 characters in display name")
         }
     }
 
@@ -190,11 +213,39 @@ impl Display {
         PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
     }
 
-    /// Returns the physical resolution of the display.
+    /// Returns the physical dimensions of the display in millimeters.
+    #[inline]
+    pub fn physical_dimensions(&self) -> [u32; 2] {
+        let ref r = self.properties.physicalDimensions;
+        [r.width, r.height]
+    }
+
+    /// Returns the physical, native, or preferred resolution of the display.
+    ///
+    /// > **Note**: The display is usually still capable of displaying other resolutions. This is
+    /// > only the "best" resolution.
     #[inline]
     pub fn physical_resolution(&self) -> [u32; 2] {
         let ref r = self.properties.physicalResolution;
         [r.width, r.height]
+    }
+
+    /// Returns the transforms supported by this display.
+    #[inline]
+    pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
+        SupportedSurfaceTransforms::from_bits(self.properties.supportedTransforms)
+    }
+
+    /// Returns true if TODO.
+    #[inline]
+    pub fn plane_reorder_possible(&self) -> bool {
+        self.properties.planeReorderPossible != 0
+    }
+
+    /// Returns true if TODO.
+    #[inline]
+    pub fn persistent_content(&self) -> bool {
+        self.properties.persistentContent != 0
     }
 
     /// See the docs of display_modes().
