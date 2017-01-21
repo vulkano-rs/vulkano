@@ -28,6 +28,8 @@ extern crate winit;
 // winit, and winit doesn't know about vulkano, so import a crate that will provide a link between
 // the two.
 extern crate vulkano_win;
+#[macro_use]
+extern crate vulkano_shader_derive;
 
 use vulkano_win::VkSurfaceBuild;
 
@@ -213,9 +215,40 @@ fn main() {
     // can now use to load the shader.
     //
     // Because of some restrictions with the `include!` macro, we need to use a module.
-    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_vs.glsl")} }
+    mod vs {
+        #[derive(VulkanoShader)]
+        #[ty = "vertex"]
+        #[src = "
+#version 450
+
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_shading_language_450pack : enable
+
+layout(location = 0) in vec2 position;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}"]
+        struct Dummy;
+    }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/triangle_fs.glsl")} }
+
+    mod fs {
+        #[derive(VulkanoShader)]
+        #[ty = "fragment"]
+        #[src = "
+#version 450
+
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_shading_language_450pack : enable
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}"]
+        struct Dummy;
+    }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
