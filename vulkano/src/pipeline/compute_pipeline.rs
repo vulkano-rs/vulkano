@@ -44,7 +44,7 @@ impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
     pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
                          specialization: &Css) 
-                         -> Result<Arc<ComputePipeline<PipelineLayout<Csl>>>, ComputePipelineCreationError>
+                         -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
@@ -96,11 +96,11 @@ impl ComputePipeline<()> {
             output
         };
 
-        Ok(Arc::new(ComputePipeline {
+        Ok(ComputePipeline {
             device: device.clone(),
             pipeline: pipeline,
             pipeline_layout: pipeline_layout,
-        }))
+        })
     }
 }
 
