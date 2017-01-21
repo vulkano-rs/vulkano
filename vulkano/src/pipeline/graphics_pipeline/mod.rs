@@ -168,7 +168,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
                                               Fs, Fi, Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>>, GraphicsPipelineCreationError>
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -203,7 +203,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
                                               Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>>, GraphicsPipelineCreationError>
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -252,7 +252,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
                                               Fo, Fl, Rp>)
-              -> Result<Arc<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>>, GraphicsPipelineCreationError>
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -303,7 +303,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                                 Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>,
                  pipeline_layout: L)
-                 -> Result<Arc<GraphicsPipeline<Vdef, L, Rp>>, GraphicsPipelineCreationError>
+                 -> Result<GraphicsPipeline<Vdef, L, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Fo: ShaderInterfaceDef,
               Vl: PipelineLayoutDescNames,
@@ -881,7 +881,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         let (render_pass, render_pass_subpass) = params.render_pass.into();
 
-        Ok(Arc::new(GraphicsPipeline {
+        Ok(GraphicsPipeline {
             inner: Inner {
                 device: device.clone(),
                 pipeline: pipeline,
@@ -904,7 +904,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             dynamic_blend_constants: params.blend.blend_constants.is_none(),
 
             num_viewports: params.viewport.num_viewports(),
-        }))
+        })
     }
 }
 
