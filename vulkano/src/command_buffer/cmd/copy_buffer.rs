@@ -12,22 +12,16 @@ use std::error;
 use std::fmt;
 
 use buffer::Buffer;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
 /// another.
-pub struct CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
-{
-    // Parent commands list.
-    previous: L,
+pub struct CmdCopyBuffer<S, D> {
     source: S,
     source_raw: vk::Buffer,
     destination: D,
@@ -37,8 +31,8 @@ pub struct CmdCopyBuffer<L, S, D>
     size: vk::DeviceSize,
 }
 
-impl<L, S, D> CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+impl<S, D> CmdCopyBuffer<S, D>
+    where S: Buffer, D: Buffer
 {
     /// Builds a new command.
     ///
@@ -49,8 +43,8 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
     ///
     /// - Panics if the source and destination were not created with the same device.
     // FIXME: type safety
-    pub fn new(previous: L, source: S, destination: D)
-               -> Result<CmdCopyBuffer<L, S, D>, CmdCopyBufferError>
+    pub fn new(source: S, destination: D)
+               -> Result<CmdCopyBuffer<S, D>, CmdCopyBufferError>
     {
         // TODO:
         //assert!(previous.is_outside_render_pass());     // TODO: error
@@ -82,7 +76,6 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
         }
 
         Ok(CmdCopyBuffer {
-            previous: previous,
             source: source,
             source_raw: source_raw,
             destination: destination,
@@ -94,42 +87,29 @@ impl<L, S, D> CmdCopyBuffer<L, S, D>
     }
 }
 
-unsafe impl<L, S, D> CommandsList for CmdCopyBuffer<L, S, D>
-    where L: CommandsList, S: Buffer, D: Buffer
+unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBuffer<S, D>> for UnsafeCommandBufferBuilder<P>
+    where S: Buffer,
+          D: Buffer,
+          P: CommandPool,
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdCopyBuffer<S, D>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        assert_eq!(self.source.inner().buffer.device().internal_object(),
-                   builder.device().internal_object());
+            let region = vk::BufferCopy {
+                srcOffset: command.src_offset,
+                dstOffset: command.dst_offset,
+                size: command.size,
+            };
 
-        {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.source, 0, self.size as usize, false,
-                                          stages, access);
-        }
-        
-        {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.destination, 0, self.size as usize, true,
-                                          stages, access);
+            vk.CmdCopyBuffer(cmd, command.source_raw, command.destination_raw, 1, &region);
         }
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                let region = vk::BufferCopy {
-                    srcOffset: self.src_offset,
-                    dstOffset: self.dst_offset,
-                    size: self.size,
-                };
-                vk.CmdCopyBuffer(cmd, self.source_raw, self.destination_raw, 1, &region);
-            }
-        }));
+        self
     }
 }
 

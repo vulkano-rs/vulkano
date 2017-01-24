@@ -34,8 +34,9 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer;
+use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
-use vulkano::command_buffer::CommandsList;
 use vulkano::command_buffer::Submit;
 use vulkano::command_buffer::Submission;
 use vulkano::descriptor::pipeline_layout::PipelineLayout;
@@ -257,7 +258,7 @@ fn main() {
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+    let pipeline = Arc::new(GraphicsPipeline::new(&device, GraphicsPipelineParams {
         // We need to indicate the layout of the vertices.
         // The type `SingleBufferDefinition` actually contains a template parameter corresponding
         // to the type of each vertex. But in this code it is automatically inferred.
@@ -313,7 +314,7 @@ fn main() {
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
         render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
-    }).unwrap();
+    }).unwrap());
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
@@ -370,7 +371,7 @@ fn main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer = command_buffer::empty()
+        let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
@@ -390,10 +391,10 @@ fn main() {
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
             // next subpass.
-            .end_render_pass().unwrap()
+            .end_render_pass()
 
             // Finish building the command buffer by calling `build`.
-            .build_primary(&device, queue.family()).unwrap();
+            .build();
 
         // Now all we need to do is submit the command buffer to the queue.
         submissions.push(command_buffer.submit(&queue).unwrap());

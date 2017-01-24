@@ -11,9 +11,9 @@ use std::error;
 use std::fmt;
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use format::FormatTy;
 use image::Image;
 use image::Layout;

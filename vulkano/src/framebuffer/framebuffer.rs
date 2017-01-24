@@ -14,7 +14,6 @@ use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::cmd::CommandsListSink;
 use device::Device;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
@@ -158,13 +157,6 @@ impl<Rp, A> Framebuffer<Rp, A> {
     #[inline]
     pub fn render_pass(&self) -> &Rp {
         &self.render_pass
-    }
-
-    #[inline]
-    pub fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>)
-        where A: AttachmentsList
-    {
-        self.resources.add_transition(sink);
     }
 }
 

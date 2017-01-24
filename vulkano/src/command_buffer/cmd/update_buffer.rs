@@ -12,22 +12,17 @@ use std::fmt;
 
 use buffer::Buffer;
 use buffer::BufferInner;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::cmd::CommandsListPossibleOutsideRenderPass;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds an update buffer command at the end of it.
-pub struct CmdUpdateBuffer<'a, L, B, D: ?Sized>
-    where B: Buffer, L: CommandsList, D: 'static
+/// A buffer update command.
+pub struct CmdUpdateBuffer<'a, B, D: ?Sized>
+    where D: 'a
 {
-    // Parent commands list.
-    previous: L,
     // The buffer to update.
     buffer: B,
     // Raw buffer handle.
@@ -40,9 +35,8 @@ pub struct CmdUpdateBuffer<'a, L, B, D: ?Sized>
     data: &'a D,
 }
 
-impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
+impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
     where B: Buffer,
-          L: CommandsList + CommandsListPossibleOutsideRenderPass,
           D: Copy + 'static,
 {
     /// Builds a command that writes data to a buffer.
@@ -52,11 +46,7 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
     ///
     /// The size of the modification must not exceed 65536 bytes. The offset and size must be
     /// multiples of four.
-    pub fn new(previous: L, buffer: B, data: &'a D)
-               -> Result<CmdUpdateBuffer<'a, L, B, D>, CmdUpdateBufferError>
-    {
-        assert!(previous.is_outside_render_pass());     // TODO: error
-
+    pub fn new(buffer: B, data: &'a D) -> Result<CmdUpdateBuffer<'a, B, D>, CmdUpdateBufferError> {
         let size = buffer.size();
 
         let (buffer_handle, offset) = {
@@ -79,7 +69,6 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
         }
 
         Ok(CmdUpdateBuffer {
-            previous: previous,
             buffer: buffer,
             buffer_handle: buffer_handle,
             offset: offset as vk::DeviceSize,
@@ -89,45 +78,23 @@ impl<'a, L, B, D: ?Sized> CmdUpdateBuffer<'a, L, B, D>
     }
 }
 
-unsafe impl<'d, L, B, D: ?Sized> CommandsList for CmdUpdateBuffer<'d, L, B, D>
+unsafe impl<'a, 'd, P, B, D: ?Sized> AddCommand<&'a CmdUpdateBuffer<'d, B, D>> for UnsafeCommandBufferBuilder<P>
     where B: Buffer,
-          L: CommandsList,
           D: Copy + 'static,
+          P: CommandPool,
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        assert_eq!(self.buffer.inner().buffer.device().internal_object(),
-                   builder.device().internal_object());
-
-        {
-            let stages = PipelineStages { transfer: true, .. PipelineStages::none() };
-            let access = AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() };
-            builder.add_buffer_transition(&self.buffer, 0, self.buffer.size(), true,
-                                          stages, access);
+    fn add(self, command: &'a CmdUpdateBuffer<'d, B, D>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size,
+                               command.data as *const D as *const _);
         }
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdUpdateBuffer(cmd, self.buffer_handle, self.offset, self.size,
-                                   self.data as *const D as *const _);
-            }
-        }));
-    }
-}
-
-unsafe impl<'a, L, B, D: ?Sized> CommandsListPossibleOutsideRenderPass
-    for CmdUpdateBuffer<'a, L, B, D>
-    where B: Buffer,
-          L: CommandsList,
-          D: Copy + 'static,
-{
-    #[inline]
-    fn is_outside_render_pass(&self) -> bool {
-        true
+        self
     }
 }
 

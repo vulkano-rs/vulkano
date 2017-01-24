@@ -10,10 +10,10 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
 use command_buffer::DynamicState;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use device::Device;
 use VulkanObject;
 use VulkanPointers;
@@ -23,67 +23,70 @@ use VulkanPointers;
 ///
 /// Only the values that are `Some` are touched. Parameters that are `None` are left untouched.
 /// A state is not modified if the same state is already current.
-pub struct CmdSetState<L> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdSetState {
     // The device.
     device: Arc<Device>,
     // The state to set.
     dynamic_state: DynamicState,
 }
 
-impl<L> CmdSetState<L> where L: CommandsList {
+impl CmdSetState {
     /// Builds a command.
     ///
     /// Since this command checks whether the dynamic state is supported by the device, you have
     /// to pass the device as well when building the command.
     // TODO: should check the limits and features of the device
-    pub fn new(previous: L, device: Arc<Device>, state: DynamicState) -> CmdSetState<L> {
+    pub fn new(device: Arc<Device>, state: DynamicState) -> CmdSetState {
         CmdSetState {
-            previous: previous,
             device: device,
             dynamic_state: DynamicState {
                 // This constructor is explicitely layed out so that we don't forget to
-                // modify this code if we add a new member to `DynamicState`.
+                // modify the code of this module if we add a new member to `DynamicState`.
                 line_width: state.line_width,
                 viewports: state.viewports,
                 scissors: state.scissors,
             },
         }
     }
+
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    /// Returns the state that is going to be set.
+    #[inline]
+    pub fn state(&self) -> &DynamicState {
+        &self.dynamic_state
+    }
 }
 
-unsafe impl<L> CommandsList for CmdSetState<L> where L: CommandsList {
+unsafe impl<'a, P> AddCommand<&'a CmdSetState> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
+{
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdSetState) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-
-                if let Some(line_width) = self.dynamic_state.line_width {
-                    if raw.current_state.line_width != Some(line_width) {
-                        vk.CmdSetLineWidth(cmd, line_width);
-                        raw.current_state.line_width = Some(line_width);
-                    }
-                }
-
-                if let Some(ref viewports) = self.dynamic_state.viewports {
-                    // TODO: cache state
-                    let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                    vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
-                }
-
-                if let Some(ref scissors) = self.dynamic_state.scissors {
-                    // TODO: cache state
-                    let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
-                    vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
-                }
+            if let Some(line_width) = command.dynamic_state.line_width {
+                vk.CmdSetLineWidth(cmd, line_width);
             }
-        }));
+
+            if let Some(ref viewports) = command.dynamic_state.viewports {
+                let viewports = viewports.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
+                vk.CmdSetViewport(cmd, 0, viewports.len() as u32, viewports.as_ptr());
+            }
+
+            if let Some(ref scissors) = command.dynamic_state.scissors {
+                let scissors = scissors.iter().map(|v| v.clone().into()).collect::<SmallVec<[_; 16]>>();
+                vk.CmdSetScissor(cmd, 0, scissors.len() as u32, scissors.as_ptr());
+            }
+        }
+
+        self
     }
 }

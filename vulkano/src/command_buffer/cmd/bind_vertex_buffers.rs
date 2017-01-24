@@ -10,9 +10,9 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
 use device::Device;
 use pipeline::vertex::Source;
 use VulkanObject;
@@ -20,9 +20,7 @@ use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
-pub struct CmdBindVertexBuffers<L, B> where L: CommandsList {
-    // Parent commands list.
-    previous: L,
+pub struct CmdBindVertexBuffers<B> {
     // Raw handles of the buffers to bind.
     raw_buffers: SmallVec<[vk::Buffer; 4]>,
     // Raw offsets of the buffers to bind.
@@ -33,10 +31,10 @@ pub struct CmdBindVertexBuffers<L, B> where L: CommandsList {
     buffers: B,
 }
 
-impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
+impl<B> CmdBindVertexBuffers<B> {
     /// Builds the command.
     #[inline]
-    pub fn new<S>(previous: L, source_def: &S, buffers: B) -> CmdBindVertexBuffers<L, B>
+    pub fn new<S>(source_def: &S, buffers: B) -> CmdBindVertexBuffers<B>
         where S: Source<B>
     {
         let (device, raw_buffers, offsets) = {
@@ -53,7 +51,6 @@ impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
         // be any.
 
         CmdBindVertexBuffers {
-            previous: previous,
             raw_buffers: raw_buffers,
             offsets: offsets,
             device: device,
@@ -62,24 +59,20 @@ impl<L, B> CmdBindVertexBuffers<L, B> where L: CommandsList {
     }
 }
 
-unsafe impl<L, B> CommandsList for CmdBindVertexBuffers<L, B> where L: CommandsList {
+unsafe impl<'a, P, B> AddCommand<&'a CmdBindVertexBuffers<B>> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
+{
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdBindVertexBuffers<B>) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
+            vk.CmdBindVertexBuffers(cmd, 0, command.raw_buffers.len() as u32,
+                                    command.raw_buffers.as_ptr(), command.offsets.as_ptr());
+        }
 
-        assert_eq!(self.device.internal_object(), builder.device().internal_object());
-        debug_assert_eq!(self.raw_buffers.len(), self.offsets.len());
-
-        // FIXME: perform buffer transitions
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                // TODO: don't bind if not necessary
-                vk.CmdBindVertexBuffers(cmd, 0, self.raw_buffers.len() as u32,
-                                        self.raw_buffers.as_ptr(), self.offsets.as_ptr());
-            }
-        }));
+        self
     }
 }

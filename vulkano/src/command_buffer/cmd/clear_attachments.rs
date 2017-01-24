@@ -9,17 +9,16 @@
 
 use smallvec::SmallVec;
 
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
+use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBufferBuilder;
+use command_buffer::pool::CommandPool;
+use VulkanObject;
 use VulkanPointers;
 use vk;
 
 /// Wraps around a commands list and adds at the end of it a command that clears framebuffer
 /// attachments.
-pub struct CmdClearAttachments<L> {
-    // Parent commands list.
-    previous: L,
+pub struct CmdClearAttachments {
     // The attachments to clear.
     attachments: SmallVec<[vk::ClearAttachment; 8]>,
     // The rectangles to clear.
@@ -28,31 +27,22 @@ pub struct CmdClearAttachments<L> {
 
 // TODO: add constructor
 
-unsafe impl<L> CommandsList for CmdClearAttachments<L>
-    where L: CommandsList
+unsafe impl<'a, P> AddCommand<&'a CmdClearAttachments> for UnsafeCommandBufferBuilder<P>
+    where P: CommandPool
 {
+    type Out = UnsafeCommandBufferBuilder<P>;
+
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    fn add(self, command: &'a CmdClearAttachments) -> Self::Out {
+        unsafe {
+            let vk = self.device().pointers();
+            let cmd = self.internal_object();
 
-        // According to the Vulkan specifications, the `vkCmdClearAttachments` command doesn't
-        // need any pipeline barrier.
-        // Since the thing that is cleared is an attachment of the framebuffer, there's no need to
-        // provide any additional form of synchronization.
-
-        if self.attachments.is_empty() || self.rects.is_empty() {
-            return;
+            vk.CmdClearAttachments(cmd, command.attachments.len() as u32,
+                                   command.attachments.as_ptr(), command.rects.len() as u32,
+                                   command.rects.as_ptr());
         }
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-
-                vk.CmdClearAttachments(cmd, self.attachments.len() as u32,
-                                       self.attachments.as_ptr(), self.rects.len() as u32,
-                                       self.rects.as_ptr());
-            }
-        }));
+        self
     }
 }

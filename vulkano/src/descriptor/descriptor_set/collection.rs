@@ -7,11 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use command_buffer::cmd::CommandsListSink;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
-use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 
 /// A collection of descriptor set objects.
@@ -35,12 +33,6 @@ pub unsafe trait DescriptorSetsCollection {
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 }
 
-/// Extension trait for a descriptor sets collection so that it can be used with the standard
-/// commands list interface.
-pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
-    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
-}
-
 unsafe impl DescriptorSetsCollection for () {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -60,12 +52,6 @@ unsafe impl DescriptorSetsCollection for () {
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         None
-    }
-}
-
-unsafe impl TrackedDescriptorSetsCollection for () {
-    #[inline]
-    fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {
     }
 }
 
@@ -93,14 +79,6 @@ unsafe impl<T> DescriptorSetsCollection for T
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         unimplemented!()
-    }
-}
-
-// TODO: we can't be generic over the State because we get a conflicting implementation :-/
-unsafe impl<T> TrackedDescriptorSetsCollection for T where T: TrackedDescriptorSet {
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        self.add_transition(sink);
     }
 }
 
@@ -145,21 +123,6 @@ macro_rules! impl_collection {
             #[inline]
             fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
                 unimplemented!()
-            }
-        }
-
-        unsafe impl<$first$(, $others)*> TrackedDescriptorSetsCollection for ($first, $($others),*)
-            where $first: TrackedDescriptorSet + DescriptorSetDesc /* TODO */
-                  $(, $others: TrackedDescriptorSet + DescriptorSetDesc /* TODO */)*
-        {
-            #[inline]
-            fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-                #![allow(non_snake_case)]
-                let &(ref $first, $(ref $others),*) = self;
-                $first.add_transition(sink);
-                $(
-                    $others.add_transition(sink);
-                )*
             }
         }
 

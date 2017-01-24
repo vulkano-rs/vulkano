@@ -37,11 +37,9 @@
 
 use std::sync::Arc;
 
-use command_buffer::cmd::CommandsListSink;
 use descriptor::descriptor::DescriptorDesc;
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::collection::TrackedDescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
 pub use self::pool::DescriptorPoolAlloc;
 pub use self::pool::DescriptorPoolAllocError;
@@ -108,27 +106,5 @@ unsafe impl<'a, T> DescriptorSetDesc for &'a T where T: 'a + DescriptorSetDesc {
     #[inline]
     fn desc(&self) -> Self::Iter {
         (**self).desc()
-    }
-}
-
-// TODO: re-read docs
-/// Extension trait for descriptor sets so that it can be used with the standard commands list
-/// interface.
-//  TODO: is this used?
-pub unsafe trait TrackedDescriptorSet: DescriptorSet {
-    fn add_transition<'a>(&'a self, &mut CommandsListSink<'a>);
-}
-
-unsafe impl<T> TrackedDescriptorSet for Arc<T> where T: TrackedDescriptorSet {
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        (**self).add_transition(sink);
-    }
-}
-
-unsafe impl<'r, T> TrackedDescriptorSet for &'r T where T: 'r + TrackedDescriptorSet {
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        (**self).add_transition(sink);
     }
 }

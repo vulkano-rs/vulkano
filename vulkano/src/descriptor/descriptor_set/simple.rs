@@ -11,10 +11,8 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferViewRef;
-use command_buffer::cmd::CommandsListSink;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
-use descriptor::descriptor_set::TrackedDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
@@ -62,16 +60,6 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
-    }
-}
-
-unsafe impl<R, P> TrackedDescriptorSet for SimpleDescriptorSet<R, P>
-    where R: SimpleDescriptorSetResourcesCollection,
-          P: DescriptorPool
-{
-    #[inline]
-    fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
-        self.resources.add_transition(sink)
     }
 }
 
@@ -217,6 +205,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
     }
 }
 
+/*
 /// Internal trait related to the `SimpleDescriptorSet` system.
 pub unsafe trait SimpleDescriptorSetResourcesCollection {
     #[inline]
@@ -227,7 +216,7 @@ unsafe impl SimpleDescriptorSetResourcesCollection for () {
     #[inline]
     fn add_transition<'a>(&'a self, _: &mut CommandsListSink<'a>) {
     }
-}
+}*/
 
 /// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetBuf<B> {
@@ -237,7 +226,7 @@ pub struct SimpleDescriptorSetBuf<B> {
     access: AccessFlagBits,
 }
 
-unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
+/*unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
     where B: Buffer
 {
     #[inline]
@@ -258,7 +247,7 @@ unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf
 
         sink.add_buffer_transition(&self.buffer, 0, self.buffer.size(), self.write, stages, access);
     }
-}
+}*/
 
 /// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
@@ -268,7 +257,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
     access: AccessFlagBits,
 }
 
-unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
+/*unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
     where V: BufferViewRef, V::Buffer: Buffer
 {
     #[inline]
@@ -290,7 +279,7 @@ unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf
         sink.add_buffer_transition(self.view.view().buffer(), 0, self.view.view().buffer().size(),
                                    self.write, stages, access);
     }
-}
+}*/
 
 /// Internal object related to the `SimpleDescriptorSet` system.
 pub struct SimpleDescriptorSetImg<I> {
@@ -305,7 +294,7 @@ pub struct SimpleDescriptorSetImg<I> {
     access: AccessFlagBits,
 }
 
-unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
+/*unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
     where I: ImageView
 {
     #[inline]
@@ -341,4 +330,4 @@ unsafe impl<A, B> SimpleDescriptorSetResourcesCollection for (A, B)
         self.0.add_transition(sink);
         self.1.add_transition(sink);
     }
-}
+}*/
