@@ -329,6 +329,42 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `window` is correct and stays alive for the entire
+    /// lifetime of the surface.
+    pub unsafe fn from_vi_surface<T>(instance: &Arc<Instance>, window: *const T)
+                                        -> Result<Arc<Surface>, SurfaceCreationError>
+    {
+        let vk = instance.pointers();
+
+        if !instance.loaded_extensions().nn_vi_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_NN_vi_surface" });
+        }
+
+        let surface = {
+            let infos = vk::ViSurfaceCreateInfoNN {
+                sType: vk::STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                window: window as *mut _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateViSurfaceNN(instance.internal_object(), &infos,
+                                                   ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
     /// Returns true if the given queue family can draw on this surface.
     pub fn is_supported(&self, queue: &QueueFamily) -> Result<bool, OomError> {
         unsafe {
