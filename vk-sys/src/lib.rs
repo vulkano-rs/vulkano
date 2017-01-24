@@ -162,6 +162,7 @@ pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2368,6 +2369,17 @@ pub struct DebugReportCallbackCreateInfoEXT {
     pub pUserData: *mut c_void,
 }
 
+pub type ViSurfaceCreateFlagsNN = Flags;
+
+#[repr(C)]
+pub struct ViSurfaceCreateInfoNN {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: ViSurfaceCreateFlagsNN,
+    pub window: *const c_void,
+}
+
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -2463,6 +2475,7 @@ ptrs!(InstancePointers, {
     CreateDebugReportCallbackEXT => (instance: Instance, pCreateInfo: *const DebugReportCallbackCreateInfoEXT, pAllocator: *const AllocationCallbacks, pCallback: *mut DebugReportCallbackEXT) -> Result,
     DestroyDebugReportCallbackEXT => (instance: Instance, callback: DebugReportCallbackEXT, pAllocator: *const AllocationCallbacks) -> (),
     DebugReportMessageEXT => (instance: Instance, flags: DebugReportFlagsEXT, objectType: DebugReportObjectTypeEXT, object: u64, location: usize, messageCode: i32, pLayerPrefix: *const c_char, pMessage: *const c_char) -> (),
+    CreateViSurfaceNN => (instance: Instance, pCreateInfo: *const ViSurfaceCreateInfoNN, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
 });
 
 ptrs!(DevicePointers, {
