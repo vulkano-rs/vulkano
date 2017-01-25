@@ -26,14 +26,36 @@ use sync::PipelineStages;
 
 use vk;
 
+/// Master trait for framebuffer objects. All framebuffer structs should always implement
+/// this trait.
 pub unsafe trait FramebufferAbstract: FramebufferRef + FramebufferRenderPassAbstract {}
 unsafe impl<T> FramebufferAbstract for T where T: FramebufferRef + FramebufferRenderPassAbstract {}
 
+/// Trait for objects that contain a Vulkan framebuffer object.
 pub unsafe trait FramebufferRef {
+    /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
 
-    /// Returns the dimensions (width, height and array layers) of the framebuffer.
+    /// Returns the width, height and array layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
+
+    /// Returns the width of the framebuffer in pixels.
+    #[inline]
+    fn width(&self) -> u32 {
+        self.dimensions()[0]
+    }
+
+    /// Returns the height of the framebuffer in pixels.
+    #[inline]
+    fn height(&self) -> u32 {
+        self.dimensions()[1]
+    }
+
+    /// Returns the number of layers (or depth) of the framebuffer.
+    #[inline]
+    fn layers(&self) -> u32 {
+        self.dimensions()[2]
+    }
 }
 
 unsafe impl<'a, F: ?Sized> FramebufferRef for &'a F where F: FramebufferRef {
@@ -60,8 +82,13 @@ unsafe impl<F: ?Sized> FramebufferRef for Arc<F> where F: FramebufferRef {
     }
 }
 
+/// Implemented on framebuffer objects. Gives access to the render pass the framebuffer was created
+/// with.
 pub unsafe trait FramebufferRenderPass {
+    /// Type of the render pass the framebuffer was created with.
     type RenderPass;
+
+    /// Returns the render pass the framebuffer was created with.
     fn render_pass(&self) -> &Self::RenderPass;
 }
 
@@ -83,30 +110,38 @@ unsafe impl<'a, T: ?Sized> FramebufferRenderPass for &'a T where T: FramebufferR
     }
 }
 
+// TODO: impl FramebufferRenderPass for &FramebufferAbstract
+
+/// Similar to `FramebufferRenderPass`, but doesn't use any associated type and can be turned into
+/// a trait object.
+///
+/// This trait is automatically implemented on any object that implements `FramebufferRenderPass`.
 pub unsafe trait FramebufferRenderPassAbstract {
-    fn render_pass(&self) -> &RenderPassRef;        // TODO: RenderPassAbstract
+    /// Returns the render pass the framebuffer was created with.
+    fn render_pass(&self) -> &RenderPassAbstract;
 }
 
 unsafe impl<T> FramebufferRenderPassAbstract for T
-    where T: FramebufferRenderPass, T::RenderPass: RenderPassRef
+    where T: FramebufferRenderPass, T::RenderPass: RenderPassAbstract
 {
     #[inline]
-    fn render_pass(&self) -> &RenderPassRef {
-        FramebufferRenderPass::render_pass(self) as &RenderPassRef
+    fn render_pass(&self) -> &RenderPassAbstract {
+        FramebufferRenderPass::render_pass(self) as &RenderPassAbstract
     }
 }
 
-/// Trait for objects that describe a render pass.
+/// Master trait for render pass objects. All render pass structs should always implement
+/// this trait.
+pub unsafe trait RenderPassAbstract: RenderPassRef + RenderPassDesc {}      // TODO: other traits
+unsafe impl<T> RenderPassAbstract for T where T: RenderPassRef + RenderPassDesc {}
+
+/// Trait for objects that contain a Vulkan render pass object.
 ///
 /// # Safety
 ///
-/// This trait is unsafe because:
-///
-/// - `inner` has to return the same `RenderPass` every time.
-/// - `subpass` shouldn't be overridden.
-///
+/// - `inner()` and `device()` must return the same values every time.
 pub unsafe trait RenderPassRef {
-    /// Returns the underlying `RenderPass`.
+    /// Returns an opaque object representing the render pass' internals.
     fn inner(&self) -> RenderPassSys;
 
     /// Returns the device associated to the render pass.

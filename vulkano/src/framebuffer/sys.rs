@@ -36,7 +36,10 @@ use check_errors;
 use vk;
 
 /// Defines the layout of multiple subpasses.
-pub struct RenderPass<D = Box<RenderPassDesc>> {
+///
+/// The `RenderPass` struct should always implement the `RenderPassAbstract` trait. Therefore
+/// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract>` if you need to.
+pub struct RenderPass<D = Box<RenderPassDesc>> {        // TODO: remove default param type
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
 
@@ -399,6 +402,7 @@ impl<D> Drop for RenderPass<D> {
     }
 }
 
+/// Opaque object that represents the render pass' internals.
 #[derive(Debug, Copy, Clone)]
 pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
 

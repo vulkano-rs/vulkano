@@ -38,6 +38,9 @@ use vk;
 /// A framebuffer can be used alongside with any other render pass object as long as it is
 /// compatible with the render pass that his framebuffer was created with. You can determine
 /// whether two renderpass objects are compatible by calling `is_compatible_with`.
+///
+/// The `Framebuffer` struct should always implement the `FramebufferAbstract` trait. Therefore
+/// you can turn any `Arc<Framebuffer<Rp, A>>` into a `Arc<FramebufferAbstract>` if you need to.
 pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {
     device: Arc<Device>,
     render_pass: Rp,
@@ -49,9 +52,9 @@ pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {
 impl<Rp, A> Framebuffer<Rp, A> {
     /// Builds a new framebuffer.
     ///
-    /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
+    /// The `attachments` parameter depends on which render pass implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
-               -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
+                   -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
         where Rp: RenderPassRef + RenderPassDescAttachmentsList<Ia, List = A>,
               A: AttachmentsList,
     {
