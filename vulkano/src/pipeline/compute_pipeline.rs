@@ -139,7 +139,7 @@ unsafe impl<T> ComputePipelineAbstract for T where T: ComputePipelineRef + Pipel
 /// object.
 pub unsafe trait ComputePipelineRef {
     /// Returns an opaque object that represents the inside of the compute pipeline.
-    fn inner(&self) -> ComputePipelineOpaque;
+    fn inner(&self) -> ComputePipelineSys;
 
     /// Returns the device associated to the compute pipeline.
     fn device(&self) -> &Arc<Device>;
@@ -147,8 +147,8 @@ pub unsafe trait ComputePipelineRef {
 
 unsafe impl<Pl> ComputePipelineRef for ComputePipeline<Pl> {
     #[inline]
-    fn inner(&self) -> ComputePipelineOpaque {
-        ComputePipelineOpaque(self.inner.pipeline, PhantomData)
+    fn inner(&self) -> ComputePipelineSys {
+        ComputePipelineSys(self.inner.pipeline, PhantomData)
     }
 
     #[inline]
@@ -159,7 +159,7 @@ unsafe impl<Pl> ComputePipelineRef for ComputePipeline<Pl> {
 
 unsafe impl ComputePipelineRef for Arc<ComputePipelineAbstract> {
     #[inline]
-    fn inner(&self) -> ComputePipelineOpaque {
+    fn inner(&self) -> ComputePipelineSys {
         (**self).inner()
     }
 
@@ -171,7 +171,7 @@ unsafe impl ComputePipelineRef for Arc<ComputePipelineAbstract> {
 
 unsafe impl<'a> ComputePipelineRef for &'a ComputePipelineAbstract {
     #[inline]
-    fn inner(&self) -> ComputePipelineOpaque {
+    fn inner(&self) -> ComputePipelineSys {
         (**self).inner()
     }
 
@@ -185,9 +185,9 @@ unsafe impl<'a> ComputePipelineRef for &'a ComputePipelineAbstract {
 
 /// Opaque object that represents the inside of the compute pipeline.
 #[derive(Debug, Copy, Clone)]
-pub struct ComputePipelineOpaque<'a>(vk::Pipeline, PhantomData<&'a ()>);
+pub struct ComputePipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 
-unsafe impl<'a> VulkanObject for ComputePipelineOpaque<'a> {
+unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     type Object = vk::Pipeline;
 
     #[inline]

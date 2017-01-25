@@ -24,8 +24,8 @@
 pub use self::compute_pipeline::ComputePipeline;
 pub use self::compute_pipeline::ComputePipelineAbstract;
 pub use self::compute_pipeline::ComputePipelineCreationError;
-pub use self::compute_pipeline::ComputePipelineOpaque;
 pub use self::compute_pipeline::ComputePipelineRef;
+pub use self::compute_pipeline::ComputePipelineSys;
 pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineParams;
 pub use self::graphics_pipeline::GraphicsPipelineParamsTess;
