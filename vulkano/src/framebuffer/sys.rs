@@ -18,6 +18,7 @@ use smallvec::SmallVec;
 
 use device::Device;
 use format::ClearValue;
+use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::FramebufferCreationError;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
@@ -274,6 +275,18 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             desc: description,
             granularity: Mutex::new(None),
         })
+    }
+}
+
+impl RenderPass<EmptySinglePassRenderPassDesc> {
+    /// Builds a render pass with one subpass and no attachment.
+    ///
+    /// This method is useful for quick tests.
+    #[inline]
+    pub fn empty_single_pass(device: Arc<Device>)
+        -> Result<RenderPass<EmptySinglePassRenderPassDesc>, RenderPassCreationError>
+    {
+        RenderPass::new(device, EmptySinglePassRenderPassDesc)
     }
 }
 
