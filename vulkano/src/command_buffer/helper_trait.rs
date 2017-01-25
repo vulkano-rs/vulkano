@@ -17,6 +17,7 @@ use command_buffer::cmd;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayoutRef;
 use framebuffer::FramebufferRef;
+use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassRef;
@@ -57,8 +58,8 @@ pub unsafe trait CommandBufferBuilder {
     fn begin_render_pass<F, C, O>(self, framebuffer: F, secondary: bool, clear_values: C)
                                   -> O
         where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPass>, F>, Out = O>,
-              F: FramebufferRef,
-              <<F as FramebufferRef>::RenderPass as RenderPassRef>::Desc: RenderPassClearValues<C>
+              F: FramebufferRef + FramebufferRenderPass,
+              <F as FramebufferRenderPass>::RenderPass: RenderPassRef + RenderPassClearValues<C>
     {
         let cmd = cmd::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);
         self.add(cmd)

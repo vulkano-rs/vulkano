@@ -9,6 +9,7 @@
 
 use std::error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -17,10 +18,10 @@ use smallvec::SmallVec;
 use device::Device;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
+use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassDescAttachmentsList;
-use framebuffer::RenderPassCompatible;
 
 use Error;
 use OomError;
@@ -51,19 +52,18 @@ impl<Rp, A> Framebuffer<Rp, A> {
     /// The `attachments` parameter depends on which `RenderPassRef` implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
                -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
-        where Rp: RenderPassRef,
-              Rp::Desc: RenderPassDescAttachmentsList<Ia, List = A>,
+        where Rp: RenderPassRef + RenderPassDescAttachmentsList<Ia, List = A>,
               A: AttachmentsList,
     {
-        let device = render_pass.inner().device().clone();
+        let device = render_pass.device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
-        let attachments = try!(render_pass.inner().desc().check_attachments_list(attachments));
+        let attachments = try!(render_pass.check_attachments_list(attachments));
 
         // Checking the dimensions against the limits.
         {
-            let limits = render_pass.inner().device().physical_device().limits();
+            let limits = render_pass.device().physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
@@ -86,7 +86,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
             attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
 
         let framebuffer = unsafe {
-            let vk = render_pass.inner().device().pointers();
+            let vk = render_pass.device().pointers();
 
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -120,7 +120,9 @@ impl<Rp, A> Framebuffer<Rp, A> {
     pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
         where R: RenderPassRef, Rp: RenderPassRef
     {
-        self.render_pass.inner().desc().is_compatible_with(render_pass.inner().desc())
+        unimplemented!()
+        // FIXME:
+        //self.render_pass.is_compatible_with(render_pass)
     }
 
     /// Returns the width, height and layers of this framebuffer.
@@ -160,18 +162,28 @@ impl<Rp, A> Framebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A>
-    where Rp: RenderPassRef, A: AttachmentsList
-{
-    type RenderPass = Rp;
-    type Attachments = A;
+unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A> {
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        FramebufferSys(self.framebuffer, PhantomData)
+    }
 
     #[inline]
-    fn inner(&self) -> &Framebuffer<Self::RenderPass, Self::Attachments> {
-        self
+    fn dimensions(&self) -> [u32; 3] {
+        self.dimensions
     }
 }
 
+unsafe impl<Rp, A> FramebufferRenderPass for Framebuffer<Rp, A> {
+    type RenderPass = Rp;
+
+    #[inline]
+    fn render_pass(&self) -> &Rp {
+        &self.render_pass
+    }
+}
+
+// TODO: remove in favor of FramebufferSys?
 unsafe impl<Rp, A> VulkanObject for Framebuffer<Rp, A> {
     type Object = vk::Framebuffer;
 
@@ -188,6 +200,19 @@ impl<Rp, A> Drop for Framebuffer<Rp, A> {
             let vk = self.device.pointers();
             vk.DestroyFramebuffer(self.device.internal_object(), self.framebuffer, ptr::null());
         }
+    }
+}
+
+/// Opaque object that represents the internals of a framebuffer.
+#[derive(Debug, Copy, Clone)]
+pub struct FramebufferSys<'a>(vk::Framebuffer, PhantomData<&'a ()>);
+
+unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
+    type Object = vk::Framebuffer;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Framebuffer {
+        self.0
     }
 }
 

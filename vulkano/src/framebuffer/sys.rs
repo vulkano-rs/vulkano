@@ -9,6 +9,7 @@
 
 use std::error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -16,9 +17,16 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
+use format::ClearValue;
+use framebuffer::FramebufferCreationError;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::LayoutPassDescription;
+use framebuffer::LoadOp;
+use framebuffer::RenderPassClearValues;
+use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassRef;
-use framebuffer::LoadOp;
 
 use Error;
 use OomError;
@@ -307,15 +315,71 @@ impl<D> RenderPass<D> {
     }
 }
 
-unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
-    type Desc = D;
+unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        self.desc.num_attachments()
+    }
+    
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.desc.attachment(num)
+    }
 
     #[inline]
-    fn inner(&self) -> &RenderPass<D> {
-        self
+    fn num_subpasses(&self) -> usize {
+        self.desc.num_subpasses()
+    }
+    
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.desc.subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        self.desc.num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.desc.dependency(num)
     }
 }
 
+unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
+    where D: RenderPassDescAttachmentsList<A>
+{
+    type List = D::List;
+
+    #[inline]
+    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
+        self.desc.check_attachments_list(atch)
+    }
+}
+
+unsafe impl<C, D> RenderPassClearValues<C> for RenderPass<D>
+    where D: RenderPassClearValues<C>
+{
+    #[inline]
+    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+        self.desc.convert_clear_values(vals)
+    }
+}
+
+unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
+    #[inline]
+    fn inner(&self) -> RenderPassSys {
+        RenderPassSys(self.renderpass, PhantomData)
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+// TODO: remove in favor of RenderpassSys?
 unsafe impl<D> VulkanObject for RenderPass<D> where D: RenderPassDesc {
     type Object = vk::RenderPass;
 
@@ -332,6 +396,18 @@ impl<D> Drop for RenderPass<D> {
             let vk = self.device.pointers();
             vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
+
+unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
+    type Object = vk::RenderPass;
+
+    #[inline]
+    fn internal_object(&self) -> vk::RenderPass {
+        self.0
     }
 }
 

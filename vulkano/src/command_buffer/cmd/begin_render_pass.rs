@@ -18,6 +18,7 @@ use command_buffer::pool::CommandPool;
 use device::Device;
 use format::ClearValue;
 use framebuffer::FramebufferRef;
+use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassRef;
@@ -46,21 +47,20 @@ pub struct CmdBeginRenderPass<Rp, F> {
 }
 
 impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
-    where F: FramebufferRef
+    where F: FramebufferRef + FramebufferRenderPass
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(framebuffer: F, secondary: bool, clear_values: C)
                   -> CmdBeginRenderPass<Arc<RenderPass>, F>
-        where <<F as FramebufferRef>::RenderPass as RenderPassRef>::Desc: RenderPassClearValues<C>
+        where <F as FramebufferRenderPass>::RenderPass: RenderPassRef + RenderPassClearValues<C>
     {
-        let raw_render_pass = framebuffer.inner().render_pass().inner().internal_object();
-        let device = framebuffer.inner().render_pass().inner().device().clone();
+        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
+        let device = framebuffer.render_pass().device().clone();
         let raw_framebuffer = framebuffer.inner().internal_object();
 
         let clear_values = {
-            let desc = framebuffer.inner().render_pass().inner().desc();
-            desc.convert_clear_values(clear_values).map(|clear_value| {
+            framebuffer.render_pass().convert_clear_values(clear_values).map(|clear_value| {
                 match clear_value {
                     ClearValue::None => {
                         vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
@@ -93,8 +93,8 @@ impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
             }).collect()
         };
 
-        let rect = [0 .. framebuffer.inner().dimensions()[0],
-                    0 .. framebuffer.inner().dimensions()[1]];
+        let rect = [0 .. framebuffer.dimensions()[0],
+                    0 .. framebuffer.dimensions()[1]];
 
         CmdBeginRenderPass {
             secondary: secondary,

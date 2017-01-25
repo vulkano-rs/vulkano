@@ -25,6 +25,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
+use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassRef;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
@@ -175,7 +176,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Fi: ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
               Vo: ShaderInterfaceDef,
-              Rp::Desc: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassSubpassInterface<Fo>,
     {
         if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
@@ -265,7 +266,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Teo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassRef + RenderPassSubpassInterface<Fo>,
     {
         if let Some(ref tess) = params.tessellation {
             if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
@@ -295,7 +296,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef, Rp: RenderPassRef
+    where L: PipelineLayoutRef
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
@@ -311,7 +312,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gl: PipelineLayoutDescNames,
               Tcl: PipelineLayoutDescNames,
               Tel: PipelineLayoutDescNames,
-              Rp::Desc: RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassRef + RenderPassDesc + RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
@@ -348,8 +349,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !params.render_pass.render_pass().inner().desc().is_compatible_with(params.render_pass.index(),
-                                                                               params.fragment_shader.output())
+        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
+                                                                params.fragment_shader.output())
         {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
@@ -959,14 +960,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassRef
+    where Rp: RenderPassDesc
 {
-    /// Returns the render pass used in the constructor.
-    #[inline]
-    pub fn render_pass(&self) -> &Rp {
-        &self.render_pass
-    }
-
     /// Returns the pass used in the constructor.
     #[inline]
     pub fn subpass(&self) -> Subpass<&Rp> {
@@ -975,6 +970,12 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
+    /// Returns the render pass used in the constructor.
+    #[inline]
+    pub fn render_pass(&self) -> &Rp {
+        &self.render_pass
+    }
+
     /// Returns true if the line width used by this pipeline is dynamic.
     #[inline]
     pub fn has_dynamic_line_width(&self) -> bool {
