@@ -41,7 +41,7 @@ use vk;
 ///
 /// The `Framebuffer` struct should always implement the `FramebufferAbstract` trait. Therefore
 /// you can turn any `Arc<Framebuffer<Rp, A>>` into a `Arc<FramebufferAbstract>` if you need to.
-pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {
+pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {        // TODO: remove default params
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,
@@ -183,16 +183,6 @@ unsafe impl<Rp, A> FramebufferRenderPass for Framebuffer<Rp, A> {
     #[inline]
     fn render_pass(&self) -> &Rp {
         &self.render_pass
-    }
-}
-
-// TODO: remove in favor of FramebufferSys?
-unsafe impl<Rp, A> VulkanObject for Framebuffer<Rp, A> {
-    type Object = vk::Framebuffer;
-
-    #[inline]
-    fn internal_object(&self) -> vk::Framebuffer {
-        self.framebuffer
     }
 }
 

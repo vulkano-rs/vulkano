@@ -395,16 +395,6 @@ unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
     }
 }
 
-// TODO: remove in favor of RenderpassSys?
-unsafe impl<D> VulkanObject for RenderPass<D> where D: RenderPassDesc {
-    type Object = vk::RenderPass;
-
-    #[inline]
-    fn internal_object(&self) -> vk::RenderPass {
-        self.renderpass
-    }
-}
-
 impl<D> Drop for RenderPass<D> {
     #[inline]
     fn drop(&mut self) {
