@@ -13,7 +13,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
-use pipeline::ComputePipeline;
+use pipeline::ComputePipelineRef;
 use pipeline::GraphicsPipeline;
 use VulkanObject;
 use VulkanPointers;
@@ -37,15 +37,13 @@ pub struct CmdBindPipeline<P> {
     pipeline: P,
 }
 
-impl CmdBindPipeline<()> {
+impl<P> CmdBindPipeline<P> {
     /// Builds a command that binds a compute pipeline to the compute pipeline bind point.
     ///
     /// Use this command right before a compute dispatch.
     #[inline]
-    pub fn bind_compute_pipeline<Pl>(pipeline: Arc<ComputePipeline<Pl>>)
-                                     -> CmdBindPipeline<Arc<ComputePipeline<Pl>>>
-    {
-        let raw_pipeline = pipeline.internal_object();
+    pub fn bind_compute_pipeline(pipeline: P) -> CmdBindPipeline<P> where P: ComputePipelineRef {
+        let raw_pipeline = pipeline.inner().internal_object();
         let device = pipeline.device().clone();
 
         CmdBindPipeline {
@@ -55,7 +53,9 @@ impl CmdBindPipeline<()> {
             pipeline: pipeline,
         }
     }
+}
 
+impl CmdBindPipeline<()> {
     /// Builds a command that binds a graphics pipeline to the graphics pipeline bind point.
     ///
     /// Use this command right before a draw command.

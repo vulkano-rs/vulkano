@@ -9,6 +9,7 @@
 
 use std::error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -34,6 +35,9 @@ use vk;
 /// operations.
 ///
 /// The template parameter contains the descriptor set to use with this pipeline.
+///
+/// All compute pipeline objects implement the `ComputePipelineAbstract` trait. You can turn any
+/// `Arc<ComputePipeline<Pl>>` into an `Arc<ComputePipelineAbstract>` if necessary.
 pub struct ComputePipeline<Pl> {
     inner: Inner,
     pipeline_layout: Pl,
@@ -122,16 +126,73 @@ impl<Pl> ComputePipeline<Pl> {
     pub fn layout(&self) -> &Pl {
         &self.pipeline_layout
     }
+}
 
-    /// Puts the pipeline layout in a box.
+/// Trait implemented on all compute pipelines.
+pub unsafe trait ComputePipelineAbstract: ComputePipelineRef + PipelineLayoutRef {
+}
+
+unsafe impl<T> ComputePipelineAbstract for T where T: ComputePipelineRef + PipelineLayoutRef {
+}
+
+/// Trait implemented on objects that reference a compute pipeline. Can be made into a trait
+/// object.
+pub unsafe trait ComputePipelineRef {
+    /// Returns an opaque object that represents the inside of the compute pipeline.
+    fn inner(&self) -> ComputePipelineOpaque;
+
+    /// Returns the device associated to the compute pipeline.
+    fn device(&self) -> &Arc<Device>;
+}
+
+unsafe impl<Pl> ComputePipelineRef for ComputePipeline<Pl> {
     #[inline]
-    pub fn boxed_layout(self) -> ComputePipeline<Box<PipelineLayoutRef>>
-        where Pl: PipelineLayoutRef + 'static
-    {
-        ComputePipeline {
-            inner: self.inner,
-            pipeline_layout: Box::new(self.pipeline_layout) as Box<_>,
-        }
+    fn inner(&self) -> ComputePipelineOpaque {
+        ComputePipelineOpaque(self.inner.pipeline, PhantomData)
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+}
+
+unsafe impl ComputePipelineRef for Arc<ComputePipelineAbstract> {
+    #[inline]
+    fn inner(&self) -> ComputePipelineOpaque {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        ComputePipelineRef::device(&**self)
+    }
+}
+
+unsafe impl<'a> ComputePipelineRef for &'a ComputePipelineAbstract {
+    #[inline]
+    fn inner(&self) -> ComputePipelineOpaque {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        ComputePipelineRef::device(&**self)
+    }
+}
+
+// TODO: implement pipeline layout traits on &ComputePipelineAbstract and Arc<ComputePipelineAbstract>
+
+/// Opaque object that represents the inside of the compute pipeline.
+#[derive(Debug, Copy, Clone)]
+pub struct ComputePipelineOpaque<'a>(vk::Pipeline, PhantomData<&'a ()>);
+
+unsafe impl<'a> VulkanObject for ComputePipelineOpaque<'a> {
+    type Object = vk::Pipeline;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Pipeline {
+        self.0
     }
 }
 
@@ -157,6 +218,7 @@ unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayo
     }
 }
 
+// TODO: remove in favor of ComputePipelineRef?
 unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
     type Object = vk::Pipeline;
 
