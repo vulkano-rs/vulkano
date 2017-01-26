@@ -12,7 +12,7 @@
 pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
 pub use self::bind_descriptor_sets::{CmdBindDescriptorSets, CmdBindDescriptorSetsError};
-pub use self::bind_pipeline::CmdBindPipeline;
+pub use self::bind_pipeline::{CmdBindPipeline, CmdBindPipelineSys};
 pub use self::bind_vertex_buffers::CmdBindVertexBuffers;
 //pub use self::blit_image_unsynced::{BlitRegion, BlitRegionAspect};
 //pub use self::blit_image_unsynced::{CmdBlitImageUnsynced, CmdBlitImageUnsyncedError};

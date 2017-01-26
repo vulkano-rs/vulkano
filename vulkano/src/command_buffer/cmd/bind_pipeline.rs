@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
@@ -97,14 +98,10 @@ impl<P> CmdBindPipeline<P> {
         self.pipeline_ty == vk::PIPELINE_BIND_POINT_GRAPHICS
     }
 
-    /// Returns the pipeline object that will be bound.
-    ///
-    /// # Safety
-    ///
-    /// Must not be used to modify the pipeline.
+    /// Returns an object giving access to the pipeline object that will be bound.
     #[inline]
-    pub unsafe fn pipeline(&self) -> &P {
-        &self.pipeline
+    pub fn sys(&self) -> CmdBindPipelineSys {
+        CmdBindPipelineSys(self.raw_pipeline, PhantomData)
     }
 }
 
@@ -124,5 +121,18 @@ unsafe impl<'a, P, Pl> AddCommand<&'a CmdBindPipeline<Pl>> for UnsafeCommandBuff
         }
 
         self
+    }
+}
+
+/// Object that represents the internals of the bind pipeline command.
+#[derive(Debug, Copy, Clone)]
+pub struct CmdBindPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
+
+unsafe impl<'a> VulkanObject for CmdBindPipelineSys<'a> {
+    type Object = vk::Pipeline;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Pipeline {
+        self.0
     }
 }

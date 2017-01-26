@@ -11,6 +11,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cmd;
 use command_buffer::DynamicState;
+use VulkanObject;
 use vk;
 
 /// Layer around a command buffer builder that caches the current state of the command buffer and
@@ -61,28 +62,28 @@ impl<I> StateCacheLayer<I> {
     }
 }
 
-// TODO: issue with trait ; Arc<GraphicsPipeline> doesn't implement VulkanObject
-/*unsafe impl<Pl, I, O> AddCommand<cmd::CmdBindPipeline<Pl>> for StateCacheLayer<I>
-    where I: AddCommand<cmd::CmdBindPipeline<Pl>, Out = O>,
-          Pl: VulkanObject<Object = vk::Pipeline>,      // TODO: better trait?
+unsafe impl<Pl, I, O> AddCommand<cmd::CmdBindPipeline<Pl>> for StateCacheLayer<I>
+    where I: AddCommand<cmd::CmdBindPipeline<Pl>, Out = O>
 {
     type Out = StateCacheLayer<O>;
 
     #[inline]
     fn add(mut self, command: cmd::CmdBindPipeline<Pl>) -> Self::Out {
-        let new_command = unsafe {
+        let raw_pipeline = command.sys().internal_object();
+
+        let new_command = {
             if command.is_graphics() {
-                if command.pipeline().internal_object() == self.graphics_pipeline {
+                if raw_pipeline == self.graphics_pipeline {
                     command.disabled()
                 } else {
-                    self.graphics_pipeline = command.pipeline().internal_object();
+                    self.graphics_pipeline = raw_pipeline;
                     command
                 }
             } else {
-                if command.pipeline().internal_object() == self.compute_pipeline {
+                if raw_pipeline == self.compute_pipeline {
                     command.disabled()
                 } else {
-                    self.compute_pipeline = command.pipeline().internal_object();
+                    self.compute_pipeline = raw_pipeline;
                     command
                 }
             }
@@ -95,7 +96,7 @@ impl<I> StateCacheLayer<I> {
             compute_pipeline: self.compute_pipeline,
         }
     }
-}*/
+}
 
 unsafe impl<Cb, I, O> AddCommand<cmd::CmdExecuteCommands<Cb>> for StateCacheLayer<I>
     where I: AddCommand<cmd::CmdExecuteCommands<Cb>, Out = O>
@@ -183,7 +184,6 @@ macro_rules! pass_through {
 pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
 pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
 pass_through!((B), cmd::CmdBindIndexBuffer<B>);
-pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
 pass_through!((V), cmd::CmdBindVertexBuffers<V>);
 pass_through!((), cmd::CmdClearAttachments);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
