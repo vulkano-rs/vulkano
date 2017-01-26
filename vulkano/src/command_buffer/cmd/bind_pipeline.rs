@@ -15,7 +15,7 @@ use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
 use pipeline::ComputePipelineRef;
-use pipeline::GraphicsPipeline;
+use pipeline::GraphicsPipelineRef;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -61,10 +61,10 @@ impl CmdBindPipeline<()> {
     ///
     /// Use this command right before a draw command.
     #[inline]
-    pub fn bind_graphics_pipeline<V, Pl, R>(pipeline: Arc<GraphicsPipeline<V, Pl, R>>)
-                                            -> CmdBindPipeline<Arc<GraphicsPipeline<V, Pl, R>>>
+    pub fn bind_graphics_pipeline<P>(pipeline: P) -> CmdBindPipeline<P>
+        where P: GraphicsPipelineRef
     {
-        let raw_pipeline = pipeline.internal_object();
+        let raw_pipeline = pipeline.inner().internal_object();
         let device = pipeline.device().clone();
 
         CmdBindPipeline {

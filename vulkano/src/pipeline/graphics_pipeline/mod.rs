@@ -1073,7 +1073,7 @@ unsafe impl<Mv, L, Rp> GraphicsPipelineRef for GraphicsPipeline<Mv, L, Rp> {
     }
 }
 
-unsafe impl GraphicsPipelineRef for Arc<GraphicsPipelineAbstract> {
+unsafe impl<T: ?Sized> GraphicsPipelineRef for Arc<T> where T: GraphicsPipelineRef {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         (**self).inner()
@@ -1081,11 +1081,11 @@ unsafe impl GraphicsPipelineRef for Arc<GraphicsPipelineAbstract> {
 
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        GraphicsPipelineRef::device(&**self)
+        (**self).device()
     }
 }
 
-unsafe impl<'a> GraphicsPipelineRef for &'a GraphicsPipelineAbstract {
+unsafe impl<'a, T: ?Sized> GraphicsPipelineRef for &'a T where T: GraphicsPipelineRef + 'a {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         (**self).inner()
@@ -1093,7 +1093,7 @@ unsafe impl<'a> GraphicsPipelineRef for &'a GraphicsPipelineAbstract {
 
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        GraphicsPipelineRef::device(&**self)
+        (**self).device()
     }
 }
 
