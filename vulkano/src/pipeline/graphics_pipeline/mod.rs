@@ -9,6 +9,7 @@
 
 use std::error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -924,32 +925,6 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutRef + 'static
-{
-    /// Puts the pipeline layout in a box.
-    #[inline]
-    pub fn boxed_layout(self) -> GraphicsPipeline<Mv, Box<PipelineLayoutRef>, Rp> {
-        GraphicsPipeline {
-            inner: self.inner,
-            layout: Box::new(self.layout) as Box<_>,
-            render_pass: self.render_pass,
-            render_pass_subpass: self.render_pass_subpass,
-            vertex_definition: self.vertex_definition,
-            dynamic_line_width: self.dynamic_line_width,
-            dynamic_viewport: self.dynamic_viewport,
-            dynamic_scissor: self.dynamic_scissor,
-            dynamic_depth_bias: self.dynamic_depth_bias,
-            dynamic_depth_bounds: self.dynamic_depth_bounds,
-            dynamic_stencil_compare_mask: self.dynamic_stencil_compare_mask,
-            dynamic_stencil_write_mask: self.dynamic_stencil_write_mask,
-            dynamic_stencil_reference: self.dynamic_stencil_reference,
-            dynamic_blend_constants: self.dynamic_blend_constants,
-            num_viewports: self.num_viewports,
-        }
-    }
-}
-
-impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
     where L: PipelineLayoutRef
 {
     /// Returns the pipeline layout used in the constructor.
@@ -1065,6 +1040,72 @@ impl Drop for Inner {
             let vk = self.device.pointers();
             vk.DestroyPipeline(self.device.internal_object(), self.pipeline, ptr::null());
         }
+    }
+}
+
+/// Trait implemented on all graphics pipelines.
+pub unsafe trait GraphicsPipelineAbstract: GraphicsPipelineRef + PipelineLayoutRef {
+}
+
+unsafe impl<T> GraphicsPipelineAbstract for T where T: GraphicsPipelineRef + PipelineLayoutRef {
+}
+
+/// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
+/// object.
+pub unsafe trait GraphicsPipelineRef {
+    /// Returns an opaque object that represents the inside of the graphics pipeline.
+    fn inner(&self) -> GraphicsPipelineSys;
+
+    /// Returns the device associated to the graphics pipeline.
+    fn device(&self) -> &Arc<Device>;
+}
+
+unsafe impl<Mv, L, Rp> GraphicsPipelineRef for GraphicsPipeline<Mv, L, Rp> {
+    #[inline]
+    fn inner(&self) -> GraphicsPipelineSys {
+        GraphicsPipelineSys(self.inner.pipeline, PhantomData)
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+}
+
+unsafe impl GraphicsPipelineRef for Arc<GraphicsPipelineAbstract> {
+    #[inline]
+    fn inner(&self) -> GraphicsPipelineSys {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        GraphicsPipelineRef::device(&**self)
+    }
+}
+
+unsafe impl<'a> GraphicsPipelineRef for &'a GraphicsPipelineAbstract {
+    #[inline]
+    fn inner(&self) -> GraphicsPipelineSys {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        GraphicsPipelineRef::device(&**self)
+    }
+}
+
+/// Opaque object that represents the inside of the graphics pipeline.
+#[derive(Debug, Copy, Clone)]
+pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
+
+unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
+    type Object = vk::Pipeline;
+
+    #[inline]
+    fn internal_object(&self) -> vk::Pipeline {
+        self.0
     }
 }
 
