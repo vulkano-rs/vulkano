@@ -27,9 +27,12 @@ pub use self::compute_pipeline::ComputePipelineCreationError;
 pub use self::compute_pipeline::ComputePipelineRef;
 pub use self::compute_pipeline::ComputePipelineSys;
 pub use self::graphics_pipeline::GraphicsPipeline;
+pub use self::graphics_pipeline::GraphicsPipelineAbstract;
+pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipelineParams;
 pub use self::graphics_pipeline::GraphicsPipelineParamsTess;
-pub use self::graphics_pipeline::GraphicsPipelineCreationError;
+pub use self::graphics_pipeline::GraphicsPipelineRef;
+pub use self::graphics_pipeline::GraphicsPipelineSys;
 
 mod compute_pipeline;
 mod graphics_pipeline;
