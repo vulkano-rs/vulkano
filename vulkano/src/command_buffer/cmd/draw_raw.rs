@@ -13,6 +13,7 @@ use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 
+/// Command that draws non-indexed vertices.
 pub struct CmdDrawRaw {
     vertex_count: u32,
     instance_count: u32,

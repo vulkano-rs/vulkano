@@ -24,7 +24,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds at the end of it a command that binds descriptor sets.
+/// Command that binds descriptor sets to the command buffer.
 pub struct CmdBindDescriptorSets<S, P> {
     // The raw Vulkan enum representing the kind of pipeline.
     pipeline_ty: vk::PipelineBindPoint,

@@ -16,8 +16,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds at the end of it a command that clears framebuffer
-/// attachments.
+/// Command that clears framebuffer attachments of the current render pass.
 pub struct CmdClearAttachments {
     // The attachments to clear.
     attachments: SmallVec<[vk::ClearAttachment; 8]>,

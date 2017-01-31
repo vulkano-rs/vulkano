@@ -19,7 +19,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
+/// Command that binds vertex buffers to a command buffer.
 pub struct CmdBindVertexBuffers<B> {
     // Raw handles of the buffers to bind.
     raw_buffers: SmallVec<[vk::Buffer; 4]>,
@@ -46,9 +46,6 @@ impl<B> CmdBindVertexBuffers<B> {
 
             (device, raw_buffers, offsets)
         };
-
-        // Note that we don't check for collisions between vertex buffers, because there shouldn't
-        // be any.
 
         CmdBindVertexBuffers {
             raw_buffers: raw_buffers,

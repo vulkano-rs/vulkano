@@ -20,7 +20,7 @@ use device::Device;
 use VulkanObject;
 use VulkanPointers;
 
-/// Wraps around a commands list and adds at the end of it a command that updates push constants.
+/// Command that sets the current push constants.
 pub struct CmdPushConstants<Pc, Pl> {
     // The device of the pipeline object, so that we can compare it with the command buffer's
     // device.

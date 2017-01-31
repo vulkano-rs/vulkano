@@ -28,7 +28,7 @@ use pipeline::input_assembly::Index;
 use pipeline::vertex::Source;
 use VulkanPointers;
 
-/// Wraps around a commands list and adds a draw command at the end of it.
+/// Command that draws indexed vertices.
 pub struct CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
     where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
 {

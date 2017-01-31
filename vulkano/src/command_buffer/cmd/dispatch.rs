@@ -24,7 +24,7 @@ use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use pipeline::ComputePipeline;
 use VulkanPointers;
 
-/// Wraps around a commands list and adds a dispatch command at the end of it.
+/// Command that executes a compute shader.
 pub struct CmdDispatch<L, Pl, S, Pc>
     where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
 {

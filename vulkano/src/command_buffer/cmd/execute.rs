@@ -16,8 +16,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds a command at the end of it that executes a secondary
-/// command buffer.
+/// Command that executes a secondary command buffer.
 pub struct CmdExecuteCommands<Cb> {
     // Raw list of command buffers to execute.
     raw_list: SmallVec<[vk::CommandBuffer; 4]>,

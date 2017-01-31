@@ -20,12 +20,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds a command that binds pipeline at the end of it.
-///
-/// > **Note**: In reality, what this command does is ensure that the requested pipeline is bound
-/// > after it is executed. In other words, if the command is aware that the same pipeline is
-/// > already bound, then it won't bind it again. This optimization is essential, as binding a
-/// > pipeline has a non-negligible overhead.
+/// Command that binds a pipeline to a command buffer.
 pub struct CmdBindPipeline<P> {
     // The raw pipeline object to bind.
     raw_pipeline: vk::Pipeline,

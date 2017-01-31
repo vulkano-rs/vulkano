@@ -22,6 +22,7 @@ use descriptor::PipelineLayoutRef;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 
+/// Command that draws non-indexed vertices.
 pub struct CmdDraw<V, Pv, Pl, Prp, S, Pc> {
     vertex_buffers: CmdBindVertexBuffers<V>,
     push_constants: CmdPushConstants<Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>>,

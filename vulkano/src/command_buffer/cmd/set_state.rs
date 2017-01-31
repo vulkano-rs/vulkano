@@ -18,11 +18,9 @@ use device::Device;
 use VulkanObject;
 use VulkanPointers;
 
-/// Wraps around a commands list and adds to the end of it a command that sets the state of the
-/// pipeline to the given one.
+/// Command that sets the state of the pipeline to the given one.
 ///
-/// Only the values that are `Some` are touched. Parameters that are `None` are left untouched.
-/// A state is not modified if the same state is already current.
+/// Only the values that are `Some` are modified. Parameters that are `None` are left untouched.
 pub struct CmdSetState {
     // The device.
     device: Arc<Device>,

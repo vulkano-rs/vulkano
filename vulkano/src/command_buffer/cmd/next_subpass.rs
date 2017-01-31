@@ -14,8 +14,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds to the end of it a command that goes to the next subpass
-/// of the current render pass.
+/// Command that goes to the next subpass of the current render pass.
 #[derive(Debug, Copy, Clone)]
 pub struct CmdNextSubpass{
     // The parameter for vkCmdNextSubpass.

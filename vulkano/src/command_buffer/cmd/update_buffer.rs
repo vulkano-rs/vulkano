@@ -19,7 +19,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// A buffer update command.
+/// Command that sets the content of a buffer to some data.
 pub struct CmdUpdateBuffer<'a, B, D: ?Sized>
     where D: 'a
 {

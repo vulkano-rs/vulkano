@@ -13,8 +13,7 @@ use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 
-/// Wraps around a commands list and adds to the end of it a command that ends the current render
-/// pass.
+/// Command that exits the current render pass.
 #[derive(Debug, Copy, Clone)]
 pub struct CmdEndRenderPass;
 

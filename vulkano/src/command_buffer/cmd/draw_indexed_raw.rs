@@ -13,6 +13,7 @@ use command_buffer::pool::CommandPool;
 use VulkanObject;
 use VulkanPointers;
 
+/// Command that draws indexed vertices.
 pub struct CmdDrawIndexedRaw {
     index_count: u32,
     instance_count: u32,

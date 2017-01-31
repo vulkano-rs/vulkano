@@ -26,10 +26,10 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds to the end of it a command that enters a render pass.
+/// Command that makes the command buffer enter a render pass.
 pub struct CmdBeginRenderPass<Rp, F> {
-    // True if only secondary command buffers can be added.
-    secondary: bool,
+    // Inline or secondary.
+    contents: vk::SubpassContents,
     // The draw area.
     rect: [Range<u32>; 2],
     // The clear values for the clear attachments.
@@ -97,7 +97,8 @@ impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
                     0 .. framebuffer.dimensions()[1]];
 
         CmdBeginRenderPass {
-            secondary: secondary,
+            contents: if secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
+                      else { vk::SUBPASS_CONTENTS_INLINE },
             rect: rect,
             clear_values: clear_values,
             raw_render_pass: raw_render_pass,
@@ -139,10 +140,7 @@ unsafe impl<'a, P, Rp, F> AddCommand<&'a CmdBeginRenderPass<Rp, F>> for UnsafeCo
                 pClearValues: command.clear_values.as_ptr(),
             };
 
-            let contents = if command.secondary { vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS }
-                            else { vk::SUBPASS_CONTENTS_INLINE };
-
-            vk.CmdBeginRenderPass(cmd, &begin, contents);
+            vk.CmdBeginRenderPass(cmd, &begin, command.contents);
         }
 
         self

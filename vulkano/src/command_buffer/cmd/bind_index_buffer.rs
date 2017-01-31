@@ -20,7 +20,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds a command that binds an index buffer at the end of it.
+/// Command that binds an index buffer to a command buffer.
 pub struct CmdBindIndexBuffer<B> {
     // Raw handle of the buffer to bind.
     raw_buffer: vk::Buffer,

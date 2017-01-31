@@ -19,8 +19,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
-/// Wraps around a commands list and adds at the end of it a command that copies from a buffer to
-/// another.
+/// Command that copies from a buffer to another.
 pub struct CmdCopyBuffer<S, D> {
     source: S,
     source_raw: vk::Buffer,
