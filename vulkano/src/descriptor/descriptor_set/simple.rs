@@ -21,7 +21,6 @@ use descriptor::descriptor_set::DescriptorWrite;
 use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutRef;
 use device::Device;
-use image::ImageView;
 use image::sys::Layout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
