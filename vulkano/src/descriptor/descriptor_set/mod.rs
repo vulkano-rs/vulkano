@@ -35,9 +35,8 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use std::sync::Arc;
-
 use descriptor::descriptor::DescriptorDesc;
+use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::pool::DescriptorPool;
@@ -68,14 +67,7 @@ pub unsafe trait DescriptorSet {
     fn inner(&self) -> &UnsafeDescriptorSet;
 }
 
-unsafe impl<T: ?Sized> DescriptorSet for Arc<T> where T: DescriptorSet {
-    #[inline]
-    fn inner(&self) -> &UnsafeDescriptorSet {
-        (**self).inner()
-    }
-}
-
-unsafe impl<'a, T: ?Sized> DescriptorSet for &'a T where T: 'a + DescriptorSet {
+unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         (**self).inner()
@@ -91,17 +83,8 @@ pub unsafe trait DescriptorSetDesc {
     fn desc(&self) -> Self::Iter;
 }
 
-unsafe impl<T> DescriptorSetDesc for Arc<T> where T: DescriptorSetDesc {
-    type Iter = <T as DescriptorSetDesc>::Iter;
-
-    #[inline]
-    fn desc(&self) -> Self::Iter {
-        (**self).desc()
-    }
-}
-
-unsafe impl<'a, T> DescriptorSetDesc for &'a T where T: 'a + DescriptorSetDesc {
-    type Iter = <T as DescriptorSetDesc>::Iter;
+unsafe impl<T> DescriptorSetDesc for T where T: SafeDeref, T::Target: DescriptorSetDesc {
+    type Iter = <T::Target as DescriptorSetDesc>::Iter;
 
     #[inline]
     fn desc(&self) -> Self::Iter {

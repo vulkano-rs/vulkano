@@ -26,6 +26,7 @@ use pipeline::shader::SpecializationConstants;
 use device::Device;
 use Error;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -157,19 +158,7 @@ unsafe impl<Pl> ComputePipelineRef for ComputePipeline<Pl> {
     }
 }
 
-unsafe impl ComputePipelineRef for Arc<ComputePipelineAbstract> {
-    #[inline]
-    fn inner(&self) -> ComputePipelineSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        ComputePipelineRef::device(&**self)
-    }
-}
-
-unsafe impl<'a> ComputePipelineRef for &'a ComputePipelineAbstract {
+unsafe impl<T> ComputePipelineRef for T where T: SafeDeref<Target = ComputePipelineAbstract> {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
         (**self).inner()

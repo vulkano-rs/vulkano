@@ -8,13 +8,13 @@
 // according to those terms.
 
 use std::ops::Range;
-use std::sync::Arc;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use image::Image;
 use memory::Content;
 
+use SafeDeref;
 use VulkanObject;
 
 /// Trait for objects that represent either a buffer or a slice of a buffer.
@@ -142,31 +142,7 @@ pub struct BufferInner<'a> {
     pub offset: usize,
 }
 
-unsafe impl<'a, B: ?Sized> Buffer for &'a B where B: Buffer + 'a {
-    #[inline]
-    fn inner(&self) -> BufferInner {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        (**self).size()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
-    {
-        (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
-    }
-
-    #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
-        (**self).conflict_key(self_offset, self_size)
-    }
-}
-
-unsafe impl<B: ?Sized> Buffer for Arc<B> where B: Buffer {
+unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -194,10 +170,6 @@ pub unsafe trait TypedBuffer: Buffer {
     type Content: ?Sized + 'static;
 }
 
-unsafe impl<B: ?Sized> TypedBuffer for Arc<B> where B: TypedBuffer {
-    type Content = B::Content;
-}
-
-unsafe impl<'a, B: ?Sized + 'a> TypedBuffer for &'a B where B: TypedBuffer {
-    type Content = B::Content;
+unsafe impl<T> TypedBuffer for T where T: SafeDeref, T::Target: TypedBuffer {
+    type Content = <T::Target as TypedBuffer>::Content;
 }

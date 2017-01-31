@@ -51,6 +51,7 @@ use format::StrongStorage;
 
 use Error;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -210,23 +211,13 @@ unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
     }
 }
 
-unsafe impl<F, B> BufferViewRef for Arc<BufferView<F, B>> where B: Buffer {
+unsafe impl<T, F, B> BufferViewRef for T where T: SafeDeref<Target = BufferView<F, B>>, B: Buffer {
     type Buffer = B;
     type Format = F;
 
     #[inline]
     fn view(&self) -> &BufferView<F, B> {
         &**self
-    }
-}
-
-unsafe impl<'a, F, B> BufferViewRef for &'a BufferView<F, B> where B: Buffer {
-    type Buffer = B;
-    type Format = F;
-
-    #[inline]
-    fn view(&self) -> &BufferView<F, B> {
-        *self
     }
 }
 

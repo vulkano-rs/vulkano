@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
 use buffer::Buffer;
 use format::ClearValue;
 use format::Format;
@@ -25,6 +23,7 @@ use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
 
+use SafeDeref;
 use VulkanObject;
 
 /// Trait for types that represent images.
@@ -138,21 +137,7 @@ pub unsafe trait Image {
                     -> u64;
 }
 
-unsafe impl<I: ?Sized> Image for Arc<I> where I: Image {
-    #[inline]
-    fn inner(&self) -> &UnsafeImage {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
-        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
-    }
-}
-
-unsafe impl<'a, I: ?Sized + 'a> Image for &'a I where I: Image {
+unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
@@ -224,51 +209,7 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<'a, T: ?Sized + 'a> ImageView for &'a T where T: ImageView {
-    #[inline]
-    fn parent(&self) -> &Image {
-        (**self).parent()
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        (**self).descriptor_set_storage_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        (**self).descriptor_set_combined_image_sampler_layout()
-    }
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        (**self).descriptor_set_sampled_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        (**self).descriptor_set_input_attachment_layout()
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        (**self).identity_swizzle()
-    }
-
-    #[inline]
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
-        (**self).can_be_sampled(sampler)
-    }
-}
-
-unsafe impl<T: ?Sized> ImageView for Arc<T> where T: ImageView {
+unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
     #[inline]
     fn parent(&self) -> &Image {
         (**self).parent()

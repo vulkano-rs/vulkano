@@ -92,6 +92,7 @@ use std::sync::MutexGuard;
 pub unsafe trait SafeDeref: Deref {}
 unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
 unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
+unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {

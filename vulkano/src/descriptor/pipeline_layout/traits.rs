@@ -19,6 +19,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use device::Device;
+use SafeDeref;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutRef {
@@ -46,29 +47,7 @@ pub unsafe trait PipelineLayoutRef {
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>>;
 }
 
-unsafe impl<T: ?Sized> PipelineLayoutRef for Arc<T> where T: PipelineLayoutRef {
-    #[inline]
-    fn sys(&self) -> PipelineLayoutSys {
-        (**self).sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        (**self).desc()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-
-    #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        (**self).descriptor_set_layout(index)
-    }
-}
-
-unsafe impl<'a, T: ?Sized> PipelineLayoutRef for &'a T where T: 'a + PipelineLayoutRef {
+unsafe impl<T> PipelineLayoutRef for T where T: SafeDeref, T::Target: PipelineLayoutRef {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         (**self).sys()
@@ -158,34 +137,7 @@ pub struct PipelineLayoutDescPcRange {
     pub stages: ShaderStages,
 }
 
-unsafe impl<'a, T: ?Sized> PipelineLayoutDesc for &'a T where T: 'a + PipelineLayoutDesc {
-    #[inline]
-    fn num_sets(&self) -> usize {
-        (**self).num_sets()
-    }
-
-    #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        (**self).num_bindings_in_set(set)
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        (**self).descriptor(set, binding)
-    }
-
-    #[inline]
-    fn num_push_constants_ranges(&self) -> usize {
-        (**self).num_push_constants_ranges()
-    }
-
-    #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        (**self).push_constants_range(num)
-    }
-}
-
-unsafe impl<T: ?Sized> PipelineLayoutDesc for Box<T> where T: PipelineLayoutDesc {
+unsafe impl<T> PipelineLayoutDesc for T where T: SafeDeref, T::Target: PipelineLayoutDesc {
     #[inline]
     fn num_sets(&self) -> usize {
         (**self).num_sets()
@@ -220,14 +172,7 @@ pub unsafe trait PipelineLayoutDescNames: PipelineLayoutDesc {
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)>;
 }
 
-unsafe impl<'a, T: ?Sized> PipelineLayoutDescNames for &'a T where T: 'a + PipelineLayoutDescNames {
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        (**self).descriptor_by_name(name)
-    }
-}
-
-unsafe impl<T: ?Sized> PipelineLayoutDescNames for Box<T> where T: PipelineLayoutDescNames {
+unsafe impl<T> PipelineLayoutDescNames for T where T: SafeDeref, T::Target: PipelineLayoutDescNames {
     #[inline]
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
         (**self).descriptor_by_name(name)

@@ -32,6 +32,7 @@ use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
 use Error;
 use OomError;
+use SafeDeref;
 use VulkanObject;
 use VulkanPointers;
 use check_errors;
@@ -1073,19 +1074,7 @@ unsafe impl<Mv, L, Rp> GraphicsPipelineRef for GraphicsPipeline<Mv, L, Rp> {
     }
 }
 
-unsafe impl<T: ?Sized> GraphicsPipelineRef for Arc<T> where T: GraphicsPipelineRef {
-    #[inline]
-    fn inner(&self) -> GraphicsPipelineSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-}
-
-unsafe impl<'a, T: ?Sized> GraphicsPipelineRef for &'a T where T: GraphicsPipelineRef + 'a {
+unsafe impl<T> GraphicsPipelineRef for T where T: SafeDeref, T::Target: GraphicsPipelineRef {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         (**self).inner()

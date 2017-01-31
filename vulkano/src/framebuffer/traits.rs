@@ -24,6 +24,7 @@ use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
+use SafeDeref;
 use vk;
 
 /// Master trait for framebuffer objects. All framebuffer structs should always implement
@@ -58,19 +59,7 @@ pub unsafe trait FramebufferRef {
     }
 }
 
-unsafe impl<'a, F: ?Sized> FramebufferRef for &'a F where F: FramebufferRef {
-    #[inline]
-    fn inner(&self) -> FramebufferSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        (**self).dimensions()
-    }
-}
-
-unsafe impl<F: ?Sized> FramebufferRef for Arc<F> where F: FramebufferRef {
+unsafe impl<T> FramebufferRef for T where T: SafeDeref, T::Target: FramebufferRef {
     #[inline]
     fn inner(&self) -> FramebufferSys {
         (**self).inner()
@@ -92,17 +81,8 @@ pub unsafe trait FramebufferRenderPass {
     fn render_pass(&self) -> &Self::RenderPass;
 }
 
-unsafe impl<T: ?Sized> FramebufferRenderPass for Arc<T> where T: FramebufferRenderPass {
-    type RenderPass = T::RenderPass;
-
-    #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
-        (**self).render_pass()
-    }
-}
-
-unsafe impl<'a, T: ?Sized> FramebufferRenderPass for &'a T where T: FramebufferRenderPass {
-    type RenderPass = T::RenderPass;
+unsafe impl<T> FramebufferRenderPass for T where T: SafeDeref, T::Target: FramebufferRenderPass {
+    type RenderPass = <T::Target as FramebufferRenderPass>::RenderPass;
 
     #[inline]
     fn render_pass(&self) -> &Self::RenderPass {
@@ -148,19 +128,7 @@ pub unsafe trait RenderPassRef {
     fn device(&self) -> &Arc<Device>;
 }
 
-unsafe impl<T> RenderPassRef for Arc<T> where T: RenderPassRef {
-    #[inline]
-    fn inner(&self) -> RenderPassSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-}
-
-unsafe impl<'a, T: ?Sized> RenderPassRef for &'a T where T: RenderPassRef {
+unsafe impl<T> RenderPassRef for T where T: SafeDeref, T::Target: RenderPassRef {
     #[inline]
     fn inner(&self) -> RenderPassSys {
         (**self).inner()
@@ -356,71 +324,7 @@ pub unsafe trait RenderPassDesc {
     }
 }
 
-unsafe impl<T: ?Sized> RenderPassDesc for Box<T> where T: RenderPassDesc {
-    #[inline]
-    fn num_attachments(&self) -> usize {
-        (**self).num_attachments()
-    }
-
-    #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        (**self).attachment(num)
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> usize {
-        (**self).num_subpasses()
-    }
-
-    #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        (**self).subpass(num)
-    }
-
-    #[inline]
-    fn num_dependencies(&self) -> usize {
-        (**self).num_dependencies()
-    }
-
-    #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        (**self).dependency(num)
-    }
-}
-
-unsafe impl<T: ?Sized> RenderPassDesc for Arc<T> where T: RenderPassDesc {
-    #[inline]
-    fn num_attachments(&self) -> usize {
-        (**self).num_attachments()
-    }
-
-    #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        (**self).attachment(num)
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> usize {
-        (**self).num_subpasses()
-    }
-
-    #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        (**self).subpass(num)
-    }
-
-    #[inline]
-    fn num_dependencies(&self) -> usize {
-        (**self).num_dependencies()
-    }
-
-    #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        (**self).dependency(num)
-    }
-}
-
-unsafe impl<'a, T: ?Sized> RenderPassDesc for &'a T where T: RenderPassDesc {
+unsafe impl<T> RenderPassDesc for T where T: SafeDeref, T::Target: RenderPassDesc {
     #[inline]
     fn num_attachments(&self) -> usize {
         (**self).num_attachments()
@@ -543,21 +447,10 @@ pub unsafe trait RenderPassDescAttachmentsList<A>: RenderPassDesc {
     fn check_attachments_list(&self, A) -> Result<Self::List, FramebufferCreationError>;
 }
 
-unsafe impl<'a, A, T: ?Sized> RenderPassDescAttachmentsList<A> for &'a T
-    where T: RenderPassDescAttachmentsList<A>
+unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
+    where T: SafeDeref, T::Target: RenderPassDescAttachmentsList<A>
 {
-    type List = T::List;
-
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
-        (**self).check_attachments_list(atch)
-    }
-}
-
-unsafe impl<A, T: ?Sized> RenderPassDescAttachmentsList<A> for Arc<T>
-    where T: RenderPassDescAttachmentsList<A>
-{
-    type List = T::List;
+    type List = <T::Target as RenderPassDescAttachmentsList<A>>::List;
 
     #[inline]
     fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
@@ -595,17 +488,8 @@ pub unsafe trait RenderPassClearValues<C>: RenderPassDesc {
     fn convert_clear_values(&self, C) -> Box<Iterator<Item = ClearValue>>;
 }
 
-unsafe impl<'a, R: ?Sized, C> RenderPassClearValues<C> for &'a R
-    where R: RenderPassClearValues<C>
-{
-    #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
-        (**self).convert_clear_values(vals)
-    }
-}
-
-unsafe impl<R: ?Sized, C> RenderPassClearValues<C> for Arc<R>
-    where R: RenderPassClearValues<C>
+unsafe impl<T, C> RenderPassClearValues<C> for T
+    where T: SafeDeref, T::Target: RenderPassClearValues<C>
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
