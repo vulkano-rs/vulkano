@@ -65,9 +65,6 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     // now parsing the document
     let doc = try!(parse::parse_spirv(&data));
 
-    // TODO: remove
-    println!("{:#?}", doc);
-
     let mut output = String::new();
     output.push_str(r#"
         #[allow(unused_imports)]
