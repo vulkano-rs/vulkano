@@ -10,6 +10,8 @@
 extern crate glsl_to_spirv;
 extern crate vulkano_shaders;
 
+use std::io::Read;
+
 fn main() {
     let shader = r#"
 #version 450
@@ -38,7 +40,9 @@ void main() {
 
 "#;
 
-    let content = glsl_to_spirv::compile(shader, glsl_to_spirv::ShaderType::Fragment).unwrap();
-    let output = vulkano_shaders::reflect("Shader", content).unwrap();
+    let mut output_file = glsl_to_spirv::compile(shader, glsl_to_spirv::ShaderType::Fragment).unwrap();
+    let mut content = Vec::new();
+    output_file.read_to_end(&mut content).expect("failed to read SPIR-V output file");
+    let output = vulkano_shaders::reflect("Shader", content, None).unwrap();
     println!("{}", output);
 }
