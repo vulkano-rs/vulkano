@@ -162,7 +162,7 @@ pub struct AttributeInfo {
 }
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait Definition<I>: 'static + Send + Sync {
+pub unsafe trait Definition<I> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.

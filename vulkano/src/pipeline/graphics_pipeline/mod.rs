@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::u32;
 use smallvec::SmallVec;
 
+use buffer::BufferInner;
 use device::Device;
 use descriptor::PipelineLayoutRef;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
@@ -58,6 +59,7 @@ use pipeline::shader::TessEvaluationShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
 use pipeline::vertex::Definition as VertexDefinition;
+use pipeline::vertex::Source as VertexSource;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::viewport::ViewportsState;
 
@@ -1096,6 +1098,29 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
         self.0
+    }
+}
+
+unsafe impl<Mv, L, Rp, I> VertexDefinition<I> for GraphicsPipeline<Mv, L, Rp>
+    where Mv: VertexDefinition<I>
+{
+    type BuffersIter = <Mv as VertexDefinition<I>>::BuffersIter;
+    type AttribsIter = <Mv as VertexDefinition<I>>::AttribsIter;
+
+    #[inline]
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
+        self.vertex_definition.definition(interface)
+    }
+}
+
+unsafe impl<Mv, L, Rp, S> VertexSource<S> for GraphicsPipeline<Mv, L, Rp>
+    where Mv: VertexSource<S>
+{
+    #[inline]
+    fn decode<'l>(&self, s: &'l S) -> (Vec<BufferInner<'l>>, usize, usize) {
+        self.vertex_definition.decode(s)
     }
 }
 
