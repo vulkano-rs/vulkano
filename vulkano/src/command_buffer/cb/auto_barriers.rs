@@ -73,6 +73,7 @@ pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
 pass_through!((V), cmd::CmdBindVertexBuffers<V>);
 pass_through!((), cmd::CmdClearAttachments);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
+pass_through!((), cmd::CmdDispatchRaw);
 pass_through!((), cmd::CmdDrawRaw);
 pass_through!((), cmd::CmdEndRenderPass);
 pass_through!((C), cmd::CmdExecuteCommands<C>);

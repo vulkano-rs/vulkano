@@ -187,6 +187,7 @@ pass_through!((B), cmd::CmdBindIndexBuffer<B>);
 pass_through!((V), cmd::CmdBindVertexBuffers<V>);
 pass_through!((), cmd::CmdClearAttachments);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
+pass_through!((), cmd::CmdDispatchRaw);
 pass_through!((), cmd::CmdDrawIndexedRaw);
 pass_through!((B), cmd::CmdDrawIndirectRaw<B>);
 pass_through!((), cmd::CmdDrawRaw);
