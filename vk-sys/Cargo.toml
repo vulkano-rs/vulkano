@@ -7,3 +7,4 @@ description = "Bindings for the Vulkan graphics API"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vk-sys"
 keywords = ["vulkan", "bindings", "graphics", "gpu"]
+categories = ["rendering::graphics-api"]

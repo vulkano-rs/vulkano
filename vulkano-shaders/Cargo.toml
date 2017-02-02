@@ -6,6 +6,7 @@ repository = "https://github.com/tomaka/vulkano"
 description = "Shaders "
 license = "MIT/Apache-2.0"
 documentation = "http://tomaka.github.io/vulkano/vulkano/index.html"
+categories = ["rendering::graphics-api"]
 
 [dependencies]
 glsl-to-spirv = { version = "0.1.2", path = "../glsl-to-spirv" }
