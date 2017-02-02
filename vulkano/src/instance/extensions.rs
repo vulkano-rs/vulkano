@@ -155,6 +155,7 @@ instance_extensions! {
     khr_win32_surface => b"VK_KHR_win32_surface",
     ext_debug_report => b"VK_EXT_debug_report",
     nn_vi_surface => b"VK_NN_vi_surface",
+    ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
 }
 
 extensions! {

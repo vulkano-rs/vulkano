@@ -894,15 +894,42 @@ impl Iterator for SupportedCompositeAlphaIter {
 /// and perform a manual conversion to that color space from inside your shader.
 ///
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
 pub enum ColorSpace {
-    SrgbNonLinear,
+    SrgbNonLinear = vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,
+    DisplayP3Linear = vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT,
+    DisplayP3NonLinear = vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT,
+    ScrgbLinear = vk::COLOR_SPACE_SCRGB_LINEAR_EXT,
+    ScrgbNonLinear = vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT,
+    DciP3Linear = vk::COLOR_SPACE_DCI_P3_LINEAR_EXT,
+    DciP3NonLinear = vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT,
+    Bt709Linear = vk::COLOR_SPACE_BT709_LINEAR_EXT,
+    Bt709NonLinear = vk::COLOR_SPACE_BT709_NONLINEAR_EXT,
+    Bt2020Linear = vk::COLOR_SPACE_BT2020_LINEAR_EXT,
+    Bt2020NonLinear = vk::COLOR_SPACE_BT2020_NONLINEAR_EXT,
+    AdobeRgbLinear = vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT,
+    AdobeRgbNonLinear = vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT,
 }
 
 impl ColorSpace {
     #[inline]
     fn from_num(val: u32) -> ColorSpace {
-        assert_eq!(val, vk::COLOR_SPACE_SRGB_NONLINEAR_KHR);
-        ColorSpace::SrgbNonLinear
+        match val {
+            vk::COLOR_SPACE_SRGB_NONLINEAR_KHR => ColorSpace::SrgbNonLinear,
+            vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT => ColorSpace::DisplayP3Linear,
+            vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
+            vk::COLOR_SPACE_SCRGB_LINEAR_EXT => ColorSpace::ScrgbLinear,
+            vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT => ColorSpace::ScrgbNonLinear,
+            vk::COLOR_SPACE_DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
+            vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
+            vk::COLOR_SPACE_BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
+            vk::COLOR_SPACE_BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
+            vk::COLOR_SPACE_BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
+            vk::COLOR_SPACE_BT2020_NONLINEAR_EXT => ColorSpace::Bt2020NonLinear,
+            vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
+            vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
+            _ => panic!("Wrong value for color space enum")
+        }
     }
 }
 
