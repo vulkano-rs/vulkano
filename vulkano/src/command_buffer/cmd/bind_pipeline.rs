@@ -49,14 +49,12 @@ impl<P> CmdBindPipeline<P> {
             pipeline: pipeline,
         }
     }
-}
 
-impl CmdBindPipeline<()> {
     /// Builds a command that binds a graphics pipeline to the graphics pipeline bind point.
     ///
     /// Use this command right before a draw command.
     #[inline]
-    pub fn bind_graphics_pipeline<P>(pipeline: P) -> CmdBindPipeline<P>
+    pub fn bind_graphics_pipeline(pipeline: P) -> CmdBindPipeline<P>
         where P: GraphicsPipelineRef
     {
         let raw_pipeline = pipeline.inner().internal_object();
@@ -69,9 +67,7 @@ impl CmdBindPipeline<()> {
             pipeline: pipeline,
         }
     }
-}
 
-impl<P> CmdBindPipeline<P> {
     /// This disables the command but keeps it alive. All getters still return the same value, but
     /// executing the command will not do anything.
     #[inline]
