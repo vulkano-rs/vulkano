@@ -23,7 +23,7 @@ use device::Queue;
 use instance::QueueFamily;
 use OomError;
 
-type Cb<L, P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::AutoPipelineBarriersLayer<cb::UnsafeCommandBufferBuilder<P>, L>>>>>;
+type Cb<L, P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::UnsafeCommandBufferBuilder<P>, L>>>>>>;
 
 pub struct AutoCommandBufferBuilder<L, P = Arc<StandardCommandPool>> where P: CommandPool {
     inner: Cb<L, P>
@@ -39,6 +39,7 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
             let c = try!(cb::UnsafeCommandBufferBuilder::new(pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
             let c = cb::BufferedCommandsListLayer::new(c);
             let c = cb::AutoPipelineBarriersLayer::new(c);
+            let c = cb::SubmitSyncBuilderLayer::new(c);
             let c = cb::StateCacheLayer::new(c);
             let c = cb::ContextCheckLayer::new(c);
             let c = cb::QueueTyCheckLayer::new(c);
