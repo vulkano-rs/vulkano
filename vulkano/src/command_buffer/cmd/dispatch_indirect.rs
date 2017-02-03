@@ -23,7 +23,7 @@ use command_buffer::DispatchIndirectCommand;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use pipeline::ComputePipeline;
 use sync::AccessFlagBits;
@@ -34,7 +34,7 @@ use vk;
 
 /// Wraps around a commands list and adds an indirect dispatch command at the end of it.
 pub struct CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
     previous: CmdPushConstants<
@@ -53,7 +53,7 @@ pub struct CmdDispatchIndirect<L, B, Pl, S, Pc>
 }
 
 impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     /// This function is unsafe because the values in the buffer must be less or equal than
     /// `VkPhysicalDeviceLimits::maxComputeWorkGroupCount`.
@@ -92,7 +92,7 @@ impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
 
 unsafe impl<L, B, Pl, S, Pc> CommandsList for CmdDispatchIndirect<L, B, Pl, S, Pc>
     where L: CommandsList, B: Buffer,
-          Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+          Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {

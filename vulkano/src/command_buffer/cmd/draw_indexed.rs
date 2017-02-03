@@ -21,7 +21,7 @@ use command_buffer::cmd::CmdSetState;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
@@ -30,7 +30,7 @@ use VulkanPointers;
 
 /// Command that draws indexed vertices.
 pub struct CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
     previous: CmdBindIndexBuffer<
@@ -59,7 +59,7 @@ pub struct CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
 
 impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
     where L: CommandsList,
-          Pl: PipelineLayoutRef,
+          Pl: PipelineLayoutAbstract,
           S: TrackedDescriptorSetsCollection,
           Ib: Buffer + TypedBuffer<Content = [I]>,
           I: Index + 'static
@@ -95,7 +95,7 @@ impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, P
 }
 
 unsafe impl<L, V, Ib, Pv, Pl, Prp, S, Pc> CommandsList for CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection,
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection,
           Ib: Buffer
 {
     #[inline]

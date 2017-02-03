@@ -15,7 +15,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cmd;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use framebuffer::FramebufferRef;
 use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
@@ -94,7 +94,7 @@ pub unsafe trait CommandBufferBuilder {
                                       dynamic: DynamicState, vertices: V, sets: S,
                                       push_constants: Pc) -> O
         where Self: Sized + AddCommand<cmd::CmdDraw<V, Pv, Pl, Prp, S, Pc>, Out = O>,
-              Pl: PipelineLayoutRef,
+              Pl: PipelineLayoutAbstract,
               S: DescriptorSetsCollection,
               Pv: Source<V>
     {

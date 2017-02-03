@@ -26,7 +26,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use descriptor::pipeline_layout::PipelineLayoutRef;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
@@ -166,7 +166,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     }
 }
 
-unsafe impl<D> PipelineLayoutRef for PipelineLayout<D> where D: PipelineLayoutDescNames {
+unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D> where D: PipelineLayoutDescNames {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         PipelineLayoutSys(&self.layout)

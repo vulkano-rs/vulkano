@@ -17,7 +17,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use descriptor::pipeline_layout::PipelineLayoutRef;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutSetsCompatible;
 use device::Device;
 use VulkanObject;
@@ -43,7 +43,7 @@ pub struct CmdBindDescriptorSets<S, P> {
 }
 
 impl<S, P> CmdBindDescriptorSets<S, P>
-    where P: PipelineLayoutRef, S: DescriptorSetsCollection
+    where P: PipelineLayoutAbstract, S: DescriptorSetsCollection
 {
     /// Builds the command.
     ///

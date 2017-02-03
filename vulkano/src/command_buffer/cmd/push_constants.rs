@@ -14,7 +14,7 @@ use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
-use descriptor::pipeline_layout::PipelineLayoutRef;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 use device::Device;
 use VulkanObject;
@@ -32,7 +32,7 @@ pub struct CmdPushConstants<Pc, Pl> {
 }
 
 impl<Pc, Pl> CmdPushConstants<Pc, Pl>
-    where Pl: PipelineLayoutRef
+    where Pl: PipelineLayoutAbstract
 {
     /// Builds the command.
     ///
@@ -57,7 +57,7 @@ impl<Pc, Pl> CmdPushConstants<Pc, Pl>
 
 unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool,
-          Pl: PipelineLayoutRef
+          Pl: PipelineLayoutAbstract
 {
     type Out = UnsafeCommandBufferBuilder<P>;
 

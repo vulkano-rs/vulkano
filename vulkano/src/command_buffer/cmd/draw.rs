@@ -18,7 +18,7 @@ use command_buffer::cmd::CmdDrawRaw;
 use command_buffer::cmd::CmdPushConstants;
 use command_buffer::cmd::CmdSetState;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 
@@ -33,7 +33,7 @@ pub struct CmdDraw<V, Pv, Pl, Prp, S, Pc> {
 }
 
 impl<V, Pv, Pl, Prp, S, Pc> CmdDraw<V, Pv, Pl, Prp, S, Pc>
-    where Pl: PipelineLayoutRef, S: DescriptorSetsCollection
+    where Pl: PipelineLayoutAbstract, S: DescriptorSetsCollection
 {
     /// See the documentation of the `draw` method.
     pub fn new(pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,

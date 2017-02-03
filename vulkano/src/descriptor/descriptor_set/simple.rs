@@ -19,7 +19,7 @@ use descriptor::descriptor_set::DescriptorPoolAlloc;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::DescriptorWrite;
 use descriptor::descriptor_set::StdDescriptorPool;
-use descriptor::pipeline_layout::PipelineLayoutRef;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use image::sys::Layout;
 use sync::AccessFlagBits;
@@ -113,7 +113,7 @@ pub struct SimpleDescriptorSetBuilder<L, R> {
     resources: R,
 }
 
-impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
+impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutAbstract {
     /// Builds a new prototype for a `SimpleDescriptorSet`. Requires a reference to a pipeline
     /// layout, and the id of the set within the layout.
     ///
@@ -135,7 +135,7 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutRef {
     }
 }
 
-impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutRef {
+impl<L, R> SimpleDescriptorSetBuilder<L, R> where L: PipelineLayoutAbstract {
     /// Builds a `SimpleDescriptorSet` from the builder.
     pub fn build(self) -> SimpleDescriptorSet<R, Arc<StdDescriptorPool>> {
         // TODO: check that we filled everything
@@ -168,7 +168,7 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: Buffer, L: PipelineLayoutRef
+    where T: Buffer, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetBuf<T>);
 

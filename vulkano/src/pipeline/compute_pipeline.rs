@@ -14,7 +14,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
@@ -94,7 +94,7 @@ impl ComputePipeline<()> {
                 pNext: ptr::null(),
                 flags: 0,
                 stage: stage,
-                layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
+                layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
@@ -130,13 +130,13 @@ impl<Pl> ComputePipeline<Pl> {
 }
 
 /// Trait implemented on all compute pipelines.
-pub unsafe trait ComputePipelineAbstract: PipelineLayoutRef {
+pub unsafe trait ComputePipelineAbstract: PipelineLayoutAbstract {
     /// Returns an opaque object that represents the inside of the compute pipeline.
     fn inner(&self) -> ComputePipelineSys;
 }
 
 unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
-    where Pl: PipelineLayoutRef
+    where Pl: PipelineLayoutAbstract
 {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
@@ -167,7 +167,7 @@ unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     }
 }
 
-unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayoutRef {
+unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: PipelineLayoutAbstract {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         self.layout().sys()

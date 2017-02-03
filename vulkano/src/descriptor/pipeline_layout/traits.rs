@@ -22,23 +22,23 @@ use device::Device;
 use SafeDeref;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-pub unsafe trait PipelineLayoutRef {
+pub unsafe trait PipelineLayoutAbstract {
     /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
-    /// Can be obtained by calling `PipelineLayoutRef::sys()` on the pipeline layout.
+    /// Can be obtained by calling `PipelineLayoutAbstract::sys()` on the pipeline layout.
     ///
     /// > **Note**: This is an internal function that you normally don't need to call.
     fn sys(&self) -> PipelineLayoutSys;
 
     /// Returns the description of the pipeline layout.
     ///
-    /// Can be obtained by calling `PipelineLayoutRef::desc()` on the pipeline layout.
+    /// Can be obtained by calling `PipelineLayoutAbstract::desc()` on the pipeline layout.
     // TODO: meh for `PipelineLayoutDescNames instead of `PipelineLayoutDesc`
     fn desc(&self) -> &PipelineLayoutDescNames;
 
     /// Returns the device that this pipeline layout belongs to.
     ///
-    /// Can be obtained by calling `PipelineLayoutRef::device()` on the pipeline layout.
+    /// Can be obtained by calling `PipelineLayoutAbstract::device()` on the pipeline layout.
     fn device(&self) -> &Arc<Device>;
 
     /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
@@ -47,7 +47,7 @@ pub unsafe trait PipelineLayoutRef {
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>>;
 }
 
-unsafe impl<T> PipelineLayoutRef for T where T: SafeDeref, T::Target: PipelineLayoutRef {
+unsafe impl<T> PipelineLayoutAbstract for T where T: SafeDeref, T::Target: PipelineLayoutAbstract {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         (**self).sys()
@@ -181,7 +181,7 @@ unsafe impl<T> PipelineLayoutDescNames for T where T: SafeDeref, T::Target: Pipe
 
 /// Traits that allow determining whether a pipeline layout is a superset of another one.
 ///
-/// This trait is automatically implemented on all types that implement `PipelineLayoutRef`.
+/// This trait is automatically implemented on all types that implement `PipelineLayoutAbstract`.
 /// TODO: once specialization lands, we can add implementations that don't perform deep comparisons
 pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc

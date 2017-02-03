@@ -19,14 +19,14 @@ use command_buffer::cmd::CmdPushConstantsError;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
 use pipeline::ComputePipeline;
 use VulkanPointers;
 
 /// Command that executes a compute shader.
 pub struct CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     // Parent commands list.
     previous: CmdPushConstants<
@@ -42,7 +42,7 @@ pub struct CmdDispatch<L, Pl, S, Pc>
 }
 
 impl<L, Pl, S, Pc> CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     /// See the documentation of the `dispatch` method.
     pub fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, dimensions: [u32; 3],
@@ -63,7 +63,7 @@ impl<L, Pl, S, Pc> CmdDispatch<L, Pl, S, Pc>
 }
 
 unsafe impl<L, Pl, S, Pc> CommandsList for CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutRef, S: TrackedDescriptorSetsCollection
+    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
 {
     #[inline]
     fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {

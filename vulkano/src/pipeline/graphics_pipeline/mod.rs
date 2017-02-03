@@ -18,7 +18,7 @@ use smallvec::SmallVec;
 
 use buffer::BufferInner;
 use device::Device;
-use descriptor::PipelineLayoutRef;
+use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
@@ -301,7 +301,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 }
 
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
-    where L: PipelineLayoutRef
+    where L: PipelineLayoutAbstract
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
@@ -872,7 +872,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states.as_ref().map(|s| s as *const _)
                                              .unwrap_or(ptr::null()),
-                layout: PipelineLayoutRef::sys(&pipeline_layout).internal_object(),
+                layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
                 renderPass: params.render_pass.render_pass().inner().internal_object(),
                 subpass: params.render_pass.index(),
                 basePipelineHandle: 0,    // TODO:
@@ -929,7 +929,7 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutRef
+    where L: PipelineLayoutAbstract
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]
@@ -1004,8 +1004,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
     }
 }
 
-unsafe impl<Mv, L, Rp> PipelineLayoutRef for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutRef
+unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -1049,13 +1049,13 @@ impl Drop for Inner {
 
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutRef /* + ... */ {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract /* + ... */ {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutRef
+    where L: PipelineLayoutAbstract
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
