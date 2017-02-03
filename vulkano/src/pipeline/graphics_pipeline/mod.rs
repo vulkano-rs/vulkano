@@ -28,9 +28,17 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
-use framebuffer::RenderPassDesc;
+use format::ClearValue;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassAbstract;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassDescAttachmentsList;
+use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassSubpassInterface;
+use framebuffer::RenderPassSys;
 use framebuffer::Subpass;
 use Error;
 use OomError;
@@ -1028,6 +1036,69 @@ unsafe impl<Mv, L, Rp> DeviceOwned for GraphicsPipeline<Mv, L, Rp> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.inner.device
+    }
+}
+
+unsafe impl<Mv, L, Rp> RenderPassAbstract for GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPassAbstract
+{
+    #[inline]
+    fn inner(&self) -> RenderPassSys {
+        self.render_pass.inner()
+    }
+}
+
+unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPassDesc
+{
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        self.render_pass.num_attachments()
+    }
+
+    #[inline]
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        self.render_pass.num_subpasses()
+    }
+
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        self.render_pass.num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency(num)
+    }
+}
+
+unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPassDescAttachmentsList<A>
+{
+    type List = Rp::List;
+
+    #[inline]
+    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
+        self.render_pass.check_attachments_list(atch)
+    }
+}
+
+unsafe impl<C, Mv, L, Rp> RenderPassClearValues<C> for GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPassClearValues<C>
+{
+    #[inline]
+    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+        self.render_pass.convert_clear_values(vals)
     }
 }
 
