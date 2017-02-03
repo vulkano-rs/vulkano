@@ -16,6 +16,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
+use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::FramebufferRef;
 use framebuffer::FramebufferRenderPass;

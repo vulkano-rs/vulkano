@@ -23,6 +23,7 @@ use buffer::BufferView;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
+use device::DeviceOwned;
 use image::ImageView;
 use sampler::Sampler;
 
@@ -36,7 +37,7 @@ use vk;
 ///
 /// Since the destructor of `Alloc` must free the descriptor set, this trait is usually implemented
 /// on `Arc<T>` or `&'a T` and not `T` directly so that the `Alloc` object can hold the pool.
-pub unsafe trait DescriptorPool {
+pub unsafe trait DescriptorPool: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///
     /// The destructor of this object should free the descriptor set.
@@ -44,9 +45,6 @@ pub unsafe trait DescriptorPool {
 
     /// Allocates a descriptor set.
     fn alloc(&self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError>;
-
-    /// Returns the device this pool was created with.
-    fn device(&self) -> &Arc<Device>;
 }
 
 /// An allocated descriptor set.

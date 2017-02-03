@@ -10,6 +10,7 @@
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +19,7 @@ use smallvec::SmallVec;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::pool::CommandPool;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 use sync::Fence;
 use sync::FenceWaitError;
@@ -32,7 +34,7 @@ use SynchronizedVulkanObject;
 
 /// Trait for objects that can be submitted to the GPU.
 // TODO: is Box<Error> appropriate? maybe something else?
-pub unsafe trait Submit {
+pub unsafe trait Submit: DeviceOwned {
     /// Submits the object to the queue.
     ///
     /// Since submitting has a fixed overhead, you should try, if possible, to submit multiple
@@ -80,9 +82,6 @@ pub unsafe trait Submit {
         SubmitChain { first: self, second: other }
     }
 
-    /// Returns the device this object belongs to.
-    fn device(&self) -> &Arc<Device>;
-
     /// Called slightly before the object is submitted. The function must modify an existing
     /// `SubmitBuilder` object to append the list of things to submit to it.
     ///
@@ -101,26 +100,7 @@ pub unsafe trait Submit {
                                     -> Result<SubmitBuilder<'a>, Box<Error>>;
 }
 
-unsafe impl<S: ?Sized> Submit for Box<S> where S: Submit {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-
-    #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
-        (**self).append_submission(base, queue)
-    }
-}
-
-unsafe impl<S: ?Sized> Submit for Arc<S> where S: Submit {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
-    }
-
+unsafe impl<T> Submit for T where T: Deref, T::Target: Submit {
     #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
@@ -397,14 +377,6 @@ pub struct SubmitChain<A, B> {
 
 unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        debug_assert_eq!(self.first.device().internal_object(),
-                         self.second.device().internal_object());
-        
-        self.first.device()
-    }
-
-    #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
@@ -412,6 +384,16 @@ unsafe impl<A, B> Submit for SubmitChain<A, B> where A: Submit, B: Submit {
         // called without any actual following submission
         let builder = try!(self.first.append_submission(base, queue));
         self.second.append_submission(builder, queue)
+    }
+}
+
+unsafe impl<A, B> DeviceOwned for SubmitChain<A, B> where A: DeviceOwned, B: DeviceOwned {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        debug_assert_eq!(self.first.device().internal_object(),
+                         self.second.device().internal_object());
+        
+        self.first.device()
     }
 }
 

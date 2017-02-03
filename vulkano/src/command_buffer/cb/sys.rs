@@ -18,6 +18,7 @@ use command_buffer::pool::CommandPool;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
@@ -212,10 +213,11 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             },
         })
     }
+}
 
-    /// Returns the device used to create this command buffer.
+unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> where P: CommandPool {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
+    fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
@@ -287,15 +289,17 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
 
 unsafe impl<P> Submit for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, _queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         Ok(base.add_command_buffer(self))
+    }
+}
+
+unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> where P: CommandPool {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

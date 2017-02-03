@@ -19,6 +19,7 @@ use command_buffer::pool::StandardCommandPool;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use OomError;
@@ -71,15 +72,20 @@ unsafe impl<L, P> Submit for AutoCommandBufferBuilder<L, P>
           P: CommandPool
 {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
-    #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         self.inner.append_submission(base, queue)
+    }
+}
+
+unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P>
+    where Cb<L, P>: DeviceOwned,
+          P: CommandPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
     }
 }
 

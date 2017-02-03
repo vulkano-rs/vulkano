@@ -28,6 +28,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
+use device::DeviceOwned;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
 /// descriptor sets and push constants available to your shaders 
@@ -178,13 +179,15 @@ unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D> where D: PipelineLay
     }
 
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layouts.get(index)
+    }
+}
+
+unsafe impl<D> DeviceOwned for PipelineLayout<D> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

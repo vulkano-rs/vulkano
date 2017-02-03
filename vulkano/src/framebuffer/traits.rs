@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use device::Device;
+use device::DeviceOwned;
 use format::ClearValue;
 use format::Format;
 use format::FormatTy;
@@ -120,23 +121,15 @@ unsafe impl<T> RenderPassAbstract for T where T: RenderPassRef + RenderPassDesc 
 /// # Safety
 ///
 /// - `inner()` and `device()` must return the same values every time.
-pub unsafe trait RenderPassRef {
+pub unsafe trait RenderPassRef: DeviceOwned {
     /// Returns an opaque object representing the render pass' internals.
     fn inner(&self) -> RenderPassSys;
-
-    /// Returns the device associated to the render pass.
-    fn device(&self) -> &Arc<Device>;
 }
 
 unsafe impl<T> RenderPassRef for T where T: SafeDeref, T::Target: RenderPassRef {
     #[inline]
     fn inner(&self) -> RenderPassSys {
         (**self).inner()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
     }
 }
 

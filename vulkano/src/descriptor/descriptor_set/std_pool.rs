@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use device::Device;
+use device::DeviceOwned;
 use descriptor::descriptor_set::DescriptorsCount;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
@@ -124,6 +125,9 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         })
     }
 
+}
+
+unsafe impl DeviceOwned for StdDescriptorPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device

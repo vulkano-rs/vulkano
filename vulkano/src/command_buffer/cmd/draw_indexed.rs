@@ -23,6 +23,7 @@ use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
+use device::DeviceOwned;
 use pipeline::GraphicsPipeline;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::Source;

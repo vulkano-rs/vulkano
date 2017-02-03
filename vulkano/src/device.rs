@@ -95,6 +95,7 @@ use std::fmt;
 use std::error;
 use std::hash::BuildHasherDefault;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -436,6 +437,24 @@ impl Drop for Device {
             self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());
         }
+    }
+}
+
+/// Implemented on objects that belong to a Vulkan device.
+///
+/// # Safety
+///
+/// - `device()` must return the correct device.
+///
+pub unsafe trait DeviceOwned {
+    /// Returns the device that owns `Self`.
+    fn device(&self) -> &Arc<Device>;
+}
+
+unsafe impl<T> DeviceOwned for T where T: Deref, T::Target: DeviceOwned {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
     }
 }
 

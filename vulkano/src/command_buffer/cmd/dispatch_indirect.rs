@@ -25,6 +25,7 @@ use command_buffer::CommandsList;
 use command_buffer::CommandsListSink;
 use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
+use device::DeviceOwned;
 use pipeline::ComputePipeline;
 use sync::AccessFlagBits;
 use sync::PipelineStages;

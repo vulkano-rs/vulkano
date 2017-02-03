@@ -24,6 +24,7 @@ use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
 
 use device::Device;
+use device::DeviceOwned;
 use Error;
 use OomError;
 use SafeDeref;
@@ -179,13 +180,15 @@ unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: Pipelin
     }
 
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.device()
-    }
-
-    #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layout().descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Pl> DeviceOwned for ComputePipeline<Pl> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.device()
     }
 }
 

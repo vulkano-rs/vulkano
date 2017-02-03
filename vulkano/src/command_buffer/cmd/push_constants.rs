@@ -17,6 +17,7 @@ use command_buffer::pool::CommandPool;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 use device::Device;
+use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
 

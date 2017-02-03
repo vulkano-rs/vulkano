@@ -20,6 +20,7 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutSetsCompatible;
 use device::Device;
+use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
 use vk;

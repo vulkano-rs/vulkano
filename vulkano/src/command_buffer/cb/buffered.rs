@@ -17,6 +17,7 @@ use command_buffer::cmd;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 
 /// Layer around a command buffer builder or a command buffer that stores the commands and has a
@@ -135,15 +136,17 @@ unsafe impl<I, L, O> CommandBufferBuild for BufferedCommandsListLayer<I, L>
 
 unsafe impl<I, L> Submit for BufferedCommandsListLayer<I, L> where I: Submit {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.as_ref().unwrap().device()
-    }
-
-    #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         self.inner.as_ref().unwrap().append_submission(base, queue)
+    }
+}
+
+unsafe impl<I, L> DeviceOwned for BufferedCommandsListLayer<I, L> where I: DeviceOwned {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.as_ref().unwrap().device()
     }
 }
 

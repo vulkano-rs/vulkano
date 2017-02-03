@@ -19,10 +19,11 @@ use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use device::Device;
+use device::DeviceOwned;
 use SafeDeref;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-pub unsafe trait PipelineLayoutAbstract {
+pub unsafe trait PipelineLayoutAbstract: DeviceOwned {
     /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
     /// Can be obtained by calling `PipelineLayoutAbstract::sys()` on the pipeline layout.
@@ -35,11 +36,6 @@ pub unsafe trait PipelineLayoutAbstract {
     /// Can be obtained by calling `PipelineLayoutAbstract::desc()` on the pipeline layout.
     // TODO: meh for `PipelineLayoutDescNames instead of `PipelineLayoutDesc`
     fn desc(&self) -> &PipelineLayoutDescNames;
-
-    /// Returns the device that this pipeline layout belongs to.
-    ///
-    /// Can be obtained by calling `PipelineLayoutAbstract::device()` on the pipeline layout.
-    fn device(&self) -> &Arc<Device>;
 
     /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
     ///
@@ -56,11 +52,6 @@ unsafe impl<T> PipelineLayoutAbstract for T where T: SafeDeref, T::Target: Pipel
     #[inline]
     fn desc(&self) -> &PipelineLayoutDescNames {
         (**self).desc()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
     }
 
     #[inline]

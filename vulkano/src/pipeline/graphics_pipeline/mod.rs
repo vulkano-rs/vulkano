@@ -18,6 +18,7 @@ use smallvec::SmallVec;
 
 use buffer::BufferInner;
 use device::Device;
+use device::DeviceOwned;
 use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
@@ -1018,13 +1019,15 @@ unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.inner.device
-    }
-
-    #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layout().descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Mv, L, Rp> DeviceOwned for GraphicsPipeline<Mv, L, Rp> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.inner.device
     }
 }
 

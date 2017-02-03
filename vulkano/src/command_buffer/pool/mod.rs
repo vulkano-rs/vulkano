@@ -16,11 +16,9 @@
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
-use std::sync::Arc;
-
 use instance::QueueFamily;
 
-use device::Device;
+use device::DeviceOwned;
 use OomError;
 use VulkanObject;
 use vk;
@@ -34,7 +32,7 @@ mod standard;
 mod sys;
 
 /// Types that manage the memory of command buffers.
-pub unsafe trait CommandPool {
+pub unsafe trait CommandPool: DeviceOwned {
     /// See `alloc()`.
     type Iter: Iterator<Item = AllocatedCommandBuffer>;
     /// See `lock()`.
@@ -75,15 +73,12 @@ pub unsafe trait CommandPool {
     /// was created with `reset_cb` set to true.
     fn can_reset_invidual_command_buffers(&self) -> bool;
 
-    /// Returns the device used to create this pool.
-    fn device(&self) -> &Arc<Device>;
-
     /// Returns the queue family that this pool targets.
     fn queue_family(&self) -> QueueFamily;
 }
 
 /// See `CommandPool::finish()`.
-pub unsafe trait CommandPoolFinished {
+pub unsafe trait CommandPoolFinished: DeviceOwned {
     /// Frees command buffers.
     ///
     /// # Safety
@@ -93,9 +88,6 @@ pub unsafe trait CommandPoolFinished {
     ///
     unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
         where I: Iterator<Item = AllocatedCommandBuffer>;
-
-    /// Returns the device used to create this pool.
-    fn device(&self) -> &Arc<Device>;
 
     /// Returns the queue family that this pool targets.
     fn queue_family(&self) -> QueueFamily;

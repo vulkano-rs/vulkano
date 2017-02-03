@@ -23,6 +23,7 @@ use image::Layout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
+use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
 use vk;

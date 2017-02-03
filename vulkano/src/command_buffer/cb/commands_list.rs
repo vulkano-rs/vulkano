@@ -15,6 +15,7 @@ use command_buffer::cmd;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 
 pub struct CommandsListLayer<I, L> {
@@ -59,15 +60,17 @@ impl<I> CommandsListLayer<I, ()> {
 
 unsafe impl<I, L> Submit for CommandsListLayer<I, L> where I: Submit {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
-    #[inline]
     unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
                                     -> Result<SubmitBuilder<'a>, Box<Error>>
     {
         self.inner.append_submission(base, queue)
+    }
+}
+
+unsafe impl<I, L> DeviceOwned for CommandsListLayer<I, L> where I: DeviceOwned {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
     }
 }
 

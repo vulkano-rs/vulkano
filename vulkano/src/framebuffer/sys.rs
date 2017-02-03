@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use smallvec::SmallVec;
 
 use device::Device;
+use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::FramebufferCreationError;
@@ -388,7 +389,9 @@ unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
     fn inner(&self) -> RenderPassSys {
         RenderPassSys(self.renderpass, PhantomData)
     }
+}
 
+unsafe impl<D> DeviceOwned for RenderPass<D> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
