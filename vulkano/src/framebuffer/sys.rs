@@ -28,7 +28,7 @@ use framebuffer::LoadOp;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPassAbstract;
 
 use Error;
 use OomError;
@@ -384,7 +384,7 @@ unsafe impl<C, D> RenderPassClearValues<C> for RenderPass<D>
     }
 }
 
-unsafe impl<D> RenderPassRef for RenderPass<D> where D: RenderPassDesc {
+unsafe impl<D> RenderPassAbstract for RenderPass<D> where D: RenderPassDesc {
     #[inline]
     fn inner(&self) -> RenderPassSys {
         RenderPassSys(self.renderpass, PhantomData)

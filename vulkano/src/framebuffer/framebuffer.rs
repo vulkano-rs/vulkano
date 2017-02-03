@@ -20,7 +20,7 @@ use framebuffer::AttachmentsList;
 use framebuffer::FramebufferRef;
 use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescAttachmentsList;
 
 use Error;
@@ -55,7 +55,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     /// The `attachments` parameter depends on which render pass implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
                    -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
-        where Rp: RenderPassRef + RenderPassDescAttachmentsList<Ia, List = A>,
+        where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia, List = A>,
               A: AttachmentsList,
     {
         let device = render_pass.device().clone();
@@ -121,7 +121,7 @@ impl<Rp, A> Framebuffer<Rp, A> {
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
     pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
-        where R: RenderPassRef, Rp: RenderPassRef
+        where R: RenderPassAbstract, Rp: RenderPassAbstract
     {
         unimplemented!()
         // FIXME:

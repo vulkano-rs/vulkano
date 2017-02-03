@@ -31,7 +31,7 @@
 //!
 //! # Render passes
 //!
-//! In vulkano, a render pass is represented by the `RenderPass` struct. The `RenderPassRef` trait
+//! In vulkano, a render pass is represented by the `RenderPass` struct. The `RenderPassAbstract` trait
 //! also exists and is implemented on objects that hold a render pass (eg. `Arc<RenderPass<...>>`).
 //!
 //! The `RenderPass` struct has a template parameter that contains the description of the render
@@ -117,7 +117,7 @@ pub use self::traits::RenderPassClearValues;
 pub use self::traits::RenderPassCompatible;
 pub use self::traits::RenderPassDesc;
 pub use self::traits::RenderPassDescAttachmentsList;
-pub use self::traits::RenderPassRef;
+pub use self::traits::RenderPassAbstract;
 pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::LayoutAttachmentDescription;
 pub use self::traits::LayoutPassDescription;

@@ -111,22 +111,17 @@ unsafe impl<T> FramebufferRenderPassAbstract for T
     }
 }
 
-/// Master trait for render pass objects. All render pass structs should always implement
-/// this trait.
-pub unsafe trait RenderPassAbstract: RenderPassRef + RenderPassDesc {}      // TODO: other traits
-unsafe impl<T> RenderPassAbstract for T where T: RenderPassRef + RenderPassDesc {}
-
 /// Trait for objects that contain a Vulkan render pass object.
 ///
 /// # Safety
 ///
 /// - `inner()` and `device()` must return the same values every time.
-pub unsafe trait RenderPassRef: DeviceOwned {
+pub unsafe trait RenderPassAbstract: DeviceOwned + RenderPassDesc {
     /// Returns an opaque object representing the render pass' internals.
     fn inner(&self) -> RenderPassSys;
 }
 
-unsafe impl<T> RenderPassRef for T where T: SafeDeref, T::Target: RenderPassRef {
+unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPassAbstract {
     #[inline]
     fn inner(&self) -> RenderPassSys {
         (**self).inner()
@@ -740,7 +735,7 @@ pub enum LoadOp {
     DontCare = vk::ATTACHMENT_LOAD_OP_DONT_CARE,
 }
 
-/// Represents a subpass within a `RenderPassRef` object.
+/// Represents a subpass within a `RenderPassAbstract` object.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the

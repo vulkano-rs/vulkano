@@ -24,7 +24,7 @@ use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferRef;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
 use OomError;
 use VulkanObject;
@@ -114,7 +114,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// > be able to submit invalid commands.
     pub unsafe fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
                             -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPassRef, F: FramebufferRef
+        where R: RenderPassAbstract, F: FramebufferRef
     {
         let secondary = match kind {
             Kind::Primary => false,
@@ -145,7 +145,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     pub unsafe fn already_allocated<R, F>(pool: P, cmd: AllocatedCommandBuffer,
                                           kind: Kind<R, F>, flags: Flags)
                                           -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-        where R: RenderPassRef, F: FramebufferRef
+        where R: RenderPassAbstract, F: FramebufferRef
     {
         let device = pool.device().clone();
         let vk = device.pointers();

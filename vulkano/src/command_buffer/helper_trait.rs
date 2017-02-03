@@ -20,7 +20,7 @@ use framebuffer::FramebufferRef;
 use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPassAbstract;
 use pipeline::GraphicsPipeline;
 use pipeline::vertex::Source;
 
@@ -59,7 +59,7 @@ pub unsafe trait CommandBufferBuilder {
                                   -> O
         where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPass>, F>, Out = O>,
               F: FramebufferRef + FramebufferRenderPass,
-              <F as FramebufferRenderPass>::RenderPass: RenderPassRef + RenderPassClearValues<C>
+              <F as FramebufferRenderPass>::RenderPass: RenderPassAbstract + RenderPassClearValues<C>
     {
         let cmd = cmd::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);
         self.add(cmd)

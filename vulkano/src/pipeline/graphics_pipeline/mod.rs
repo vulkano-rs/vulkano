@@ -29,7 +29,7 @@ use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassRef;
+use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
 use Error;
@@ -160,7 +160,7 @@ struct Inner {
 }
 
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
-    where Rp: RenderPassRef
+    where Rp: RenderPassAbstract
 {
     /// Builds a new graphics pipeline object.
     ///
@@ -272,7 +272,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Teo: ShaderInterfaceDef,
               Fi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
               Fo: ShaderInterfaceDef,
-              Rp: RenderPassRef + RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
     {
         if let Some(ref tess) = params.tessellation {
             if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
@@ -318,7 +318,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
               Gl: PipelineLayoutDescNames,
               Tcl: PipelineLayoutDescNames,
               Tel: PipelineLayoutDescNames,
-              Rp: RenderPassRef + RenderPassDesc + RenderPassSubpassInterface<Fo>,
+              Rp: RenderPassAbstract + RenderPassDesc + RenderPassSubpassInterface<Fo>,
     {
         let vk = device.pointers();
 
