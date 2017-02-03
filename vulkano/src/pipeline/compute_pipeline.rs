@@ -130,49 +130,31 @@ impl<Pl> ComputePipeline<Pl> {
 }
 
 /// Trait implemented on all compute pipelines.
-pub unsafe trait ComputePipelineAbstract: ComputePipelineRef + PipelineLayoutRef {
-}
-
-unsafe impl<T> ComputePipelineAbstract for T where T: ComputePipelineRef + PipelineLayoutRef {
-}
-
-/// Trait implemented on objects that reference a compute pipeline. Can be made into a trait
-/// object.
-pub unsafe trait ComputePipelineRef {
+pub unsafe trait ComputePipelineAbstract: PipelineLayoutRef {
     /// Returns an opaque object that represents the inside of the compute pipeline.
     fn inner(&self) -> ComputePipelineSys;
-
-    /// Returns the device associated to the compute pipeline.
-    fn device(&self) -> &Arc<Device>;
 }
 
-unsafe impl<Pl> ComputePipelineRef for ComputePipeline<Pl> {
+unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
+    where Pl: PipelineLayoutRef
+{
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
         ComputePipelineSys(self.inner.pipeline, PhantomData)
     }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.inner.device
-    }
 }
 
-unsafe impl<T> ComputePipelineRef for T where T: SafeDeref<Target = ComputePipelineAbstract> {
+unsafe impl<T> ComputePipelineAbstract for T
+    where T: SafeDeref, T::Target: ComputePipelineAbstract
+{
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
         (**self).inner()
     }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        ComputePipelineRef::device(&**self)
-    }
 }
 
-// TODO: implement pipeline layout traits on &ComputePipelineAbstract and Arc<ComputePipelineAbstract>
-
-/// Opaque object that represents the inside of the compute pipeline.
+/// Opaque object that represents the inside of the compute pipeline. Can be made into a trait
+/// object.
 #[derive(Debug, Copy, Clone)]
 pub struct ComputePipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 
@@ -207,7 +189,7 @@ unsafe impl<Pl> PipelineLayoutRef for ComputePipeline<Pl> where Pl: PipelineLayo
     }
 }
 
-// TODO: remove in favor of ComputePipelineRef?
+// TODO: remove in favor of ComputePipelineAbstract?
 unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
     type Object = vk::Pipeline;
 

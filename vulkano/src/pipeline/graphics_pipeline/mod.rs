@@ -1047,44 +1047,28 @@ impl Drop for Inner {
     }
 }
 
-/// Trait implemented on all graphics pipelines.
-pub unsafe trait GraphicsPipelineAbstract: GraphicsPipelineRef + PipelineLayoutRef {
-}
-
-unsafe impl<T> GraphicsPipelineAbstract for T where T: GraphicsPipelineRef + PipelineLayoutRef {
-}
-
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineRef {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutRef /* + ... */ {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
-
-    /// Returns the device associated to the graphics pipeline.
-    fn device(&self) -> &Arc<Device>;
 }
 
-unsafe impl<Mv, L, Rp> GraphicsPipelineRef for GraphicsPipeline<Mv, L, Rp> {
+unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutRef
+{
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
     }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.inner.device
-    }
 }
 
-unsafe impl<T> GraphicsPipelineRef for T where T: SafeDeref, T::Target: GraphicsPipelineRef {
+unsafe impl<T> GraphicsPipelineAbstract for T
+    where T: SafeDeref, T::Target: GraphicsPipelineAbstract
+{
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         (**self).inner()
-    }
-
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        (**self).device()
     }
 }
 
