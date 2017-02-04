@@ -67,8 +67,8 @@ use pipeline::shader::TessControlShaderEntryPoint;
 use pipeline::shader::TessEvaluationShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
-use pipeline::vertex::Definition as VertexDefinition;
-use pipeline::vertex::Source as VertexSource;
+use pipeline::vertex::VertexDefinition;
+use pipeline::vertex::VertexSource;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::viewport::ViewportsState;
 

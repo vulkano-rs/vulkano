@@ -22,7 +22,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassAbstract;
 use pipeline::GraphicsPipeline;
-use pipeline::vertex::Source;
+use pipeline::vertex::VertexSource;
 
 ///
 /// > **Note**: This trait is just a utility trait. Do not implement it yourself. Instead
@@ -96,7 +96,7 @@ pub unsafe trait CommandBufferBuilder {
         where Self: Sized + AddCommand<cmd::CmdDraw<V, Pv, Pl, Prp, S, Pc>, Out = O>,
               Pl: PipelineLayoutAbstract,
               S: DescriptorSetsCollection,
-              Pv: Source<V>
+              Pv: VertexSource<V>
     {
         let cmd = cmd::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
         self.add(cmd)

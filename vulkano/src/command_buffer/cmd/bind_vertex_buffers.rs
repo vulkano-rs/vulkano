@@ -15,7 +15,7 @@ use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
-use pipeline::vertex::Source;
+use pipeline::vertex::VertexSource;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -36,7 +36,7 @@ impl<B> CmdBindVertexBuffers<B> {
     /// Builds the command.
     #[inline]
     pub fn new<S>(source_def: &S, buffers: B) -> CmdBindVertexBuffers<B>
-        where S: Source<B>
+        where S: VertexSource<B>
     {
         let (device, raw_buffers, offsets) = {
             let (buffers, _, _) = source_def.decode(&buffers);

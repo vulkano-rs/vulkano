@@ -20,7 +20,7 @@ use command_buffer::cmd::CmdSetState;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::PipelineLayoutAbstract;
 use pipeline::GraphicsPipeline;
-use pipeline::vertex::Source;
+use pipeline::vertex::VertexSource;
 
 /// Command that draws non-indexed vertices.
 pub struct CmdDraw<V, Pv, Pl, Prp, S, Pc> {
@@ -39,7 +39,7 @@ impl<V, Pv, Pl, Prp, S, Pc> CmdDraw<V, Pv, Pl, Prp, S, Pc>
     pub fn new(pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
                dynamic: DynamicState, vertices: V, sets: S, push_constants: Pc)
                -> CmdDraw<V, Pv, Pl, Prp, S, Pc>
-        where Pv: Source<V>
+        where Pv: VertexSource<V>
     {
         let (_, vertex_count, instance_count) = pipeline.vertex_definition().decode(&vertices);
 

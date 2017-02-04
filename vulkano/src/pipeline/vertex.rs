@@ -11,10 +11,10 @@
 //!
 //! When you create a graphics pipeline object, you need to pass an object which indicates the
 //! layout of the vertex buffer(s) that will serve as input for the vertex shader. This is done
-//! by passing an implementation of the `Definition` trait.
+//! by passing an implementation of the `VertexDefinition` trait.
 //!
 //! In addition to this, the object that you pass when you create the graphics pipeline must also
-//! implement the `Source` trait. This trait has a template parameter which corresponds to the
+//! implement the `VertexSource` trait. This trait has a template parameter which corresponds to the
 //! list of vertex buffers.
 //!
 //! The vulkano library provides some structs that already implement these traits.
@@ -23,7 +23,7 @@
 //!
 //! # Implementing `Vertex`
 //!
-//! The implementations of the `Definition` trait that are provided by vulkano (like
+//! The implementations of the `VertexDefinition` trait that are provided by vulkano (like
 //! `SingleBufferDefinition`) require you to use a buffer whose content is `[V]` where `V`
 //! implements the `Vertex` trait.
 //!
@@ -162,7 +162,7 @@ pub struct AttributeInfo {
 }
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait Definition<I> {
+pub unsafe trait VertexDefinition<I> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.
@@ -214,9 +214,9 @@ impl fmt::Display for IncompatibleVertexDefinitionError {
 }
 
 
-/// Extension trait of `Definition`. The `L` parameter is an acceptable vertex source for this
+/// Extension trait of `VertexDefinition`. The `L` parameter is an acceptable vertex source for this
 /// vertex definition.
-pub unsafe trait Source<L> {
+pub unsafe trait VertexSource<L> {
     /// Checks and returns the list of buffers with offsets, number of vertices and number of instances.
     // TODO: return error if problem
     // TODO: better than a Vec
@@ -224,7 +224,7 @@ pub unsafe trait Source<L> {
     fn decode<'l>(&self, &'l L) -> (Vec<BufferInner<'l>>, usize, usize);
 }
 
-/// Implementation of `Definition` for a single vertex buffer.
+/// Implementation of `VertexDefinition` for a single vertex buffer.
 pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
 
 impl<T> SingleBufferDefinition<T> {
@@ -232,7 +232,7 @@ impl<T> SingleBufferDefinition<T> {
     pub fn new() -> SingleBufferDefinition<T> { SingleBufferDefinition(PhantomData) }
 }
 
-unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
+unsafe impl<T, I> VertexDefinition<I> for SingleBufferDefinition<T>
     where T: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = OptionIntoIter<(u32, usize, InputRate)>;
@@ -277,7 +277,7 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
     }
 }
 
-unsafe impl<'a, B, V> Source<B> for SingleBufferDefinition<V>
+unsafe impl<'a, B, V> VertexSource<B> for SingleBufferDefinition<V>
     where B: TypedBuffer<Content = [V]>, V: Vertex
 {
     #[inline]
@@ -295,7 +295,7 @@ impl<T, U> TwoBuffersDefinition<T, U> {
     pub fn new() -> TwoBuffersDefinition<T, U> { TwoBuffersDefinition(PhantomData) }
 }
 
-unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
+unsafe impl<T, U, I> VertexDefinition<I> for TwoBuffersDefinition<T, U>
     where T: Vertex, U: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
@@ -347,7 +347,7 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for TwoBuffersDefinition<T, U>
+unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for TwoBuffersDefinition<T, U>
     where T: Vertex, Bt: TypedBuffer<Content = [T]>,
           U: Vertex, Bu: TypedBuffer<Content = [U]>
 {
@@ -367,7 +367,7 @@ impl<T, U> OneVertexOneInstanceDefinition<T, U> {
     pub fn new() -> OneVertexOneInstanceDefinition<T, U> { OneVertexOneInstanceDefinition(PhantomData) }
 }
 
-unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
+unsafe impl<T, U, I> VertexDefinition<I> for OneVertexOneInstanceDefinition<T, U>
     where T: Vertex, U: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
@@ -419,7 +419,7 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
+unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
     where T: Vertex, Bt: TypedBuffer<Content = [T]>,
           U: Vertex, Bu: TypedBuffer<Content = [U]>
 {
