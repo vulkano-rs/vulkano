@@ -1123,13 +1123,13 @@ impl Drop for Inner {
 
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract /* + ... */ {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract /* + ... */ {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract
+    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
@@ -1142,7 +1142,7 @@ unsafe impl<T> GraphicsPipelineAbstract for T
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
-        (**self).inner()
+        GraphicsPipelineAbstract::inner(&**self)
     }
 }
 

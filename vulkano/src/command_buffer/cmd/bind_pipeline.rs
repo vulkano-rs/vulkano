@@ -60,7 +60,7 @@ impl<P> CmdBindPipeline<P> {
     pub fn bind_graphics_pipeline(pipeline: P) -> CmdBindPipeline<P>
         where P: GraphicsPipelineAbstract
     {
-        let raw_pipeline = pipeline.inner().internal_object();
+        let raw_pipeline = GraphicsPipelineAbstract::inner(&pipeline).internal_object();
         let device = pipeline.device().clone();
 
         CmdBindPipeline {

@@ -15,13 +15,12 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cmd;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use descriptor::PipelineLayoutAbstract;
 use framebuffer::FramebufferRef;
 use framebuffer::FramebufferRenderPass;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassAbstract;
-use pipeline::GraphicsPipeline;
+use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
 
 ///
@@ -90,13 +89,11 @@ pub unsafe trait CommandBufferBuilder {
     ///
     /// Can only be used from inside a render pass.
     #[inline]
-    fn draw<Pv, Pl, Prp, S, Pc, V, O>(self, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-                                      dynamic: DynamicState, vertices: V, sets: S,
-                                      push_constants: Pc) -> O
-        where Self: Sized + AddCommand<cmd::CmdDraw<V, Pv, Pl, Prp, S, Pc>, Out = O>,
-              Pl: PipelineLayoutAbstract,
+    fn draw<P, S, Pc, V, O>(self, pipeline: P, dynamic: DynamicState, vertices: V, sets: S,
+                            push_constants: Pc) -> O
+        where Self: Sized + AddCommand<cmd::CmdDraw<V, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
-              Pv: VertexSource<V>
+              P: VertexSource<V> + GraphicsPipelineAbstract + Clone
     {
         let cmd = cmd::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
         self.add(cmd)
