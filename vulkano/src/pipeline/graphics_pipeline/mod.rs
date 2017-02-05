@@ -29,6 +29,7 @@ use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use format::ClearValue;
+use framebuffer::AttachmentsList;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
@@ -1085,10 +1086,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
 unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<Mv, L, Rp>
     where Rp: RenderPassDescAttachmentsList<A>
 {
-    type List = Rp::List;
-
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
         self.render_pass.check_attachments_list(atch)
     }
 }

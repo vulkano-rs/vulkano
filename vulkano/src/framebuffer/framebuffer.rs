@@ -56,14 +56,13 @@ pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {        
     resources: A,
 }
 
-impl<Rp, A> Framebuffer<Rp, A> {
+impl<Rp> Framebuffer<Rp, Box<AttachmentsList>> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which render pass implementation is used.
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
-                   -> Result<Arc<Framebuffer<Rp, A>>, FramebufferCreationError>
-        where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia, List = A>,
-              A: AttachmentsList,
+                   -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList>>>, FramebufferCreationError>
+        where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia>
     {
         let device = render_pass.device().clone();
 
@@ -124,7 +123,9 @@ impl<Rp, A> Framebuffer<Rp, A> {
             resources: attachments,
         }))
     }
+}
 
+impl<Rp, A> Framebuffer<Rp, A> {
     /// Returns true if this framebuffer can be used with the specified renderpass.
     #[inline]
     pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
@@ -221,10 +222,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
 unsafe impl<At, Rp, A> RenderPassDescAttachmentsList<At> for Framebuffer<Rp, A>
     where Rp: RenderPassDescAttachmentsList<At>
 {
-    type List = Rp::List;
-
     #[inline]
-    fn check_attachments_list(&self, atch: At) -> Result<Self::List, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: At) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
         self.render_pass.check_attachments_list(atch)
     }
 }

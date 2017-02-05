@@ -8,12 +8,17 @@
 // according to those terms.
 
 use std::iter;
+use std::sync::Arc;
 use format::ClearValue;
-use framebuffer::traits::RenderPassDesc;
-use framebuffer::traits::RenderPassDescClearValues;
-use framebuffer::traits::LayoutAttachmentDescription;
-use framebuffer::traits::LayoutPassDescription;
-use framebuffer::traits::LayoutPassDependencyDescription;
+use framebuffer::AttachmentsList;
+use framebuffer::FramebufferCreationError;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassDescAttachmentsList;
+use framebuffer::RenderPassDescClearValues;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use image::ImageView;
 
 /// Description of an empty render pass.
 ///
@@ -129,6 +134,17 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
             Some(false)
         } else {
             None
+        }
+    }
+}
+
+unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView>>> for EmptySinglePassRenderPassDesc {
+    #[inline]
+    fn check_attachments_list(&self, list: Vec<Arc<ImageView>>) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+        if list.is_empty() {
+            Ok(Box::new(()) as Box<_>)
+        } else {
+            panic!()        // FIXME: return error instead
         }
     }
 }

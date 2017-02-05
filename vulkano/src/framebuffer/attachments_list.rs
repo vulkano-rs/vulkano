@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::cmp;
+use std::sync::Arc;
+use SafeDeref;
 use image::ImageView;
 use image::sys::UnsafeImageView;
 //use sync::AccessFlagBits;
@@ -28,6 +30,18 @@ pub unsafe trait AttachmentsList {
     fn intersection_dimensions(&self) -> Option<[u32; 3]>;
 }
 
+unsafe impl<T> AttachmentsList for T where T: SafeDeref, T::Target: AttachmentsList {
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
+        (**self).raw_image_view_handles()
+    }
+
+    #[inline]
+    fn intersection_dimensions(&self) -> Option<[u32; 3]> {
+        (**self).intersection_dimensions()
+    }
+}
+
 unsafe impl AttachmentsList for () {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
@@ -37,6 +51,39 @@ unsafe impl AttachmentsList for () {
     #[inline]
     fn intersection_dimensions(&self) -> Option<[u32; 3]> {
         None
+    }
+}
+
+unsafe impl AttachmentsList for Vec<Arc<ImageView>> {
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
+        self.iter().map(|img| img.inner()).collect()
+    }
+
+    #[inline]
+    fn intersection_dimensions(&self) -> Option<[u32; 3]> {
+        let mut dims = None;
+
+        for view in self.iter() {
+            debug_assert_eq!(view.dimensions().depth(), 1);
+
+            match dims {
+                None => {
+                    dims = Some([
+                        view.dimensions().width(),
+                        view.dimensions().height(),
+                        view.dimensions().array_layers()
+                    ]);
+                },
+                Some(ref mut d) => {
+                    d[0] = cmp::min(view.dimensions().width(), d[0]);
+                    d[1] = cmp::min(view.dimensions().height(), d[1]);
+                    d[2] = cmp::min(view.dimensions().array_layers(), d[2]);
+                },
+            }
+        }
+
+        dims
     }
 }
 

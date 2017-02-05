@@ -21,6 +21,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassCreationError;
 use framebuffer::RenderPassSys;
 use image::Layout as ImageLayout;
+use image::ImageView;
 use pipeline::shader::ShaderInterfaceDef;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -102,8 +103,9 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
 /// - The provided methods shouldn't be overriden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
-// TODO: require RenderPassDescAttachmentsList<Something> as well
-pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
+pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
+                                 RenderPassDescAttachmentsList<Vec<Arc<ImageView>>>
+{
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
     /// Returns the description of an attachment.
@@ -381,24 +383,19 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
 /// - That the attachments use identity components swizzling.
 /// TODO: more stuff with aliasing
 ///
-pub unsafe trait RenderPassDescAttachmentsList<A>: RenderPassDesc {
-    /// The "compiled" list of attachments.
-    type List: AttachmentsList;
-
+pub unsafe trait RenderPassDescAttachmentsList<A> {
     /// Decodes a `A` into a list of attachments.
     ///
     /// Checks that the attachments match the render pass, and returns a list. Returns an error if
     /// one of the attachments is wrong.
-    fn check_attachments_list(&self, A) -> Result<Self::List, FramebufferCreationError>;
+    fn check_attachments_list(&self, A) -> Result<Box<AttachmentsList>, FramebufferCreationError>;
 }
 
 unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
     where T: SafeDeref, T::Target: RenderPassDescAttachmentsList<A>
 {
-    type List = <T::Target as RenderPassDescAttachmentsList<A>>::List;
-
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
         (**self).check_attachments_list(atch)
     }
 }

@@ -64,14 +64,19 @@ macro_rules! ordered_passes_renderpass {
         mod scope {
             #![allow(non_camel_case_types)]
 
+            use std::sync::Arc;
             use $crate::format::ClearValue;
             use $crate::format::Format;
+            use $crate::framebuffer::AttachmentsList;
+            use $crate::framebuffer::FramebufferCreationError;
             use $crate::framebuffer::RenderPassDesc;
+            use $crate::framebuffer::RenderPassDescAttachmentsList;
             use $crate::framebuffer::RenderPassDescClearValues;
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
             use $crate::image::Layout;
+            use $crate::image::ImageView;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
 
@@ -94,6 +99,7 @@ macro_rules! ordered_passes_renderpass {
             }
 
             pub mod atch {
+                use $crate::framebuffer::AttachmentsList;
                 use $crate::framebuffer::FramebufferCreationError;
                 use $crate::framebuffer::RenderPassDescAttachmentsList;
                 use $crate::image::traits::ImageView;
@@ -148,6 +154,14 @@ macro_rules! ordered_passes_renderpass {
                 fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
+                }
+            }
+
+            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView>>> for CustomRenderPassDesc {
+                fn check_attachments_list(&self, list: Vec<Arc<ImageView>>) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+                    // FIXME: correct safety checks
+                    assert_eq!(list.len(), self.num_attachments());
+                    Ok(Box::new(list) as Box<_>)
                 }
             }
 
@@ -373,12 +387,12 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
         unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc
-            where $($prev_params: ImageView,)*
+            where $($prev_params: ImageView + 'static,)*
         {
-            type List = ($($prev_params,)*);
+            //type List = ($($prev_params,)*);
 
-            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Self::List, FramebufferCreationError> {
-                attachments.check_attachments_list()
+            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+                Ok(Box::new(try!(attachments.check_attachments_list())))
                 
                 // FIXME:
                 /*$({

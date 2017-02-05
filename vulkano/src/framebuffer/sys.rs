@@ -19,6 +19,7 @@ use smallvec::SmallVec;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
+use framebuffer::AttachmentsList;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::FramebufferCreationError;
 use framebuffer::LayoutAttachmentDescription;
@@ -367,10 +368,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
 unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
     where D: RenderPassDescAttachmentsList<A>
 {
-    type List = D::List;
-
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Self::List, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
         self.desc.check_attachments_list(atch)
     }
 }
