@@ -39,15 +39,86 @@ use vk;
 
 /// Contains the list of images attached to a render pass.
 ///
-/// This is a structure that you must pass when you start recording draw commands in a
-/// command buffer.
+/// Creating a framebuffer is done by passing the render pass object, the dimensions of the
+/// framebuffer, and the list of attachments to `Framebuffer::new()`.
 ///
-/// A framebuffer can be used alongside with any other render pass object as long as it is
-/// compatible with the render pass that his framebuffer was created with. You can determine
-/// whether two renderpass objects are compatible by calling `is_compatible_with`.
+/// Just like all render pass objects implement the `RenderPassAbstract` trait, all framebuffer
+/// objects implement the `FramebufferAbstract` trait. This means that you can cast any
+/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract>` for easier storage.
 ///
-/// The `Framebuffer` struct should always implement the `FramebufferAbstract` trait. Therefore
-/// you can turn any `Arc<Framebuffer<Rp, A>>` into a `Arc<FramebufferAbstract>` if you need to.
+/// ## With a generic list of attachments
+///
+/// The list of attachments passed to `Framebuffer::new()` can be of various types, but one of the
+/// possibilities is to pass an object of type `Vec<Arc<ImageView>>`.
+///
+/// > **Note**: If you access a render pass object through the `RenderPassAbstract` trait, passing
+/// > a `Vec<Arc<ImageView>>` is the only possible method.
+///
+/// The framebuffer constructor will perform various checks to make sure that the number of images
+/// is correct and that each image can be used with this render pass.
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use vulkano::framebuffer::RenderPassAbstract;
+/// use vulkano::framebuffer::Framebuffer;
+///
+/// # let render_pass: Arc<RenderPassAbstract> = return;
+/// # let my_image: Arc<vulkano::image::ImageView> = return;
+/// // let render_pass: Arc<RenderPassAbstract> = ...;
+/// let framebuffer = Framebuffer::new(render_pass.clone(), [1024, 768, 1],
+///                                    vec![my_image.clone() as Arc<_>]).unwrap();
+/// ```
+///
+/// ## With a specialized list of attachments
+///
+/// The list of attachments can also be of any type `T`, as long as the render pass description
+/// implements the trait `RenderPassDescAttachmentsList<T>`.
+///
+/// For example if you pass a render pass object that implements
+/// `RenderPassDescAttachmentsList<Foo>`, then you can pass a `Foo` as the list of attachments.
+///
+/// > **Note**: The reason why `Vec<Arc<ImageView>>` always works (see previous section) is that
+/// > render pass descriptions are required to always implement
+/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageView>>>`.
+///
+/// When it comes to the `single_pass_renderpass!` and `ordered_passes_renderpass!` macros, you can
+/// build a list of attachments by calling `start_attachments()` on the render pass description,
+/// which will return an object that has a method whose name is the name of the first attachment
+/// and that can be used to specify it. This method will return another object that has a method
+/// whose name is the name of the second attachment, and so on. See the documentation of the macros
+/// for more details. TODO: put link here
+///
+/// ```
+/// # #[macro_use] extern crate vulkano;
+/// # fn main() {
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// use std::sync::Arc;
+/// use vulkano::format::Format;
+/// use vulkano::framebuffer::Framebuffer;
+///
+/// let render_pass = single_pass_renderpass!(device.clone(),
+///     attachments: {
+///         // `foo` is a custom name we give to the first and only attachment.
+///         foo: {
+///             load: Clear,
+///             store: Store,
+///             format: Format::R8G8B8A8Unorm,
+///             samples: 1,
+///         }
+///     },
+///     pass: {
+///         color: [foo],       // Repeat the attachment name here.
+///         depth_stencil: {}
+///     }
+/// ).unwrap();
+///
+/// # let my_image: Arc<vulkano::image::ImageView> = return;
+/// let framebuffer = {
+///     let atch = render_pass.desc().start_attachments().foo(my_image.clone() as Arc<_>);
+///     Framebuffer::new(render_pass, [1024, 768, 1], atch).unwrap()
+/// };
+/// # }
+/// ```
 pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {        // TODO: remove default params
     device: Arc<Device>,
     render_pass: Rp,
