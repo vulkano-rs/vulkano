@@ -25,7 +25,7 @@ use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LoadOp;
-use framebuffer::RenderPassClearValues;
+use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassAbstract;
@@ -375,8 +375,8 @@ unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
     }
 }
 
-unsafe impl<C, D> RenderPassClearValues<C> for RenderPass<D>
-    where D: RenderPassClearValues<C>
+unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
+    where D: RenderPassDescClearValues<C>
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {

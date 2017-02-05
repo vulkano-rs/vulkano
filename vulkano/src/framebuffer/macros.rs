@@ -67,7 +67,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::format::ClearValue;
             use $crate::format::Format;
             use $crate::framebuffer::RenderPassDesc;
-            use $crate::framebuffer::RenderPassClearValues;
+            use $crate::framebuffer::RenderPassDescClearValues;
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
@@ -105,7 +105,7 @@ macro_rules! ordered_passes_renderpass {
             pub mod cv {
                 use std::iter;
                 use $crate::format::ClearValue;
-                use $crate::framebuffer::RenderPassClearValues;
+                use $crate::framebuffer::RenderPassDescClearValues;
                 use super::CustomRenderPassDesc;
                 pub struct ClearValuesStart;
                 ordered_passes_renderpass!{[] __impl_clear_values__ [] [] [$($atch_name: $load),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
@@ -144,7 +144,7 @@ macro_rules! ordered_passes_renderpass {
                 }
             }
 
-            unsafe impl RenderPassClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
+            unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
                 fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
@@ -423,7 +423,7 @@ macro_rules! ordered_passes_renderpass {
 
 
     ([] __impl_clear_values__ [] [] [] [$($params:ident),*]) => {
-        unsafe impl RenderPassClearValues<ClearValuesStart> for CustomRenderPassDesc {
+        unsafe impl RenderPassDescClearValues<ClearValuesStart> for CustomRenderPassDesc {
             #[inline]
             fn convert_clear_values(&self, values: ClearValuesStart) -> Box<Iterator<Item = ClearValue>> {
                 Box::new(iter::empty())
@@ -462,7 +462,7 @@ macro_rules! ordered_passes_renderpass {
     };
 
     ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
-        unsafe impl<$($prev_params,)*> RenderPassClearValues<$prev<$($prev_params,)*>> for CustomRenderPassDesc
+        unsafe impl<$($prev_params,)*> RenderPassDescClearValues<$prev<$($prev_params,)*>> for CustomRenderPassDesc
             where $($prev_params: Into<ClearValue>)*
         {
             #[inline]

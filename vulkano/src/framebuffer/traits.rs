@@ -103,7 +103,7 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
 // TODO: require RenderPassDescAttachmentsList<Something> as well
-pub unsafe trait RenderPassDesc: RenderPassClearValues<Vec<ClearValue>> {
+pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
     /// Returns the description of an attachment.
@@ -407,7 +407,7 @@ unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
 ///
 /// When the user enters a render pass, they need to pass a list of clear values to apply to
 /// the attachments of the framebuffer. To do so, the `RenderPassDesc` of the framebuffer must
-/// implement `RenderPassClearValues<C>` where `C` is the parameter that the user passed. The
+/// implement `RenderPassDescClearValues<C>` where `C` is the parameter that the user passed. The
 /// trait method is then responsible for checking the correctness of these values and turning
 /// them into a list that can be processed by vulkano.
 ///
@@ -422,7 +422,7 @@ unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
 /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
 /// matches the attachment.
 ///
-pub unsafe trait RenderPassClearValues<C> {
+pub unsafe trait RenderPassDescClearValues<C> {
     /// Decodes a `C` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned iterator must be the same as the number of
     /// attachments.
@@ -433,8 +433,8 @@ pub unsafe trait RenderPassClearValues<C> {
     fn convert_clear_values(&self, C) -> Box<Iterator<Item = ClearValue>>;
 }
 
-unsafe impl<T, C> RenderPassClearValues<C> for T
-    where T: SafeDeref, T::Target: RenderPassClearValues<C>
+unsafe impl<T, C> RenderPassDescClearValues<C> for T
+    where T: SafeDeref, T::Target: RenderPassDescClearValues<C>
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
@@ -442,7 +442,7 @@ unsafe impl<T, C> RenderPassClearValues<C> for T
     }
 }
 
-/*unsafe impl<R: ?Sized> RenderPassClearValues<Vec<ClearValue>> for R where R: RenderPassDesc {
+/*unsafe impl<R: ?Sized> RenderPassDescClearValues<Vec<ClearValue>> for R where R: RenderPassDesc {
     #[inline]
     fn convert_clear_values(&self, vals: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
         Box::new(vals.into_iter())

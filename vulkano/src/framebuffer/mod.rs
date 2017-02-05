@@ -110,7 +110,7 @@ pub use self::sys::RenderPass;
 pub use self::sys::RenderPassCreationError;
 pub use self::sys::RenderPassSys;
 pub use self::traits::FramebufferAbstract;
-pub use self::traits::RenderPassClearValues;
+pub use self::traits::RenderPassDescClearValues;
 pub use self::traits::RenderPassCompatible;
 pub use self::traits::RenderPassDesc;
 pub use self::traits::RenderPassDescAttachmentsList;

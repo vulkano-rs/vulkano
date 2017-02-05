@@ -20,7 +20,7 @@ use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassClearValues;
+use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassAbstract;
 use VulkanObject;
 use VulkanPointers;
@@ -53,7 +53,7 @@ impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
     // TODO: allow setting more parameters
     pub fn new<C>(framebuffer: F, secondary: bool, clear_values: C)
                   -> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
-        where F: RenderPassClearValues<C>
+        where F: RenderPassDescClearValues<C>
     {
         let raw_render_pass = RenderPassAbstract::inner(&framebuffer).internal_object();
         let device = framebuffer.device().clone();

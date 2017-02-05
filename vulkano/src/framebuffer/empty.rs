@@ -10,7 +10,7 @@
 use std::iter;
 use format::ClearValue;
 use framebuffer::traits::RenderPassDesc;
-use framebuffer::traits::RenderPassClearValues;
+use framebuffer::traits::RenderPassDescClearValues;
 use framebuffer::traits::LayoutAttachmentDescription;
 use framebuffer::traits::LayoutPassDescription;
 use framebuffer::traits::LayoutPassDependencyDescription;
@@ -133,7 +133,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 }
 
-unsafe impl RenderPassClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
+unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
     fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
         Box::new(iter::empty())

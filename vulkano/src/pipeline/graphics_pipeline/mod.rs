@@ -36,7 +36,7 @@ use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescAttachmentsList;
-use framebuffer::RenderPassClearValues;
+use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::RenderPassSys;
 use framebuffer::Subpass;
@@ -1093,8 +1093,8 @@ unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<
     }
 }
 
-unsafe impl<C, Mv, L, Rp> RenderPassClearValues<C> for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassClearValues<C>
+unsafe impl<C, Mv, L, Rp> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, L, Rp>
+    where Rp: RenderPassDescClearValues<C>
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
