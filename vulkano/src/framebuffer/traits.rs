@@ -19,6 +19,9 @@ use pipeline::shader::ShaderInterfaceDef;
 use SafeDeref;
 
 /// Trait for objects that contain a Vulkan framebuffer object.
+///
+/// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
+/// into a `Arc<FramebufferAbstract>` for easier storage.
 pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
@@ -59,11 +62,32 @@ unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: Framebuf
 
 /// Trait for objects that contain a Vulkan render pass object.
 ///
-/// # Safety
+/// Any `RenderPass` object implements this trait. You can therefore turn a `Arc<RenderPass<_>>`
+/// into a `Arc<RenderPassAbstract>` for easier storage.
 ///
-/// - `inner()` and `device()` must return the same values every time.
+/// The `Arc<RenderPassAbstract>` accepts a `Vec<ClearValue>` for clear values and a
+/// `Vec<Arc<ImageView>>` for the list of attachments.
+///
+/// # Example
+///
+/// ```
+/// use std::sync::Arc;
+/// use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+/// use vulkano::framebuffer::RenderPass;
+/// use vulkano::framebuffer::RenderPassAbstract;
+///
+/// # let device: Arc<vulkano::device::Device> = return;
+/// let render_pass = RenderPass::new(device.clone(), EmptySinglePassRenderPassDesc).unwrap();
+///
+/// // For easier storage, turn this render pass into a `Arc<RenderPassAbstract>`.
+/// let stored_rp = Arc::new(render_pass) as Arc<RenderPassAbstract>;
+/// ```
 pub unsafe trait RenderPassAbstract: DeviceOwned + RenderPassDesc {
     /// Returns an opaque object representing the render pass' internals.
+    ///
+    /// # Safety
+    ///
+    /// The trait implementation must return the same value every time.
     fn inner(&self) -> RenderPassSys;
 }
 
@@ -77,8 +101,8 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
 /// Extension trait for `RenderPassDesc`. Defines which types are allowed as an attachments list.
 ///
 /// When the user creates a framebuffer, they need to pass a render pass object and a list of
-/// attachments. In order for it to work, the `RenderPassDesc` object of the render pass must
-/// implement `RenderPassDescAttachmentsList<A>` where `A` is the type of the list of attachments.
+/// attachments. In order for it to work, the render pass object must implement
+/// `RenderPassDescAttachmentsList<A>` where `A` is the type of the list of attachments.
 ///
 /// # Safety
 ///
@@ -111,22 +135,10 @@ unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
 /// Extension trait for `RenderPassDesc`. Defines which types are allowed as a list of clear values.
 ///
 /// When the user enters a render pass, they need to pass a list of clear values to apply to
-/// the attachments of the framebuffer. To do so, the `RenderPassDesc` of the framebuffer must
-/// implement `RenderPassDescClearValues<C>` where `C` is the parameter that the user passed. The
-/// trait method is then responsible for checking the correctness of these values and turning
-/// them into a list that can be processed by vulkano.
-///
-/// Only the attachments whose `LoadOp` is `Clear` should appear in the list returned by the
-/// method. Other attachments simply should not appear. TODO: check that this is correct
-/// For example if attachments 1, 2 and 4 are `Clear` and attachments 0 and 3 are `Load`, then
-/// the list returned by the function must have three elements which are the clear values of
-/// attachments 1, 2 and 4.
-///
-/// # Safety
-///
-/// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
-/// matches the attachment.
-///
+/// the attachments of the framebuffer. To do so, the render pass object or the framebuffer
+/// (depending on the function you use) must implement `RenderPassDescClearValues<C>` where `C` is
+/// the parameter that the user passed. The trait method is then responsible for checking the
+/// correctness of these values and turning them into a list that can be processed by vulkano.
 pub unsafe trait RenderPassDescClearValues<C> {
     /// Decodes a `C` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned iterator must be the same as the number of
@@ -134,6 +146,18 @@ pub unsafe trait RenderPassDescClearValues<C> {
     ///
     /// The format of the clear value **must** match the format of the attachment. Attachments
     /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
+    ///
+    /// Only the attachments whose `LoadOp` is `Clear` should appear in the list returned by the
+    /// method. Other attachments simply should not appear. TODO: check that this is correct.
+    /// For example if attachments 1, 2 and 4 are `Clear` and attachments 0 and 3 are `Load`, then
+    /// the list returned by the function must have three elements which are the clear values of
+    /// attachments 1, 2 and 4.
+    ///
+    /// # Safety
+    ///
+    /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format
+    /// that matches the attachment.
+    ///
     // TODO: meh for boxing
     fn convert_clear_values(&self, C) -> Box<Iterator<Item = ClearValue>>;
 }
@@ -147,18 +171,13 @@ unsafe impl<T, C> RenderPassDescClearValues<C> for T
     }
 }
 
-/*unsafe impl<R: ?Sized> RenderPassDescClearValues<Vec<ClearValue>> for R where R: RenderPassDesc {
-    #[inline]
-    fn convert_clear_values(&self, vals: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
-        Box::new(vals.into_iter())
-    }
-}*/
-
 /// Extension trait for `RenderPassDesc` that checks whether a subpass of this render pass accepts
 /// the output of a fragment shader.
 ///
 /// The trait is automatically implemented for all type that implement `RenderPassDesc` and
 /// `RenderPassDesc`.
+///
+/// > **Note**: This trait exists so that you can specialize it once specialization lands in Rust.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 pub unsafe trait RenderPassSubpassInterface<Other: ?Sized>: RenderPassDesc
