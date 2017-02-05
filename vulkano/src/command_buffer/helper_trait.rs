@@ -15,11 +15,9 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cmd;
 use descriptor::descriptor_set::DescriptorSetsCollection;
-use framebuffer::FramebufferRef;
-use framebuffer::FramebufferRenderPass;
-use framebuffer::RenderPass;
-use framebuffer::RenderPassClearValues;
+use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
+use framebuffer::RenderPassClearValues;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
 
@@ -56,9 +54,8 @@ pub unsafe trait CommandBufferBuilder {
     #[inline]
     fn begin_render_pass<F, C, O>(self, framebuffer: F, secondary: bool, clear_values: C)
                                   -> O
-        where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPass>, F>, Out = O>,
-              F: FramebufferRef + FramebufferRenderPass,
-              <F as FramebufferRenderPass>::RenderPass: RenderPassAbstract + RenderPassClearValues<C>
+        where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPassAbstract>, F>, Out = O>,
+              F: FramebufferAbstract + RenderPassClearValues<C>
     {
         let cmd = cmd::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);
         self.add(cmd)

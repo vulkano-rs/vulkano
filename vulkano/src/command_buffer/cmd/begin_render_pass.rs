@@ -18,8 +18,7 @@ use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::FramebufferRef;
-use framebuffer::FramebufferRenderPass;
+use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassAbstract;
@@ -48,20 +47,20 @@ pub struct CmdBeginRenderPass<Rp, F> {
 }
 
 impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
-    where F: FramebufferRef + FramebufferRenderPass
+    where F: FramebufferAbstract
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<Arc<RenderPass>, F>
-        where <F as FramebufferRenderPass>::RenderPass: RenderPassAbstract + RenderPassClearValues<C>
+                  -> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
+        where F: RenderPassClearValues<C>
     {
-        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
-        let device = framebuffer.render_pass().device().clone();
-        let raw_framebuffer = framebuffer.inner().internal_object();
+        let raw_render_pass = RenderPassAbstract::inner(&framebuffer).internal_object();
+        let device = framebuffer.device().clone();
+        let raw_framebuffer = FramebufferAbstract::inner(&framebuffer).internal_object();
 
         let clear_values = {
-            framebuffer.render_pass().convert_clear_values(clear_values).map(|clear_value| {
+            framebuffer.convert_clear_values(clear_values).map(|clear_value| {
                 match clear_value {
                     ClearValue::None => {
                         vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))

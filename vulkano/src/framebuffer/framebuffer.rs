@@ -16,12 +16,19 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
+use device::DeviceOwned;
+use format::ClearValue;
 use framebuffer::AttachmentsList;
-use framebuffer::FramebufferRef;
-use framebuffer::FramebufferRenderPass;
+use framebuffer::FramebufferAbstract;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::LayoutPassDescription;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
+use framebuffer::RenderPassClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassSys;
 
 use Error;
 use OomError;
@@ -165,7 +172,9 @@ impl<Rp, A> Framebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A> {
+unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
+    where Rp: RenderPassAbstract
+{
     #[inline]
     fn inner(&self) -> FramebufferSys {
         FramebufferSys(self.framebuffer, PhantomData)
@@ -177,12 +186,69 @@ unsafe impl<Rp, A> FramebufferRef for Framebuffer<Rp, A> {
     }
 }
 
-unsafe impl<Rp, A> FramebufferRenderPass for Framebuffer<Rp, A> {
-    type RenderPass = Rp;
+unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDesc {
+    #[inline]
+    fn num_attachments(&self) -> usize {
+        self.render_pass.num_attachments()
+    }
 
     #[inline]
-    fn render_pass(&self) -> &Rp {
-        &self.render_pass
+    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment(num)
+    }
+
+    #[inline]
+    fn num_subpasses(&self) -> usize {
+        self.render_pass.num_subpasses()
+    }
+    
+    #[inline]
+    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass(num)
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        self.render_pass.num_dependencies()
+    }
+
+    #[inline]
+    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency(num)
+    }
+}
+
+unsafe impl<At, Rp, A> RenderPassDescAttachmentsList<At> for Framebuffer<Rp, A>
+    where Rp: RenderPassDescAttachmentsList<At>
+{
+    type List = Rp::List;
+
+    #[inline]
+    fn check_attachments_list(&self, atch: At) -> Result<Self::List, FramebufferCreationError> {
+        self.render_pass.check_attachments_list(atch)
+    }
+}
+
+unsafe impl<C, Rp, A> RenderPassClearValues<C> for Framebuffer<Rp, A>
+    where Rp: RenderPassClearValues<C>
+{
+    #[inline]
+    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+        self.render_pass.convert_clear_values(vals)
+    }
+}
+
+unsafe impl<Rp, A> RenderPassAbstract for Framebuffer<Rp, A> where Rp: RenderPassAbstract {
+    #[inline]
+    fn inner(&self) -> RenderPassSys {
+        self.render_pass.inner()
+    }
+}
+
+unsafe impl<Rp, A> DeviceOwned for Framebuffer<Rp, A> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

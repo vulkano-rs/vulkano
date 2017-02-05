@@ -28,13 +28,8 @@ use sync::PipelineStages;
 use SafeDeref;
 use vk;
 
-/// Master trait for framebuffer objects. All framebuffer structs should always implement
-/// this trait.
-pub unsafe trait FramebufferAbstract: FramebufferRef + FramebufferRenderPassAbstract {}
-unsafe impl<T> FramebufferAbstract for T where T: FramebufferRef + FramebufferRenderPassAbstract {}
-
 /// Trait for objects that contain a Vulkan framebuffer object.
-pub unsafe trait FramebufferRef {
+pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
 
@@ -60,54 +55,15 @@ pub unsafe trait FramebufferRef {
     }
 }
 
-unsafe impl<T> FramebufferRef for T where T: SafeDeref, T::Target: FramebufferRef {
+unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: FramebufferAbstract {
     #[inline]
     fn inner(&self) -> FramebufferSys {
-        (**self).inner()
+        FramebufferAbstract::inner(&**self)
     }
 
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
-    }
-}
-
-/// Implemented on framebuffer objects. Gives access to the render pass the framebuffer was created
-/// with.
-pub unsafe trait FramebufferRenderPass {
-    /// Type of the render pass the framebuffer was created with.
-    type RenderPass;
-
-    /// Returns the render pass the framebuffer was created with.
-    fn render_pass(&self) -> &Self::RenderPass;
-}
-
-unsafe impl<T> FramebufferRenderPass for T where T: SafeDeref, T::Target: FramebufferRenderPass {
-    type RenderPass = <T::Target as FramebufferRenderPass>::RenderPass;
-
-    #[inline]
-    fn render_pass(&self) -> &Self::RenderPass {
-        (**self).render_pass()
-    }
-}
-
-// TODO: impl FramebufferRenderPass for &FramebufferAbstract
-
-/// Similar to `FramebufferRenderPass`, but doesn't use any associated type and can be turned into
-/// a trait object.
-///
-/// This trait is automatically implemented on any object that implements `FramebufferRenderPass`.
-pub unsafe trait FramebufferRenderPassAbstract {
-    /// Returns the render pass the framebuffer was created with.
-    fn render_pass(&self) -> &RenderPassAbstract;
-}
-
-unsafe impl<T> FramebufferRenderPassAbstract for T
-    where T: FramebufferRenderPass, T::RenderPass: RenderPassAbstract
-{
-    #[inline]
-    fn render_pass(&self) -> &RenderPassAbstract {
-        FramebufferRenderPass::render_pass(self) as &RenderPassAbstract
     }
 }
 
