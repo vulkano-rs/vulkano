@@ -64,8 +64,10 @@ macro_rules! ordered_passes_renderpass {
         mod scope {
             #![allow(non_camel_case_types)]
 
+            use $crate::format::ClearValue;
             use $crate::format::Format;
             use $crate::framebuffer::RenderPassDesc;
+            use $crate::framebuffer::RenderPassClearValues;
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
@@ -139,6 +141,13 @@ macro_rules! ordered_passes_renderpass {
                 #[inline]
                 fn dependency(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
                     dependency(id)
+                }
+            }
+
+            unsafe impl RenderPassClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
+                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+                    // FIXME: safety checks
+                    Box::new(values.into_iter())
                 }
             }
 

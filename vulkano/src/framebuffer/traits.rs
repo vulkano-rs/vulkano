@@ -102,7 +102,8 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
 /// - The provided methods shouldn't be overriden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
-pub unsafe trait RenderPassDesc {
+// TODO: require RenderPassDescAttachmentsList<Something> as well
+pub unsafe trait RenderPassDesc: RenderPassClearValues<Vec<ClearValue>> {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
     /// Returns the description of an attachment.
@@ -421,7 +422,7 @@ unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
 /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format that
 /// matches the attachment.
 ///
-pub unsafe trait RenderPassClearValues<C>: RenderPassDesc {
+pub unsafe trait RenderPassClearValues<C> {
     /// Decodes a `C` into a list of clear values where each element corresponds
     /// to an attachment. The size of the returned iterator must be the same as the number of
     /// attachments.
