@@ -74,6 +74,7 @@ use buffer::BufferInner;
 use buffer::TypedBuffer;
 use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
+use SafeDeref;
 use vk;
 
 /// How the vertex source should be unrolled.
@@ -174,6 +175,18 @@ pub unsafe trait VertexDefinition<I> {
                                                   IncompatibleVertexDefinitionError>;
 }
 
+unsafe impl<I, T> VertexDefinition<I> for T where T: SafeDeref, T::Target: VertexDefinition<I> {
+    type BuffersIter = <T::Target as VertexDefinition<I>>::BuffersIter;
+    type AttribsIter = <T::Target as VertexDefinition<I>>::AttribsIter;
+
+    #[inline]
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
+        (**self).definition(interface)
+    }
+}
+
 /// Error that can happen when the vertex definition doesn't match the input of the vertex shader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompatibleVertexDefinitionError {
@@ -222,6 +235,13 @@ pub unsafe trait VertexSource<L> {
     // TODO: better than a Vec
     // TODO: return a struct instead
     fn decode<'l>(&self, &'l L) -> (Vec<BufferInner<'l>>, usize, usize);
+}
+
+unsafe impl<L, T> VertexSource<L> for T where T: SafeDeref, T::Target: VertexSource<L> {
+    #[inline]
+    fn decode<'l>(&self, list: &'l L) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (**self).decode(list)
+    }
 }
 
 /// Implementation of `VertexDefinition` for a single vertex buffer.
