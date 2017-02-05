@@ -142,6 +142,21 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
         RenderPassDescDependencies { render_pass: self, num: 0 }
     }
 
+    /// Returns true if this render pass is compatible with another render pass.
+    ///
+    /// Two render passes that contain one subpass are compatible if they are identical. Two render
+    /// passes that contain more than one subpass are compatible if they are identical except for
+    /// the load/store operations and the image layouts.
+    ///
+    /// This function is just a shortcut for the `RenderPassCompatible` trait.
+    #[inline]
+    fn is_compatible_with<T>(&self, other: &T) -> bool
+        where Self: Sized,
+              T: ?Sized + RenderPassDesc
+    {
+        RenderPassCompatible::is_compatible_with(self, other)
+    }
+
     /// Builds a render pass from this description.
     ///
     /// > **Note**: This function is just a shortcut for `RenderPass::new`.
@@ -495,6 +510,8 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
 /// with another render pass.
 ///
 /// The trait is automatically implemented for all type that implement `RenderPassDesc`.
+///
+/// > **Note**: This trait exists so that you can specialize it once specialization lands in Rust.
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?

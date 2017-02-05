@@ -126,16 +126,6 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList>> {
 }
 
 impl<Rp, A> Framebuffer<Rp, A> {
-    /// Returns true if this framebuffer can be used with the specified renderpass.
-    #[inline]
-    pub fn is_compatible_with<R>(&self, render_pass: &R) -> bool
-        where R: RenderPassAbstract, Rp: RenderPassAbstract
-    {
-        unimplemented!()
-        // FIXME:
-        //self.render_pass.is_compatible_with(render_pass)
-    }
-
     /// Returns the width, height and layers of this framebuffer.
     #[inline]
     pub fn dimensions(&self) -> [u32; 3] {

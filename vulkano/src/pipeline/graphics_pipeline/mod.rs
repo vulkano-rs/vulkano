@@ -364,8 +364,9 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !params.render_pass.render_pass().is_compatible_with(params.render_pass.index(),
-                                                                params.fragment_shader.output())
+        if !RenderPassSubpassInterface::is_compatible_with(&params.render_pass.render_pass(),
+                                                           params.render_pass.index(),
+                                                           params.fragment_shader.output())
         {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
