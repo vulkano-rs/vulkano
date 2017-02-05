@@ -23,7 +23,6 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
-use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
@@ -119,7 +118,7 @@ use vk;
 /// };
 /// # }
 /// ```
-pub struct Framebuffer<Rp = Arc<RenderPass>, A = Box<AttachmentsList>> {        // TODO: remove default params
+pub struct Framebuffer<Rp, A = Box<AttachmentsList>> {        // TODO: remove default params
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,

@@ -19,7 +19,6 @@ use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPass;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassAbstract;
 use VulkanObject;
@@ -46,7 +45,7 @@ pub struct CmdBeginRenderPass<Rp, F> {
     framebuffer: F,
 }
 
-impl<F> CmdBeginRenderPass<Arc<RenderPass>, F>
+impl<F> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
     where F: FramebufferAbstract
 {
     /// See the documentation of the `begin_render_pass` method.
