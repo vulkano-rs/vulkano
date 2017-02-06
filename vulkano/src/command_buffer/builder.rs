@@ -104,3 +104,12 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         CommandBufferBuild::build(self)
     }
 }
+
+pub unsafe trait CommandBufferBuilderBuffered {
+    /// Adds a pipeline barrier to the underlying command buffer and bypasses the flushing
+    /// mechanism.
+    fn add_non_buffered_pipeline_barrier(&mut self, cmd: &cmd::CmdPipelineBarrier);
+
+    /// Flushes all the commands that haven't been flushed to the inner builder.
+    fn flush(&mut self);
+}

@@ -9,20 +9,19 @@
 
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
-use command_buffer::cb::BufferedCommandsListLayer;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
 use device::Device;
 use device::DeviceOwned;
 
-pub struct AutoPipelineBarriersLayer<I, L> {
-    inner: BufferedCommandsListLayer<I, L>,
+pub struct AutoPipelineBarriersLayer<I> {
+    inner: I,
 }
 
-impl<I> AutoPipelineBarriersLayer<I, ()> {
-    #[inline]       // TODO: remove inline maybe?
-    pub fn new(inner: BufferedCommandsListLayer<I, ()>) -> AutoPipelineBarriersLayer<I, ()> {
+impl<I> AutoPipelineBarriersLayer<I> {
+    #[inline]
+    pub fn new(inner: I) -> AutoPipelineBarriersLayer<I> {
         AutoPipelineBarriersLayer {
             inner: inner,
         }
@@ -42,8 +41,8 @@ impl<I> AutoPipelineBarriersLayer<I, ()> {
     }
 }*/
 
-unsafe impl<I, L, O> CommandBufferBuild for AutoPipelineBarriersLayer<I, L>
-    where BufferedCommandsListLayer<I, L>: CommandBufferBuild<Out = O>
+unsafe impl<I, O> CommandBufferBuild for AutoPipelineBarriersLayer<I>
+    where I: CommandBufferBuild<Out = O>
 {
     type Out = O;
 
@@ -53,8 +52,8 @@ unsafe impl<I, L, O> CommandBufferBuild for AutoPipelineBarriersLayer<I, L>
     }
 }
 
-unsafe impl<I, L> DeviceOwned for AutoPipelineBarriersLayer<I, L>
-    where BufferedCommandsListLayer<I, L>: DeviceOwned
+unsafe impl<I> DeviceOwned for AutoPipelineBarriersLayer<I>
+    where I: DeviceOwned
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -62,17 +61,17 @@ unsafe impl<I, L> DeviceOwned for AutoPipelineBarriersLayer<I, L>
     }
 }
 
-unsafe impl<I, L> CommandBufferBuilder for AutoPipelineBarriersLayer<I, L>
-    where BufferedCommandsListLayer<I, L>: CommandBufferBuilder
+unsafe impl<I> CommandBufferBuilder for AutoPipelineBarriersLayer<I>
+    where I: CommandBufferBuilder
 {
 }
 
 macro_rules! pass_through {
     (($($param:ident),*), $cmd:ty) => {
-        unsafe impl<I, L $(, $param)*> AddCommand<$cmd> for AutoPipelineBarriersLayer<I, L>
-            where I: for<'r> AddCommand<&'r $cmd, Out = I>
+        unsafe impl<I, O $(, $param)*> AddCommand<$cmd> for AutoPipelineBarriersLayer<I>
+            where I: for<'r> AddCommand<$cmd, Out = O>
         {
-            type Out = AutoPipelineBarriersLayer<I, (L, $cmd)>;
+            type Out = AutoPipelineBarriersLayer<O>;
 
             #[inline]
             fn add(self, command: $cmd) -> Self::Out {

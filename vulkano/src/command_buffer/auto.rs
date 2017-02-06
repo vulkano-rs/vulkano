@@ -25,7 +25,7 @@ use device::Queue;
 use instance::QueueFamily;
 use OomError;
 
-type Cb<L, P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::UnsafeCommandBufferBuilder<P>, L>>>>>>;
+type Cb<L, P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::BufferedCommandsListLayer<cb::UnsafeCommandBufferBuilder<P>, L>>>>>>>;
 
 pub struct AutoCommandBufferBuilder<L, P = Arc<StandardCommandPool>> where P: CommandPool {
     inner: Cb<L, P>

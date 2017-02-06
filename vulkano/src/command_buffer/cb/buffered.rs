@@ -14,6 +14,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::CommandsList;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferBuilderBuffered;
 use command_buffer::cmd;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
@@ -92,25 +93,30 @@ impl<I> BufferedCommandsListLayer<I, ()> {
     }
 }
 
-impl<'a, I, L> BufferedCommandsListLayer<I, L>
-    where I: AddCommand<&'a cmd::CmdPipelineBarrier<'a>, Out = I>
+impl<I, L> BufferedCommandsListLayer<I, L>
+    where L: BufferedCommandsListLayerCommands<I>,
 {
-    /// Adds a pipeline barrier to the underlying command buffer and bypasses the flushing
-    /// mechanism.
     #[inline]
-    pub fn add_non_buffered_pipeline_barrier(&mut self, cmd: &'a cmd::CmdPipelineBarrier<'a>) {
-        let inner = self.inner.take().unwrap();
-        self.inner = Some(inner.add(cmd));
-    }
-}
-
-impl<I, L> BufferedCommandsListLayer<I, L> where L: BufferedCommandsListLayerCommands<I> {
-    /// Flushes all the commands that haven't been flushed to the inner builder.
-    #[inline]
-    pub fn flush(&mut self) {
+    fn flush_inner(&mut self) {
         let inner = self.inner.take().unwrap();
         self.inner = Some(self.commands.flush(self.non_flushed, inner));
         self.non_flushed = 0;
+    }
+}
+
+unsafe impl<I, L> CommandBufferBuilderBuffered for BufferedCommandsListLayer<I, L>
+    where I: for<'r> AddCommand<&'r cmd::CmdPipelineBarrier<'r>, Out = I>,
+          L: BufferedCommandsListLayerCommands<I>,
+{
+    #[inline]
+    fn add_non_buffered_pipeline_barrier(&mut self, cmd: &cmd::CmdPipelineBarrier) {
+        let inner = self.inner.take().unwrap();
+        self.inner = Some(inner.add(cmd));
+    }
+
+    #[inline]
+    fn flush(&mut self) {
+        self.flush_inner();
     }
 }
 
@@ -122,7 +128,7 @@ unsafe impl<I, L, O> CommandBufferBuild for BufferedCommandsListLayer<I, L>
 
     #[inline]
     fn build(mut self) -> Self::Out {
-        self.flush();
+        self.flush_inner();
         debug_assert_eq!(self.non_flushed, 0);
 
         let inner = self.inner.take().unwrap().build();

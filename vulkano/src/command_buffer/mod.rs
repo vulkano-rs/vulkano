@@ -43,6 +43,7 @@
 
 pub use self::auto::AutoCommandBufferBuilder;
 pub use self::builder::CommandBufferBuilder;
+pub use self::builder::CommandBufferBuilderBuffered;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
