@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
 use command_buffer::cmd;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
 use device::Device;
@@ -72,6 +73,9 @@ unsafe impl<I, L> DeviceOwned for CommandsListLayer<I, L> where I: DeviceOwned {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
+}
+
+unsafe impl<I, L> CommandBufferBuilder for CommandsListLayer<I, L> where I: DeviceOwned {
 }
 
 macro_rules! pass_through {

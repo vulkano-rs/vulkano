@@ -7,9 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
+use device::Device;
+use device::DeviceOwned;
 
 /// Layer around a command buffer builder that checks whether the commands can be executed in the
 /// given context.
@@ -45,6 +49,20 @@ unsafe impl<I, O> CommandBufferBuild for ContextCheckLayer<I>
     fn build(self) -> O {
         self.inner.build()
     }
+}
+
+unsafe impl<I> DeviceOwned for ContextCheckLayer<I>
+    where I: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<I> CommandBufferBuilder for ContextCheckLayer<I>
+    where I: CommandBufferBuilder
+{
 }
 
 // TODO: actually implement

@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
@@ -43,6 +44,20 @@ unsafe impl<I, O> CommandBufferBuild for SubmitSyncBuilderLayer<I>
             inner: self.inner.build()
         }
     }
+}
+
+unsafe impl<I> DeviceOwned for SubmitSyncBuilderLayer<I>
+    where I: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<I> CommandBufferBuilder for SubmitSyncBuilderLayer<I>
+    where I: CommandBufferBuilder
+{
 }
 
 macro_rules! pass_through {

@@ -7,9 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
+use device::Device;
+use device::DeviceOwned;
 
 /// Layer around a command buffer builder that checks whether the commands added to it match the
 /// type of the queue family of the underlying builder.
@@ -34,6 +38,20 @@ impl<I> QueueTyCheckLayer<I> {
     pub fn into_inner(self) -> I {
         self.inner
     }
+}
+
+unsafe impl<I> DeviceOwned for QueueTyCheckLayer<I>
+    where I: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<I> CommandBufferBuilder for QueueTyCheckLayer<I>
+    where I: CommandBufferBuilder
+{
 }
 
 unsafe impl<I, O> CommandBufferBuild for QueueTyCheckLayer<I>

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::CommandsList;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
 use command_buffer::Submit;
 use command_buffer::SubmitBuilder;
@@ -148,6 +149,9 @@ unsafe impl<I, L> DeviceOwned for BufferedCommandsListLayer<I, L> where I: Devic
     fn device(&self) -> &Arc<Device> {
         self.inner.as_ref().unwrap().device()
     }
+}
+
+unsafe impl<I, L> CommandBufferBuilder for BufferedCommandsListLayer<I, L> where I: DeviceOwned {
 }
 
 macro_rules! pass_through {

@@ -7,10 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
 use command_buffer::DynamicState;
+use device::Device;
+use device::DeviceOwned;
 use VulkanObject;
 use vk;
 
@@ -60,6 +64,20 @@ impl<I> StateCacheLayer<I> {
     pub fn into_inner(self) -> I {
         self.inner
     }
+}
+
+unsafe impl<I> DeviceOwned for StateCacheLayer<I>
+    where I: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<I> CommandBufferBuilder for StateCacheLayer<I>
+    where I: CommandBufferBuilder
+{
 }
 
 unsafe impl<Pl, I, O> AddCommand<cmd::CmdBindPipeline<Pl>> for StateCacheLayer<I>

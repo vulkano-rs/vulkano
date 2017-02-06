@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use buffer::Buffer;
+use device::DeviceOwned;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
@@ -24,7 +25,7 @@ use pipeline::vertex::VertexSource;
 ///
 /// > **Note**: This trait is just a utility trait. Do not implement it yourself. Instead
 /// > implement the `AddCommand` and `CommandBufferBuild` traits.
-pub unsafe trait CommandBufferBuilder {
+pub unsafe trait CommandBufferBuilder: DeviceOwned {
     /// Adds a command that writes the content of a buffer.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
@@ -103,5 +104,3 @@ pub unsafe trait CommandBufferBuilder {
         CommandBufferBuild::build(self)
     }
 }
-
-unsafe impl<T> CommandBufferBuilder for T {}

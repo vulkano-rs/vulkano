@@ -7,10 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::BufferedCommandsListLayer;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
+use device::Device;
+use device::DeviceOwned;
 
 pub struct AutoPipelineBarriersLayer<I, L> {
     inner: BufferedCommandsListLayer<I, L>,
@@ -47,6 +51,20 @@ unsafe impl<I, L, O> CommandBufferBuild for AutoPipelineBarriersLayer<I, L>
     fn build(self) -> O {
         self.inner.build()
     }
+}
+
+unsafe impl<I, L> DeviceOwned for AutoPipelineBarriersLayer<I, L>
+    where BufferedCommandsListLayer<I, L>: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<I, L> CommandBufferBuilder for AutoPipelineBarriersLayer<I, L>
+    where BufferedCommandsListLayer<I, L>: CommandBufferBuilder
+{
 }
 
 macro_rules! pass_through {

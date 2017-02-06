@@ -14,6 +14,7 @@ use command_buffer::cb;
 use command_buffer::cmd;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use command_buffer::Submit;
@@ -63,7 +64,7 @@ unsafe impl<L, P, O> CommandBufferBuild for AutoCommandBufferBuilder<L, P>
     #[inline]
     fn build(self) -> Self::Out {
         // TODO: wrap around?
-        self.inner.build()
+        CommandBufferBuild::build(self.inner)
     }
 }
 
@@ -87,6 +88,12 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P>
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
+}
+
+unsafe impl<L, P> CommandBufferBuilder for AutoCommandBufferBuilder<L, P>
+    where Cb<L, P>: CommandBufferBuilder,
+          P: CommandPool
+{
 }
 
 macro_rules! pass_through {
