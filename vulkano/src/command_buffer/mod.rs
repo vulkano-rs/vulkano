@@ -42,11 +42,11 @@
 // struct. The restrictions are enforced only in the public types.
 
 pub use self::auto::AutoCommandBufferBuilder;
+pub use self::builder::CommandBufferBuilder;
 pub use self::submit::Submission;
 pub use self::submit::Submit;
 pub use self::submit::SubmitBuilder;
 pub use self::submit::SubmitChain;
-pub use self::helper_trait::CommandBufferBuilder;
 
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
@@ -56,7 +56,7 @@ pub mod cmd;
 pub mod pool;
 
 mod auto;
-mod helper_trait;
+mod builder;
 mod submit;
 
 #[repr(C)]
