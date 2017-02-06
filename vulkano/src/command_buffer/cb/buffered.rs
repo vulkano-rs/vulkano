@@ -171,7 +171,7 @@ macro_rules! pass_through {
             fn add(mut self, command: $cmd) -> Self::Out {
                 debug_assert!(self.inner.is_some());
                 BufferedCommandsListLayer {
-                    inner: Some(AddCommand::add(self.inner.take().unwrap(), &command)),
+                    inner: self.inner,
                     commands: (self.commands, command),
                     non_flushed: self.non_flushed + 1,
                 }
