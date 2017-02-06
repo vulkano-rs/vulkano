@@ -34,6 +34,11 @@ use image::ImageView;
 /// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
 /// ```
 ///
+/// # Clear value and attachments list
+///
+/// A render pass created from an `EmptySinglePassRenderPassDesc` accepts `()` for both the list
+/// of attachments and the clear colors.
+///
 #[derive(Debug, Copy, Clone)]
 pub struct EmptySinglePassRenderPassDesc;
 
@@ -149,9 +154,24 @@ unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView>>> for EmptySinglePa
     }
 }
 
+unsafe impl RenderPassDescAttachmentsList<()> for EmptySinglePassRenderPassDesc {
+    #[inline]
+    fn check_attachments_list(&self, list: ()) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+        Ok(Box::new(()) as Box<_>)
+    }
+}
+
 unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
     fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+        assert!(values.is_empty());     // TODO: error instead
+        Box::new(iter::empty())
+    }
+}
+
+unsafe impl RenderPassDescClearValues<()> for EmptySinglePassRenderPassDesc {
+    #[inline]
+    fn convert_clear_values(&self, values: ()) -> Box<Iterator<Item = ClearValue>> {
         Box::new(iter::empty())
     }
 }
