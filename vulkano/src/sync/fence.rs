@@ -18,6 +18,7 @@ use std::time::Duration;
 use smallvec::SmallVec;
 
 use device::Device;
+use device::DeviceOwned;
 use Error;
 use OomError;
 use SafeDeref;
@@ -234,6 +235,13 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
                 vk.ResetFences(device.internal_object(), fences.len() as u32, fences.as_ptr());
             }
         }
+    }
+}
+
+unsafe impl DeviceOwned for Fence {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

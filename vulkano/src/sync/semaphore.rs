@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use device::DeviceOwned;
 use OomError;
 use SafeDeref;
 use VulkanObject;
@@ -63,6 +64,13 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
     #[inline]
     pub fn new(device: D) -> Arc<Semaphore<D>> {
         Arc::new(Semaphore::raw(device).unwrap())
+    }
+}
+
+unsafe impl DeviceOwned for Semaphore {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
