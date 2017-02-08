@@ -168,7 +168,7 @@ macro_rules! pass_through {
             type Out = BufferedCommandsListLayer<I, (L, $cmd)>;
 
             #[inline]
-            fn add(mut self, command: $cmd) -> Self::Out {
+            fn add(self, command: $cmd) -> Self::Out {
                 debug_assert!(self.inner.is_some());
                 BufferedCommandsListLayer {
                     inner: self.inner,
