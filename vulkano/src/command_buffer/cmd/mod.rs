@@ -32,6 +32,7 @@ pub use self::fill_buffer::{CmdFillBuffer, CmdFillBufferError};
 pub use self::next_subpass::CmdNextSubpass;
 pub use self::pipeline_barrier::CmdPipelineBarrier;
 pub use self::push_constants::{CmdPushConstants, CmdPushConstantsError};
+pub use self::set_event::CmdSetEvent;
 pub use self::set_state::{CmdSetState};
 pub use self::update_buffer::{CmdUpdateBuffer, CmdUpdateBufferError};
 
@@ -57,5 +58,6 @@ mod fill_buffer;
 mod next_subpass;
 mod pipeline_barrier;
 mod push_constants;
+mod set_event;
 mod set_state;
 mod update_buffer;

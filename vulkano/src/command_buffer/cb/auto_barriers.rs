@@ -97,6 +97,7 @@ pass_through!((C), cmd::CmdExecuteCommands<C>);
 pass_through!((B), cmd::CmdFillBuffer<B>);
 pass_through!((), cmd::CmdNextSubpass);
 pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
+pass_through!((), cmd::CmdSetEvent);
 pass_through!((), cmd::CmdSetState);
 //pass_through!((B), cmd::CmdUpdateBuffer<B>);
 
