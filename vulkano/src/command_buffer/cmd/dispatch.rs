@@ -9,74 +9,62 @@
 
 use std::error;
 use std::fmt;
-use std::sync::Arc;
 
+use command_buffer::cb::AddCommand;
 use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindDescriptorSetsError;
 use command_buffer::cmd::CmdBindPipeline;
+use command_buffer::cmd::CmdDispatchRaw;
+use command_buffer::cmd::CmdDispatchRawError;
 use command_buffer::cmd::CmdPushConstants;
 use command_buffer::cmd::CmdPushConstantsError;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use descriptor::PipelineLayoutAbstract;
-use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
-use device::DeviceOwned;
-use pipeline::ComputePipeline;
-use VulkanPointers;
+use descriptor::descriptor_set::DescriptorSetsCollection;
+use pipeline::ComputePipelineAbstract;
 
 /// Command that executes a compute shader.
-pub struct CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
-{
-    // Parent commands list.
-    previous: CmdPushConstants<
-                CmdBindDescriptorSets<
-                    CmdBindPipeline<L, Arc<ComputePipeline<Pl>>>,
-                    S, Arc<ComputePipeline<Pl>>
-                >,
-                Pc, Arc<ComputePipeline<Pl>>
-              >,
-
-    // Dispatch dimensions.
-    dimensions: [u32; 3],
+pub struct CmdDispatch<P, S, Pc> {
+    push_constants: CmdPushConstants<Pc, P>,
+    descriptor_sets: CmdBindDescriptorSets<S, P>,
+    bind_pipeline: CmdBindPipeline<P>,
+    dispatch_raw: CmdDispatchRaw,
 }
 
-impl<L, Pl, S, Pc> CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
+impl<P, S, Pc> CmdDispatch<P, S, Pc>
+    where P: ComputePipelineAbstract, S: DescriptorSetsCollection
 {
     /// See the documentation of the `dispatch` method.
-    pub fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, dimensions: [u32; 3],
-               push_constants: Pc) -> Result<CmdDispatch<L, Pl, S, Pc>, CmdDispatchError>
+    pub fn new(dimensions: [u32; 3], pipeline: P, sets: S, push_constants: Pc)
+               -> Result<CmdDispatch<P, S, Pc>, CmdDispatchError>
+        where P: Clone
     {
-        let previous = CmdBindPipeline::bind_compute_pipeline(previous, pipeline.clone());
-        let device = previous.device().clone();
-        let previous = CmdBindDescriptorSets::new(previous, false, pipeline.clone(), sets)?;
-        let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants)?;
-
-        // FIXME: check dimensions limits
+        let bind_pipeline = CmdBindPipeline::bind_compute_pipeline(pipeline.clone());
+        let descriptor_sets = try!(CmdBindDescriptorSets::new(true, pipeline.clone(), sets));
+        let push_constants = try!(CmdPushConstants::new(pipeline.clone(), push_constants));
+        let dispatch_raw = try!(unsafe { CmdDispatchRaw::new(dimensions) });
 
         Ok(CmdDispatch {
-            previous: previous,
-            dimensions: dimensions,
+            push_constants: push_constants,
+            descriptor_sets: descriptor_sets,
+            bind_pipeline: bind_pipeline,
+            dispatch_raw: dispatch_raw,
         })
     }
 }
 
-unsafe impl<L, Pl, S, Pc> CommandsList for CmdDispatch<L, Pl, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
+unsafe impl<Cb, P, S, Pc, O, O1, O2, O3> AddCommand<CmdDispatch<P, S, Pc>> for Cb
+    where Cb: AddCommand<CmdPushConstants<Pc, P>, Out = O1>,
+          O1: AddCommand<CmdBindDescriptorSets<S, P>, Out = O2>,
+          O2: AddCommand<CmdBindPipeline<P>, Out = O3>,
+          O3: AddCommand<CmdDispatchRaw, Out = O>
 {
-    #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
+    type Out = O;
 
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdDispatch(cmd, self.dimensions[0], self.dimensions[1], self.dimensions[2]);
-            }
-        }));
+    #[inline]
+    fn add(self, command: CmdDispatch<P, S, Pc>) -> O {
+        self.add(command.push_constants)
+            .add(command.descriptor_sets)
+            .add(command.bind_pipeline)
+            .add(command.dispatch_raw)
     }
 }
 
@@ -84,11 +72,18 @@ unsafe impl<L, Pl, S, Pc> CommandsList for CmdDispatch<L, Pl, S, Pc>
 #[derive(Debug, Copy, Clone)]
 pub enum CmdDispatchError {
     /// The dispatch dimensions are larger than the hardware limits.
-    DimensionsTooLarge,
+    DispatchRawError(CmdDispatchRawError),
     /// Error while binding descriptor sets.
     BindDescriptorSetsError(CmdBindDescriptorSetsError),
     /// Error while setting push constants.
     PushConstantsError(CmdPushConstantsError),
+}
+
+impl From<CmdDispatchRawError> for CmdDispatchError {
+    #[inline]
+    fn from(err: CmdDispatchRawError) -> CmdDispatchError {
+        CmdDispatchError::DispatchRawError(err)
+    }
 }
 
 impl From<CmdBindDescriptorSetsError> for CmdDispatchError {
@@ -109,7 +104,7 @@ impl error::Error for CmdDispatchError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CmdDispatchError::DimensionsTooLarge => {
+            CmdDispatchError::DispatchRawError(_) => {
                 "the dispatch dimensions are larger than the hardware limits"
             },
             CmdDispatchError::BindDescriptorSetsError(_) => {
@@ -124,7 +119,7 @@ impl error::Error for CmdDispatchError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CmdDispatchError::DimensionsTooLarge => None,
+            CmdDispatchError::DispatchRawError(ref err) => Some(err),
             CmdDispatchError::BindDescriptorSetsError(ref err) => Some(err),
             CmdDispatchError::PushConstantsError(ref err) => Some(err),
         }

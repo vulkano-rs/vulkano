@@ -19,6 +19,7 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
+use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
 
@@ -95,6 +96,17 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     {
         let cmd = cmd::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
         self.add(cmd)
+    }
+
+    /// Executes a compute shader.
+    fn dispatch<P, S, Pc, O>(self, dimensions: [u32; 3], pipeline: P, sets: S, push_constants: Pc)
+                             -> Result<O, cmd::CmdDispatchError>
+        where Self: Sized + AddCommand<cmd::CmdDispatch<P, S, Pc>, Out = O>,
+              S: DescriptorSetsCollection,
+              P: Clone + ComputePipelineAbstract,
+    {
+        let cmd = try!(cmd::CmdDispatch::new(dimensions, pipeline, sets, push_constants));
+        Ok(self.add(cmd))
     }
 
     #[inline]
