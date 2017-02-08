@@ -26,6 +26,11 @@ What does vulkano do?
 
 **Warning: this library breaks every five minutes for the moment.**
 
+Note that vulkano does **not** require you to install the official Vulkan SDK. This is not
+something specific to vulkano (you don't need to SDK to write program that use Vulkan, even
+without vulkano), but many people are unaware of that and install the SDK thinking that it is
+required.
+
 ## [Documentation](https://docs.rs/vulkano)
 
 [![](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
