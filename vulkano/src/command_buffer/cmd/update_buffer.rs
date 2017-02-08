@@ -9,12 +9,14 @@
 
 use std::error;
 use std::fmt;
+use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
+use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
@@ -76,6 +78,15 @@ impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
             size: size as vk::DeviceSize,
             data: data,
         })
+    }
+}
+
+unsafe impl<'a, B, D> DeviceOwned for CmdUpdateBuffer<'a, B, D>
+    where B: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.device()
     }
 }
 

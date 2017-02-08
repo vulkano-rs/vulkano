@@ -118,6 +118,13 @@ unsafe impl<'a, P, Pl> AddCommand<&'a CmdBindPipeline<Pl>> for UnsafeCommandBuff
     }
 }
 
+unsafe impl<Pl> DeviceOwned for CmdBindPipeline<Pl> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 /// Object that represents the internals of the bind pipeline command.
 #[derive(Debug, Copy, Clone)]
 pub struct CmdBindPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);

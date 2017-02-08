@@ -9,12 +9,14 @@
 
 use std::error;
 use std::fmt;
+use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
+use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
@@ -31,6 +33,15 @@ pub struct CmdFillBuffer<B> {
     size: vk::DeviceSize,
     // The data to write to the buffer.
     data: u32,
+}
+
+unsafe impl<B> DeviceOwned for CmdFillBuffer<B>
+    where B: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.device()
+    }
 }
 
 impl<B> CmdFillBuffer<B>

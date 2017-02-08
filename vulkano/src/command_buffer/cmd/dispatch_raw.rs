@@ -9,10 +9,12 @@
 
 use std::error;
 use std::fmt;
+use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
+use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
@@ -33,6 +35,13 @@ impl CmdDispatchRaw {
         Ok(CmdDispatchRaw {
             dimensions: dimensions,
         })
+    }
+}
+
+unsafe impl DeviceOwned for CmdDispatchRaw {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        unimplemented!()
     }
 }
 

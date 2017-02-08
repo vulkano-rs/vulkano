@@ -7,10 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use buffer::Buffer;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
+use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
@@ -37,6 +39,15 @@ impl<B> CmdDrawIndirectRaw<B> where B: Buffer {
             draw_count: draw_count,
             stride: 16,         // TODO:
         }
+    }
+}
+
+unsafe impl<B> DeviceOwned for CmdDrawIndirectRaw<B>
+    where B: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.device()
     }
 }
 

@@ -57,6 +57,13 @@ impl<B> CmdBindVertexBuffers<B> {
     }
 }
 
+unsafe impl<B> DeviceOwned for CmdBindVertexBuffers<B> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl<'a, P, B> AddCommand<&'a CmdBindVertexBuffers<B>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {

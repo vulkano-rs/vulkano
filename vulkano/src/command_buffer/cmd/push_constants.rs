@@ -56,6 +56,13 @@ impl<Pc, Pl> CmdPushConstants<Pc, Pl>
     }
 }
 
+unsafe impl<Pc, Pl> DeviceOwned for CmdPushConstants<Pc, Pl> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool,
           Pl: PipelineLayoutAbstract

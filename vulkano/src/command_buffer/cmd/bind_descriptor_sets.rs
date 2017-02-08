@@ -95,6 +95,15 @@ impl<S, P> CmdBindDescriptorSets<S, P>
     }
 }
 
+unsafe impl<S, Pl> DeviceOwned for CmdBindDescriptorSets<S, Pl>
+    where Pl: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.pipeline_layout.device()
+    }
+}
+
 unsafe impl<'a, P, Pl, S> AddCommand<&'a CmdBindDescriptorSets<S, Pl>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {

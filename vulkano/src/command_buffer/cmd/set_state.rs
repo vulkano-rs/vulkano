@@ -60,6 +60,13 @@ impl CmdSetState {
     }
 }
 
+unsafe impl DeviceOwned for CmdSetState {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl<'a, P> AddCommand<&'a CmdSetState> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {

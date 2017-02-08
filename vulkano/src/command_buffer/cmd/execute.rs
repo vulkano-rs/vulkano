@@ -7,11 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use smallvec::SmallVec;
 
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
+use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
 use VulkanPointers;
@@ -40,6 +42,15 @@ impl<Cb> CmdExecuteCommands<Cb> {
             raw_list: raw_list,
             command_buffer: command_buffer,
         }*/
+    }
+}
+
+unsafe impl<Cb> DeviceOwned for CmdExecuteCommands<Cb>
+    where Cb: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.command_buffer.device()
     }
 }
 

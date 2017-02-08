@@ -14,6 +14,7 @@ use command_buffer::CommandBufferBuilder;
 use command_buffer::cmd;
 use device::Device;
 use device::DeviceOwned;
+use VulkanObject;
 
 /// Layer around a command buffer builder that checks whether the commands added to it belong to
 /// the same device as the command buffer.
@@ -62,10 +63,27 @@ unsafe impl<I, O> CommandBufferBuild for DeviceCheckLayer<I>
     }
 }
 
-// TODO: actually implement
-
 macro_rules! pass_through {
-    (($($param:ident),*), $cmd:ty) => {
+    (($($param:ident),*), $cmd:ty) => (
+        unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for DeviceCheckLayer<I>
+            where I: AddCommand<$cmd, Out = O> + DeviceOwned, $cmd: DeviceOwned
+        {
+            type Out = DeviceCheckLayer<O>;
+
+            #[inline]
+            fn add(self, command: $cmd) -> Self::Out {
+                let inner_device = self.inner.device().internal_object();
+                let cmd_device = command.device().internal_object();
+                assert_eq!(inner_device, cmd_device);
+
+                DeviceCheckLayer {
+                    inner: self.inner.add(command),
+                }
+            }
+        }
+    );
+
+    (($($param:ident),*), $cmd:ty, no-device) => (
         unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for DeviceCheckLayer<I>
             where I: AddCommand<$cmd, Out = O>
         {
@@ -78,7 +96,7 @@ macro_rules! pass_through {
                 }
             }
         }
-    }
+    );
 }
 
 pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
@@ -86,16 +104,16 @@ pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
 pass_through!((B), cmd::CmdBindIndexBuffer<B>);
 pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
 pass_through!((V), cmd::CmdBindVertexBuffers<V>);
-pass_through!((), cmd::CmdClearAttachments);
+pass_through!((), cmd::CmdClearAttachments, no-device);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
 pass_through!((), cmd::CmdDispatchRaw);
-pass_through!((), cmd::CmdDrawIndexedRaw);
+pass_through!((), cmd::CmdDrawIndexedRaw, no-device);
 pass_through!((B), cmd::CmdDrawIndirectRaw<B>);
-pass_through!((), cmd::CmdDrawRaw);
-pass_through!((), cmd::CmdEndRenderPass);
+pass_through!((), cmd::CmdDrawRaw, no-device);
+pass_through!((), cmd::CmdEndRenderPass, no-device);
 pass_through!((C), cmd::CmdExecuteCommands<C>);
 pass_through!((B), cmd::CmdFillBuffer<B>);
-pass_through!((), cmd::CmdNextSubpass);
+pass_through!((), cmd::CmdNextSubpass, no-device);
 pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
 pass_through!((), cmd::CmdSetState);
 pass_through!((B, D), cmd::CmdUpdateBuffer<'a, B, D>);

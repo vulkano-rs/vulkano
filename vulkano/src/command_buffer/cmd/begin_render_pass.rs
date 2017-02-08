@@ -109,6 +109,15 @@ impl<F> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
     }
 }
 
+unsafe impl<Rp, F> DeviceOwned for CmdBeginRenderPass<Rp, F>
+    where F: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.framebuffer.device()
+    }
+}
+
 unsafe impl<'a, P, Rp, F> AddCommand<&'a CmdBeginRenderPass<Rp, F>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {
