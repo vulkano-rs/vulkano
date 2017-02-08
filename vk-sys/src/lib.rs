@@ -162,6 +162,7 @@ pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -887,6 +888,18 @@ pub type ColorSpaceKHR = u32;
 #[deprecated = "Renamed to COLOR_SPACE_SRGB_NONLINEAR_KHR"]
 pub const COLORSPACE_SRGB_NONLINEAR_KHR: u32 = 0;
 pub const COLOR_SPACE_SRGB_NONLINEAR_KHR: u32 = 0;
+pub const COLOR_SPACE_DISPLAY_P3_LINEAR_EXT: u32 = 1000104001;
+pub const COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT: u32 = 1000104002;
+pub const COLOR_SPACE_SCRGB_LINEAR_EXT: u32 = 1000104003;
+pub const COLOR_SPACE_SCRGB_NONLINEAR_EXT: u32 = 1000104004;
+pub const COLOR_SPACE_DCI_P3_LINEAR_EXT: u32 = 1000104005;
+pub const COLOR_SPACE_DCI_P3_NONLINEAR_EXT: u32 = 1000104006;
+pub const COLOR_SPACE_BT709_LINEAR_EXT: u32 = 1000104007;
+pub const COLOR_SPACE_BT709_NONLINEAR_EXT: u32 = 1000104008;
+pub const COLOR_SPACE_BT2020_LINEAR_EXT: u32 = 1000104009;
+pub const COLOR_SPACE_BT2020_NONLINEAR_EXT: u32 = 1000104010;
+pub const COLOR_SPACE_ADOBERGB_LINEAR_EXT: u32 = 1000104011;
+pub const COLOR_SPACE_ADOBERGB_NONLINEAR_EXT: u32 = 1000104012;
 
 pub type PresentModeKHR = u32;
 pub const PRESENT_MODE_IMMEDIATE_KHR: u32 = 0;
@@ -2368,6 +2381,17 @@ pub struct DebugReportCallbackCreateInfoEXT {
     pub pUserData: *mut c_void,
 }
 
+pub type ViSurfaceCreateFlagsNN = Flags;
+
+#[repr(C)]
+pub struct ViSurfaceCreateInfoNN {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: ViSurfaceCreateFlagsNN,
+    pub window: *const c_void,
+}
+
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -2463,6 +2487,7 @@ ptrs!(InstancePointers, {
     CreateDebugReportCallbackEXT => (instance: Instance, pCreateInfo: *const DebugReportCallbackCreateInfoEXT, pAllocator: *const AllocationCallbacks, pCallback: *mut DebugReportCallbackEXT) -> Result,
     DestroyDebugReportCallbackEXT => (instance: Instance, callback: DebugReportCallbackEXT, pAllocator: *const AllocationCallbacks) -> (),
     DebugReportMessageEXT => (instance: Instance, flags: DebugReportFlagsEXT, objectType: DebugReportObjectTypeEXT, object: u64, location: usize, messageCode: i32, pLayerPrefix: *const c_char, pMessage: *const c_char) -> (),
+    CreateViSurfaceNN => (instance: Instance, pCreateInfo: *const ViSurfaceCreateInfoNN, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
 });
 
 ptrs!(DevicePointers, {

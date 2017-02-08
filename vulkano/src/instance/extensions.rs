@@ -11,6 +11,7 @@ use std::error;
 use std::ffi::CString;
 use std::fmt;
 use std::ptr;
+use std::str;
 
 use Error;
 use OomError;
@@ -22,7 +23,7 @@ use check_errors;
 macro_rules! extensions {
     ($sname:ident, $($ext:ident => $s:expr,)*) => (
         /// List of extensions that are enabled or available.
-        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        #[derive(Copy, Clone, PartialEq, Eq)]
         #[allow(missing_docs)]
         pub struct $sname {
             $(
@@ -62,6 +63,25 @@ macro_rules! extensions {
                     )*
                     _unbuildable: Unbuildable(())
                 }
+            }
+        }
+
+        impl fmt::Debug for $sname {
+            #[allow(unused_assignments)]
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                try!(write!(f, "["));
+
+                let mut first = true;
+
+                $(
+                    if self.$ext {
+                        if !first { try!(write!(f, ", ")); }
+                        else { first = false; }
+                        try!(f.write_str(str::from_utf8($s).unwrap()));
+                    }
+                )*
+
+                write!(f, "]")
             }
         }
     );
@@ -134,6 +154,8 @@ instance_extensions! {
     khr_android_surface => b"VK_KHR_android_surface",
     khr_win32_surface => b"VK_KHR_win32_surface",
     ext_debug_report => b"VK_EXT_debug_report",
+    nn_vi_surface => b"VK_NN_vi_surface",
+    ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
 }
 
 extensions! {

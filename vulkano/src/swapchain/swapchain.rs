@@ -24,6 +24,7 @@ use image::ImageDimensions;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
+use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
 use swapchain::Surface;
@@ -67,6 +68,7 @@ pub struct Swapchain {
     // Parameters passed to the constructor.
     num_images: u32,
     format: Format,
+    color_space: ColorSpace,
     dimensions: [u32; 2],
     layers: u32,
     usage: ImageUsage,
@@ -99,6 +101,7 @@ impl Swapchain {
     /// - Panics if `color_attachment` is false in `usage`.
     ///
     // TODO: remove `old_swapchain` parameter and add another function `with_old_swapchain`.
+    // TODO: add `ColorSpace` parameter
     #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
@@ -107,9 +110,9 @@ impl Swapchain {
                      -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
         where F: FormatDesc, S: Into<SharingMode>
     {
-        Swapchain::new_inner(device, surface, num_images, format.format(), dimensions, layers,
-                             usage, sharing.into(), transform, alpha, mode, clipped,
-                             old_swapchain.map(|s| &**s))
+        Swapchain::new_inner(device, surface, num_images, format.format(),
+                             ColorSpace::SrgbNonLinear, dimensions, layers, usage, sharing.into(),
+                             transform, alpha, mode, clipped, old_swapchain.map(|s| &**s))
     }
 
      /// Recreates the swapchain with new dimensions.
@@ -117,16 +120,17 @@ impl Swapchain {
                                    -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         Swapchain::new_inner(&self.device, &self.surface, self.num_images, self.format,
-                             dimensions, self.layers, &self.usage, self.sharing.clone(),
-                             self.transform, self.alpha, self.mode, self.clipped, Some(self))
+                             self.color_space, dimensions, self.layers, &self.usage,
+                             self.sharing.clone(), self.transform, self.alpha, self.mode,
+                             self.clipped, Some(self))
     }
 
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
     fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
-                 dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: SharingMode,
-                 transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-                 clipped: bool, old_swapchain: Option<&Swapchain>)
+                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: &ImageUsage,
+                 sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
+                 mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         // Checking that the requested parameters match the capabilities.
@@ -134,7 +138,7 @@ impl Swapchain {
         // TODO: return errors instead
         assert!(num_images >= capabilities.min_image_count);
         if let Some(c) = capabilities.max_image_count { assert!(num_images <= c) };
-        assert!(capabilities.supported_formats.iter().find(|&&(f, _)| f == format).is_some());
+        assert!(capabilities.supported_formats.iter().any(|&(f, c)| f == format && c == color_space));
         assert!(dimensions[0] >= capabilities.min_image_extent[0]);
         assert!(dimensions[1] >= capabilities.min_image_extent[1]);
         assert!(dimensions[0] <= capabilities.max_image_extent[0]);
@@ -182,7 +186,7 @@ impl Swapchain {
                 surface: surface.internal_object(),
                 minImageCount: num_images,
                 imageFormat: format as u32,
-                imageColorSpace: vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,     // only available value
+                imageColorSpace: color_space as u32,
                 imageExtent: vk::Extent2D { width: dimensions[0], height: dimensions[1] },
                 imageArrayLayers: layers,
                 imageUsage: usage.to_usage_bits(),
@@ -215,6 +219,7 @@ impl Swapchain {
             stale: Mutex::new(false),
             num_images: num_images,
             format: format,
+            color_space: color_space,
             dimensions: dimensions,
             layers: layers,
             usage: usage.clone(),
