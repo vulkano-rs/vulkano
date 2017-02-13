@@ -27,8 +27,8 @@ use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -50,18 +50,8 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryP
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    // Latest submission that uses this buffer.
-    // Also used to block any attempt to submit this buffer while it is accessed by the CPU.
-    latest_submission: Mutex<LatestSubmission>,
-
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
-}
-
-#[derive(Debug)]
-struct LatestSubmission {
-    read_submissions: SmallVec<[Weak<Submission>; 4]>,
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<T> DeviceLocalBuffer<T> {
@@ -137,10 +127,6 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
-            latest_submission: Mutex::new(LatestSubmission {
-                read_submissions: SmallVec::new(),
-                write_submission: None,
-            }),
             marker: PhantomData,
         }))
     }
@@ -172,6 +158,11 @@ unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
             buffer: &self.inner,
             offset: 0,
         }
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        false       // FIXME:
     }
 }
 

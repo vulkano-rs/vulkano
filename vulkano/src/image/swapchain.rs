@@ -8,10 +8,8 @@
 // according to those terms.
 
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 
-use command_buffer::Submission;
+use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -50,13 +48,6 @@ pub struct SwapchainImage {
     format: Format,
     swapchain: Arc<Swapchain>,
     id: u32,
-    guarded: Mutex<Guarded>,
-}
-
-#[derive(Debug)]
-struct Guarded {
-    present_layout: bool,
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl SwapchainImage {
@@ -74,10 +65,6 @@ impl SwapchainImage {
             format: format,
             swapchain: swapchain.clone(),
             id: id,
-            guarded: Mutex::new(Guarded {
-                present_layout: false,
-                latest_submission: None,
-            }),
         }))
     }
 
@@ -113,6 +100,12 @@ unsafe impl Image for SwapchainImage {
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
+    }
+
+    #[inline]
+    fn gpu_access(&self, _: bool, _: &Queue) -> bool {
+        // Swapchain image are only accessible after being acquired.
+        false
     }
 }
 

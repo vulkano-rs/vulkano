@@ -37,8 +37,6 @@ use vulkano::command_buffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
-use vulkano::command_buffer::Submit;
-use vulkano::command_buffer::Submission;
 use vulkano::descriptor::pipeline_layout::PipelineLayout;
 use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 use vulkano::device::Device;
@@ -57,6 +55,7 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -343,15 +342,16 @@ fn main() {
     // Initialization is finally finished!
 
     // In the loop below we are going to submit commands to the GPU. Submitting a command produces
-    // a `Submission` object which holds the resources for as long as they are in use by the GPU.
+    // an object that implements the `GpuFuture` trait, which holds the resources for as long as
+    // they are in use by the GPU.
     //
-    // Destroying a `Submission` blocks until the GPU is finished executing it. In order to avoid
+    // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store them in a `Vec` and clean them from time to time.
-    let mut submissions: Vec<Submission> = Vec::new();
+    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
 
     loop {
-        // Clearing the old submissions by keeping alive only the ones whose destructor would block.
-        submissions.retain(|s| s.destroying_would_block());
+        // Clearing the old submissions by keeping alive only the ones which aren't finished.
+        submissions.retain(|s| !s.is_finished());
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
@@ -360,7 +360,7 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
-        let image_num = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
+        let (image_num, future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -396,16 +396,19 @@ fn main() {
             // Finish building the command buffer by calling `build`.
             .build();
 
-        // Now all we need to do is submit the command buffer to the queue.
-        submissions.push(command_buffer.submit(&queue).unwrap());
+        let future = future
+            .then_execute(queue.clone(), command_buffer)
 
-        // The color output is now expected to contain our triangle. But in order to show it on
-        // the screen, we have to *present* the image by calling `present`.
-        //
-        // This function does not actually present the image immediately. Instead it submits a
-        // present command at the end of the queue. This means that it will only be presented once
-        // the GPU has finished executing the command buffer that draws the triangle.
-        swapchain.present(&queue, image_num).unwrap();
+            // The color output is now expected to contain our triangle. But in order to show it on
+            // the screen, we have to *present* the image by calling `present`.
+            //
+            // This function does not actually present the image immediately. Instead it submits a
+            // present command at the end of the queue. This means that it will only be presented once
+            // the GPU has finished executing the command buffer that draws the triangle.
+            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+            .then_signal_fence();
+        future.flush().unwrap();
+        submissions.push(Box::new(future) as Box<_>);
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
         // `command_buffer::submit`, or `present` will block for some time. This happens when the

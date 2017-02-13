@@ -27,10 +27,16 @@ use vk;
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
+pub use self::future::DummyFuture;
+pub use self::future::GpuFuture;
+pub use self::future::SemaphoreSignalFuture;
+pub use self::future::FenceSignalFuture;
+pub use self::future::JoinFuture;
 pub use self::semaphore::Semaphore;
 
 mod event;
 mod fence;
+mod future;
 mod semaphore;
 
 /// Base trait for objects that can be used as resources and must be synchronized.
