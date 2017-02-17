@@ -11,10 +11,10 @@ use std::error::Error;
 use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
+use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::cmd;
+use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
-use command_buffer::Submit;
-use command_buffer::SubmitBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -59,12 +59,12 @@ impl<I> CommandsListLayer<I, ()> {
 
 // TODO: implement CommandBufferBuild
 
-unsafe impl<I, L> Submit for CommandsListLayer<I, L> where I: Submit {
+unsafe impl<I, L> CommandBuffer for CommandsListLayer<I, L> where I: CommandBuffer {
+    type Pool = I::Pool;
+
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
-        self.inner.append_submission(base, queue)
+    fn inner(&self) -> &UnsafeCommandBuffer<I::Pool> {
+        self.inner.inner()
     }
 }
 

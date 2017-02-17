@@ -12,11 +12,10 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use command_buffer::CommandBuffer;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
-use command_buffer::Submit;
-use command_buffer::SubmitBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -287,12 +286,12 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
     already_submitted: AtomicBool,
 }
 
-unsafe impl<P> Submit for UnsafeCommandBuffer<P> where P: CommandPool {
+unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
+    type Pool = P;
+
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, _queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
-        Ok(base.add_command_buffer(self))
+    fn inner(&self) -> &UnsafeCommandBuffer<P> {
+        self
     }
 }
 

@@ -44,10 +44,8 @@
 pub use self::auto::AutoCommandBufferBuilder;
 pub use self::builder::CommandBufferBuilder;
 pub use self::builder::CommandBufferBuilderBuffered;
-pub use self::submit::Submission;
-pub use self::submit::Submit;
-pub use self::submit::SubmitBuilder;
-pub use self::submit::SubmitChain;
+pub use self::traits::CommandBuffer;
+pub use self::traits::CommandBufferExecFuture;
 
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
@@ -55,10 +53,11 @@ use pipeline::viewport::Scissor;
 pub mod cb;
 pub mod cmd;
 pub mod pool;
+pub mod submit;
 
 mod auto;
 mod builder;
-mod submit;
+mod traits;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

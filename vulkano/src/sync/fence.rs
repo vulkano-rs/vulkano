@@ -46,38 +46,16 @@ pub struct Fence<D = Arc<Device>> where D: SafeDeref<Target = Device> {
 }
 
 impl<D> Fence<D> where D: SafeDeref<Target = Device> {
-    /// See the docs of new().
-    #[inline]
-    pub fn raw(device: D) -> Result<Fence<D>, OomError> {
-        Fence::new_impl(device, false)
-    }
-
     /// Builds a new fence.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
     #[inline]
-    pub fn new(device: D) -> Arc<Fence<D>> {
-        Arc::new(Fence::raw(device).unwrap())
+    pub fn new(device: D) -> Result<Fence<D>, OomError> {
+        Fence::new_impl(device, false)
     }
 
     /// See the docs of signaled().
     #[inline]
-    pub fn signaled_raw(device: D) -> Result<Fence<D>, OomError> {
+    pub fn signaled(device: D) -> Result<Fence<D>, OomError> {
         Fence::new_impl(device, true)
-    }
-
-    /// Builds a new fence already in the "signaled" state.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn signaled(device: D) -> Arc<Fence<D>> {
-        Arc::new(Fence::signaled_raw(device).unwrap())
     }
 
     fn new_impl(device: D, signaled: bool) -> Result<Fence<D>, OomError> {
@@ -317,7 +295,6 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::time::Duration;
     use sync::Fence;
 
@@ -325,7 +302,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::new(device.clone());
+        let fence = Fence::new(device.clone()).unwrap();
         assert!(!fence.ready().unwrap());
     }
 
@@ -333,7 +310,7 @@ mod tests {
     fn fence_create_signaled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(device.clone());
+        let fence = Fence::signaled(device.clone()).unwrap();
         assert!(fence.ready().unwrap());
     }
 
@@ -341,7 +318,7 @@ mod tests {
     fn fence_signaled_wait() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::signaled(device.clone());
+        let fence = Fence::signaled(device.clone()).unwrap();
         fence.wait(Duration::new(0, 10)).unwrap();
     }
 
@@ -349,8 +326,8 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut fence = Fence::signaled(device.clone());
-        Arc::get_mut(&mut fence).unwrap().reset();
+        let mut fence = Fence::signaled(device.clone()).unwrap();
+        fence.reset();
         assert!(!fence.ready().unwrap());
     }
 
@@ -360,22 +337,23 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(device1.clone());
-        let fence2 = Fence::signaled(device2.clone());
+        let fence1 = Fence::signaled(device1.clone()).unwrap();
+        let fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_wait([&*fence1, &*fence2].iter().cloned(), Duration::new(0, 10));
+        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(), Duration::new(0, 10));
     }
 
     #[test]
     #[should_panic(expected = "Tried to reset multiple fences that didn't belong to the same device")]
     fn multireset_different_devices() {
+        use std::iter::once;
+
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let mut fence1 = Fence::signaled(device1.clone());
-        let mut fence2 = Fence::signaled(device2.clone());
+        let mut fence1 = Fence::signaled(device1.clone()).unwrap();
+        let mut fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_reset(Some(Arc::get_mut(&mut fence1).unwrap()).into_iter()
-                                   .chain(Some(Arc::get_mut(&mut fence2).unwrap()).into_iter()));
+        let _ = Fence::multi_reset(once(&mut fence1).chain(once(&mut fence2)));
     }
 }

@@ -9,11 +9,9 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
@@ -81,18 +79,6 @@ pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Layout to use when the image is used as a framebuffer attachment.
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
-
-    // Additional info behind a mutex.
-    guarded: Mutex<Guarded>,
-}
-
-#[derive(Debug)]
-struct Guarded {
-    // If false, the image is still in the undefined layout.
-    correct_layout: bool,
-
-    // The latest submission that used the image. Used for synchronization purposes.
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<F> AttachmentImage<F> {
@@ -182,10 +168,6 @@ impl<F> AttachmentImage<F> {
             format: format,
             attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
                                else { Layout::ColorAttachmentOptimal },
-            guarded: Mutex::new(Guarded {
-                correct_layout: false,
-                latest_submission: None,
-            }),
         }))
     }
 }
@@ -208,6 +190,11 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        false       // FIXME:
     }
 }
 

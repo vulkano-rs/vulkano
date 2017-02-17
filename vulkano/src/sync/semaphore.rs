@@ -31,9 +31,9 @@ pub struct Semaphore<D = Arc<Device>> where D: SafeDeref<Target = Device> {
 }
 
 impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
-    /// See the docs of new().
+    /// Builds a new semaphore.
     #[inline]
-    pub fn raw(device: D) -> Result<Semaphore<D>, OomError> {
+    pub fn new(device: D) -> Result<Semaphore<D>, OomError> {
         let semaphore = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
@@ -53,17 +53,6 @@ impl<D> Semaphore<D> where D: SafeDeref<Target = Device> {
             device: device,
             semaphore: semaphore,
         })
-    }
-
-    /// Builds a new semaphore.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(device: D) -> Arc<Semaphore<D>> {
-        Arc::new(Semaphore::raw(device).unwrap())
     }
 }
 

@@ -8,6 +8,7 @@
 // according to those terms.
 
 use buffer::Buffer;
+use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::PossibleFloatFormatDesc;
@@ -135,6 +136,16 @@ pub unsafe trait Image {
     /// verify whether they actually overlap.
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
                     -> u64;
+
+    /// Returns true if the image can be given access on the given queue.
+    ///
+    /// This function implementation should remember that it has been called and return `false` if
+    /// it gets called a second time.
+    ///
+    /// The only way to know that the GPU has stopped accessing a queue is when the image object
+    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
+    /// to a lock) in order to represent a GPU access.
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool;
 }
 
 unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
@@ -148,6 +159,11 @@ unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
                     -> u64
     {
         (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        (**self).gpu_access(exclusive_access, queue)
     }
 }
 

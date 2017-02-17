@@ -14,6 +14,7 @@ use std::ops::Range;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
+use device::Queue;
 
 /// A subpart of a buffer.
 ///
@@ -171,6 +172,11 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
         let self_offset = self.offset + self_offset;
         debug_assert!(self_size + self_offset <= self.size);
         self.resource.conflict_key(self_offset, self_size)
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        self.resource.gpu_access(exclusive_access, queue)
     }
 }
 

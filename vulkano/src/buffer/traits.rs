@@ -11,6 +11,7 @@ use std::ops::Range;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
+use device::Queue;
 use image::Image;
 use memory::Content;
 
@@ -130,6 +131,16 @@ pub unsafe trait Buffer {
         // FIXME: remove implementation
         unimplemented!()
     }
+
+    /// Returns true if the buffer can be given access on the given queue.
+    ///
+    /// This function implementation should remember that it has been called and return `false` if
+    /// it gets called a second time.
+    ///
+    /// The only way to know that the GPU has stopped accessing a queue is when the buffer object
+    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
+    /// to a lock) in order to represent a GPU access.
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool;
 }
 
 /// Inner information about a buffer.
@@ -163,6 +174,11 @@ unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
     #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         (**self).conflict_key(self_offset, self_size)
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        (**self).gpu_access(exclusive_access, queue)
     }
 }
 

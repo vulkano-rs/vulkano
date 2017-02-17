@@ -553,7 +553,7 @@ impl From<Error> for DeviceCreationError {
 }
 
 /// Represents a queue where commands can be submitted.
-// TODO: should use internal synchronization
+// TODO: should use internal synchronization?
 #[derive(Debug)]
 pub struct Queue {
     queue: Mutex<vk::Queue>,
@@ -569,6 +569,14 @@ impl Queue {
         &self.device
     }
 
+    /// Returns true if this is the same queue as another one.
+    #[inline]
+    pub fn is_same(&self, other: &Queue) -> bool {
+        self.id == other.id &&
+            self.family == other.family &&
+            self.device.internal_object() == other.device.internal_object()
+    }
+
     /// Returns the family this queue belongs to.
     #[inline]
     pub fn family(&self) -> QueueFamily {
@@ -581,28 +589,17 @@ impl Queue {
         self.id
     }
 
-    /// See the docs of wait().
+    /// Waits until all work on this queue has finished.
+    ///
+    /// Just like `Device::wait()`, you shouldn't have to call this function in a typical program.
     #[inline]
-    pub fn wait_raw(&self) -> Result<(), OomError> {
+    pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
             let queue = self.queue.lock().unwrap();
             try!(check_errors(vk.QueueWaitIdle(*queue)));
             Ok(())
         }
-    }
-    
-    /// Waits until all work on this queue has finished.
-    ///
-    /// Just like `Device::wait()`, you shouldn't have to call this function.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn wait(&self) {
-        self.wait_raw().unwrap();
     }
 }
 

@@ -7,21 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::sync::Arc;
 
 use command_buffer::cb;
 use command_buffer::cmd;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::cb::UnsafeCommandBuffer;
+use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
-use command_buffer::Submit;
-use command_buffer::SubmitBuilder;
 use device::Device;
 use device::DeviceOwned;
-use device::Queue;
 use instance::QueueFamily;
 use OomError;
 
@@ -68,15 +66,15 @@ unsafe impl<L, P, O> CommandBufferBuild for AutoCommandBufferBuilder<L, P>
     }
 }
 
-unsafe impl<L, P> Submit for AutoCommandBufferBuilder<L, P>
-    where Cb<L, P>: Submit,
+unsafe impl<L, P> CommandBuffer for AutoCommandBufferBuilder<L, P>
+    where Cb<L, P>: CommandBuffer,
           P: CommandPool
 {
+    type Pool = <Cb<L, P> as CommandBuffer>::Pool;
+
     #[inline]
-    unsafe fn append_submission<'a>(&'a self, base: SubmitBuilder<'a>, queue: &Arc<Queue>)
-                                    -> Result<SubmitBuilder<'a>, Box<Error>>
-    {
-        self.inner.append_submission(base, queue)
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
+        self.inner.inner()
     }
 }
 

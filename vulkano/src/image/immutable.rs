@@ -9,13 +9,10 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
-use std::sync::atomic::AtomicBool;
 use smallvec::SmallVec;
 
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use format::FormatDesc;
 use image::Dimensions;
 use image::sys::ImageCreationError;
@@ -43,13 +40,6 @@ pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     dimensions: Dimensions,
     memory: A::Alloc,
     format: F,
-    per_layer: SmallVec<[PerLayer; 1]>,
-}
-
-#[derive(Debug)]
-struct PerLayer {
-    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
-    started_reading: AtomicBool,
 }
 
 impl<F> ImmutableImage<F> {
@@ -104,16 +94,6 @@ impl<F> ImmutableImage<F> {
             memory: mem,
             dimensions: dimensions,
             format: format,
-            per_layer: {
-                let mut v = SmallVec::new();
-                for _ in 0 .. dimensions.array_layers_with_cube() {
-                    v.push(PerLayer {
-                        latest_write_submission: Mutex::new(None),
-                        started_reading: AtomicBool::new(false),
-                    });
-                }
-                v
-            },
         }))
     }
 }
@@ -135,6 +115,11 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        false       // FIXME:
     }
 }
 

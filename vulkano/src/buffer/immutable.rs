@@ -33,8 +33,8 @@ use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -53,8 +53,6 @@ pub struct ImmutableBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPoo
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
-
-    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
 
     started_reading: AtomicBool,
 
@@ -134,7 +132,6 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
-            latest_write_submission: Mutex::new(None),
             started_reading: AtomicBool::new(false),
             marker: PhantomData,
         }))
@@ -167,6 +164,11 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
             buffer: &self.inner,
             offset: 0,
         }
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        false       // FIXME:
     }
 }
 

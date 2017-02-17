@@ -9,12 +9,10 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 use smallvec::SmallVec;
 
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
@@ -56,21 +54,6 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
-
-    // Additional info behind a mutex.
-    guarded: Mutex<Guarded>,
-}
-
-#[derive(Debug)]
-struct Guarded {
-    // If false, the image is still in the undefined layout.
-    correct_layout: bool,
-
-    // The latest submissions that read from this image.
-    read_submissions: SmallVec<[Weak<Submission>; 4]>,
-
-    // The latest submission that writes to this image.
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<F> StorageImage<F> {
@@ -139,11 +122,6 @@ impl<F> StorageImage<F> {
             dimensions: dimensions,
             format: format,
             queue_families: queue_families,
-            guarded: Mutex::new(Guarded {
-                correct_layout: false,
-                read_submissions: SmallVec::new(),
-                write_submission: None,
-            }),
         }))
     }
 }
@@ -165,6 +143,11 @@ unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
+    }
+
+    #[inline]
+    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        false       // FIXME:
     }
 }
 

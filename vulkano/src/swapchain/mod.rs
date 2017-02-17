@@ -125,12 +125,14 @@
 //! section), you can draw on it. This is done in three steps:
 //!
 //!  - Call `Swapchain::acquire_next_image`. This function will return the index of the image
-//!    (within the list returned by `Swapchain::new`) that is available to draw.
+//!    (within the list returned by `Swapchain::new`) that is available to draw, plus a future
+//!    representing the moment when the GPU will gain access to that image.
 //!  - Draw on that image just like you would draw to any other image (see the documentation of
-//!    the `pipeline` module).
-//!  - Call `Swapchain::present` with the same index in order to tell the implementation that you
-//!    are finished drawing to the image and that it can queue a command to present the image on
-//!    the screen after the draw operations are finished. 
+//!    the `pipeline` module). You need to chain the draw after the future that was returned by
+//!    `acquire_next_image`.
+//!  - Call `Swapchain::present` with the same index and by chaining the futures, in order to tell
+//!    the implementation that you are finished drawing to the image and that it can queue a
+//!    command to present the image on the screen after the draw operations are finished. 
 //!
 //! TODO: add example here
 //! loop {
@@ -155,7 +157,7 @@
 //! ```no_run
 //! # use std::time::Duration;
 //! use vulkano::swapchain::AcquireError;
-//! use vulkano::swapchain::PresentError;
+//! use vulkano::sync::GpuFuture;
 //!
 //! // let mut swapchain = Swapchain::new(...);
 //! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = unsafe { ::std::mem::uninitialized() };
@@ -170,19 +172,20 @@
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let index = match swapchain.acquire_next_image(Duration::from_millis(500)) {
-//!         Ok(img) => img,
+//!     let (index, acq_future) = match swapchain.acquire_next_image(Duration::from_millis(500)) {
+//!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)
 //!     };
 //!
 //!     // ...
 //!
-//!     match swapchain.present(&queue, index) {
-//!         Ok(()) => (),
-//!         Err(PresentError::OutOfDate) => { recreate_swapchain = true; },
-//!         Err(err) => panic!("{:?}", err),
-//!     }
+//!     let final_future = acq_future
+//!         // .then_execute(...)
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
+//!         .then_signal_fence();
+//!
+//!     final_future.flush().unwrap();      // TODO: PresentError?
 //! }
 //! ```
 //!
@@ -201,9 +204,10 @@ pub use self::surface::SupportedCompositeAlpha;
 pub use self::surface::SupportedCompositeAlphaIter;
 pub use self::surface::ColorSpace;
 pub use self::surface::SurfaceCreationError;
-pub use self::swapchain::Swapchain;
 pub use self::swapchain::AcquireError;
-pub use self::swapchain::PresentError;
+pub use self::swapchain::PresentFuture;
+pub use self::swapchain::Swapchain;
+pub use self::swapchain::SwapchainAcquireFuture;
 
 pub mod display;
 mod surface;
