@@ -435,6 +435,12 @@ impl SwapchainAcquireFuture {
     pub fn image_id(&self) -> usize {
         self.id
     }
+
+    /// Returns the acquired image.
+    #[inline]
+    pub fn image(&self) -> Option<Arc<SwapchainImage>> {
+        self.image.upgrade()
+    }
 }
 
 unsafe impl GpuFuture for SwapchainAcquireFuture {
