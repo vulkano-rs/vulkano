@@ -36,12 +36,14 @@ pub unsafe trait CommandBuffer: DeviceOwned {
 
     /// Executes this command buffer on a queue.
     ///
+    /// > **Note**: This is just a shortcut for `execute_after`.
+    ///
     /// # Panic
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
     fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<DummyFuture, Self>
-        where Self: Sized
+        where Self: Sized + 'static
     {
         let device = queue.device().clone();
         self.execute_after(DummyFuture::new(device), queue)
@@ -49,12 +51,18 @@ pub unsafe trait CommandBuffer: DeviceOwned {
 
     /// Executes the command buffer after an existing future.
     ///
+    /// This function requires the `'static` lifetime to be on the command buffer. This is because
+    /// this function returns a `CommandBufferExecFuture` whose job is to lock resources and keep
+    /// them alive while they are in use by the GPU. If `'static` wasn't required, you could call
+    /// `std::mem::forget` on that object and "unlock" these resources. For more information about
+    /// this problem, search the web for "rust thread scoped leakpocalypse".
+    ///
     /// # Panic
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
     fn execute_after<F>(self, future: F, queue: Arc<Queue>) -> CommandBufferExecFuture<F, Self>
-        where Self: Sized, F: GpuFuture
+        where Self: Sized + 'static, F: GpuFuture
     {
         assert_eq!(self.device().internal_object(), future.device().internal_object());
 

@@ -108,18 +108,24 @@ pub unsafe trait GpuFuture: DeviceOwned {
     }
 
     /// Executes a command buffer after this future.
+    ///
+    /// > **Note**: This is just a shortcut function. The actual implementation is in the
+    /// > `CommandBuffer` trait.
     #[inline]
     fn then_execute<Cb>(self, queue: Arc<Queue>, command_buffer: Cb)
                         -> CommandBufferExecFuture<Self, Cb>
-        where Self: Sized, Cb: CommandBuffer
+        where Self: Sized, Cb: CommandBuffer + 'static
     {
         command_buffer.execute_after(self, queue)
     }
 
     /// Executes a command buffer after this future, on the same queue as the future.
+    ///
+    /// > **Note**: This is just a shortcut function. The actual implementation is in the
+    /// > `CommandBuffer` trait.
     #[inline]
     fn then_execute_same_queue<Cb>(self, command_buffer: Cb) -> CommandBufferExecFuture<Self, Cb>
-        where Self: Sized, Cb: CommandBuffer
+        where Self: Sized, Cb: CommandBuffer + 'static
     {
         let queue = self.queue().unwrap().clone();
         command_buffer.execute_after(self, queue)
