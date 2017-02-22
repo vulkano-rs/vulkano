@@ -76,10 +76,6 @@ use device::DeviceOwned;
 
 pub use self::abstract_storage::AbstractStorageLayer;
 pub use self::auto_barriers::AutoPipelineBarriersLayer;
-pub use self::buffered::BufferedCommandsListLayer;
-pub use self::buffered::BufferedCommandsListLayerCommands;
-pub use self::commands_list::CommandsList;
-pub use self::commands_list::CommandsListLayer;
 pub use self::context_check::ContextCheckLayer;
 pub use self::device_check::DeviceCheckLayer;
 pub use self::queue_ty_check::QueueTyCheckLayer;
@@ -95,8 +91,6 @@ pub use self::traits::CommandBufferBuild;
 
 mod abstract_storage;
 mod auto_barriers;
-mod buffered;
-mod commands_list;
 mod device_check;
 mod context_check;
 mod queue_ty_check;
