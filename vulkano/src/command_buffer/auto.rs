@@ -23,21 +23,21 @@ use device::DeviceOwned;
 use instance::QueueFamily;
 use OomError;
 
-type Cb<L, P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::BufferedCommandsListLayer<cb::UnsafeCommandBufferBuilder<P>, L>>>>>>>;
+type Cb<P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::AbstractStorageLayer<cb::UnsafeCommandBufferBuilder<P>>>>>>>>;
 
-pub struct AutoCommandBufferBuilder<L, P = Arc<StandardCommandPool>> where P: CommandPool {
-    inner: Cb<L, P>
+pub struct AutoCommandBufferBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
+    inner: Cb<P>
 }
 
 impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
     pub fn new(device: Arc<Device>, queue_family: QueueFamily)
-               -> Result<AutoCommandBufferBuilder<(), Arc<StandardCommandPool>>, OomError>
+               -> Result<AutoCommandBufferBuilder<Arc<StandardCommandPool>>, OomError>
     {
         let pool = Device::standard_command_pool(&device, queue_family);
 
         let cmd = unsafe {
             let c = try!(cb::UnsafeCommandBufferBuilder::new(pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
-            let c = cb::BufferedCommandsListLayer::new(c);
+            let c = cb::AbstractStorageLayer::new(c);
             let c = cb::AutoPipelineBarriersLayer::new(c);
             let c = cb::SubmitSyncBuilderLayer::new(c);
             let c = cb::StateCacheLayer::new(c);
@@ -53,8 +53,8 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
     }
 }
 
-unsafe impl<L, P, O> CommandBufferBuild for AutoCommandBufferBuilder<L, P>
-    where Cb<L, P>: CommandBufferBuild<Out = O>,
+unsafe impl<P, O> CommandBufferBuild for AutoCommandBufferBuilder<P>
+    where Cb<P>: CommandBufferBuild<Out = O>,
           P: CommandPool
 {
     type Out = O;
@@ -66,11 +66,11 @@ unsafe impl<L, P, O> CommandBufferBuild for AutoCommandBufferBuilder<L, P>
     }
 }
 
-unsafe impl<L, P> CommandBuffer for AutoCommandBufferBuilder<L, P>
-    where Cb<L, P>: CommandBuffer,
+unsafe impl<P> CommandBuffer for AutoCommandBufferBuilder<P>
+    where Cb<P>: CommandBuffer,
           P: CommandPool
 {
-    type Pool = <Cb<L, P> as CommandBuffer>::Pool;
+    type Pool = <Cb<P> as CommandBuffer>::Pool;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
@@ -78,8 +78,8 @@ unsafe impl<L, P> CommandBuffer for AutoCommandBufferBuilder<L, P>
     }
 }
 
-unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P>
-    where Cb<L, P>: DeviceOwned,
+unsafe impl<P> DeviceOwned for AutoCommandBufferBuilder<P>
+    where Cb<P>: DeviceOwned,
           P: CommandPool
 {
     #[inline]
@@ -88,19 +88,19 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P>
     }
 }
 
-unsafe impl<L, P> CommandBufferBuilder for AutoCommandBufferBuilder<L, P>
-    where Cb<L, P>: CommandBufferBuilder,
+unsafe impl<P> CommandBufferBuilder for AutoCommandBufferBuilder<P>
+    where Cb<P>: CommandBufferBuilder,
           P: CommandPool
 {
 }
 
 macro_rules! pass_through {
     (($($param:ident),*), $cmd:ty) => {
-        unsafe impl<L, P $(, $param)*> AddCommand<$cmd> for AutoCommandBufferBuilder<L, P>
+        unsafe impl<P $(, $param)*> AddCommand<$cmd> for AutoCommandBufferBuilder<P>
             where P: CommandPool,
-                  Cb<L, P>: AddCommand<$cmd, Out = Cb<(L, $cmd), P>>
+                  Cb<P>: AddCommand<$cmd, Out = Cb<P>>
         {
-            type Out = AutoCommandBufferBuilder<(L, $cmd), P>;
+            type Out = AutoCommandBufferBuilder<P>;
 
             #[inline]
             fn add(self, command: $cmd) -> Self::Out {

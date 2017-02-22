@@ -12,6 +12,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use command_buffer::cb::AddCommand;
+use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::cmd;
 use command_buffer::CommandBuffer;
@@ -24,6 +25,17 @@ use device::Queue;
 pub struct AbstractStorageLayer<I> {
     inner: I,
     commands: Vec<Box<Any>>,
+}
+
+impl<I> AbstractStorageLayer<I> {
+    /// Builds a new `AbstractStorageLayer`.
+    #[inline]
+    pub fn new(inner: I) -> AbstractStorageLayer<I> {
+        AbstractStorageLayer {
+            inner: inner,
+            commands: Vec::new(),
+        }
+    }
 }
 
 unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer {
@@ -39,6 +51,22 @@ unsafe impl<I> DeviceOwned for AbstractStorageLayer<I> where I: DeviceOwned {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
+    }
+}
+
+unsafe impl<I, O> CommandBufferBuild for AbstractStorageLayer<I>
+    where I: CommandBufferBuild<Out = O>
+{
+    type Out = AbstractStorageLayer<O>;
+
+    #[inline]
+    fn build(mut self) -> Self::Out {
+        let inner = self.inner.build();
+
+        AbstractStorageLayer {
+            inner: inner,
+            commands: self.commands,
+        }
     }
 }
 
