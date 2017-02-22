@@ -74,6 +74,7 @@
 use command_buffer::pool::CommandPool;
 use device::DeviceOwned;
 
+pub use self::abstract_storage::AbstractStorageLayer;
 pub use self::auto_barriers::AutoPipelineBarriersLayer;
 pub use self::buffered::BufferedCommandsListLayer;
 pub use self::buffered::BufferedCommandsListLayerCommands;
@@ -92,6 +93,7 @@ pub use self::sys::UnsafeCommandBuffer;
 pub use self::traits::AddCommand;
 pub use self::traits::CommandBufferBuild;
 
+mod abstract_storage;
 mod auto_barriers;
 mod buffered;
 mod commands_list;
