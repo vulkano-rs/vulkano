@@ -193,7 +193,8 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
 
                 let desc = format!("DescriptorDescTy::Buffer(DescriptorBufferDesc {{
                     dynamic: Some(false),
-                    storage: {}
+                    storage: {},
+                    content: DescriptorBufferContentDesc::F32,      // FIXME: wrong
                 }})", if is_ssbo { "true" } else { "false "});
 
                 Some((desc, true))
