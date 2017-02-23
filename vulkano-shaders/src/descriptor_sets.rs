@@ -61,6 +61,21 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         });
     }
 
+    // Looping to find all the push constant structs.
+    let mut push_constants_size = 0;
+    for instruction in doc.instructions.iter() {
+        let type_id = match instruction {
+            &parse::Instruction::TypePointer { type_id, storage_class: enums::StorageClass::StorageClassPushConstant, .. } => {
+                type_id
+            },
+            _ => continue
+        };
+
+        let (_, size, _) = ::structs::type_from_id(doc, type_id);
+        let size = size.expect("Found runtime-sized push constants");
+        push_constants_size = cmp::max(push_constants_size, size);
+    }
+
     // Writing the body of the `descriptor` method.
     let descriptor_body = descriptors.iter().map(|d| {
         format!("({set}, {binding}) => Some(DescriptorDesc {{
@@ -90,6 +105,25 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 name = d.name, set = d.set, binding = d.binding)
     }).collect::<Vec<_>>().concat();
 
+    // Writing the body of the `num_push_constants_ranges` method.
+    let num_push_constants_ranges_body = {
+        if push_constants_size == 0 {
+            "0"
+        } else {
+            "1"
+        }
+    };
+
+    // Writing the body of the `push_constants_range` method.
+    let push_constants_range_body = format!(r#"
+        if num != 0 || {pc_size} == 0 {{ return None; }}
+        Some(PipelineLayoutDescPcRange {{
+            offset: 0,
+            size: {pc_size},
+            stages: ShaderStages::all(),     // FIXME: wrong
+        }})
+    "#, pc_size = push_constants_size);
+
     format!(r#"
         #[derive(Debug, Clone)]
         pub struct Layout(ShaderStages);
@@ -115,11 +149,11 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             }}
 
             fn num_push_constants_ranges(&self) -> usize {{
-                0       // FIXME:
+                {num_push_constants_ranges_body}
             }}
 
             fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {{
-                None
+                {push_constants_range_body}
             }}
         }}
 
@@ -133,7 +167,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             }}
         }}
         "#, num_sets = num_sets, num_bindings_in_set_body = num_bindings_in_set_body,
-            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body)
+            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body,
+            num_push_constants_ranges_body = num_push_constants_ranges_body,
+            push_constants_range_body = push_constants_range_body)
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed

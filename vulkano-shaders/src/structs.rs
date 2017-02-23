@@ -210,7 +210,7 @@ fn is_builtin_member(doc: &parse::Spirv, id: u32, member_id: u32) -> bool {
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
-fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, usize) {
+pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeBool { result_id } if result_id == searched => {
@@ -304,6 +304,7 @@ fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>, us
                 return (format!("[{}]", t), None, t_align);
             },
             &parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == searched => {
+                // TODO: take the Offset member decorate into account?
                 let name = ::name_from_id(doc, result_id);
                 let size = member_types.iter().filter_map(|&t| type_from_id(doc, t).1).fold(0, |a,b|a+b);
                 let align = member_types.iter().map(|&t| type_from_id(doc, t).2).max().unwrap_or(1);
