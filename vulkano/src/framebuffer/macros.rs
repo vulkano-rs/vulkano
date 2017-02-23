@@ -386,8 +386,8 @@ macro_rules! ordered_passes_renderpass {
     };
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
-        unsafe impl<$($prev_params,)*> RenderPassDescAttachmentsList<$prev<$($prev_params,)*>> for CustomRenderPassDesc
-            where $($prev_params: ImageView + 'static,)*
+        unsafe impl<$($prev_params),*> RenderPassDescAttachmentsList<$prev<$($prev_params),*>> for CustomRenderPassDesc
+            where $($prev_params: ImageView + 'static),*
         {
             //type List = ($($prev_params,)*);
 
@@ -406,11 +406,11 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
         pub struct $next<$($prev_params,)* $first_param> {
-            prev: $prev<$($prev_params,)*>,
+            prev: $prev<$($prev_params),*>,
             current: $first_param,
         }
 
-        impl<$($prev_params,)*> $prev<$($prev_params,)*> {
+        impl<$($prev_params),*> $prev<$($prev_params),*> {
             pub fn $next<$first_param>(self, next: $first_param) -> $next<$($prev_params,)* $first_param> {
                 $next {
                     prev: self,
@@ -423,7 +423,7 @@ macro_rules! ordered_passes_renderpass {
             fn check_attachments_list(self) -> Result<($first_param, $($prev_params,)*), FramebufferCreationError> {
                 let ($($prev_params,)*) = try!(self.prev.check_attachments_list());
                 // FIXME: check attachment
-                (self.current, $($prev_params,)*)
+                Ok((self.current, $($prev_params,)*))
             }
         }
 
@@ -476,8 +476,8 @@ macro_rules! ordered_passes_renderpass {
     };
 
     ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
-        unsafe impl<$($prev_params,)*> RenderPassDescClearValues<$prev<$($prev_params,)*>> for CustomRenderPassDesc
-            where $($prev_params: Into<ClearValue>)*
+        unsafe impl<$($prev_params),*> RenderPassDescClearValues<$prev<$($prev_params),*>> for CustomRenderPassDesc
+            where $($prev_params: Into<ClearValue>),*
         {
             #[inline]
             fn convert_clear_values(&self, values: $prev<$($prev_params,)*>) -> Box<Iterator<Item = ClearValue>> {
@@ -488,7 +488,7 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [$next:ident: Clear $(, $rest:ident: $rest_load:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
         pub struct $next<$($prev_params,)* $first_param> {
-            prev: $prev,
+            prev: $prev<$($prev_params,)*>,
             current: $first_param,
         }
 
@@ -502,15 +502,15 @@ macro_rules! ordered_passes_renderpass {
         }
 
         impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param>
-            where $first_param: Into<ClearValue>,
-                  $($prev_params: Into<ClearValue>,)*
+            where $first_param: Into<ClearValue>
+                  $(, $prev_params: Into<ClearValue>)*
         {
             #[inline]
             fn convert_clear_values(self) -> Box<Iterator<Item = ClearValue>> {
                 // TODO: subopptimal iterator
                 let prev = self.prev.convert_clear_values();
                 // FIXME: check format
-                prev.chain(iter::once(self.current.into()))
+                Box::new(prev.chain(iter::once(self.current.into())))
             }
         }
 
