@@ -10,11 +10,13 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
+use buffer::Buffer;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
+use image::Image;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -46,7 +48,79 @@ pub struct CmdCopyBufferToImage<S, D> {
     extent: [u32; 3],
 }
 
-// TODO: add constructor
+impl<S, D> CmdCopyBufferToImage<S, D> where S: Buffer, D: Image {
+    #[inline]
+    pub fn new(source: S, destination: D)
+               -> Result<CmdCopyBufferToImage<S, D>, CmdCopyBufferToImageError>
+    {
+        let dims = destination.dimensions().width_height_depth();
+        CmdCopyBufferToImage::with_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
+    }
+
+    pub fn with_dimensions(source: S, destination: D, offset: [u32; 3], size: [u32; 3],
+                           first_layer: u32, num_layers: u32, mipmap: u32)
+                           -> Result<CmdCopyBufferToImage<S, D>, CmdCopyBufferToImageError>
+    {
+        // FIXME: check buffer content format
+        // FIXME: check that the buffer is large enough
+        // FIXME: check image dimensions
+
+        assert_eq!(source.inner().buffer.device().internal_object(),
+                   destination.inner().device().internal_object());
+
+        let (source_raw, src_offset) = {
+            let inner = source.inner();
+            if !inner.buffer.usage_transfer_src() {
+                return Err(CmdCopyBufferToImageError::SourceMissingTransferUsage);
+            }
+            (inner.buffer.internal_object(), inner.offset)
+        };
+
+        if destination.samples() != 1 {
+            return Err(CmdCopyBufferToImageError::DestinationMultisampled);
+        }
+
+        let destination_raw = {
+            let inner = destination.inner();
+            if !inner.usage_transfer_dest() {
+                return Err(CmdCopyBufferToImageError::DestinationMissingTransferUsage);
+            }
+            inner.internal_object()
+        };
+
+        if source.conflicts_image(0, source.size(), &destination, first_layer, num_layers,
+                                  mipmap, 1)
+        {
+            return Err(CmdCopyBufferToImageError::OverlappingRanges);
+        } else {
+            debug_assert!(!destination.conflicts_buffer(first_layer, num_layers, mipmap,
+                                                        1, &source, 0, source.size()));
+        }
+
+        let aspect_mask = if destination.has_color() {
+            vk::IMAGE_ASPECT_COLOR_BIT
+        } else {
+            unimplemented!()        // TODO:
+        };
+
+        Ok(CmdCopyBufferToImage {
+            buffer: source,
+            buffer_raw: source_raw,
+            buffer_offset: src_offset as vk::DeviceSize,
+            buffer_row_length: 0,
+            buffer_image_height: 0,
+            destination: destination,
+            destination_raw: destination_raw,
+            destination_layout: vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,      // FIXME:
+            destination_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
+            destination_aspect_mask: aspect_mask,
+            destination_mip_level: mipmap,
+            destination_base_array_layer: first_layer,
+            destination_layer_count: num_layers,
+            extent: size,
+        })
+    }
+}
 
 unsafe impl<S, D> DeviceOwned for CmdCopyBufferToImage<S, D> where S: DeviceOwned {
     #[inline]
@@ -101,12 +175,37 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBufferToImage<S, D>> for UnsafeCo
 /// Error that can happen when creating a `CmdCopyBufferToImage`.
 #[derive(Debug, Copy, Clone)]
 pub enum CmdCopyBufferToImageError {
+    /// The source buffer is missing the transfer source usage.
+    SourceMissingTransferUsage,
+    /// The destination image is missing the transfer destination usage.
+    DestinationMissingTransferUsage,
+    /// The destination image has more than one sample per pixel.
+    DestinationMultisampled,
+    /// The dimensions are out of range of the image.
+    OutOfImageRange,
+    /// The source and destination are overlapping in memory.
+    OverlappingRanges,
 }
 
 impl error::Error for CmdCopyBufferToImageError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            CmdCopyBufferToImageError::SourceMissingTransferUsage => {
+                "the source buffer is missing the transfer source usage"
+            },
+            CmdCopyBufferToImageError::DestinationMissingTransferUsage => {
+                "the destination image is missing the transfer destination usage"
+            },
+            CmdCopyBufferToImageError::DestinationMultisampled => {
+                "the destination image has more than one sample per pixel"
+            },
+            CmdCopyBufferToImageError::OutOfImageRange => {
+                "the dimensions are out of range of the image"
+            },
+            CmdCopyBufferToImageError::OverlappingRanges => {
+                "the source and destination are overlapping in memory"
+            },
         }
     }
 }

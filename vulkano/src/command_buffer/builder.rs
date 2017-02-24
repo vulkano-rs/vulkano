@@ -19,6 +19,7 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
+use image::Image;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
@@ -43,6 +44,39 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
               B: Buffer
     {
         let cmd = cmd::CmdFillBuffer::new(buffer, data)?;
+        Ok(self.add(cmd))
+    }
+
+    /// Adds a command that copies the content of a buffer to an image.
+    ///
+    /// For color images (ie. all formats except depth and/or stencil formats) this command does
+    /// not perform any conversion. The data inside the buffer must already have the right format.
+    /// TODO: talk about depth/stencil
+    ///
+    /// > **Note**: This function is technically safe because buffers can only contain integers or
+    /// > floating point numbers, which are always valid whatever their memory representation is.
+    /// > But unless your buffer actually contains only 32-bits integers, you are encouraged to use
+    /// > this function only for zeroing the content of a buffer by passing `0` for the data.
+    // TODO: not safe because of signalling NaNs
+    #[inline]
+    fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
+                                     -> Result<O, cmd::CmdCopyBufferToImageError>
+        where Self: Sized + AddCommand<cmd::CmdCopyBufferToImage<B, I>, Out = O>,
+              B: Buffer, I: Image
+    {
+        let cmd = cmd::CmdCopyBufferToImage::new(buffer, image)?;
+        Ok(self.add(cmd))
+    }
+
+    /// Same as `copy_buffer_to_image` but lets you specify a range for the destination image.
+    #[inline]
+    fn copy_buffer_to_image_dimensions<B, I, O>(self, buffer: B, image: I, offset: [u32; 3],
+                                                size: [u32; 3], first_layer: u32, num_layers: u32,
+                                                mipmap: u32) -> Result<O, cmd::CmdCopyBufferToImageError>
+        where Self: Sized + AddCommand<cmd::CmdCopyBufferToImage<B, I>, Out = O>,
+              B: Buffer, I: Image
+    {
+        let cmd = cmd::CmdCopyBufferToImage::new(buffer, image)?;
         Ok(self.add(cmd))
     }
 
