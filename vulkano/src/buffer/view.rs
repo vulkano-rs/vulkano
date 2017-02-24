@@ -46,6 +46,8 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::BufferInner;
 use buffer::TypedBuffer;
+use device::Device;
+use device::DeviceOwned;
 use format::FormatDesc;
 use format::StrongStorage;
 
@@ -180,6 +182,15 @@ unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
     #[inline]
     fn internal_object(&self) -> vk::BufferView {
         self.view
+    }
+}
+
+unsafe impl<F, B> DeviceOwned for BufferView<F, B>
+    where B: Buffer
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.device()
     }
 }
 

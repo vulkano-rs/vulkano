@@ -10,10 +10,13 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
+use std::sync::Arc;
 
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
+use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 
 /// A subpart of a buffer.
@@ -182,6 +185,15 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
 
 unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
     type Content = T;
+}
+
+unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
+    where B: DeviceOwned
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.resource.device()
+    }
 }
 
 impl<T: ?Sized, B> From<B> for BufferSlice<T, B>

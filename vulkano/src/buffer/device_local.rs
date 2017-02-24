@@ -28,6 +28,7 @@ use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
@@ -170,4 +171,13 @@ unsafe impl<T: ?Sized, A> TypedBuffer for DeviceLocalBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Content = T;
+}
+
+unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
 }

@@ -11,6 +11,7 @@ use std::ops::Range;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
+use device::DeviceOwned;
 use device::Queue;
 use image::Image;
 use memory::Content;
@@ -19,7 +20,7 @@ use SafeDeref;
 use VulkanObject;
 
 /// Trait for objects that represent either a buffer or a slice of a buffer.
-pub unsafe trait Buffer {
+pub unsafe trait Buffer: DeviceOwned {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
 

@@ -32,6 +32,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
+use device::DeviceOwned;
 use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
@@ -183,12 +184,6 @@ impl UnsafeBuffer {
         Ok(())
     }
 
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Returns the size of the buffer in bytes.
     #[inline]
     pub fn size(&self) -> usize {
@@ -253,6 +248,13 @@ unsafe impl VulkanObject for UnsafeBuffer {
     #[inline]
     fn internal_object(&self) -> vk::Buffer {
         self.buffer
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeBuffer {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
