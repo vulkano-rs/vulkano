@@ -107,6 +107,7 @@ pass_through!((V), cmd::CmdBindVertexBuffers<V>);
 pass_through!((S, D), cmd::CmdBlitImage<S, D>);
 pass_through!((), cmd::CmdClearAttachments, no-device);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
+pass_through!((S, D), cmd::CmdCopyBufferToImage<S, D>);
 pass_through!((S, D), cmd::CmdCopyImage<S, D>);
 pass_through!((), cmd::CmdDispatchRaw);
 pass_through!((), cmd::CmdDrawIndexedRaw, no-device);
