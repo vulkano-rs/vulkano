@@ -76,7 +76,8 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         where Self: Sized + AddCommand<cmd::CmdCopyBufferToImage<B, I>, Out = O>,
               B: Buffer, I: Image
     {
-        let cmd = cmd::CmdCopyBufferToImage::new(buffer, image)?;
+        let cmd = cmd::CmdCopyBufferToImage::with_dimensions(buffer, image, offset, size,
+                                                             first_layer, num_layers, mipmap)?;
         Ok(self.add(cmd))
     }
 
