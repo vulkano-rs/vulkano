@@ -89,6 +89,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
+    ///
+    /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
+    /// > access.
     fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool;
 
     /// Joins this future with another one, representing the moment when both events have happened.
