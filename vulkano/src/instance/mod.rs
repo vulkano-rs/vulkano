@@ -123,6 +123,7 @@ pub use self::instance::Limits;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
+pub use self::layers::LayersListError;
 pub use self::loader::LoadingError;
 pub use version::Version;
 
