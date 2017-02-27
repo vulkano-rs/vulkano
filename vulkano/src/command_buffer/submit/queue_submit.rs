@@ -165,6 +165,8 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///
     /// - The fence, command buffers, and semaphores must all belong to the same device.
     ///
+    /// TODO: more here
+    ///
     #[inline]
     pub unsafe fn add_command_buffer<P>(&mut self, command_buffer: &'a UnsafeCommandBuffer<P>)
         where P: CommandPool
