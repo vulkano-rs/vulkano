@@ -131,7 +131,8 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///
     /// Panics if both builders have a fence already set.
     pub fn merge(mut self, other: Self) -> Self {
-        assert!(self.fence == 0 || other.fence == 0);
+        assert!(self.fence == 0 || other.fence == 0,
+               "Can't merge two queue submits that both have a fence");
 
         self.wait_semaphores.extend(other.wait_semaphores);
         self.dest_stages.extend(other.dest_stages);     // TODO: meh?
@@ -191,5 +192,27 @@ impl From<Error> for SubmitCommandBufferError {
             Error::DeviceLost => SubmitCommandBufferError::DeviceLost,
             _ => panic!("unexpected error: {:?}", err)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sync::Fence;
+
+    #[test]
+    #[should_panic(expected = "Can't merge two queue submits that both have a fence")]
+    fn merge_both_have_fences() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let fence1 = Fence::new(device.clone()).unwrap();
+        let fence2 = Fence::new(device.clone()).unwrap();
+        
+        let mut builder1 = SubmitCommandBufferBuilder::new();
+        unsafe { builder1.set_fence_signal(&fence1); }
+        let mut builder2 = SubmitCommandBufferBuilder::new();
+        unsafe { builder2.set_fence_signal(&fence2); }
+
+        let _ = builder1.merge(builder2);
     }
 }
