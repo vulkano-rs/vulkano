@@ -61,12 +61,12 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
             Entry::Occupied(entry) => {
                 match entry.get() {
                     &Pool::HostVisible(ref pool) => {
-                        let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let alloc = StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                         Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
                     },
                     &Pool::NonHostVisible(ref pool) => {
-                        let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let alloc = StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
                         Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
                     },
@@ -78,14 +78,14 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
                     true => {
                         let pool = StdHostVisibleMemoryTypePool::new(&self.device, memory_type);
                         entry.insert(Pool::HostVisible(pool.clone()));
-                        let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let alloc = StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                         Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
                     },
                     false => {
                         let pool = StdNonHostVisibleMemoryTypePool::new(&self.device, memory_type);
                         entry.insert(Pool::NonHostVisible(pool.clone()));
-                        let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
+                        let alloc = StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
                         Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
                     },

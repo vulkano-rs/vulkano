@@ -93,10 +93,10 @@ macro_rules! ordered_passes_renderpass {
             {
                 #![allow(unsafe_code)]
 
-                let rp = try!(unsafe {
+                let rp = unsafe {
                     UnsafeRenderPass::new(device, AttachmentsIter(formats.clone(), 0),
                                           PassesIter(0), DependenciesIter(0, 0))
-                });
+                }?;
 
                 Ok(CustomRenderPass {
                     render_pass: rp,
@@ -108,7 +108,7 @@ macro_rules! ordered_passes_renderpass {
             pub fn new(device: &Arc<Device>, formats: &Formats)
                        -> Result<Arc<CustomRenderPass>, RenderPassCreationError>
             {
-                Ok(Arc::new(try!(CustomRenderPass::raw(device, formats))))
+                Ok(Arc::new(CustomRenderPass::raw(device, formats)?))
             }
         }
 

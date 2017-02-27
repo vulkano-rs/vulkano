@@ -46,17 +46,17 @@ use version::Version;
 /// ```
 pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     unsafe {
-        let entry_points = try!(loader::entry_points());
+        let entry_points = loader::entry_points()?;
 
         let mut num = 0;
-        try!(check_errors({
+        check_errors({
             entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())
-        }));
+        })?;
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
-        try!(check_errors({
+        check_errors({
             entry_points.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
-        }));
+        })?;
         layers.set_len(num as usize);
 
         Ok(LayersIterator {

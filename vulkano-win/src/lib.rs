@@ -37,8 +37,8 @@ pub trait VkSurfaceBuild {
 
 impl VkSurfaceBuild for WindowBuilder {
     fn build_vk_surface(self, instance: &Arc<Instance>) -> Result<Window, CreationError> {
-        let window = try!(self.build());
-        let surface = try!(unsafe { winit_to_surface(instance, &window) });
+        let window = self.build()?;
+        let surface = unsafe { winit_to_surface(instance, &window) }?;
 
         Ok(Window {
             window: window,

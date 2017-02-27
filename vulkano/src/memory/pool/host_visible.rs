@@ -103,7 +103,7 @@ impl StdHostVisibleMemoryTypePool {
         let new_block = {
             const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024;      // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block = try!(DeviceMemory::alloc_and_map(&me.device, me.memory_type(), to_alloc));
+            let new_block = DeviceMemory::alloc_and_map(&me.device, me.memory_type(), to_alloc)?;
             Arc::new(new_block)
         };
 

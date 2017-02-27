@@ -415,7 +415,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // Vertex bindings.
         let (binding_descriptions, attribute_descriptions) = {
-            let (buffers_iter, attribs_iter) = try!(params.vertex_input.definition(params.vertex_shader.input_definition()));
+            let (buffers_iter, attribs_iter) = params.vertex_input.definition(params.vertex_shader.input_definition())?;
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             for (num, stride, rate) in buffers_iter {
@@ -859,8 +859,8 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateGraphicsPipelines(device.internal_object(), 0,
-                                                         1, &infos, ptr::null(), &mut output)));
+            check_errors(vk.CreateGraphicsPipelines(device.internal_object(), 0,
+                                                    1, &infos, ptr::null(), &mut output))?;
             output
         };
 

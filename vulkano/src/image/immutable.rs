@@ -80,8 +80,8 @@ impl<F> ImmutableImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
-                                  1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
+                             1, 1, Sharing::Exclusive::<Empty<u32>>, false, false)?
         };
 
         let mem_ty = {
@@ -93,14 +93,14 @@ impl<F> ImmutableImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
+        let mem = MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+                                    mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe { image.bind_memory(mem.memory(), mem.offset())?; }
 
         let view = unsafe {
-            try!(UnsafeImageView::raw(&image, dimensions.to_view_type(), 0 .. image.mipmap_levels(),
-                                      0 .. image.dimensions().array_layers()))
+            UnsafeImageView::raw(&image, dimensions.to_view_type(), 0..image.mipmap_levels(),
+                                 0..image.dimensions().array_layers())?
         };
 
         Ok(Arc::new(ImmutableImage {

@@ -55,7 +55,7 @@ macro_rules! pipeline_layout {
             {
                 let layouts = vec![
                     $(
-                        Arc::new(try!($name::build_set_layout_raw(device)))
+                        Arc::new($name::build_set_layout_raw(device)?)
                     ),*
                 ];
 
@@ -66,7 +66,7 @@ macro_rules! pipeline_layout {
                 };
 
                 let inner = {
-                    try!(UnsafePipelineLayout::new(device, layouts.iter(), push_constants))
+                    UnsafePipelineLayout::new(device, layouts.iter(), push_constants)?
                 };
 
                 Ok(Arc::new(CustomPipeline {
@@ -179,7 +179,7 @@ macro_rules! pipeline_layout {
                     #![allow(unsafe_code)]
                     unsafe {
                         let layout = layout.inner().descriptor_set_layout($num).unwrap();
-                        let mut set = try!(UnsafeDescriptorSet::uninitialized_raw(pool, layout));
+                        let mut set = (UnsafeDescriptorSet::uninitialized_raw(pool, layout))?;
                         set.write(descriptors.writes());
                         Ok(Set { inner: set })
                     }

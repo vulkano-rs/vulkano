@@ -97,16 +97,16 @@ macro_rules! instance_extensions {
         impl $sname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<$sname, SupportedExtensionsError> {
-                let entry_points = try!(loader::entry_points());
+                let entry_points = loader::entry_points()?;
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    try!(check_errors(entry_points.EnumerateInstanceExtensionProperties(
-                        ptr::null(), &mut num, ptr::null_mut())));
+                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                        ptr::null(), &mut num, ptr::null_mut()))?;
                     
                     let mut properties = Vec::with_capacity(num as usize);
-                    try!(check_errors(entry_points.EnumerateInstanceExtensionProperties(
-                        ptr::null(), &mut num, properties.as_mut_ptr())));
+                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                        ptr::null(), &mut num, properties.as_mut_ptr()))?;
                     properties.set_len(num as usize);
                     properties
                 };

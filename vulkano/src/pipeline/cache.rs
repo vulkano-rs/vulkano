@@ -120,8 +120,8 @@ impl PipelineCache {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreatePipelineCache(device.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreatePipelineCache(device.internal_object(), &infos,
+                                                ptr::null(), &mut output))?;
             output
         };
 
@@ -152,8 +152,8 @@ impl PipelineCache {
                 pipeline.cache
             }).collect::<Vec<_>>();
 
-            try!(check_errors(vk.MergePipelineCaches(self.device.internal_object(), self.cache,
-                                                     pipelines.len() as u32, pipelines.as_ptr())));
+            check_errors(vk.MergePipelineCaches(self.device.internal_object(), self.cache,
+                                                pipelines.len() as u32, pipelines.as_ptr()))?;
 
             Ok(())
         }
@@ -192,12 +192,12 @@ impl PipelineCache {
             let vk = self.device.pointers();
 
             let mut num = 0;
-            try!(check_errors(vk.GetPipelineCacheData(self.device.internal_object(), self.cache,
-                                                      &mut num, ptr::null_mut())));
+            check_errors(vk.GetPipelineCacheData(self.device.internal_object(), self.cache,
+                                                 &mut num, ptr::null_mut()))?;
 
             let mut data: Vec<u8> = Vec::with_capacity(num as usize);
-            try!(check_errors(vk.GetPipelineCacheData(self.device.internal_object(), self.cache,
-                                                      &mut num, data.as_mut_ptr() as *mut _)));
+            check_errors(vk.GetPipelineCacheData(self.device.internal_object(), self.cache,
+                                                 &mut num, data.as_mut_ptr() as *mut _))?;
             data.set_len(num as usize);
 
             Ok(data)

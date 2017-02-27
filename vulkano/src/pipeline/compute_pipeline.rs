@@ -86,8 +86,8 @@ impl<Pl> ComputePipeline<Pl> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateComputePipelines(device.internal_object(), 0,
-                                                        1, &infos, ptr::null(), &mut output)));
+            check_errors(vk.CreateComputePipelines(device.internal_object(), 0,
+                                                   1, &infos, ptr::null(), &mut output))?;
             output
         };
 

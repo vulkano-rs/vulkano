@@ -95,7 +95,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             Kind::Secondary | Kind::SecondaryRenderPass { .. } => true,
         };
 
-        let cmd = try!(pool.alloc(secondary, 1)).next().unwrap();
+        let cmd = pool.alloc(secondary, 1)?.next().unwrap();
         
         match unsafe { UnsafeCommandBufferBuilder::already_allocated(pool, cmd, kind, flags) } {
             Ok(cmd) => Ok(cmd),
@@ -172,7 +172,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
             pInheritanceInfo: &inheritance,
         };
 
-        try!(check_errors(vk.BeginCommandBuffer(cmd, &infos)));
+        check_errors(vk.BeginCommandBuffer(cmd, &infos))?;
 
         Ok(UnsafeCommandBufferBuilder {
             device: device.clone(),
@@ -195,7 +195,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         unsafe {
             let vk = self.device.pointers();
             let cmd = self.cmd.take().unwrap();
-            try!(check_errors(vk.EndCommandBuffer(cmd)));
+            check_errors(vk.EndCommandBuffer(cmd))?;
 
             Ok(UnsafeCommandBuffer {
                 cmd: cmd,

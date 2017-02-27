@@ -174,7 +174,7 @@ impl Instance {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
 
-        let entry_points = try!(loader::entry_points());
+        let entry_points = loader::entry_points()?;
 
         // Creating the Vulkan instance.
         let instance = unsafe {
@@ -194,7 +194,7 @@ impl Instance {
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
-            try!(check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output)));
+            check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
             output
         };
 
@@ -209,11 +209,11 @@ impl Instance {
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut())));
+            check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut()))?;
 
             let mut devices = Vec::with_capacity(num as usize);
-            try!(check_errors(vk.EnumeratePhysicalDevices(instance, &mut num,
-                                                          devices.as_mut_ptr())));
+            check_errors(vk.EnumeratePhysicalDevices(instance, &mut num,
+                                                     devices.as_mut_ptr()))?;
             devices.set_len(num as usize);
             devices
         };

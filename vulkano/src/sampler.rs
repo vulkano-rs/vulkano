@@ -257,8 +257,8 @@ impl Sampler {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSampler(device.internal_object(), &infos,
-                                               ptr::null(), &mut output)));
+            check_errors(vk.CreateSampler(device.internal_object(), &infos,
+                                          ptr::null(), &mut output))?;
             output
         };
 
@@ -339,8 +339,8 @@ impl Sampler {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSampler(device.internal_object(), &infos,
-                                               ptr::null(), &mut output)));
+            check_errors(vk.CreateSampler(device.internal_object(), &infos,
+                                          ptr::null(), &mut output))?;
             output
         };
 

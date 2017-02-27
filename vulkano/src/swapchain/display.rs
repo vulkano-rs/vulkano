@@ -65,17 +65,17 @@ impl DisplayPlane {
 
         let num = unsafe {
             let mut num: u32 = 0;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                            &mut num, ptr::null_mut())));
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
+                                                                       &mut num, ptr::null_mut()))?;
             num
         };
 
         let planes: Vec<vk::DisplayPlanePropertiesKHR> = unsafe {
             let mut planes = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                            &mut num,
-                                                                            planes.as_mut_ptr())));
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
+                                                                       &mut num,
+                                                                       planes.as_mut_ptr()))?;
             planes.set_len(num as usize);
             planes
         };
@@ -161,17 +161,17 @@ impl Display {
 
         let num = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                       &mut num, ptr::null_mut())));
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
+                                                                  &mut num, ptr::null_mut()))?;
             num
         };
 
         let displays: Vec<vk::DisplayPropertiesKHR> = unsafe {
             let mut displays = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                       &mut num,
-                                                                       displays.as_mut_ptr())));
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
+                                                                  &mut num,
+                                                                  displays.as_mut_ptr()))?;
             displays.set_len(num as usize);
             displays
         };
@@ -254,18 +254,18 @@ impl Display {
 
         let num = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                             self.properties.display, 
-                                                             &mut num, ptr::null_mut())));
+            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
+                                                        self.properties.display,
+                                                        &mut num, ptr::null_mut()))?;
             num
         };
 
         let modes: Vec<vk::DisplayModePropertiesKHR> = unsafe {
             let mut modes = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                             self.properties.display, &mut num,
-                                                             modes.as_mut_ptr())));
+            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
+                                                        self.properties.display, &mut num,
+                                                        modes.as_mut_ptr()))?;
             modes.set_len(num as usize);
             modes
         };
@@ -327,9 +327,9 @@ impl DisplayMode {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
+            check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
                                                       display.display, &infos, ptr::null(),
-                                                      &mut output)));
+                                                      &mut output))?;
             output
         };
 

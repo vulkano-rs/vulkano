@@ -81,7 +81,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     /// See the docs of new().
     #[inline]
     pub fn raw(pool: P) -> Result<PrimaryCommandBufferBuilder<P>, OomError> {
-        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None));
+        let inner = InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, false, None, None)?;
         Ok(PrimaryCommandBufferBuilder { inner: inner })
     }
 
@@ -301,7 +301,7 @@ impl<P> PrimaryCommandBufferBuilder<P> where P: CommandPool {
     /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<PrimaryCommandBuffer<P>, OomError> {
-        let inner = try!(self.inner.build());
+        let inner = self.inner.build()?;
         Ok(PrimaryCommandBuffer { inner: inner })
     }
 
@@ -594,7 +594,7 @@ impl<R, P> SecondaryGraphicsCommandBufferBuilder<R, P>
                -> Result<SecondaryGraphicsCommandBufferBuilder<R, P>, OomError>
         where R: 'static + Send + Sync
     {
-        let inner = try!(InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone()));
+        let inner = InnerCommandBufferBuilder::new(pool, true, Some(subpass), framebuffer.clone())?;
         Ok(SecondaryGraphicsCommandBufferBuilder {
             inner: inner,
             render_pass: subpass.render_pass().clone(),
@@ -672,7 +672,7 @@ impl<R, P> SecondaryGraphicsCommandBufferBuilder<R, P>
     /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<SecondaryGraphicsCommandBuffer<R, P>, OomError> {
-        let inner = try!(self.inner.build());
+        let inner = self.inner.build()?;
 
         Ok(SecondaryGraphicsCommandBuffer {
             inner: inner,
@@ -732,7 +732,7 @@ impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
     /// See the docs of new().
     #[inline]
     pub fn raw(pool: P) -> Result<SecondaryComputeCommandBufferBuilder<P>, OomError> {
-        let inner = try!(InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None));
+        let inner = InnerCommandBufferBuilder::new::<UnsafeRenderPass>(pool, true, None, None)?;
         Ok(SecondaryComputeCommandBufferBuilder { inner: inner })
     }
 
@@ -788,7 +788,7 @@ impl<P> SecondaryComputeCommandBufferBuilder<P> where P: CommandPool {
     /// See the docs of build().
     #[inline]
     pub fn build_raw(self) -> Result<SecondaryComputeCommandBuffer<P>, OomError> {
-        let inner = try!(self.inner.build());
+        let inner = self.inner.build()?;
         Ok(SecondaryComputeCommandBuffer { inner: inner })
     }
 

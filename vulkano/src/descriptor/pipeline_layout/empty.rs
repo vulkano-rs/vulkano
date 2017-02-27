@@ -27,7 +27,7 @@ impl EmptyPipeline {
     /// Builds a new empty pipeline.
     pub fn new(device: &Arc<Device>) -> Result<Arc<EmptyPipeline>, UnsafePipelineLayoutCreationError> {
         let inner = {
-            try!(UnsafePipelineLayout::new(device, iter::empty(), iter::empty()))
+            UnsafePipelineLayout::new(device, iter::empty(), iter::empty())?
         };
 
         Ok(Arc::new(EmptyPipeline {

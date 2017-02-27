@@ -141,8 +141,8 @@ impl DebugCallback {
 
         let debug_report_callback = unsafe {
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDebugReportCallbackEXT(instance.internal_object(), &infos,
-                                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateDebugReportCallbackEXT(instance.internal_object(), &infos,
+                                                         ptr::null(), &mut output))?;
             output
         };
 

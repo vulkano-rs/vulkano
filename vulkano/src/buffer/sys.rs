@@ -104,8 +104,8 @@ impl UnsafeBuffer {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBuffer(device.internal_object(), &infos,
-                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateBuffer(device.internal_object(), &infos,
+                                         ptr::null(), &mut output))?;
             output
         };
 
@@ -178,8 +178,8 @@ impl UnsafeBuffer {
             }
         }
 
-        try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
-                                              memory.internal_object(), offset as vk::DeviceSize)));
+        check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
+                                         memory.internal_object(), offset as vk::DeviceSize))?;
         Ok(())
     }
 

@@ -75,8 +75,8 @@ impl<P> ShaderModule<P> where P: SafeDeref<Target = Device> {
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateShaderModule(device.internal_object(), &infos,
-                                                    ptr::null(), &mut output)));
+            check_errors(vk.CreateShaderModule(device.internal_object(), &infos,
+                                               ptr::null(), &mut output))?;
             output
         };
 

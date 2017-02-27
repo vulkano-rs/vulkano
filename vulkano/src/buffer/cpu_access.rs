@@ -109,9 +109,7 @@ impl<T> CpuAccessibleBuffer<T> {
               T: Content + 'static,
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-            );
+            let uninitialized = CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -146,9 +144,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
-            );
+            let uninitialized = CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -224,11 +220,11 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                            .filter(|t| t.is_host_visible())
                            .next().unwrap();    // Vk specs guarantee that this can't fail
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+                                    mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
-        try!(buffer.bind_memory(mem.memory(), mem.offset()));
+        buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
@@ -276,7 +272,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
 
         // TODO: should that set the write_submission to None?
         if let Some(submission) = submission.write_submission.clone().and_then(|s| s.upgrade()) {
-            try!(submission.wait(timeout));
+            submission.wait(timeout)?;
         }
 
         let offset = self.memory.offset();
@@ -305,13 +301,13 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
             let mut read_submissions = submission.read_submissions.get_mut().unwrap();
             for submission in read_submissions.drain(..) {
                 if let Some(submission) = submission.upgrade() {
-                    try!(submission.wait(timeout));
+                    submission.wait(timeout)?;
                 }
             }
         }
 
         if let Some(submission) = submission.write_submission.take().and_then(|s| s.upgrade()) {
-            try!(submission.wait(timeout));
+            submission.wait(timeout)?;
         }
 
         let offset = self.memory.offset();

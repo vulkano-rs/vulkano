@@ -414,8 +414,8 @@ impl UnsafeImage {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateImage(device.internal_object(), &infos,
-                                             ptr::null(), &mut output)));
+            check_errors(vk.CreateImage(device.internal_object(), &infos,
+                                        ptr::null(), &mut output))?;
             output
         };
 
@@ -484,8 +484,8 @@ impl UnsafeImage {
             mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
         });
 
-        try!(check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
-                                             memory.internal_object(), offset as vk::DeviceSize)));
+        check_errors(vk.BindImageMemory(self.device.internal_object(), self.image,
+                                        memory.internal_object(), offset as vk::DeviceSize))?;
         Ok(())
     }
 
@@ -799,8 +799,8 @@ impl UnsafeImageView {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateImageView(image.device.internal_object(), &infos,
-                                                 ptr::null(), &mut output)));
+            check_errors(vk.CreateImageView(image.device.internal_object(), &infos,
+                                            ptr::null(), &mut output))?;
             output
         };
 

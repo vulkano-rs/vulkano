@@ -80,8 +80,8 @@ impl UnsafeDescriptorSet {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.AllocateDescriptorSets(pool.device().internal_object(), &infos,
-                                                        &mut output)));
+            check_errors(vk.AllocateDescriptorSets(pool.device().internal_object(), &infos,
+                                                   &mut output))?;
             output
         };
 

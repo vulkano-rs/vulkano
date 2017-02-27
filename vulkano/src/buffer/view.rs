@@ -135,8 +135,8 @@ impl<F, B> BufferView<F, B> where B: Buffer {
         let view = {
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBufferView(device.internal_object(), &infos,
-                                                  ptr::null(), &mut output)));
+            check_errors(vk.CreateBufferView(device.internal_object(), &infos,
+                                             ptr::null(), &mut output))?;
             output
         };
 
