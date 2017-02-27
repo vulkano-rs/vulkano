@@ -95,6 +95,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool;
 
     /// Joins this future with another one, representing the moment when both events have happened.
+    // TODO: handle errors
     fn join<F>(self, other: F) -> JoinFuture<Self, F>
         where Self: Sized, F: GpuFuture
     {
@@ -567,7 +568,38 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
                 a.merge(b);
                 SubmitAnyBuilder::SemaphoresWait(a)
             },
-            _ => unimplemented!()
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                try!(b.submit(&self.second.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(a)
+            },
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                try!(a.submit(&self.first.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(b)
+            },
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                try!(b.submit(&self.second.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(a)
+            },
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                try!(a.submit(&self.first.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(b)
+            },
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                // TODO: we may want to add debug asserts here
+                let new = a.merge(b);
+                SubmitAnyBuilder::CommandBuffer(new)
+            },
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                try!(a.submit(&self.first.queue().clone().unwrap()));
+                try!(b.submit(&self.second.queue().clone().unwrap()));
+                SubmitAnyBuilder::Empty
+            },
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                unimplemented!()
+            },
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                unimplemented!()
+            },
         })
     }
 

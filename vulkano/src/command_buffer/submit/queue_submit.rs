@@ -124,6 +124,26 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
             Ok(())
         }
     }
+
+    /// Merges this builder with another builder.
+    ///
+    /// # Panic
+    ///
+    /// Panics if both builders have a fence already set.
+    pub fn merge(mut self, other: Self) -> Self {
+        assert!(self.fence == 0 || other.fence == 0);
+
+        self.wait_semaphores.extend(other.wait_semaphores);
+        self.dest_stages.extend(other.dest_stages);     // TODO: meh?
+        self.signal_semaphores.extend(other.signal_semaphores);
+        self.command_buffers.extend(other.command_buffers);
+
+        if self.fence == 0 {
+            self.fence = other.fence;
+        }
+
+        self
+    }
 }
 
 /// Error that can happen when submitting the prototype.
