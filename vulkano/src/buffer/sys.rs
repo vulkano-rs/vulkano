@@ -533,6 +533,7 @@ mod tests {
     use super::Usage;
 
     use device::Device;
+    use device::DeviceOwned;
     use sync::Sharing;
 
     #[test]
