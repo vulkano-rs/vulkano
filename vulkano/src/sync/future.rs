@@ -34,6 +34,7 @@ use SafeDeref;
 use VulkanObject;
 
 /// Represents an event that will happen on the GPU in the future.
+// TODO: unsound if put inside an Arc
 pub unsafe trait GpuFuture: DeviceOwned {
     /// Returns `true` if the event happened on the GPU.
     ///
@@ -85,10 +86,16 @@ pub unsafe trait GpuFuture: DeviceOwned {
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given buffer on the given queue.
+    ///
+    /// > **Note**: Returning `true` means "access granted", while returning `false` means
+    /// > "don't know". Therefore returning `false` is never unsafe.
     fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
+    ///
+    /// > **Note**: Returning `true` means "access granted", while returning `false` means
+    /// > "don't know". Therefore returning `false` is never unsafe.
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
