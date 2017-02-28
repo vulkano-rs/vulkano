@@ -81,6 +81,14 @@ impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
     }
 }
 
+impl<'a, B, D> CmdUpdateBuffer<'a, B, D> {
+    /// Returns the buffer that is going to be written.
+    #[inline]
+    pub fn buffer(&self) -> &B {
+        &self.buffer
+    }
+}
+
 unsafe impl<'a, B, D> DeviceOwned for CmdUpdateBuffer<'a, B, D>
     where B: DeviceOwned
 {

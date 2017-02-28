@@ -122,6 +122,20 @@ impl<S, D> CmdCopyBufferToImage<S, D> where S: Buffer, D: Image {
     }
 }
 
+impl<S, D> CmdCopyBufferToImage<S, D> {
+    /// Returns the source buffer.
+    #[inline]
+    pub fn source(&self) -> &S {
+        &self.buffer
+    }
+
+    /// Returns the destination image.
+    #[inline]
+    pub fn destination(&self) -> &D {
+        &self.destination
+    }
+}
+
 unsafe impl<S, D> DeviceOwned for CmdCopyBufferToImage<S, D> where S: DeviceOwned {
     #[inline]
     fn device(&self) -> &Arc<Device> {

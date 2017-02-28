@@ -87,6 +87,20 @@ impl<S, D> CmdCopyBuffer<S, D>
     }
 }
 
+impl<S, D> CmdCopyBuffer<S, D> {
+    /// Returns the source buffer.
+    #[inline]
+    pub fn source(&self) -> &S {
+        &self.source
+    }
+
+    /// Returns the destination buffer.
+    #[inline]
+    pub fn destination(&self) -> &D {
+        &self.destination
+    }
+}
+
 unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBuffer<S, D>> for UnsafeCommandBufferBuilder<P>
     where S: Buffer,
           D: Buffer,

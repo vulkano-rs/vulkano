@@ -53,6 +53,20 @@ pub struct CmdBlitImage<S, D> {
 
 // TODO: add constructor
 
+impl<S, D> CmdBlitImage<S, D> {
+    /// Returns the source image.
+    #[inline]
+    pub fn source(&self) -> &S {
+        &self.source
+    }
+
+    /// Returns the destination image.
+    #[inline]
+    pub fn destination(&self) -> &D {
+        &self.destination
+    }
+}
+
 unsafe impl<S, D> DeviceOwned for CmdBlitImage<S, D> where S: DeviceOwned {
     #[inline]
     fn device(&self) -> &Arc<Device> {

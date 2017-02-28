@@ -119,7 +119,7 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
 
     #[inline]
     fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        false       // FIXME:
+        true        // FIXME:
     }
 }
 

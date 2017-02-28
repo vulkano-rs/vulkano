@@ -73,6 +73,14 @@ impl<B> CmdFillBuffer<B>
     }
 }
 
+impl<B> CmdFillBuffer<B> {
+    /// Returns the buffer that is going to be filled.
+    #[inline]
+    pub fn buffer(&self) -> &B {
+        &self.buffer
+    }
+}
+
 unsafe impl<'a, P, B> AddCommand<&'a CmdFillBuffer<B>> for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {

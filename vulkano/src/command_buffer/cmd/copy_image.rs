@@ -52,6 +52,20 @@ pub struct CmdCopyImage<S, D> {
 
 // TODO: add constructor
 
+impl<S, D> CmdCopyImage<S, D> {
+    /// Returns the source image.
+    #[inline]
+    pub fn source(&self) -> &S {
+        &self.source
+    }
+
+    /// Returns the destination image.
+    #[inline]
+    pub fn destination(&self) -> &D {
+        &self.destination
+    }
+}
+
 unsafe impl<S, D> DeviceOwned for CmdCopyImage<S, D> where S: DeviceOwned {
     #[inline]
     fn device(&self) -> &Arc<Device> {
