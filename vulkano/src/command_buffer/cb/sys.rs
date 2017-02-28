@@ -25,6 +25,7 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
+use sync::GpuFuture;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
@@ -292,6 +293,12 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<P> {
         self
+    }
+
+    #[inline]
+    fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), Box<Error>> {
+        // Not our job to check.
+        Ok(())
     }
 }
 

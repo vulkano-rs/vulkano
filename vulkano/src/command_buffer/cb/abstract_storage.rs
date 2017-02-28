@@ -20,6 +20,7 @@ use command_buffer::CommandBufferBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use sync::GpuFuture;
 
 /// Layer that stores commands in an abstract way.
 pub struct AbstractStorageLayer<I> {
@@ -44,6 +45,11 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<I::Pool> {
         self.inner.inner()
+    }
+
+    #[inline]
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
+        self.inner.submit_check(future, queue)
     }
 }
 

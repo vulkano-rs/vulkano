@@ -34,6 +34,14 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
 
+    /// Checks whether this command buffer is allowed to be submitted after the `future` and on
+    /// the given queue.
+    ///
+    /// **You should not call this function directly**, otherwise any further attempt to submit
+    /// will return a runtime error.
+    // TODO: better error
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>>;
+
     /// Executes this command buffer on a queue.
     ///
     /// > **Note**: This is just a shortcut for `execute_after`.
@@ -66,6 +74,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     {
         assert_eq!(self.device().internal_object(), future.device().internal_object());
 
+        self.submit_check(&future, &queue).expect("Forbidden");     // TODO: error
+
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap().is_same(&queue));
         }
@@ -88,6 +98,11 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         (**self).inner()
+    }
+
+    #[inline]
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
+        (**self).submit_check(future, queue)
     }
 }
 

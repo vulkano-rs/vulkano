@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
 use std::sync::Arc;
 
 use command_buffer::cb;
@@ -20,7 +21,9 @@ use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use device::Device;
 use device::DeviceOwned;
+use device::Queue;
 use instance::QueueFamily;
+use sync::GpuFuture;
 use OomError;
 
 type Cb<P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::AbstractStorageLayer<cb::UnsafeCommandBufferBuilder<P>>>>>>>>;
@@ -75,6 +78,11 @@ unsafe impl<P> CommandBuffer for AutoCommandBufferBuilder<P>
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
         self.inner.inner()
+    }
+
+    #[inline]
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
+        self.inner.submit_check(future, queue)
     }
 }
 

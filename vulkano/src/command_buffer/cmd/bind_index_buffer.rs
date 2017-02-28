@@ -66,6 +66,14 @@ impl<B, I> CmdBindIndexBuffer<B>
     }
 }
 
+impl<B> CmdBindIndexBuffer<B> {
+    /// Returns the index buffer to bind.
+    #[inline]
+    pub fn buffer(&self) -> &B {
+        &self.buffer
+    }
+}
+
 unsafe impl<B> DeviceOwned for CmdBindIndexBuffer<B>
     where B: DeviceOwned
 {
