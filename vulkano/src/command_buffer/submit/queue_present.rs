@@ -31,6 +31,7 @@ use VulkanPointers;
 use SynchronizedVulkanObject;
 
 /// Prototype for a submission that presents a swapchain on the screen.
+// TODO: example here
 #[derive(Debug)]
 pub struct SubmitPresentBuilder<'a> {
     wait_semaphores: SmallVec<[vk::Semaphore; 8]>,
@@ -52,12 +53,36 @@ impl<'a> SubmitPresentBuilder<'a> {
     }
 
     /// Adds a semaphore to be waited upon before the presents are executed.
+    ///
+    /// # Safety
+    ///
+    /// - If you submit this builder, the semaphore must be kept alive until you are guaranteed
+    ///   that the GPU has presented the swapchains.
+    ///
+    /// - If you submit this builder, no other queue must be waiting on these semaphores. In other
+    ///   words, each semaphore signal can only correspond to one semaphore wait.
+    ///
+    /// - If you submit this builder, the semaphores must be signaled when the queue execution
+    ///   reaches this submission, or there must be one or more submissions in queues that are
+    ///   going to signal these semaphores. In other words, you must not block the queue with
+    ///   semaphores that can't get signaled.
+    ///
+    /// - The swapchains and semaphores must all belong to the same device.
+    ///
     #[inline]
     pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore) {
         self.wait_semaphores.push(semaphore.internal_object());
     }
 
     /// Adds an image of a swapchain to be presented.
+    ///
+    /// # Safety
+    ///
+    /// - If you submit this builder, the swapchain must be kept alive until you are
+    ///   guaranteed that the GPU has finished presenting.
+    ///
+    /// - The swapchains and semaphores must all belong to the same device.
+    ///
     #[inline]
     pub unsafe fn add_swapchain(&mut self, swapchain: &'a Swapchain, image_num: u32) {
         debug_assert!(image_num < swapchain.num_images());
@@ -70,6 +95,7 @@ impl<'a> SubmitPresentBuilder<'a> {
     /// # Panic
     ///
     /// Panics if no swapchain image has been added to the builder.
+    ///
     pub fn submit(mut self, queue: &Queue) -> Result<(), SubmitPresentError> {
         unsafe {
             debug_assert_eq!(self.swapchains.len(), self.image_indices.len());

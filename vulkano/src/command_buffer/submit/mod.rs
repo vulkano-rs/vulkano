@@ -8,6 +8,10 @@
 // according to those terms.
 
 //! Low-level builders that allow submitting an operation to a queue.
+//!
+//! In order to submit an operation to the GPU, you must use one of the builder structs of this
+//! module. These structs are low-level and unsafe, and are mostly used to implement other parts
+//! of vulkano, so you are encouraged to not use them directly.
 
 pub use self::queue_present::SubmitPresentBuilder;
 pub use self::queue_present::SubmitPresentError;
