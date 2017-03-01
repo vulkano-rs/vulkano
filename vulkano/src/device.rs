@@ -513,7 +513,7 @@ impl From<Error> for DeviceCreationError {
         match err {
             Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
             Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
-            _ => panic!("Unexpected error value: {}", err as i32)
+            _ => panic!("Unexpected error value: {:?} ({})", err, err as i32)
         }
     }
 }
