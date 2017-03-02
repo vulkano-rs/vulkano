@@ -176,18 +176,19 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
     }
     
     // We can only implement Clone if there's no unsized member in the struct.
-    let impl_text = if current_rust_offset.is_some() {
-        format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \
+    let (impl_text, derive_text) = if current_rust_offset.is_some() {
+        let i = format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \
                  {name} {{\n{copies}\n        }}\n    }}\n}}\n", name = name,
-                 copies = rust_members.iter().map(Member::copy_text).collect::<Vec<_>>().join(",\n"))
+                 copies = rust_members.iter().map(Member::copy_text).collect::<Vec<_>>().join(",\n"));
+        (i, "#[derive(Copy)]")
     } else {
-        "".to_owned()
+        ("".to_owned(), "")
     };
 
-    format!("#[repr(C)]\npub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
+    format!("#[repr(C)]{derive_text}\npub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
             name = name,
             members = rust_members.iter().map(Member::declaration_text).collect::<Vec<_>>().join(",\n"),
-            t = spirv_req_total_size, impl_text=impl_text)
+            t = spirv_req_total_size, impl_text = impl_text, derive_text = derive_text)
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
