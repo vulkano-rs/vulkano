@@ -70,8 +70,11 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
 #[macro_export]
 macro_rules! simple_descriptor_set {
     ($layout:expr, $set_num:expr, {$($name:ident: $val:expr),*$(,)*}) => ({
+        #[allow(unused_imports)]
         use $crate::descriptor::descriptor_set::SimpleDescriptorSetBuilder;
+        #[allow(unused_imports)]
         use $crate::descriptor::descriptor_set::SimpleDescriptorSetBufferExt;
+        #[allow(unused_imports)]
         use $crate::descriptor::descriptor_set::SimpleDescriptorSetImageExt;
 
         // We build an empty `SimpleDescriptorSetBuilder` struct, then adds each element one by
