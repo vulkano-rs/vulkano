@@ -168,8 +168,13 @@ unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
     }
 
     #[inline]
-    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
         false       // FIXME:
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        // FIXME:
     }
 }
 

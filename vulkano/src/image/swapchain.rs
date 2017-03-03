@@ -103,9 +103,13 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
-    fn gpu_access(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
         // Swapchain image are only accessible after being acquired.
         false
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
     }
 }
 

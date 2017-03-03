@@ -133,7 +133,7 @@ pub unsafe trait Buffer: DeviceOwned {
         unimplemented!()
     }
 
-    /// Returns true if the buffer can be given access on the given queue.
+    /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
     ///
     /// This function implementation should remember that it has been called and return `false` if
     /// it gets called a second time.
@@ -141,7 +141,14 @@ pub unsafe trait Buffer: DeviceOwned {
     /// The only way to know that the GPU has stopped accessing a queue is when the buffer object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
-    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool;
+    // TODO: return Result?
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+
+    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
+    /// simply increases the lock by one.
+    ///
+    /// Must only be called after `try_gpu_lock()` succeeded.
+    unsafe fn increase_gpu_lock(&self);
 }
 
 /// Inner information about a buffer.
@@ -178,8 +185,13 @@ unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
     }
 
     #[inline]
-    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        (**self).gpu_access(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        (**self).try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        (**self).increase_gpu_lock()
     }
 }
 

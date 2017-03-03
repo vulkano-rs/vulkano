@@ -178,8 +178,13 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 
     #[inline]
-    fn gpu_access(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        self.resource.gpu_access(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        self.resource.try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        self.resource.increase_gpu_lock()
     }
 }
 

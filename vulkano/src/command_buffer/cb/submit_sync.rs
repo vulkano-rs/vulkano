@@ -438,20 +438,22 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
         for &(ref buffer, exclusive) in self.buffers.iter() {
             if future.check_buffer_access(buffer, exclusive, queue) {
+                unsafe { buffer.increase_gpu_lock(); }
                 continue;
             }
 
-            if !buffer.gpu_access(exclusive, queue) {
+            if !buffer.try_gpu_lock(exclusive, queue) {
                 panic!()    // FIXME: return Err();
             }
         }
 
         for &(ref image, exclusive) in self.images.iter() {
             if future.check_image_access(image, exclusive, queue) {
+                unsafe { image.increase_gpu_lock(); }
                 continue;
             }
 
-            if !image.gpu_access(exclusive, queue) {
+            if !image.try_gpu_lock(exclusive, queue) {
                 panic!()    // FIXME: return Err();
             }
         }
