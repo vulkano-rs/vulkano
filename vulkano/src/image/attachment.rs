@@ -9,6 +9,8 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use device::Device;
 use device::Queue;
@@ -79,6 +81,9 @@ pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Layout to use when the image is used as a framebuffer attachment.
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: Layout,
+
+    // Number of times this image is locked on the GPU side.
+    gpu_lock: AtomicUsize,
 }
 
 impl<F> AttachmentImage<F> {
@@ -168,6 +173,7 @@ impl<F> AttachmentImage<F> {
             format: format,
             attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
                                else { Layout::ColorAttachmentOptimal },
+            gpu_lock: AtomicUsize::new(0),
         }))
     }
 }
@@ -193,13 +199,20 @@ unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        false       // FIXME:
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        if val == 1 {
+            true
+        } else {
+            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            false
+        }
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        // FIXME:
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);
     }
 }
 
@@ -270,6 +283,7 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
 mod tests {
     use super::AttachmentImage;
     use format::Format;
+    use image::Image;
 
     #[test]
     fn create_regular() {
