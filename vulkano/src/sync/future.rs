@@ -445,7 +445,9 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
             if *flushed {
                 return Ok(());
             }
-            
+
+            // `previous` can only be `None` if the future has already been flushed and cleaned up
+            // earlier.
             debug_assert!(self.previous.is_some());
             let queue = self.previous.as_ref().unwrap().queue().unwrap().clone();
 
