@@ -124,8 +124,8 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     where F: GpuFuture, Cb: CommandBuffer
 {
     #[inline]
-    fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
+    fn cleanup_finished(&mut self) {
+        self.previous.cleanup_finished();
     }
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {

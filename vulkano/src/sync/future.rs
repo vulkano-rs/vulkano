@@ -30,20 +30,18 @@ use sync::Fence;
 use sync::FenceWaitError;
 use sync::Semaphore;
 
-use SafeDeref;
 use VulkanObject;
 
 /// Represents an event that will happen on the GPU in the future.
 // TODO: unsound if put inside an Arc
 pub unsafe trait GpuFuture: DeviceOwned {
-    /// Returns `true` if the event happened on the GPU.
+    /// If possible, checks whether the submission has finished. If so, gives up ownership of the
+    /// resources used by these submissions.
     ///
-    /// If this returns `false`, then the destuctor of this future will block until it is the case.
-    ///
-    /// If you didn't call `flush()` yet, then this function will return `false`.
-    // TODO: what if user submits a cb without fence, calls flush, and then calls is_finished()
-    // expecting it to return true eventually?
-    fn is_finished(&self) -> bool;
+    /// It is highly recommended to call `cleanup_finished` from time to time. Doing so will
+    /// prevent memory usage from increasing over time, and will also destroy the locks on 
+    /// resources used by the GPU.
+    fn cleanup_finished(&mut self);
 
     /// Builds a submission that, if submitted, makes sure that the event represented by this
     /// `GpuFuture` will happen, and possibly contains extra elements (eg. a semaphore wait or an
@@ -186,10 +184,11 @@ pub unsafe trait GpuFuture: DeviceOwned {
     }
 }
 
-unsafe impl<T> GpuFuture for T where T: SafeDeref, T::Target: GpuFuture {
+// TODO: can't implement on SafeDeref because cleanup_finished takes by mut ; is this a problem?
+unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        (**self).is_finished()
+    fn cleanup_finished(&mut self) {
+        (**self).cleanup_finished()
     }
 
     #[inline]
@@ -246,8 +245,7 @@ impl DummyFuture {
 
 unsafe impl GpuFuture for DummyFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        true
+    fn cleanup_finished(&mut self) {
     }
 
     #[inline]
@@ -306,8 +304,8 @@ pub struct SemaphoreSignalFuture<F> where F: GpuFuture {
 
 unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
+    fn cleanup_finished(&mut self) {
+        self.previous.cleanup_finished();
     }
 
     #[inline]
@@ -420,23 +418,16 @@ pub struct FenceSignalFuture<F> where F: GpuFuture {
     flushed: Mutex<bool>,
 }
 
-impl<F> FenceSignalFuture<F> where F: GpuFuture {
-    /// Waits until the fence is signaled, or at least until the number of nanoseconds of the
-    /// timeout has elapsed.
-    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
-        // FIXME: flush?
-        self.fence.wait(timeout)
-    }
-}
-
 unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
+    fn cleanup_finished(&mut self) {
         if !*self.flushed.lock().unwrap() {
-            return false;
+            return;
         }
 
-        self.fence.wait(Duration::from_secs(0)).is_ok()
+        if self.fence.wait(Duration::from_secs(0)).is_ok() {
+            self.previous = None;
+        }
     }
 
     #[inline]
@@ -563,8 +554,9 @@ unsafe impl<A, B> DeviceOwned for JoinFuture<A, B> where A: DeviceOwned, B: Devi
 
 unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        self.first.is_finished() && self.second.is_finished()
+    fn cleanup_finished(&mut self) {
+        self.first.cleanup_finished();
+        self.second.cleanup_finished();
     }
 
     #[inline]

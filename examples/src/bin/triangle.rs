@@ -350,8 +350,11 @@ fn main() {
     let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
 
     loop {
-        // Clearing the old submissions by keeping alive only the ones which aren't finished.
-        submissions.retain(|s| !s.is_finished());
+        // Clearing the old submissions by keeping alive only the ones which probably aren't
+        // finished.
+        while submissions.len() >= 4 {
+            submissions.remove(0);
+        }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the

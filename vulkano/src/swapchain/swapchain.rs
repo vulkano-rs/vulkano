@@ -445,8 +445,7 @@ impl SwapchainAcquireFuture {
 
 unsafe impl GpuFuture for SwapchainAcquireFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
+    fn cleanup_finished(&mut self) {
     }
 
     #[inline]
@@ -595,8 +594,8 @@ pub struct PresentFuture<P> where P: GpuFuture {
 
 unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     #[inline]
-    fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
+    fn cleanup_finished(&mut self) {
+        self.previous.cleanup_finished();
     }
 
     #[inline]
