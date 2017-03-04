@@ -18,6 +18,8 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use buffer::sys::BufferCreationError;
@@ -50,6 +52,9 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryP
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
+
+    // Number of times this buffer is locked on the GPU side.
+    gpu_lock: AtomicUsize,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -128,6 +133,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
+            gpu_lock: AtomicUsize::new(0),
             marker: PhantomData,
         }))
     }
@@ -162,13 +168,20 @@ unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        false       // FIXME:
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        if val == 1 {
+            true
+        } else {
+            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            false
+        }
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        // FIXME:
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);
     }
 }
 
