@@ -165,7 +165,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         assert!(self.queue().is_some());        // TODO: document
 
         FenceSignalFuture {
-            previous: self,
+            previous: Some(self),
             fence: Fence::new(device).unwrap(),
             flushed: Mutex::new(false),
         }
@@ -412,7 +412,7 @@ impl<F> Drop for SemaphoreSignalFuture<F> where F: GpuFuture {
 /// Represents a fence being signaled after a previous event.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct FenceSignalFuture<F> where F: GpuFuture {
-    previous: F,
+    previous: Option<F>,
     fence: Fence,
     // True if the signaling command has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
@@ -455,9 +455,10 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
                 return Ok(());
             }
             
-            let queue = self.previous.queue().unwrap().clone();
+            debug_assert!(self.previous.is_some());
+            let queue = self.previous.as_ref().unwrap().queue().unwrap().clone();
 
-            match try!(self.previous.build_submission()) {
+            match try!(self.previous.as_ref().unwrap().build_submission()) {
                 SubmitAnyBuilder::Empty => {
                     let mut b = SubmitCommandBufferBuilder::new();
                     b.set_fence_signal(&self.fence);
@@ -490,7 +491,9 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     #[inline]
     unsafe fn signal_finished(&self) {
         debug_assert!(*self.flushed.lock().unwrap());
-        self.previous.signal_finished();
+        if let Some(ref previous) = self.previous {
+            previous.signal_finished();
+        }
     }
 
     #[inline]
@@ -500,17 +503,25 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
 
     #[inline]
     fn queue(&self) -> Option<&Arc<Queue>> {
-        self.previous.queue()
+        self.previous.as_ref().and_then(|p| p.queue())
     }
 
     #[inline]
     fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
-        self.previous.check_buffer_access(buffer, exclusive, queue)
+        if let Some(ref previous) = self.previous {
+            previous.check_buffer_access(buffer, exclusive, queue)
+        } else {
+            false
+        }
     }
 
     #[inline]
     fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
-        self.previous.check_image_access(image, exclusive, queue)
+        if let Some(ref previous) = self.previous {
+            previous.check_image_access(image, exclusive, queue)
+        } else {
+            false
+        }
     }
 }
 
@@ -527,7 +538,9 @@ impl<F> Drop for FenceSignalFuture<F> where F: GpuFuture {
         self.fence.wait(Duration::from_secs(600)).unwrap();     // TODO: handle some errors
 
         unsafe {
-            self.previous.signal_finished();
+            if let Some(ref previous) = self.previous {
+                previous.signal_finished();
+            }
         }
     }
 }
