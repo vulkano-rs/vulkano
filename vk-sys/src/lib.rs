@@ -164,6 +164,15 @@ pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR: u32 = 1000059001;
+pub const STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059002;
+pub const STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059003;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059004;
+pub const STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR: u32 = 1000059005;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR: u32 = 1000059006;
+pub const STRUCTURE_TYPE_SPARSE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059007;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059008;
 pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 
@@ -2398,6 +2407,77 @@ pub struct DebugReportCallbackCreateInfoEXT {
     pub pUserData: *mut c_void,
 }
 
+#[repr(C)]
+pub struct PhysicalDeviceFeatures2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub features: PhysicalDeviceFeatures,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub properties: PhysicalDeviceProperties,
+}
+
+#[repr(C)]
+pub struct FormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub formatProperties: FormatProperties,
+}
+
+#[repr(C)]
+pub struct ImageFormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub imageFormatProperties: ImageFormatProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceImageFormatInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub format: Format,
+    pub imageType: ImageType,
+    pub tiling: ImageTiling,
+    pub usage: ImageUsageFlags,
+    pub flags: ImageCreateFlags,
+}
+
+#[repr(C)]
+pub struct QueueFamilyProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub queueFamilyProperties: QueueFamilyProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceMemoryProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub memoryProperties: PhysicalDeviceMemoryProperties,
+}
+
+#[repr(C)]
+pub struct SparseImageFormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub properties: SparseImageFormatProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceSparseImageFormatInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub format: Format,
+    pub imageType: ImageType,
+    pub samples: SampleCountFlagBits,
+    pub usage: ImageUsageFlags,
+    pub tiling: ImageTiling,
+}
+
 pub type ViSurfaceCreateFlagsNN = Flags;
 
 #[repr(C)]
@@ -2659,6 +2739,13 @@ ptrs!(DevicePointers, {
     AcquireNextImageKHR => (device: Device, swapchain: SwapchainKHR, timeout: u64, semaphore: Semaphore, fence: Fence, pImageIndex: *mut u32) -> Result,
     QueuePresentKHR => (queue: Queue, pPresentInfo: *const PresentInfoKHR) -> Result,
     CreateSharedSwapchainsKHR => (device: Device, swapchainCount: u32, pCreateInfos: *const SwapchainCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSwapchains: *mut SwapchainKHR) -> Result,
+    GetPhysicalDeviceFeatures2KHR => (physicalDevice: PhysicalDevice, pFeatures: *mut PhysicalDeviceFeatures2KHR) -> (),
+    GetPhysicalDeviceProperties2KHR => (physicalDevice: PhysicalDevice, pProperties: *mut PhysicalDeviceProperties2KHR) -> (),
+    GetPhysicalDeviceFormatProperties2KHR => (physicalDevice: PhysicalDevice, pFormatProperties: *mut FormatProperties2KHR) -> (),
+    GetPhysicalDeviceImageFormatProperties2KHR => (physicalDevice: PhysicalDevice, pImageFormatInfo: *const PhysicalDeviceImageFormatInfo2KHR, pImageFormatProperties: *mut ImageFormatProperties2KHR) -> Result,
+    GetPhysicalDeviceQueueFamilyProperties2KHR => (physicalDevice: PhysicalDevice, pQueueFamilyPropertiesCount: *mut u32, pQueueFamilyProperties: *mut QueueFamilyProperties2KHR) -> (),
+    GetPhysicalDeviceMemoryProperties2KHR => (physicalDevice: PhysicalDevice, pMemoryProperties: *mut PhysicalDeviceMemoryProperties2KHR) -> (),
+    GetPhysicalDeviceSparseImageFormatProperties2KHR => (physicalDevice: PhysicalDevice, pFormatInfo: *const PhysicalDeviceSparseImageFormatInfo2KHR, pPropertyCount: *mut u32, pProperties: *mut SparseImageFormatProperties2KHR) -> (),
     CreateDescriptorUpdateTemplateKHR => (device: Device, pCreateInfo: *const DescriptorUpdateTemplateCreateInfoKHR, pAllocator: *const AllocationCallbacks, pDescriptorUpdateTemplate: *mut DescriptorUpdateTemplateKHR) -> Result,
     DestroyDescriptorUpdateTemplateKHR => (device: Device, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pAllocator: *const AllocationCallbacks) -> (),
     UpdateDescriptorSetWithTemplateKHR => (device: Device, descriptorSet: DescriptorSet, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pData: *const c_void) -> (),
