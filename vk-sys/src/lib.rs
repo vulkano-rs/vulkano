@@ -850,6 +850,7 @@ pub type CommandPoolResetFlagBits = u32;
 pub const COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT: u32 = 0x00000001;
 pub type CommandPoolResetFlags = Flags;
 
+pub type CommandPoolTrimFlagsKHR = Flags;
 
 pub type CommandBufferUsageFlagBits = u32;
 pub const COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: u32 = 0x00000001;
@@ -2562,6 +2563,7 @@ ptrs!(DevicePointers, {
     CreateCommandPool => (device: Device, pCreateInfo: *const CommandPoolCreateInfo, pAllocator: *const AllocationCallbacks, pCommandPool: *mut CommandPool) -> Result,
     DestroyCommandPool => (device: Device, commandPool: CommandPool, pAllocator: *const AllocationCallbacks) -> (),
     ResetCommandPool => (device: Device, commandPool: CommandPool, flags: CommandPoolResetFlags) -> Result,
+    TrimCommandPoolKHR => (device: Device, commandPool: CommandPool, flags: CommandPoolTrimFlagsKHR) -> (),
     AllocateCommandBuffers => (device: Device, pAllocateInfo: *const CommandBufferAllocateInfo, pCommandBuffers: *mut CommandBuffer) -> Result,
     FreeCommandBuffers => (device: Device, commandPool: CommandPool, commandBufferCount: u32, pCommandBuffers: *const CommandBuffer) -> (),
     BeginCommandBuffer => (commandBuffer: CommandBuffer, pBeginInfo: *const CommandBufferBeginInfo) -> Result,

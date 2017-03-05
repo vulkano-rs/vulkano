@@ -305,7 +305,6 @@ mod tests {
                     .fill_buffer(buffer.clone(), 128u32)
                     .build()
                     .submit(&queue);
-
         let content = buffer.read(Duration::from_secs(0)).unwrap();
         assert_eq!(*content, 128);
     }
