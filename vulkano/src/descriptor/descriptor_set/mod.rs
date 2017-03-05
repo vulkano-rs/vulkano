@@ -62,7 +62,7 @@ mod unsafe_layout;
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet {
+pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 }
@@ -76,18 +76,21 @@ unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet 
 
 /// Trait for objects that describe the layout of the descriptors of a set.
 pub unsafe trait DescriptorSetDesc {
-    /// Iterator that describes individual descriptors.
-    type Iter: ExactSizeIterator<Item = DescriptorDesc>;
+    /// Returns the number of binding slots in the set.
+    fn num_bindings(&self) -> usize;
 
-    /// Describes the layout of the descriptors of the pipeline.
-    fn desc(&self) -> Self::Iter;
+    /// Returns a description of a descriptor, or `None` if out of range.
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
 }
 
 unsafe impl<T> DescriptorSetDesc for T where T: SafeDeref, T::Target: DescriptorSetDesc {
-    type Iter = <T::Target as DescriptorSetDesc>::Iter;
+    #[inline]
+    fn num_bindings(&self) -> usize {
+        (**self).num_bindings()
+    }
 
     #[inline]
-    fn desc(&self) -> Self::Iter {
-        (**self).desc()
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+        (**self).descriptor(binding)
     }
 }

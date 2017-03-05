@@ -11,8 +11,10 @@ use std::sync::Arc;
 
 use buffer::Buffer;
 use buffer::BufferViewRef;
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
+use descriptor::descriptor_set::DescriptorSetDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
@@ -62,6 +64,18 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
+    }
+}
+
+unsafe impl<R, P> DescriptorSetDesc for SimpleDescriptorSet<R, P> where P: DescriptorPool {
+    #[inline]
+    fn num_bindings(&self) -> usize {
+        unimplemented!()        // FIXME:
+    }
+
+    #[inline]
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+        unimplemented!()        // FIXME:
     }
 }
 
