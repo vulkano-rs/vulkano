@@ -25,7 +25,8 @@ use device::Device;
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 ///
 /// Despite its name, this type is technically not unsafe. However it serves the same purpose
-/// in the API as other types whose names start with `Unsafe`.
+/// in the API as other types whose names start with `Unsafe`. Using the same naming scheme avoids
+/// confusions.
 pub struct UnsafeDescriptorSetLayout {
     // The layout.
     layout: vk::DescriptorSetLayout,
