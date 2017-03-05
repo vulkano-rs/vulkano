@@ -10,6 +10,7 @@
 use std::error;
 use std::sync::Arc;
 
+use buffer::Buffer;
 use command_buffer::cb;
 use command_buffer::cmd;
 use command_buffer::cb::AddCommand;
@@ -22,7 +23,10 @@ use command_buffer::pool::StandardCommandPool;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Image;
 use instance::QueueFamily;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use sync::GpuFuture;
 use OomError;
 
@@ -83,6 +87,20 @@ unsafe impl<P> CommandBuffer for AutoCommandBufferBuilder<P>
     #[inline]
     fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
         self.inner.submit_check(future, queue)
+    }
+
+    #[inline]
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        self.inner.check_buffer_access(buffer, exclusive, queue)
+    }
+
+    #[inline]
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        self.inner.check_image_access(image, exclusive, queue)
     }
 }
 

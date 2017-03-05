@@ -21,6 +21,8 @@ use image::Image;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use sync::GpuFuture;
 
 /// Layers that ensures that synchronization with buffers and images between command buffers is
@@ -461,6 +463,22 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
         // FIXME: pipeline barriers if necessary
 
         Ok(())
+    }
+
+    #[inline]
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        // FIXME: implement
+        Err(())
+    }
+
+    #[inline]
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        // FIXME: implement
+        Err(())
     }
 }
 

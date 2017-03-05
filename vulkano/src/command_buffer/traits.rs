@@ -91,6 +91,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         }
     }
 
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+
     // FIXME: lots of other methods
 }
 
@@ -105,6 +111,20 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     #[inline]
     fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
         (**self).submit_check(future, queue)
+    }
+
+    #[inline]
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        (**self).check_buffer_access(buffer, exclusive, queue)
+    }
+
+    #[inline]
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        (**self).check_image_access(image, exclusive, queue)
     }
 }
 
@@ -206,16 +226,20 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        // FIXME: check the command buffer too
-        self.previous.check_buffer_access(buffer, exclusive, queue)
+        match self.command_buffer.check_buffer_access(buffer, exclusive, queue) {
+            Ok(v) => Ok(v),
+            Err(()) => self.previous.check_buffer_access(buffer, exclusive, queue),
+        }
     }
 
     #[inline]
     fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        // FIXME: check the command buffer too
-        self.previous.check_image_access(image, exclusive, queue)
+        match self.command_buffer.check_image_access(image, exclusive, queue) {
+            Ok(v) => Ok(v),
+            Err(()) => self.previous.check_image_access(image, exclusive, queue),
+        }
     }
 }
 

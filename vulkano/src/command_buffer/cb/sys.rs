@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use buffer::Buffer;
 use command_buffer::CommandBuffer;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::AllocatedCommandBuffer;
@@ -25,6 +26,9 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
+use image::Image;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use sync::GpuFuture;
 use OomError;
 use VulkanObject;
@@ -299,6 +303,20 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), Box<Error>> {
         // Not our job to check.
         Ok(())
+    }
+
+    #[inline]
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        Err(())
+    }
+
+    #[inline]
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        Err(())
     }
 }
 
