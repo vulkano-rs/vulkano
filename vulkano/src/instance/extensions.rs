@@ -165,6 +165,7 @@ extensions! {
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_maintenance1 => b"VK_KHR_maintenance1",
     khr_descriptor_update_template => b"VK_KHR_descriptor_update_template",
+    khr_push_descriptor => b"VK_KHR_push_descriptor",
 }
 
 /// Error that can happen when loading the list of layers.
