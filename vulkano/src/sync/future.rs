@@ -26,8 +26,10 @@ use device::Queue;
 use image::Image;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
+use sync::AccessFlagBits;
 use sync::Fence;
 use sync::FenceWaitError;
+use sync::PipelineStages;
 use sync::Semaphore;
 
 use VulkanObject;
@@ -85,19 +87,27 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given buffer on the given queue.
     ///
-    /// > **Note**: Returning `true` means "access granted", while returning `false` means
-    /// > "don't know". Therefore returning `false` is never unsafe.
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool;
+    /// If the access is granted, returns the pipeline stage and access flags of the latest usage
+    /// of this resource, or `None` if irrelevant.
+    ///
+    /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
+    /// > "don't know". Therefore returning `Err` is never unsafe.
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
     ///
-    /// > **Note**: Returning `true` means "access granted", while returning `false` means
-    /// > "don't know". Therefore returning `false` is never unsafe.
+    /// If the access is granted, returns the pipeline stage and access flags of the latest usage
+    /// of this resource, or `None` if irrelevant.
+    ///
+    /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
+    /// > "don't know". Therefore returning `Err` is never unsafe.
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool;
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                         -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
@@ -217,12 +227,16 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         (**self).check_image_access(image, exclusive, queue)
     }
 }
@@ -273,13 +287,17 @@ unsafe impl GpuFuture for DummyFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
-        false
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        Err(())
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
-        false
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        Err(())
     }
 }
 
@@ -376,13 +394,17 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
-        self.previous.check_buffer_access(buffer, exclusive, queue)
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        self.previous.check_buffer_access(buffer, exclusive, queue).map(|_| None)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
-        self.previous.check_image_access(image, exclusive, queue)
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
+        self.previous.check_image_access(image, exclusive, queue).map(|_| None)
     }
 }
 
@@ -500,20 +522,22 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()> {
         if let Some(ref previous) = self.previous {
             previous.check_buffer_access(buffer, exclusive, queue)
         } else {
-            false
+            Err(())
         }
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()> {
         if let Some(ref previous) = self.previous {
             previous.check_image_access(image, exclusive, queue)
         } else {
-            false
+            Err(())
         }
     }
 }
@@ -647,20 +671,42 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         let first = self.first.check_buffer_access(buffer, exclusive, queue);
         let second = self.second.check_buffer_access(buffer, exclusive, queue);
-        debug_assert!(!exclusive || !(first && second), "Two futures gave exclusive access to the \
-                                                         same resource");
-        first || second
+        debug_assert!(!exclusive || !(first.is_ok() && second.is_ok()), "Two futures gave \
+                                                                         exclusive access to the \
+                                                                         same resource");
+        match (first, second) {
+            (Ok(v), Err(_)) | (Err(_), Ok(v)) => Ok(v),
+            (Err(()), Err(())) => Err(()),
+            (Ok(None), Ok(None)) => Ok(None),
+            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
+            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {
+                Ok(Some((a1 | b1, a2 | b2)))
+            },
+        }
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         let first = self.first.check_image_access(image, exclusive, queue);
         let second = self.second.check_image_access(image, exclusive, queue);
-        debug_assert!(!exclusive || !(first && second), "Two futures gave exclusive access to the \
-                                                         same resource");
-        first || second
+        debug_assert!(!exclusive || !(first.is_ok() && second.is_ok()), "Two futures gave \
+                                                                         exclusive access to the \
+                                                                         same resource");
+        match (first, second) {
+            (Ok(v), Err(_)) | (Err(_), Ok(v)) => Ok(v),
+            (Err(()), Err(())) => Err(()),
+            (Ok(None), Ok(None)) => Ok(None),
+            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
+            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {
+                Ok(Some((a1 | b1, a2 | b2)))
+            },
+        }
     }
 }

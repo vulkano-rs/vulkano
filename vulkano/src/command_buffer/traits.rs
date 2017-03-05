@@ -22,8 +22,10 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::Image;
+use sync::AccessFlagBits;
 use sync::DummyFuture;
 use sync::GpuFuture;
+use sync::PipelineStages;
 use SafeDeref;
 use VulkanObject;
 
@@ -201,13 +203,17 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue) -> bool {
+    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         // FIXME: check the command buffer too
         self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue) -> bool {
+    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    {
         // FIXME: check the command buffer too
         self.previous.check_image_access(image, exclusive, queue)
     }
