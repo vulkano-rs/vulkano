@@ -106,6 +106,19 @@ impl UnsafeCommandPool {
         Ok(())
     }
 
+    /// Trims a command pool, which recycles unused internal memory from the command pool back to the system.
+    ///
+    /// Command buffers allocated from the pool are not affected by trimming.
+    #[inline]
+    pub fn trim(&self) -> () {
+        assert!(self.device.loaded_extensions().khr_maintenance1); //TODO return error?
+        unsafe {
+            let flags = 0;
+            let vk = self.device.pointers();
+            vk.TrimCommandPoolKHR(self.device.internal_object(), self.pool, flags);
+        }
+    }
+
     /// Allocates `count` command buffers.
     ///
     /// If `secondary` is true, allocates secondary command buffers. Otherwise, allocates primary
