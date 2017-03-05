@@ -167,6 +167,7 @@ extensions! {
     khr_descriptor_update_template => b"VK_KHR_descriptor_update_template",
     khr_push_descriptor => b"VK_KHR_push_descriptor",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
+    khr_shader_draw_parameters => b"VK_KHR_shader_draw_parameters",
 }
 
 /// Error that can happen when loading the list of layers.
