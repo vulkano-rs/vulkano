@@ -490,6 +490,7 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
             fn member(name: &str) -> Option<$crate::pipeline::vertex::VertexMemberInfo> {
+                use std::ptr;
                 #[allow(unused_imports)]
                 use $crate::format::Format;
                 use $crate::pipeline::vertex::VertexMemberInfo;
@@ -501,13 +502,13 @@ macro_rules! impl_vertex {
                         let (ty, array_size) = unsafe {
                             #[inline] fn f<T: VertexMember>(_: &T) -> (VertexMemberTy, usize)
                                       { T::format() }
-                            let dummy = 0usize as *const $out;
+                            let dummy: *const $out = ptr::null();
                             f(&(&*dummy).$member)
                         };
 
                         return Some(VertexMemberInfo {
                             offset: unsafe {
-                                let dummy = 0usize as *const $out;
+                                let dummy: *const $out = ptr::null();
                                 let member = (&(&*dummy).$member) as *const _;
                                 member as usize
                             },
