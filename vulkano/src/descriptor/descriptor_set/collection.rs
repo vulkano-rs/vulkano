@@ -194,22 +194,24 @@ macro_rules! impl_collection {
 
             #[inline]
             fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
-                let &(first, $(ref $others,)*) = self;
-                let iter = first.buffers_list();
+                let &(ref first, $(ref $others,)*) = self;
+                let mut output = Vec::new();
+                output.extend(first.buffers_list());
                 $(
-                    let iter = iter.chain($others.buffers_list());
+                    output.extend($others.buffers_list());
                 )*
-                Box::new(iter)
+                Box::new(output.into_iter())
             }
 
             #[inline]
             fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
-                let &(first, $(ref $others,)*) = self;
-                let iter = first.images_list();
+                let &(ref first, $(ref $others,)*) = self;
+                let mut output = Vec::new();
+                output.extend(first.images_list());
                 $(
-                    let iter = iter.chain($others.images_list());
+                    output.extend($others.images_list());
                 )*
-                Box::new(iter)
+                Box::new(output.into_iter())
             }
         }
 
