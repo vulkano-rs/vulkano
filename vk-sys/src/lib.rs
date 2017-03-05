@@ -55,6 +55,7 @@ pub type SwapchainKHR = u64;
 pub type DisplayKHR = u64;
 pub type DisplayModeKHR = u64;
 pub type DebugReportCallbackEXT = u64;
+pub type DescriptorUpdateTemplateKHR = u64;
 
 pub const LOD_CLAMP_NONE: f32 = 1000.0;
 pub const REMAINING_MIP_LEVELS: u32 = 0xffffffff;
@@ -164,6 +165,7 @@ pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
 pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
+pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -976,6 +978,14 @@ pub const DEBUG_REPORT_ERROR_BIT_EXT: u32 = 0x00000008;
 pub const DEBUG_REPORT_DEBUG_BIT_EXT: u32 = 0x00000010;
 pub type DebugReportFlagsEXT = Flags;
 
+pub type DescriptorUpdateTemplateTypeKHR = u32;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR: u32 = 0;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR: u32 = 1;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_BEGIN_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_END_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_RANGE_SIZE_KHR: u32 = (DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR - DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR + 1);
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type DescriptorUpdateTemplateCreateFlagsKHR = Flags;
 
 pub type PFN_vkAllocationFunction = extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
 pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
@@ -2398,6 +2408,30 @@ pub struct ViSurfaceCreateInfoNN {
     pub window: *const c_void,
 }
 
+#[repr(C)]
+pub struct DescriptorUpdateTemplateEntryKHR {
+    pub dstBinding: u32,
+    pub dstArrayElement: u32,
+    pub descriptorCount: u32,
+    pub descriptorType: DescriptorType,
+    pub offset: usize,
+    pub stride: usize,
+}
+
+#[repr(C)]
+pub struct DescriptorUpdateTemplateCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: DescriptorUpdateTemplateCreateFlagsKHR,
+    pub descriptorUpdateEntryCount: u32,
+    pub pDescriptorUpdateEntries: *const DescriptorUpdateTemplateEntryKHR,
+    pub templateType: DescriptorUpdateTemplateTypeKHR,
+    pub descriptorSetLayout: DescriptorSetLayout,
+    pub pipelineBindPoint: PipelineBindPoint,
+    pub pipelineLayout: PipelineLayout,
+    pub set: u32,
+}
+
 
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
@@ -2625,4 +2659,8 @@ ptrs!(DevicePointers, {
     AcquireNextImageKHR => (device: Device, swapchain: SwapchainKHR, timeout: u64, semaphore: Semaphore, fence: Fence, pImageIndex: *mut u32) -> Result,
     QueuePresentKHR => (queue: Queue, pPresentInfo: *const PresentInfoKHR) -> Result,
     CreateSharedSwapchainsKHR => (device: Device, swapchainCount: u32, pCreateInfos: *const SwapchainCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSwapchains: *mut SwapchainKHR) -> Result,
+    CreateDescriptorUpdateTemplateKHR => (device: Device, pCreateInfo: *const DescriptorUpdateTemplateCreateInfoKHR, pAllocator: *const AllocationCallbacks, pDescriptorUpdateTemplate: *mut DescriptorUpdateTemplateKHR) -> Result,
+    DestroyDescriptorUpdateTemplateKHR => (device: Device, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pAllocator: *const AllocationCallbacks) -> (),
+    UpdateDescriptorSetWithTemplateKHR => (device: Device, descriptorSet: DescriptorSet, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pData: *const c_void) -> (),
+    CmdPushDescriptorSetWithTemplateKHR => (commandBuffer: CommandBuffer, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, layout: PipelineLayout, set: u32, pData: *const c_void) -> (),
 });
