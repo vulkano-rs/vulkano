@@ -7,10 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::iter;
+use buffer::Buffer;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
+use image::Image;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -31,6 +34,12 @@ pub unsafe trait DescriptorSetsCollection {
     ///
     /// Returns `None` if out of range.
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
+
+    /// Returns the list of buffers used by this descriptor set. Includes buffer views.
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a>;
+
+    /// Returns the list of images used by this descriptor set. Includes image views.
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
 }
 
 unsafe impl DescriptorSetsCollection for () {
@@ -52,6 +61,16 @@ unsafe impl DescriptorSetsCollection for () {
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         None
+    }
+
+    #[inline]
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+        Box::new(iter::empty())
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+        Box::new(iter::empty())
     }
 }
 
@@ -85,6 +104,16 @@ unsafe impl<T> DescriptorSetsCollection for T
             0 => self.descriptor(binding),
             _ => None
         }
+    }
+
+    #[inline]
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+        DescriptorSet::buffers_list(self)
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+        DescriptorSet::images_list(self)
     }
 }
 
@@ -161,6 +190,26 @@ macro_rules! impl_collection {
                 )*
 
                 None
+            }
+
+            #[inline]
+            fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+                let &(first, $(ref $others,)*) = self;
+                let iter = first.buffers_list();
+                $(
+                    let iter = iter.chain($others.buffers_list());
+                )*
+                Box::new(iter)
+            }
+
+            #[inline]
+            fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+                let &(first, $(ref $others,)*) = self;
+                let iter = first.images_list();
+                $(
+                    let iter = iter.chain($others.images_list());
+                )*
+                Box::new(iter)
             }
         }
 

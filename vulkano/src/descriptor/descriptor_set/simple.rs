@@ -24,6 +24,7 @@ use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
+use image::Image;
 use image::ImageView;
 use image::sys::Layout;
 use sampler::Sampler;
@@ -64,6 +65,16 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
+    }
+
+    #[inline]
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+        unimplemented!()
     }
 }
 
