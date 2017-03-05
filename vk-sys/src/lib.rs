@@ -99,6 +99,7 @@ pub const SUBOPTIMAL_KHR: u32 = 1000001003;
 pub const ERROR_OUT_OF_DATE_KHR: u32 = -1000001004i32 as u32;
 pub const ERROR_INCOMPATIBLE_DISPLAY_KHR: u32 = -1000003001i32 as u32;
 pub const ERROR_VALIDATION_FAILED_EXT: u32 = -1000011001i32 as u32;
+pub const ERROR_OUT_OF_POOL_MEMORY_KHR: u32 = -1000069000i32 as u32;
 
 pub type StructureType = u32;
 pub const STRUCTURE_TYPE_APPLICATION_INFO: u32 = 0;
@@ -596,6 +597,8 @@ pub const FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT: u32 = 0x00000200;
 pub const FORMAT_FEATURE_BLIT_SRC_BIT: u32 = 0x00000400;
 pub const FORMAT_FEATURE_BLIT_DST_BIT: u32 = 0x00000800;
 pub const FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT: u32 = 0x00001000;
+pub const FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR: u32 = 0x00004000;
+pub const FORMAT_FEATURE_TRANSFER_DST_BIT_KHR: u32 = 0x00008000;
 pub type FormatFeatureFlags = Flags;
 
 
@@ -617,6 +620,7 @@ pub const IMAGE_CREATE_SPARSE_RESIDENCY_BIT: u32 = 0x00000002;
 pub const IMAGE_CREATE_SPARSE_ALIASED_BIT: u32 = 0x00000004;
 pub const IMAGE_CREATE_MUTABLE_FORMAT_BIT: u32 = 0x00000008;
 pub const IMAGE_CREATE_CUBE_COMPATIBLE_BIT: u32 = 0x00000010;
+pub const IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR: u32 = 0x00000020;
 pub type ImageCreateFlags = Flags;
 
 
@@ -849,6 +853,9 @@ pub type CommandPoolCreateFlags = Flags;
 pub type CommandPoolResetFlagBits = u32;
 pub const COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT: u32 = 0x00000001;
 pub type CommandPoolResetFlags = Flags;
+
+
+pub type CommandPoolTrimFlagsKHR = Flags;
 
 
 pub type CommandBufferUsageFlagBits = u32;
@@ -2563,6 +2570,7 @@ ptrs!(DevicePointers, {
     DestroyCommandPool => (device: Device, commandPool: CommandPool, pAllocator: *const AllocationCallbacks) -> (),
     ResetCommandPool => (device: Device, commandPool: CommandPool, flags: CommandPoolResetFlags) -> Result,
     AllocateCommandBuffers => (device: Device, pAllocateInfo: *const CommandBufferAllocateInfo, pCommandBuffers: *mut CommandBuffer) -> Result,
+    TrimCommandPoolKHR => (device: Device, commandPool: CommandPool, flags: CommandPoolTrimFlagsKHR) -> (),
     FreeCommandBuffers => (device: Device, commandPool: CommandPool, commandBufferCount: u32, pCommandBuffers: *const CommandBuffer) -> (),
     BeginCommandBuffer => (commandBuffer: CommandBuffer, pBeginInfo: *const CommandBufferBeginInfo) -> Result,
     EndCommandBuffer => (commandBuffer: CommandBuffer) -> Result,
