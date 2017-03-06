@@ -22,7 +22,7 @@
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
 //!
-//! // Creating the instance. See the documentation of the `instance` module. 
+//! // Creating the instance. See the documentation of the `instance` module.
 //! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
@@ -49,23 +49,23 @@
 //!
 //! Two of the parameters that you pass to `Device::new` are the list of the features and the list
 //! of extensions to enable on the newly-created device.
-//! 
+//!
 //! > **Note**: Device extensions are the same as instance extensions, except for the device.
 //! > Features are similar to extensions, except that they are part of the core Vulkan
 //! > specifications instead of being separate documents.
-//! 
+//!
 //! Some Vulkan capabilities, such as swapchains (that allow you to render on the screen) or
 //! geometry shaders for example, require that you enable a certain feature or extension when you
 //! create the device. Contrary to OpenGL, you can't use the functions provided by a feature or an
 //! extension if you didn't explicitly enable it when creating the device.
-//! 
+//!
 //! Not all physical devices support all possible features and extensions. For example mobile
 //! devices tend to not support geometry shaders, because their hardware is not capable of it. You
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
 //! TODO: oops, there's no method for querying supported extensions in vulkan yet.
 //!
 //! > **Note**: The fact that you need to manually enable features at initialization also means
-//! > that you don't need to worry about a capability not being supported later on in your code.  
+//! > that you don't need to worry about a capability not being supported later on in your code.
 //!
 //! # Queues
 //!
@@ -74,7 +74,7 @@
 //!
 //! > **Note**: You can think of a queue like a CPU thread. Each queue executes its commands one
 //! > after the other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
-//! > technology, in the sense that queues will only run partially in parallel. 
+//! > technology, in the sense that queues will only run partially in parallel.
 //!
 //! The Vulkan API requires that you specify the list of queues that you are going to use at the
 //! same time as when you create the device. This is done in vulkano by passing an iterator where
@@ -511,6 +511,8 @@ pub enum DeviceCreationError {
     UnsupportedFeatures,
     /// The priority of one of the queues is out of the [0.0; 1.0] range.
     PriorityOutOfRange,
+    /// Some of the requested device extensions are not supported by the physical device.
+    ExtensionNotPresent,
 }
 
 impl error::Error for DeviceCreationError {
@@ -530,6 +532,9 @@ impl error::Error for DeviceCreationError {
             DeviceCreationError::PriorityOutOfRange => {
                 "the priority of one of the queues is out of the [0.0; 1.0] range"
             },
+            DeviceCreationError::ExtensionNotPresent => {
+                "some of the requested device extensions are not supported by the physical device"
+            }
         }
     }
 }
@@ -547,6 +552,7 @@ impl From<Error> for DeviceCreationError {
         match err {
             Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
             Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
+            Error::ExtensionNotPresent => DeviceCreationError::ExtensionNotPresent,
             _ => panic!("Unexpected error value: {}", err as i32)
         }
     }
