@@ -163,9 +163,6 @@ extensions! {
     DeviceExtensions,
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
-    khr_maintenance1 => b"VK_KHR_maintenance1",
-    khr_descriptor_update_template => b"VK_KHR_descriptor_update_template",
-    khr_push_descriptor => b"VK_KHR_push_descriptor",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
     khr_shader_draw_parameters => b"VK_KHR_shader_draw_parameters",
 }
