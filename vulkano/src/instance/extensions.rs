@@ -156,7 +156,6 @@ instance_extensions! {
     ext_debug_report => b"VK_EXT_debug_report",
     nn_vi_surface => b"VK_NN_vi_surface",
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
-    khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
 }
 
 extensions! {
@@ -164,7 +163,6 @@ extensions! {
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
-    khr_shader_draw_parameters => b"VK_KHR_shader_draw_parameters",
 }
 
 /// Error that can happen when loading the list of layers.
