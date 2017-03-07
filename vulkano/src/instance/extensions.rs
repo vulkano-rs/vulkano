@@ -210,6 +210,7 @@ device_extensions! {
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
+    khr_maintenance1 => b"VK_KHR_maintenance1",
 }
 
 /// Error that can happen when loading the list of layers.
