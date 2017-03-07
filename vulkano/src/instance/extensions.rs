@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::error;
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 use std::fmt;
 use std::ptr;
 use std::str;
@@ -116,7 +116,6 @@ macro_rules! instance_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    use std::ffi::CStr;
                     let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
@@ -167,7 +166,6 @@ macro_rules! device_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    use std::ffi::CStr;
                     let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
