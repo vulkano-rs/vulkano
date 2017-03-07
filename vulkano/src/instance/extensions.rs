@@ -116,16 +116,11 @@ macro_rules! instance_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = property.extensionName;
+                    use std::ffi::CStr;
+                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
                     $(
-                        // TODO: this is VERY inefficient
                         // TODO: Check specVersion?
-                        let same = {
-                            let mut i = 0;
-                            while name[i] != 0 && $s[i] != 0 && name[i] as u8 == $s[i] && i < $s.len() { i += 1; }
-                            name[i] == 0 && (i >= $s.len() || name[i] as u8 == $s[i])
-                        };
-                        if same {
+                        if name.to_bytes() == &$s[..] {
                             extensions.$ext = true;
                         }
                     )*
@@ -172,16 +167,11 @@ macro_rules! device_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = property.extensionName;
+                    use std::ffi::CStr;
+                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
                     $(
-                        // TODO: this is VERY inefficient
                         // TODO: Check specVersion?
-                        let same = {
-                            let mut i = 0;
-                            while name[i] != 0 && $s[i] != 0 && name[i] as u8 == $s[i] && i < $s.len() { i += 1; }
-                            name[i] == 0 && (i >= $s.len() || name[i] as u8 == $s[i])
-                        };
-                        if same {
+                        if name.to_bytes() == &$s[..] {
                             extensions.$ext = true;
                         }
                     )*
