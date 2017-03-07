@@ -194,6 +194,8 @@ macro_rules! impl_collection {
 
             #[inline]
             fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+                #![allow(non_snake_case)]
+
                 let &(ref first, $(ref $others,)*) = self;
                 let mut output = Vec::new();
                 output.extend(first.buffers_list());
@@ -205,6 +207,8 @@ macro_rules! impl_collection {
 
             #[inline]
             fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+                #![allow(non_snake_case)]
+
                 let &(ref first, $(ref $others,)*) = self;
                 let mut output = Vec::new();
                 output.extend(first.images_list());
