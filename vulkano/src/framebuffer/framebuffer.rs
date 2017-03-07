@@ -118,7 +118,7 @@ use vk;
 /// };
 /// # }
 /// ```
-pub struct Framebuffer<Rp, A = Box<AttachmentsList>> {        // TODO: remove default params
+pub struct Framebuffer<Rp, A> {
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,

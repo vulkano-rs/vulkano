@@ -42,7 +42,7 @@ use vk;
 ///
 /// The `RenderPass` struct should always implement the `RenderPassAbstract` trait. Therefore
 /// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract>` if you need to.
-pub struct RenderPass<D> {        // TODO: remove default param type
+pub struct RenderPass<D> {
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
 
