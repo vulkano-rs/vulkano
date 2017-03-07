@@ -118,6 +118,8 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                 },
                 // A fragmented pool error can't happen at the first ever allocation.
                 Err(DescriptorPoolAllocError::FragmentedPool) => unreachable!(),
+                // Out of pool memory cannot happen at the first ever allocation.
+                Err(DescriptorPoolAllocError::OutOfPoolMemory) => unreachable!(),
             }
         };
 

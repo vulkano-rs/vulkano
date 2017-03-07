@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Safe and rich Rust wrapper around the Vulkan API.
-//! 
+//!
 //! # Brief summary of Vulkan
 //!
 //! - The `Instance` object is the API entry point. It is the first object you must create before
@@ -196,6 +196,7 @@ pub enum Error {
     OutOfDate = vk::ERROR_OUT_OF_DATE_KHR,
     IncompatibleDisplay = vk::ERROR_INCOMPATIBLE_DISPLAY_KHR,
     ValidationFailed = vk::ERROR_VALIDATION_FAILED_EXT,
+    OutOfPoolMemory = vk::ERROR_OUT_OF_POOL_MEMORY_KHR,
 }
 
 /// Checks whether the result returned correctly.
@@ -224,6 +225,7 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_OUT_OF_DATE_KHR => Err(Error::OutOfDate),
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
+        vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
         c => unreachable!("Unexpected error code returned by Vulkan: {}", c)
     }
 }

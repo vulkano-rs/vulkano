@@ -352,6 +352,9 @@ impl UnsafeDescriptorPool {
             vk::ERROR_OUT_OF_DEVICE_MEMORY => {
                 return Err(DescriptorPoolAllocError::OutOfDeviceMemory);
             },
+            vk::ERROR_OUT_OF_POOL_MEMORY_KHR => {
+                return Err(DescriptorPoolAllocError::OutOfPoolMemory);
+            },
             c if (c as i32) < 0 => {
                 return Err(DescriptorPoolAllocError::FragmentedPool);
             },
@@ -428,6 +431,8 @@ pub enum DescriptorPoolAllocError {
     OutOfDeviceMemory,
     /// Allocation has failed because the pool is too fragmented.
     FragmentedPool,
+    /// There is no more space available in the descriptor pool.
+    OutOfPoolMemory,
 }
 
 impl error::Error for DescriptorPoolAllocError {
@@ -443,6 +448,9 @@ impl error::Error for DescriptorPoolAllocError {
             DescriptorPoolAllocError::FragmentedPool => {
                 "allocation has failed because the pool is too fragmented"
             },
+            DescriptorPoolAllocError::OutOfPoolMemory => {
+                "There is no more space available in the descriptor pool"
+            }
         }
     }
 }
@@ -641,7 +649,7 @@ impl UnsafeDescriptorSet {
                 Some(off) => image_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null()
             };
-            
+
             write.pBufferInfo = match raw_writes_buf_infos[i] {
                 Some(off) => buffer_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null()
@@ -674,7 +682,7 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
 /// Represents a single write entry to a descriptor set.
 ///
 /// Use the various constructors to build a `DescriptorWrite`. While it is not unsafe to build a
-/// `DescriptorWrite`, it is unsafe to actually use it to write to a descriptor set. 
+/// `DescriptorWrite`, it is unsafe to actually use it to write to a descriptor set.
 pub struct DescriptorWrite {
     binding: u32,
     first_array_element: u32,
