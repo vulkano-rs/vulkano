@@ -103,5 +103,5 @@ pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
 pass_through!((S, D), cmd::CmdResolveImage<S, D>);
 pass_through!((), cmd::CmdSetEvent);
 pass_through!((), cmd::CmdSetState);
-//pass_through!((B), cmd::CmdUpdateBuffer<B>);
+pass_through!((B, D), cmd::CmdUpdateBuffer<B, D>);
 
