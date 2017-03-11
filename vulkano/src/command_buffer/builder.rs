@@ -57,6 +57,17 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         Ok(self.add(cmd))
     }
 
+    /// Adds a command that copies from a buffer to another.
+    #[inline]
+    fn copy_buffer<S, D, O>(self, src: S, dest: D) -> Result<O, cmd::CmdCopyBufferError>
+        where Self: Sized + AddCommand<cmd::CmdCopyBuffer<S, D>, Out = O>,
+              S: Buffer,
+              D: Buffer
+    {
+        let cmd = cmd::CmdCopyBuffer::new(src, dest)?;
+        Ok(self.add(cmd))
+    }
+
     /// Adds a command that copies the content of a buffer to an image.
     ///
     /// For color images (ie. all formats except depth and/or stencil formats) this command does

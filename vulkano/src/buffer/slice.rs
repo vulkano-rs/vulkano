@@ -43,12 +43,26 @@ use device::Queue;
 /// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
 /// ```
 ///
-#[derive(Clone)]
 pub struct BufferSlice<T: ?Sized, B> {
     marker: PhantomData<T>,
     resource: B,
     offset: usize,
     size: usize,
+}
+
+// We need to implement `Clone` manually, otherwise the derive adds a `T: Clone` requirement.
+impl<T: ?Sized, B> Clone for BufferSlice<T, B>
+    where B: Clone
+{
+    #[inline]
+    fn clone(&self) -> Self {
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource.clone(),
+            offset: self.offset,
+            size: self.size,
+        }
+    }
 }
 
 impl<T: ?Sized, B> BufferSlice<T, B> {
