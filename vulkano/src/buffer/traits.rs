@@ -70,6 +70,22 @@ pub unsafe trait Buffer: DeviceOwned {
         BufferSlice::from(self)
     }
 
+    /// Builds a `BufferSlice` object holding part of the buffer by reference.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    ///
+    /// This method can be used when you want to perform an operation on a specific element of the
+    /// buffer and not on the whole buffer.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
+        where Self: Sized + TypedBuffer<Content = [T]>,
+              T: 'static
+    {
+        self.slice(index .. (index + 1))
+    }
+
     /// Returns true if an access to `self` (as defined by `self_offset` and `self_size`)
     /// potentially overlaps the same memory as an access to `other` (as defined by `other_offset`
     /// and `other_size`).
