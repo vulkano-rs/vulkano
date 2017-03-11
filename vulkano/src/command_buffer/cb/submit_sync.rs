@@ -404,14 +404,14 @@ unsafe impl<I, O> AddCommand<cmd::CmdSetState> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<'a, I, O, B, D> AddCommand<cmd::CmdUpdateBuffer<'a, B, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdUpdateBuffer<'a, B, D>, Out = O>,
+unsafe impl<I, O, B, D> AddCommand<cmd::CmdUpdateBuffer<B, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<cmd::CmdUpdateBuffer<B, D>, Out = O>,
           B: Buffer + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdUpdateBuffer<'a, B, D>) -> Self::Out {
+    fn add(mut self, command: cmd::CmdUpdateBuffer<B, D>) -> Self::Out {
         self.add_buffer(command.buffer(), true);
 
         SubmitSyncBuilderLayer {

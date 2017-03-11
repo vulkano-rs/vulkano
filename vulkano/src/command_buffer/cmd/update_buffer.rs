@@ -10,6 +10,8 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
+use std::os::raw::c_void;
+use std::ptr;
 
 use buffer::Buffer;
 use buffer::BufferInner;
@@ -23,9 +25,7 @@ use VulkanPointers;
 use vk;
 
 /// Command that sets the content of a buffer to some data.
-pub struct CmdUpdateBuffer<'a, B, D: ?Sized>
-    where D: 'a
-{
+pub struct CmdUpdateBuffer<B, D> {
     // The buffer to update.
     buffer: B,
     // Raw buffer handle.
@@ -34,13 +34,15 @@ pub struct CmdUpdateBuffer<'a, B, D: ?Sized>
     offset: vk::DeviceSize,
     // Size of the update.
     size: vk::DeviceSize,
-    // The data to write to the buffer.
-    data: &'a D,
+    // If null, contains a pointer to the raw data to write. If `None`, the data is the `data`
+    // field.
+    data_ptr: *const c_void,
+    // The data to write to the buffer or a reference to it.
+    data: D,
 }
 
-impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
-    where B: Buffer,
-          D: Copy + 'static,
+impl<B, D> CmdUpdateBuffer<B, D>
+    where B: Buffer
 {
     /// Builds a command that writes data to a buffer.
     ///
@@ -49,7 +51,8 @@ impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
     ///
     /// The size of the modification must not exceed 65536 bytes. The offset and size must be
     /// multiples of four.
-    pub fn new(buffer: B, data: &'a D) -> Result<CmdUpdateBuffer<'a, B, D>, CmdUpdateBufferError> {
+    // TODO: type safety
+    pub fn new(buffer: B, data: D) -> Result<CmdUpdateBuffer<B, D>, CmdUpdateBufferError> {
         let size = buffer.size();
 
         let (buffer_handle, offset) = {
@@ -76,12 +79,13 @@ impl<'a, B, D: ?Sized> CmdUpdateBuffer<'a, B, D>
             buffer_handle: buffer_handle,
             offset: offset as vk::DeviceSize,
             size: size as vk::DeviceSize,
+            data_ptr: ptr::null(),
             data: data,
         })
     }
 }
 
-impl<'a, B, D> CmdUpdateBuffer<'a, B, D> {
+impl<B, D> CmdUpdateBuffer<B, D> {
     /// Returns the buffer that is going to be written.
     #[inline]
     pub fn buffer(&self) -> &B {
@@ -89,7 +93,7 @@ impl<'a, B, D> CmdUpdateBuffer<'a, B, D> {
     }
 }
 
-unsafe impl<'a, B, D> DeviceOwned for CmdUpdateBuffer<'a, B, D>
+unsafe impl<B, D> DeviceOwned for CmdUpdateBuffer<B, D>
     where B: DeviceOwned
 {
     #[inline]
@@ -98,20 +102,24 @@ unsafe impl<'a, B, D> DeviceOwned for CmdUpdateBuffer<'a, B, D>
     }
 }
 
-unsafe impl<'a, 'd, P, B, D: ?Sized> AddCommand<&'a CmdUpdateBuffer<'d, B, D>> for UnsafeCommandBufferBuilder<P>
+unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommandBufferBuilder<P>
     where B: Buffer,
-          D: Copy + 'static,
           P: CommandPool,
 {
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdUpdateBuffer<'d, B, D>) -> Self::Out {
+    fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Self::Out {
         unsafe {
+            let data = if command.data_ptr.is_null() {
+                &command.data as *const D as *const _
+            } else {
+                command.data_ptr as *const _
+            };
+
             let vk = self.device().pointers();
             let cmd = self.internal_object();
-            vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size,
-                               command.data as *const D as *const _);
+            vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size, data);
         }
 
         self

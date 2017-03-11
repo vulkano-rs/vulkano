@@ -47,6 +47,16 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         Ok(self.add(cmd))
     }
 
+    /// Adds a command that writes data to a buffer.
+    #[inline]
+    fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, cmd::CmdUpdateBufferError>
+        where Self: Sized + AddCommand<cmd::CmdUpdateBuffer<B, D>, Out = O>,
+              B: Buffer
+    {
+        let cmd = cmd::CmdUpdateBuffer::new(buffer, data)?;
+        Ok(self.add(cmd))
+    }
+
     /// Adds a command that copies the content of a buffer to an image.
     ///
     /// For color images (ie. all formats except depth and/or stencil formats) this command does
