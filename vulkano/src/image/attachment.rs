@@ -29,6 +29,8 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::IntoImage;
+use image::traits::IntoImageView;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -231,6 +233,30 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
     #[inline]
     fn matches_format(&self) -> bool {
         true        // FIXME:
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> IntoImage for Arc<AttachmentImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_image(self) -> Self {
+        self
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> IntoImageView for Arc<AttachmentImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_image_view(self) -> Self {
+        self
     }
 }
 

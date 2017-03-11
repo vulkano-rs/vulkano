@@ -19,6 +19,8 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::IntoImage;
+use image::traits::IntoImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -171,9 +173,34 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-pub struct SwapchainImageCbState {
-    stages: PipelineStages,
-    access: AccessFlagBits,
-    command_num: usize,
-    layout: Layout,
+unsafe impl IntoImage for SwapchainImage {
+    type Target = SwapchainImage;
+
+    fn into_image(self) -> Self::Target {
+        self
+    }
+}
+
+unsafe impl IntoImageView for SwapchainImage {
+    type Target = SwapchainImage;
+
+    fn into_image_view(self) -> Self::Target {
+        self
+    }
+}
+
+unsafe impl IntoImage for Arc<SwapchainImage> {
+    type Target = Arc<SwapchainImage>;
+
+    fn into_image(self) -> Self::Target {
+        self
+    }
+}
+
+unsafe impl IntoImageView for Arc<SwapchainImage> {
+    type Target = Arc<SwapchainImage>;
+
+    fn into_image_view(self) -> Self::Target {
+        self
+    }
 }
