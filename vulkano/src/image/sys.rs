@@ -139,6 +139,14 @@ impl UnsafeImage {
             if usage.input_attachment && (features & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0) {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
+            if device.loaded_extensions().khr_maintenance1 {
+                if usage.transfer_source && (features & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
+                if usage.transfer_dest && (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
+            }
 
             features
         };
