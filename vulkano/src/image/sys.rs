@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Low-level implementation of images and images views.
-//! 
+//!
 //! This module contains low-level wrappers around the Vulkan image and image view types. All
 //! other image or image view types of this library, and all custom image or image view types
 //! that you create must wrap around the types in this module.
@@ -528,7 +528,7 @@ impl UnsafeImage {
     /// The layout is invariant for each image. However it is not cached, as this would waste
     /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
     /// somewhere in order to avoid calling this semi-expensive function at every single memory
-    /// access. 
+    /// access.
     ///
     /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
     /// you can easily calculate the position of any layer.
@@ -864,7 +864,7 @@ impl UnsafeImageView {
             format: image.format,
         })
     }
-    
+
     /// Creates a new view from an image.
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view

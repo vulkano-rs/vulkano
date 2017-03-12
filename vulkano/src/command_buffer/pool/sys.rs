@@ -10,6 +10,8 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 use smallvec::SmallVec;
@@ -21,6 +23,7 @@ use device::Device;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
+use Error;
 use check_errors;
 use vk;
 
@@ -110,13 +113,16 @@ impl UnsafeCommandPool {
     ///
     /// Command buffers allocated from the pool are not affected by trimming.
     #[inline]
-    pub fn trim(&self) -> () {
-        assert!(self.device.loaded_extensions().khr_maintenance1); //TODO return error?
+    pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
+        if !self.device.loaded_extensions().khr_maintenance1 {
+            return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
+        }
         unsafe {
             let flags = 0;
             let vk = self.device.pointers();
             vk.TrimCommandPoolKHR(self.device.internal_object(), self.pool, flags);
         }
+        Ok(())
     }
 
     /// Allocates `count` command buffers.
@@ -216,3 +222,34 @@ impl Iterator for UnsafeCommandPoolAllocIter {
 }
 
 impl ExactSizeIterator for UnsafeCommandPoolAllocIter {}
+
+/// Error that can happen when trimming command pools.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CommandPoolTrimError {
+    /// The `KHR_maintenance1` extension was not enabled.
+    Maintenance1ExtensionNotEnabled,
+}
+
+impl error::Error for CommandPoolTrimError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CommandPoolTrimError::Maintenance1ExtensionNotEnabled => "the `KHR_maintenance1` \
+                                                                      extension was not enabled",
+        }
+    }
+}
+
+impl fmt::Display for CommandPoolTrimError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for CommandPoolTrimError {
+    #[inline]
+    fn from(err: Error) -> CommandPoolTrimError {
+        panic!("unexpected error: {:?}", err)
+    }
+}
