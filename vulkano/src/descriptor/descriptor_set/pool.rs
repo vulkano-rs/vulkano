@@ -449,7 +449,7 @@ impl error::Error for DescriptorPoolAllocError {
                 "allocation has failed because the pool is too fragmented"
             },
             DescriptorPoolAllocError::OutOfPoolMemory => {
-                "There is no more space available in the descriptor pool"
+                "there is no more space available in the descriptor pool"
             }
         }
     }
