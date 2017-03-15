@@ -420,10 +420,10 @@ macro_rules! ordered_passes_renderpass {
         }
 
         impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param> {
-            fn check_attachments_list(self) -> Result<($first_param, $($prev_params,)*), FramebufferCreationError> {
+            fn check_attachments_list(self) -> Result<($($prev_params,)* $first_param), FramebufferCreationError> {
                 let ($($prev_params,)*) = try!(self.prev.check_attachments_list());
                 // FIXME: check attachment
-                Ok((self.current, $($prev_params,)*))
+                Ok(($($prev_params,)* self.current))
             }
         }
 
