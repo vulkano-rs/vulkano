@@ -7,109 +7,94 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
 use buffer::Buffer;
 use buffer::TypedBuffer;
 use command_buffer::DynamicState;
+use command_buffer::cb::AddCommand;
 use command_buffer::cmd::CmdBindDescriptorSets;
 use command_buffer::cmd::CmdBindIndexBuffer;
 use command_buffer::cmd::CmdBindPipeline;
 use command_buffer::cmd::CmdBindVertexBuffers;
 use command_buffer::cmd::CmdPushConstants;
 use command_buffer::cmd::CmdSetState;
-use command_buffer::RawCommandBufferPrototype;
-use command_buffer::CommandsList;
-use command_buffer::CommandsListSink;
-use descriptor::PipelineLayoutAbstract;
-use descriptor::descriptor_set::collection::TrackedDescriptorSetsCollection;
-use device::DeviceOwned;
-use pipeline::GraphicsPipeline;
+use command_buffer::cmd::CmdDrawIndexedRaw;
+use descriptor::descriptor_set::DescriptorSetsCollection;
+use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::Index;
-use pipeline::vertex::Source;
-use VulkanPointers;
+use pipeline::vertex::VertexSource;
 
 /// Command that draws indexed vertices.
-pub struct CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection
+pub struct CmdDrawIndexed<V, Ib, P, S, Pc>
 {
-    // Parent commands list.
-    previous: CmdBindIndexBuffer<
-                CmdBindVertexBuffers<
-                    CmdPushConstants<
-                        CmdBindDescriptorSets<
-                            CmdSetState<
-                                CmdBindPipeline<L, Arc<GraphicsPipeline<Pv, Pl, Prp>>>
-                            >,
-                            S, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                        >,
-                        Pc, Arc<GraphicsPipeline<Pv, Pl, Prp>>
-                    >,
-                    V
-                >,
-                Ib
-              >,
-
-    // Parameters for vkCmdDrawIndexedIndexed.
-    index_count: u32,
-    instance_count: u32,
-    first_index: u32,
-    vertex_offset: i32,
-    first_instance: u32,
+    vertex_buffers: CmdBindVertexBuffers<V>,
+    index_buffer: CmdBindIndexBuffer<Ib>,
+    push_constants: CmdPushConstants<Pc, P>,
+    descriptor_sets: CmdBindDescriptorSets<S, P>,
+    set_state: CmdSetState,
+    bind_pipeline: CmdBindPipeline<P>,
+    draw_indexed_raw: CmdDrawIndexedRaw,
 }
 
-impl<L, V, I, Ib, Pv, Pl, Prp, S, Pc> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList,
-          Pl: PipelineLayoutAbstract,
-          S: TrackedDescriptorSetsCollection,
+impl<V, Ib, I, P, S, Pc> CmdDrawIndexed<V, Ib, P, S, Pc>
+    where P: GraphicsPipelineAbstract, 
+          S: DescriptorSetsCollection,
           Ib: Buffer + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// See the documentation of the `draw` method.
-    pub fn new(previous: L, pipeline: Arc<GraphicsPipeline<Pv, Pl, Prp>>,
-               dynamic: DynamicState, vertices: V, index_buffer: Ib, sets: S, push_constants: Pc)
-               -> CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-        where Pv: Source<V>
+    pub fn new(pipeline: P, dynamic: DynamicState,
+        vertices: V, index_buffer: Ib, sets: S, push_constants: Pc)
+               -> CmdDrawIndexed<V, Ib, P, S, Pc>
+        where P: VertexSource<V> + Clone
     {
         let index_count = index_buffer.len();
-        let (_, _, instance_count) = pipeline.vertex_definition().decode(&vertices);
+        let (_, _, instance_count) = pipeline.decode(&vertices);
 
-        let previous = CmdBindPipeline::bind_graphics_pipeline(previous, pipeline.clone());
-        let device = previous.device().clone();
-        let previous = CmdSetState::new(previous, device, dynamic);
-        let previous = CmdBindDescriptorSets::new(previous, true, pipeline.clone(), sets).unwrap() /* TODO: error */;
-        let previous = CmdPushConstants::new(previous, pipeline.clone(), push_constants).unwrap() /* TODO: error */;
-        let previous = CmdBindVertexBuffers::new(previous, pipeline.vertex_definition(), vertices);
-        let previous = CmdBindIndexBuffer::new(previous, index_buffer);
-
+        let bind_pipeline = CmdBindPipeline::bind_graphics_pipeline(pipeline.clone());
+        let device = bind_pipeline.device().clone();
+        let set_state = CmdSetState::new(device, dynamic);
+        let descriptor_sets = CmdBindDescriptorSets::new(true, pipeline.clone(), sets).unwrap() /* TODO: error */;
+        let push_constants = CmdPushConstants::new(pipeline.clone(), push_constants).unwrap() /* TODO: error */;
+        let vertex_buffers = CmdBindVertexBuffers::new(&pipeline, vertices);
+        let index_buffer = CmdBindIndexBuffer::new(index_buffer);
+        let draw_indexed_raw = unsafe {
+            CmdDrawIndexedRaw::new(
+                index_count as u32, instance_count as u32,
+                0, 0, 0
+            )
+        };
         // TODO: check that dynamic state is not missing some elements required by the pipeline
 
         CmdDrawIndexed {
-            previous: previous,
-            index_count: index_count as u32,
-            instance_count: instance_count as u32,
-            first_index: 0,
-            vertex_offset: 0,
-            first_instance: 0,
+            vertex_buffers: vertex_buffers,
+            index_buffer: index_buffer,
+            push_constants: push_constants,
+            descriptor_sets: descriptor_sets,
+            set_state: set_state,
+            bind_pipeline: bind_pipeline,
+            draw_indexed_raw: draw_indexed_raw,
         }
     }
 }
 
-unsafe impl<L, V, Ib, Pv, Pl, Prp, S, Pc> CommandsList for CmdDrawIndexed<L, V, Ib, Pv, Pl, Prp, S, Pc>
-    where L: CommandsList, Pl: PipelineLayoutAbstract, S: TrackedDescriptorSetsCollection,
-          Ib: Buffer
+unsafe impl<Cb, V, Ib, P, S, Pc, O, O1, O2, O3, O4, O5, O6> AddCommand<CmdDrawIndexed<V, Ib, P, S, Pc>> for Cb
+    where Cb: AddCommand<CmdBindVertexBuffers<V>, Out = O1>,
+          O1: AddCommand<CmdBindIndexBuffer<Ib>, Out = O2>,
+          O2: AddCommand<CmdPushConstants<Pc, P>, Out = O3>,
+          O3: AddCommand<CmdBindDescriptorSets<S, P>, Out = O4>,
+          O4: AddCommand<CmdSetState, Out = O5>,
+          O5: AddCommand<CmdBindPipeline<P>, Out = O6>,
+          O6: AddCommand<CmdDrawIndexedRaw, Out = O>
 {
+    type Out = O;
     #[inline]
-    fn append<'a>(&'a self, builder: &mut CommandsListSink<'a>) {
-        self.previous.append(builder);
-
-        builder.add_command(Box::new(move |raw: &mut RawCommandBufferPrototype| {
-            unsafe {
-                let vk = raw.device.pointers();
-                let cmd = raw.command_buffer.clone().take().unwrap();
-                vk.CmdDrawIndexed(cmd, self.index_count, self.instance_count, self.first_index,
-                                  self.vertex_offset, self.first_instance);
-            }
-        }));
+    fn add(self, command: CmdDrawIndexed<V, Ib, P, S, Pc>) -> O {
+        self.add(command.vertex_buffers)
+            .add(command.index_buffer)
+            .add(command.push_constants)
+            .add(command.descriptor_sets)
+            .add(command.set_state)
+            .add(command.bind_pipeline)
+            .add(command.draw_indexed_raw)
     }
 }

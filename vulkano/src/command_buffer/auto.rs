@@ -147,6 +147,7 @@ pass_through!((), cmd::CmdClearAttachments);
 pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
 pass_through!((S, D), cmd::CmdCopyBufferToImage<S, D>);
 pass_through!((), cmd::CmdDrawRaw);
+pass_through!((), cmd::CmdDrawIndexedRaw);
 pass_through!((), cmd::CmdEndRenderPass);
 pass_through!((C), cmd::CmdExecuteCommands<C>);
 pass_through!((B), cmd::CmdFillBuffer<B>);

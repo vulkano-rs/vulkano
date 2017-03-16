@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use buffer::Buffer;
+use buffer::TypedBuffer;
 use device::DeviceOwned;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
@@ -23,6 +24,7 @@ use image::Image;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
+use pipeline::input_assembly::Index;
 
 ///
 /// > **Note**: This trait is just a utility trait. Do not implement it yourself. Instead
@@ -151,6 +153,22 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone
     {
         let cmd = cmd::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
+        self.add(cmd)
+    }
+
+    /// Adds a command that draws indexed vertices.
+    ///
+    /// Can only be used from inside a render pass.
+    #[inline]
+    fn draw_indexed<P, S, Pc, V, Ib, I, O>(self, pipeline: P, dynamic: DynamicState,
+        vertices: V, index_buffer: Ib, sets: S, push_constants: Pc) -> O
+        where Self: Sized + AddCommand<cmd::CmdDrawIndexed<V, Ib, P, S, Pc>, Out = O>,
+              S: DescriptorSetsCollection,
+              P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
+              Ib: Buffer + TypedBuffer<Content = [I]>,
+              I: Index + 'static
+    {
+        let cmd = cmd::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer, sets, push_constants);
         self.add(cmd)
     }
 
