@@ -113,7 +113,7 @@ impl UnsafeCommandPool {
     ///
     /// Command buffers allocated from the pool are not affected by trimming.
     #[inline]
-    pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
+    pub unsafe fn trim(&self) -> Result<(), CommandPoolTrimError> {
         if !self.device.loaded_extensions().khr_maintenance1 {
             return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
         }
