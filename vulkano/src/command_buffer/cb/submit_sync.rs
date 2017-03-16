@@ -291,6 +291,21 @@ unsafe impl<I, O> AddCommand<cmd::CmdDrawRaw> for SubmitSyncBuilderLayer<I>
     }
 }
 
+unsafe impl<I, O> AddCommand<cmd::CmdDrawIndexedRaw> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<cmd::CmdDrawIndexedRaw, Out = O>
+{
+    type Out = SubmitSyncBuilderLayer<O>;
+
+    #[inline]
+    fn add(self, command: cmd::CmdDrawIndexedRaw) -> Self::Out {
+        SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command),
+            buffers: self.buffers,
+            images: self.images,
+        }
+    }
+}
+
 unsafe impl<I, O> AddCommand<cmd::CmdEndRenderPass> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdEndRenderPass, Out = O>
 {
