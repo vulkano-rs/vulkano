@@ -37,6 +37,7 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
+use buffer::traits::IntoBuffer;
 use buffer::traits::TypedBuffer;
 use device::Device;
 use device::DeviceOwned;
@@ -284,6 +285,18 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
             lock: lock,
         })
+    }
+}
+
+// FIXME: wrong
+unsafe impl<T: ?Sized, A> IntoBuffer for Arc<CpuAccessibleBuffer<T, A>>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_buffer(self) -> Self {
+        self
     }
 }
 

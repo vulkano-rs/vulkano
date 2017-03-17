@@ -28,6 +28,7 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
+use buffer::traits::IntoBuffer;
 use buffer::traits::TypedBuffer;
 use device::Device;
 use device::DeviceOwned;
@@ -40,6 +41,7 @@ use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
 use OomError;
+use SafeDeref;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
@@ -156,46 +158,68 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+/// Access to a device local buffer.
+#[derive(Debug, Copy, Clone)]
+pub struct DeviceLocalBufferAccess<P>(P);
+
+unsafe impl<T: ?Sized, A> IntoBuffer for Arc<DeviceLocalBuffer<T, A>>
+    where T: 'static + Send + Sync,
+          A: MemoryPool
+{
+    type Target = DeviceLocalBufferAccess<Arc<DeviceLocalBuffer<T, A>>>;
+
+    #[inline]
+    fn into_buffer(self) -> Self::Target {
+        DeviceLocalBufferAccess(self)
+    }
+}
+
+unsafe impl<P, T: ?Sized, A> Buffer for DeviceLocalBufferAccess<P>
+    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
+          T: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn inner(&self) -> BufferInner {
         BufferInner {
-            buffer: &self.inner,
+            buffer: &self.0.inner,
             offset: 0,
         }
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
             true
         } else {
-            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            self.0.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             false
         }
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+unsafe impl<P, T: ?Sized, A> TypedBuffer for DeviceLocalBufferAccess<P>
+    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
+          T: 'static + Send + Sync,
+          A: MemoryPool
 {
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A>
-    where A: MemoryPool
+unsafe impl<P, T: ?Sized, A> DeviceOwned for DeviceLocalBufferAccess<P>
+    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
+          T: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.inner.device()
+        self.0.inner.device()
     }
 }

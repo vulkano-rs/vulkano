@@ -27,6 +27,13 @@ use sampler::Sampler;
 use SafeDeref;
 use VulkanObject;
 
+/// Utility trait.
+pub unsafe trait IntoImage {
+    type Target: Image;
+
+    fn into_image(self) -> Self::Target;
+}
+
 /// Trait for types that represent images.
 pub unsafe trait Image {
     /// Returns the inner unsafe image object used by this image.
@@ -188,6 +195,13 @@ pub unsafe trait ImageClearValue<T>: Image {
 pub unsafe trait ImageContent<P>: Image {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
+}
+
+/// Utility trait.
+pub unsafe trait IntoImageView {
+    type Target: ImageView;
+
+    fn into_image_view(self) -> Self::Target;
 }
 
 /// Trait for types that represent image views.

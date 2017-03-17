@@ -15,6 +15,7 @@ use std::sync::Arc;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
+use buffer::traits::IntoBuffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -157,6 +158,15 @@ impl<T, B> BufferSlice<[T], B> {
             offset: self.offset + range.start * mem::size_of::<T>(),
             size: (range.end - range.start) * mem::size_of::<T>(),
         })
+    }
+}
+
+unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: Buffer {
+    type Target = Self;
+
+    #[inline]
+    fn into_buffer(self) -> Self {
+        self
     }
 }
 

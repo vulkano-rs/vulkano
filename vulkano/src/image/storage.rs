@@ -28,6 +28,8 @@ use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
+use image::traits::IntoImage;
+use image::traits::IntoImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -137,6 +139,30 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
     #[inline]
     pub fn dimensions(&self) -> Dimensions {
         self.dimensions
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> IntoImage for Arc<StorageImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_image(self) -> Self {
+        self
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> IntoImageView for Arc<StorageImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_image_view(self) -> Self {
+        self
     }
 }
 

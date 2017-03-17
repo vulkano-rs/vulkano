@@ -32,6 +32,7 @@ use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
 use buffer::traits::Buffer;
 use buffer::traits::BufferInner;
+use buffer::traits::IntoBuffer;
 use buffer::traits::TypedBuffer;
 use device::Device;
 use device::DeviceOwned;
@@ -153,6 +154,18 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
         self.queue_families.iter().map(|&num| {
             self.device().physical_device().queue_family_by_id(num).unwrap()
         }).collect()
+    }
+}
+
+// FIXME: wrong
+unsafe impl<T: ?Sized, A> IntoBuffer for Arc<ImmutableBuffer<T, A>>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_buffer(self) -> Self {
+        self
     }
 }
 

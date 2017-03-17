@@ -167,6 +167,13 @@ pub unsafe trait Buffer: DeviceOwned {
     unsafe fn increase_gpu_lock(&self);
 }
 
+/// Utility trait.
+pub unsafe trait IntoBuffer {
+    type Target: Buffer;
+
+    fn into_buffer(self) -> Self::Target;
+}
+
 /// Inner information about a buffer.
 #[derive(Copy, Clone, Debug)]
 pub struct BufferInner<'a> {
