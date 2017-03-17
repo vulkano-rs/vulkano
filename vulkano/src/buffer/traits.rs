@@ -35,6 +35,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn inner(&self) -> BufferInner;
 
     /// Returns the size of the buffer in bytes.
+    // FIXME: don't provide by default, because can be wrong
     #[inline]
     fn size(&self) -> usize {
         self.inner().buffer.size()
