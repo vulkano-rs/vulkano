@@ -93,24 +93,28 @@ impl<F> AttachmentImage<F> {
     ///
     /// Returns an error if the dimensions are too large or if the backend doesn't support this
     /// format as a framebuffer attachment.
+    #[inline]
     pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        let base_usage = Usage {
-            transfer_source: true,
-            transfer_dest: true,
-            sampled: true,
-            .. Usage::none()
-        };
+        AttachmentImage::new_impl(device, dimensions, format, Usage::none())
+    }
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage)
+    /// Same as `new`, but lets you specify additional usages.
+    #[inline]
+    pub fn with_usage(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: Usage)
+                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        AttachmentImage::new_impl(device, dimensions, format, usage)
     }
 
     /// Same as `new`, except that the image will be transient.
     ///
     /// A transient image is special because its content is undefined outside of a render pass.
     /// This means that the implementation has the possibility to not allocate any memory for it.
+    #[inline]
     pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F)
                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
@@ -140,7 +144,6 @@ impl<F> AttachmentImage<F> {
         let usage = Usage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
-            input_attachment: true,
             .. base_usage
         };
 
