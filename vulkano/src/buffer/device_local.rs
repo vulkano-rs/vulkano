@@ -159,6 +159,7 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
 }
 
 /// Access to a device local buffer.
+// FIXME: add destructor
 #[derive(Debug, Copy, Clone)]
 pub struct DeviceLocalBufferAccess<P>(P);
 

@@ -9,6 +9,7 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -36,6 +37,7 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::Sharing;
+use SafeDeref;
 
 /// Image whose purpose is to be used as a framebuffer attachment.
 ///
@@ -192,46 +194,78 @@ impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<F, A> Image for AttachmentImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+/// GPU access to an attachment image.
+pub struct AttachmentImageAccess<F, A> where A: MemoryPool {
+    img: Arc<AttachmentImage<F, A>>,
+    // True if `try_gpu_lock` was already called on it.
+    already_locked: AtomicBool,
+}
+
+impl<F, A> Clone for AttachmentImageAccess<F, A> where A: MemoryPool {
+    #[inline]
+    fn clone(&self) -> AttachmentImageAccess<F, A> {
+        AttachmentImageAccess {
+            img: self.img.clone(),
+            already_locked: AtomicBool::new(self.already_locked.load(Ordering::SeqCst))
+        }
+    }
+}
+
+unsafe impl<F, A> Image for AttachmentImageAccess<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
-        &self.image
+        &self.img.image
     }
 
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
-        self.image.key()
+        self.img.image.key()
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        if val == 1 {
-            true
-        } else {
-            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            false
+        if self.already_locked.swap(true, Ordering::SeqCst) == true {
+            return false;
         }
+
+        self.img.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(self.already_locked.load(Ordering::SeqCst));
+        let val = self.img.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);
     }
 }
 
-unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImage<F, A>
-    where F: FormatDesc + 'static + Send + Sync, A: MemoryPool
+impl<F, A> Drop for AttachmentImageAccess<F, A>
+    where A: MemoryPool
 {
-    #[inline]
-    fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
-        Some(self.format.decode_clear_value(value))
+    fn drop(&mut self) {
+        if self.already_locked.load(Ordering::SeqCst) {
+            let prev_val = self.img.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            debug_assert!(prev_val >= 1);
+        }
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImageAccess<F, A>
+    where F: FormatDesc + 'static + Send + Sync,
+          A: MemoryPool
+{
+    #[inline]
+    fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
+        Some(self.img.format.decode_clear_value(value))
+    }
+}
+
+unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -239,31 +273,35 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImage<F, A>
     }
 }
 
-// FIXME: wrong
 unsafe impl<F, A> IntoImage for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Target = AttachmentImageAccess<F, A>;
 
     #[inline]
-    fn into_image(self) -> Self {
-        self
+    fn into_image(self) -> AttachmentImageAccess<F, A> {
+        AttachmentImageAccess {
+            img: self, 
+            already_locked: AtomicBool::new(false),
+        }
     }
 }
 
-// FIXME: wrong
 unsafe impl<F, A> IntoImageView for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Target = AttachmentImageAccess<F, A>;
 
     #[inline]
-    fn into_image_view(self) -> Self {
-        self
+    fn into_image_view(self) -> AttachmentImageAccess<F, A> {
+        AttachmentImageAccess {
+            img: self, 
+            already_locked: AtomicBool::new(false),
+        }
     }
 }
 
-unsafe impl<F, A> ImageView for AttachmentImage<F, A>
+unsafe impl<F, A> ImageView for AttachmentImageAccess<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
@@ -273,13 +311,13 @@ unsafe impl<F, A> ImageView for AttachmentImage<F, A>
 
     #[inline]
     fn dimensions(&self) -> Dimensions {
-        let dims = self.image.dimensions();
+        let dims = self.img.image.dimensions();
         Dimensions::Dim2d { width: dims.width(), height: dims.height() }
     }
 
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
-        &self.view
+        &self.img.view
     }
 
     #[inline]
@@ -324,5 +362,11 @@ mod tests {
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
         let _img = AttachmentImage::transient(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+    }
+
+    #[test]
+    fn d16_unorm_always_supported() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::new(&device, [32, 32], Format::D16Unorm).unwrap();
     }
 }
