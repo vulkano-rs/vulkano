@@ -214,11 +214,6 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     fn queue(&self) -> Option<&Arc<Queue>> {
-        debug_assert!(match self.previous.queue() {
-            None => true,
-            Some(q) => q.is_same(&self.queue)
-        });
-
         Some(&self.queue)
     }
 
