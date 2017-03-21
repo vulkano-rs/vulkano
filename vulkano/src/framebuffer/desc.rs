@@ -45,7 +45,7 @@ use vk;
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
 pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
-                                 RenderPassDescAttachmentsList<Vec<Arc<ImageView>>>
+                                 RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>>
 {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;

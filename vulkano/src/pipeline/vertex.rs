@@ -165,7 +165,7 @@ pub struct AttributeInfo {
 }
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait VertexDefinition<I>: VertexSource<Vec<Arc<Buffer>>> {
+pub unsafe trait VertexDefinition<I>: VertexSource<Vec<Arc<Buffer + Send + Sync>>> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.
@@ -299,11 +299,11 @@ unsafe impl<T, I> VertexDefinition<I> for SingleBufferDefinition<T>
     }
 }
 
-unsafe impl<V> VertexSource<Vec<Arc<Buffer>>> for SingleBufferDefinition<V>
+unsafe impl<V> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for SingleBufferDefinition<V>
     where V: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
         // FIXME: safety
         assert_eq!(source.len(), 1);
         let len = source[0].size() / mem::size_of::<V>();
@@ -381,11 +381,11 @@ unsafe impl<T, U, I> VertexDefinition<I> for TwoBuffersDefinition<T, U>
     }
 }
 
-unsafe impl<T, U> VertexSource<Vec<Arc<Buffer>>> for TwoBuffersDefinition<T, U>
+unsafe impl<T, U> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for TwoBuffersDefinition<T, U>
     where T: Vertex, U: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
         unimplemented!()        // FIXME: implement
     }
 }
@@ -462,11 +462,11 @@ unsafe impl<T, U, I> VertexDefinition<I> for OneVertexOneInstanceDefinition<T, U
     }
 }
 
-unsafe impl<T, U> VertexSource<Vec<Arc<Buffer>>> for OneVertexOneInstanceDefinition<T, U>
+unsafe impl<T, U> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for OneVertexOneInstanceDefinition<T, U>
     where T: Vertex, U: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
         unimplemented!()        // FIXME: implement
     }
 }

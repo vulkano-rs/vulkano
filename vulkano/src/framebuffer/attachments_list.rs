@@ -54,7 +54,7 @@ unsafe impl AttachmentsList for () {
     }
 }
 
-unsafe impl AttachmentsList for Vec<Arc<ImageView>> {
+unsafe impl AttachmentsList for Vec<Arc<ImageView + Send + Sync>> {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
         self.iter().map(|img| img.inner()).collect()

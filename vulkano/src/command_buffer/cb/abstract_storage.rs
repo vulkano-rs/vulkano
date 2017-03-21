@@ -29,7 +29,7 @@ use sync::PipelineStages;
 /// Layer that stores commands in an abstract way.
 pub struct AbstractStorageLayer<I> {
     inner: I,
-    commands: Vec<Box<Any>>,
+    commands: Vec<Box<Any + Send + Sync>>,
 }
 
 impl<I> AbstractStorageLayer<I> {
@@ -100,7 +100,7 @@ unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: DeviceO
 macro_rules! pass_through {
     (($($param:ident),*), $cmd:ty) => {
         unsafe impl<I $(, $param)*> AddCommand<$cmd> for AbstractStorageLayer<I>
-            where I: for<'r> AddCommand<&'r $cmd, Out = I>, $cmd: 'static
+            where I: for<'r> AddCommand<&'r $cmd, Out = I>, $cmd: Send + Sync + 'static
         {
             type Out = AbstractStorageLayer<I>;
 

@@ -43,15 +43,15 @@ use vk;
 ///
 /// Just like all render pass objects implement the `RenderPassAbstract` trait, all framebuffer
 /// objects implement the `FramebufferAbstract` trait. This means that you can cast any
-/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract>` for easier storage.
+/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
 ///
 /// ## With a generic list of attachments
 ///
 /// The list of attachments passed to `Framebuffer::new()` can be of various types, but one of the
-/// possibilities is to pass an object of type `Vec<Arc<ImageView>>`.
+/// possibilities is to pass an object of type `Vec<Arc<ImageView + Send + Sync>>`.
 ///
 /// > **Note**: If you access a render pass object through the `RenderPassAbstract` trait, passing
-/// > a `Vec<Arc<ImageView>>` is the only possible method.
+/// > a `Vec<Arc<ImageView + Send + Sync>>` is the only possible method.
 ///
 /// The framebuffer constructor will perform various checks to make sure that the number of images
 /// is correct and that each image can be used with this render pass.
@@ -61,9 +61,9 @@ use vk;
 /// # use vulkano::framebuffer::RenderPassAbstract;
 /// use vulkano::framebuffer::Framebuffer;
 ///
-/// # let render_pass: Arc<RenderPassAbstract> = return;
+/// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
 /// # let my_image: Arc<vulkano::image::ImageView> = return;
-/// // let render_pass: Arc<RenderPassAbstract> = ...;
+/// // let render_pass: Arc<RenderPassAbstract + Send + Sync> = ...;
 /// let framebuffer = Framebuffer::new(render_pass.clone(), [1024, 768, 1],
 ///                                    vec![my_image.clone() as Arc<_>]).unwrap();
 /// ```
@@ -76,9 +76,9 @@ use vk;
 /// For example if you pass a render pass object that implements
 /// `RenderPassDescAttachmentsList<Foo>`, then you can pass a `Foo` as the list of attachments.
 ///
-/// > **Note**: The reason why `Vec<Arc<ImageView>>` always works (see previous section) is that
+/// > **Note**: The reason why `Vec<Arc<ImageView + Send + Sync>>` always works (see previous section) is that
 /// > render pass descriptions are required to always implement
-/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageView>>>`.
+/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>>`.
 ///
 /// When it comes to the `single_pass_renderpass!` and `ordered_passes_renderpass!` macros, you can
 /// build a list of attachments by calling `start_attachments()` on the render pass description,
@@ -126,13 +126,13 @@ pub struct Framebuffer<Rp, A> {
     resources: A,
 }
 
-impl<Rp> Framebuffer<Rp, Box<AttachmentsList>> {
+impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which render pass implementation is used.
     // TODO: allow IntoImageView
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
-                   -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList>>>, FramebufferCreationError>
+                   -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList + Send + Sync>>>, FramebufferCreationError>
         where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia>
     {
         let device = render_pass.device().clone();
@@ -284,7 +284,7 @@ unsafe impl<At, Rp, A> RenderPassDescAttachmentsList<At> for Framebuffer<Rp, A>
     where Rp: RenderPassDescAttachmentsList<At>
 {
     #[inline]
-    fn check_attachments_list(&self, atch: At) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: At) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
         self.render_pass.check_attachments_list(atch)
     }
 }

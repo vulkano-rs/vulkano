@@ -41,7 +41,7 @@ use vk;
 /// Defines the layout of multiple subpasses.
 ///
 /// The `RenderPass` struct should always implement the `RenderPassAbstract` trait. Therefore
-/// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract>` if you need to.
+/// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
 pub struct RenderPass<D> {
     // The internal Vulkan object.
     renderpass: vk::RenderPass,
@@ -369,7 +369,7 @@ unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
     where D: RenderPassDescAttachmentsList<A>
 {
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
         self.desc.check_attachments_list(atch)
     }
 }

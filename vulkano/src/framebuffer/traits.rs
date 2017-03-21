@@ -21,7 +21,7 @@ use SafeDeref;
 /// Trait for objects that contain a Vulkan framebuffer object.
 ///
 /// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
-/// into a `Arc<FramebufferAbstract>` for easier storage.
+/// into a `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
 pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
@@ -63,10 +63,10 @@ unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: Framebuf
 /// Trait for objects that contain a Vulkan render pass object.
 ///
 /// Any `RenderPass` object implements this trait. You can therefore turn a `Arc<RenderPass<_>>`
-/// into a `Arc<RenderPassAbstract>` for easier storage.
+/// into a `Arc<RenderPassAbstract + Send + Sync>` for easier storage.
 ///
-/// The `Arc<RenderPassAbstract>` accepts a `Vec<ClearValue>` for clear values and a
-/// `Vec<Arc<ImageView>>` for the list of attachments.
+/// The `Arc<RenderPassAbstract + Send + Sync>` accepts a `Vec<ClearValue>` for clear values and a
+/// `Vec<Arc<ImageView + Send + Sync>>` for the list of attachments.
 ///
 /// # Example
 ///
@@ -79,8 +79,8 @@ unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: Framebuf
 /// # let device: Arc<vulkano::device::Device> = return;
 /// let render_pass = RenderPass::new(device.clone(), EmptySinglePassRenderPassDesc).unwrap();
 ///
-/// // For easier storage, turn this render pass into a `Arc<RenderPassAbstract>`.
-/// let stored_rp = Arc::new(render_pass) as Arc<RenderPassAbstract>;
+/// // For easier storage, turn this render pass into a `Arc<RenderPassAbstract + Send + Sync>`.
+/// let stored_rp = Arc::new(render_pass) as Arc<RenderPassAbstract + Send + Sync>;
 /// ```
 pub unsafe trait RenderPassAbstract: DeviceOwned + RenderPassDesc {
     /// Returns an opaque object representing the render pass' internals.
@@ -120,14 +120,14 @@ pub unsafe trait RenderPassDescAttachmentsList<A> {
     ///
     /// Checks that the attachments match the render pass, and returns a list. Returns an error if
     /// one of the attachments is wrong.
-    fn check_attachments_list(&self, A) -> Result<Box<AttachmentsList>, FramebufferCreationError>;
+    fn check_attachments_list(&self, A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>;
 }
 
 unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
     where T: SafeDeref, T::Target: RenderPassDescAttachmentsList<A>
 {
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
         (**self).check_attachments_list(atch)
     }
 }
