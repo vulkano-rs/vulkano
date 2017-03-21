@@ -157,8 +157,8 @@ macro_rules! ordered_passes_renderpass {
                 }
             }
 
-            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView>>> for CustomRenderPassDesc {
-                fn check_attachments_list(&self, list: Vec<Arc<ImageView>>) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>> for CustomRenderPassDesc {
+                fn check_attachments_list(&self, list: Vec<Arc<ImageView + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
                     // FIXME: correct safety checks
                     assert_eq!(list.len(), self.num_attachments());
                     Ok(Box::new(list) as Box<_>)
@@ -387,11 +387,11 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
         unsafe impl<$($prev_params),*> RenderPassDescAttachmentsList<$prev<$($prev_params),*>> for CustomRenderPassDesc
-            where $($prev_params: ImageView + 'static),*
+            where $($prev_params: ImageView + Send + Sync + 'static),*
         {
             //type List = ($($prev_params,)*);
 
-            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
                 Ok(Box::new(try!(attachments.check_attachments_list())))
                 
                 // FIXME:

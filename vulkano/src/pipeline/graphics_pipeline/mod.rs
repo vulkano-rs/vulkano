@@ -1089,7 +1089,7 @@ unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<
     where Rp: RenderPassDescAttachmentsList<A>
 {
     #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList>, FramebufferCreationError> {
+    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
         self.render_pass.check_attachments_list(atch)
     }
 }
@@ -1124,13 +1124,13 @@ impl Drop for Inner {
 
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<Buffer>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<Buffer + Send + Sync>>> {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<Buffer>>>
+    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<Buffer + Send + Sync>>>
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {

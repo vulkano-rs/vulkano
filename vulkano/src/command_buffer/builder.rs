@@ -117,7 +117,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn begin_render_pass<F, C, O>(self, framebuffer: F, secondary: bool, clear_values: C)
                                   -> O
-        where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPassAbstract>, F>, Out = O>,
+        where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>, Out = O>,
               F: FramebufferAbstract + RenderPassDescClearValues<C>
     {
         let cmd = cmd::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);

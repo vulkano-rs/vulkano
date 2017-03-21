@@ -38,8 +38,8 @@ use sync::GpuFuture;
 ///
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
-    buffers: Vec<(Box<Buffer>, bool)>,
-    images: Vec<(Box<Image>, bool)>,
+    buffers: Vec<(Box<Buffer + Send + Sync>, bool)>,
+    images: Vec<(Box<Image + Send + Sync>, bool)>,
 }
 
 impl<I> SubmitSyncBuilderLayer<I> {
@@ -55,7 +55,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
     // Adds a buffer to the list.
     fn add_buffer<B>(&mut self, buffer: &B, exclusive: bool)
-        where B: Buffer + Clone + 'static
+        where B: Buffer + Send + Sync + Clone + 'static
     {
         for &mut (ref existing_buf, ref mut existing_exclusive) in self.buffers.iter_mut() {
             if existing_buf.conflicts_buffer(0, existing_buf.size(), buffer, 0, buffer.size()) {
@@ -71,7 +71,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
     // Adds an image to the list.
     fn add_image<T>(&mut self, image: &T, exclusive: bool)
-        where T: Image + Clone + 'static
+        where T: Image + Send + Sync + Clone + 'static
     {
         // FIXME: actually implement
         self.images.push((Box::new(image.clone()), exclusive));
@@ -135,7 +135,7 @@ pass_through!((C), cmd::CmdExecuteCommands<C>);
 
 unsafe impl<I, O, B> AddCommand<cmd::CmdBindIndexBuffer<B>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdBindIndexBuffer<B>, Out = O>,
-          B: Buffer + Clone + 'static
+          B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -168,8 +168,8 @@ unsafe impl<I, O, P> AddCommand<cmd::CmdBindPipeline<P>> for SubmitSyncBuilderLa
 
 unsafe impl<I, O, S, D> AddCommand<cmd::CmdBlitImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdBlitImage<S, D>, Out = O>,
-          S: Image + Clone + 'static,
-          D: Image + Clone + 'static
+          S: Image + Send + Sync + Clone + 'static,
+          D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -203,8 +203,8 @@ unsafe impl<I, O> AddCommand<cmd::CmdClearAttachments> for SubmitSyncBuilderLaye
 
 unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBuffer<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdCopyBuffer<S, D>, Out = O>,
-          S: Buffer + Clone + 'static,
-          D: Buffer + Clone + 'static
+          S: Buffer + Send + Sync + Clone + 'static,
+          D: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -223,8 +223,8 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBuffer<S, D>> for SubmitSyncBuild
 
 unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBufferToImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdCopyBufferToImage<S, D>, Out = O>,
-          S: Buffer + Clone + 'static,
-          D: Image + Clone + 'static
+          S: Buffer + Send + Sync + Clone + 'static,
+          D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -243,8 +243,8 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBufferToImage<S, D>> for SubmitSy
 
 unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdCopyImage<S, D>, Out = O>,
-          S: Image + Clone + 'static,
-          D: Image + Clone + 'static
+          S: Image + Send + Sync + Clone + 'static,
+          D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -323,7 +323,7 @@ unsafe impl<I, O> AddCommand<cmd::CmdEndRenderPass> for SubmitSyncBuilderLayer<I
 
 unsafe impl<I, O, B> AddCommand<cmd::CmdFillBuffer<B>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdFillBuffer<B>, Out = O>,
-          B: Buffer + Clone + 'static
+          B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -371,8 +371,8 @@ unsafe impl<I, O, Pc, Pl> AddCommand<cmd::CmdPushConstants<Pc, Pl>> for SubmitSy
 
 unsafe impl<I, O, S, D> AddCommand<cmd::CmdResolveImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdResolveImage<S, D>, Out = O>,
-          S: Image + Clone + 'static,
-          D: Image + Clone + 'static
+          S: Image + Send + Sync + Clone + 'static,
+          D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -421,7 +421,7 @@ unsafe impl<I, O> AddCommand<cmd::CmdSetState> for SubmitSyncBuilderLayer<I>
 
 unsafe impl<I, O, B, D> AddCommand<cmd::CmdUpdateBuffer<B, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<cmd::CmdUpdateBuffer<B, D>, Out = O>,
-          B: Buffer + Clone + 'static
+          B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -440,8 +440,8 @@ unsafe impl<I, O, B, D> AddCommand<cmd::CmdUpdateBuffer<B, D>> for SubmitSyncBui
 /// Layer around a command buffer that handles synchronization between command buffers.
 pub struct SubmitSyncLayer<I> {
     inner: I,
-    buffers: Vec<(Box<Buffer>, bool)>,
-    images: Vec<(Box<Image>, bool)>,
+    buffers: Vec<(Box<Buffer + Send + Sync>, bool)>,
+    images: Vec<(Box<Image + Send + Sync>, bool)>,
 }
 
 unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {

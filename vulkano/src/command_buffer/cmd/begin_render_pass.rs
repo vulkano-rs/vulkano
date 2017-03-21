@@ -45,13 +45,13 @@ pub struct CmdBeginRenderPass<Rp, F> {
     framebuffer: F,
 }
 
-impl<F> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
+impl<F> CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>
     where F: FramebufferAbstract
 {
     /// See the documentation of the `begin_render_pass` method.
     // TODO: allow setting more parameters
     pub fn new<C>(framebuffer: F, secondary: bool, clear_values: C)
-                  -> CmdBeginRenderPass<Arc<RenderPassAbstract>, F>
+                  -> CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>
         where F: RenderPassDescClearValues<C>
     {
         let raw_render_pass = RenderPassAbstract::inner(&framebuffer).internal_object();
