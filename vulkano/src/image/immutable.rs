@@ -15,6 +15,7 @@ use device::Device;
 use device::Queue;
 use format::FormatDesc;
 use image::Dimensions;
+use image::MipmapsCount;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -46,9 +47,20 @@ pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
 impl<F> ImmutableImage<F> {
     /// Builds a new immutable image.
+    // TODO: one mipmap is probably not a great default
+    #[inline]
     pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        ImmutableImage::with_mipmaps(device, dimensions, format, MipmapsCount::One, queue_families)
+    }
+
+    /// Builds a new immutable image with the given number of mipmaps.
+    pub fn with_mipmaps<'a, I, M>(device: &Arc<Device>, dimensions: Dimensions, format: F,
+                                  mipmaps: M, queue_families: I)
+                                  -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+        where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>, M: Into<MipmapsCount>
     {
         let usage = Usage {
             transfer_source: true,  // for blits
@@ -68,7 +80,7 @@ impl<F> ImmutableImage<F> {
             };
 
             try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
-                                  1, 1, sharing, false, false))
+                                  1, mipmaps, sharing, false, false))
         };
 
         let mem_ty = {
