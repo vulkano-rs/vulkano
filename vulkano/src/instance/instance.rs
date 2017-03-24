@@ -221,7 +221,7 @@ impl Instance {
         // Getting the properties of all physical devices.
         // If possible, we use VK_KHR_get_physical_device_properties2.
         let physical_devices = if extensions.khr_get_physical_device_properties2 {
-            unimplemented!()
+            Instance::init_physical_devices2(&vk, physical_devices, extensions)
         } else {
             Instance::init_physical_devices(&vk, physical_devices)
         };
@@ -236,7 +236,9 @@ impl Instance {
         }))
     }
 
-    fn init_physical_devices(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>) -> Vec<PhysicalDeviceInfos> {
+    /// Initialize all physical devices
+    fn init_physical_devices(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>)
+                             -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
@@ -267,6 +269,70 @@ impl Instance {
                 let mut output = mem::uninitialized();
                 vk.GetPhysicalDeviceFeatures(device, &mut output);
                 output
+            };
+
+            output.push(PhysicalDeviceInfos {
+                device: device,
+                properties: properties,
+                memory: memory,
+                queue_families: queue_families,
+                available_features: Features::from(available_features),
+            });
+        }
+        output
+    }
+
+    /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
+    /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
+    fn init_physical_devices2(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>,
+                              extensions: &InstanceExtensions) -> Vec<PhysicalDeviceInfos> {
+        let mut output = Vec::with_capacity(physical_devices.len());
+
+        for device in physical_devices.into_iter() {
+            let properties: vk::PhysicalDeviceProperties = unsafe {
+                let mut output = vk::PhysicalDeviceProperties2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    properties: mem::uninitialized(),
+                };
+
+                vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
+                output.properties
+            };
+
+            let queue_families = unsafe {
+                let mut num = 0;
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num, ptr::null_mut());
+
+                let mut families = vec![vk::QueueFamilyProperties2KHR {
+                    sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    queueFamilyProperties: mem::uninitialized(),
+                }; num as usize];
+
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num,
+                                                              families.as_mut_ptr());
+                families.into_iter().map(|family| family.queueFamilyProperties).collect()
+            };
+
+            let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = vk::PhysicalDeviceMemoryProperties2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    memoryProperties: mem::uninitialized(),
+                };
+                vk.GetPhysicalDeviceMemoryProperties2KHR(device, &mut output);
+                output.memoryProperties
+            };
+
+            let available_features: vk::PhysicalDeviceFeatures = unsafe {
+                let mut output = vk::PhysicalDeviceFeatures2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    features: mem::uninitialized(),
+                };
+                vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
+                output.features
             };
 
             output.push(PhysicalDeviceInfos {
