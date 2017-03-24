@@ -219,48 +219,11 @@ impl Instance {
         };
 
         // Getting the properties of all physical devices.
-        let physical_devices = {
-            let mut output = Vec::with_capacity(physical_devices.len());
-
-            for device in physical_devices.into_iter() {
-                let properties: vk::PhysicalDeviceProperties = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceProperties(device, &mut output);
-                    output
-                };
-
-                let queue_families = unsafe {
-                    let mut num = 0;
-                    vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
-
-                    let mut families = Vec::with_capacity(num as usize);
-                    vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num,
-                                                              families.as_mut_ptr());
-                    families.set_len(num as usize);
-                    families
-                };
-
-                let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
-                    output
-                };
-
-                let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceFeatures(device, &mut output);
-                    output
-                };
-
-                output.push(PhysicalDeviceInfos {
-                    device: device,
-                    properties: properties,
-                    memory: memory,
-                    queue_families: queue_families,
-                    available_features: Features::from(available_features),
-                });
-            }
-            output
+        // If possible, we use VK_KHR_get_physical_device_properties2.
+        let physical_devices = if extensions.khr_get_physical_device_properties2 {
+            unimplemented!()
+        } else {
+            Instance::init_physical_devices(&vk, physical_devices)
         };
 
         Ok(Arc::new(Instance {
@@ -271,6 +234,50 @@ impl Instance {
             extensions: extensions.clone(),
             layers: layers,
         }))
+    }
+
+    fn init_physical_devices(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>) -> Vec<PhysicalDeviceInfos> {
+        let mut output = Vec::with_capacity(physical_devices.len());
+
+        for device in physical_devices.into_iter() {
+            let properties: vk::PhysicalDeviceProperties = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceProperties(device, &mut output);
+                output
+            };
+
+            let queue_families = unsafe {
+                let mut num = 0;
+                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
+
+                let mut families = Vec::with_capacity(num as usize);
+                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num,
+                                                          families.as_mut_ptr());
+                families.set_len(num as usize);
+                families
+            };
+
+            let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
+                output
+            };
+
+            let available_features: vk::PhysicalDeviceFeatures = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceFeatures(device, &mut output);
+                output
+            };
+
+            output.push(PhysicalDeviceInfos {
+                device: device,
+                properties: properties,
+                memory: memory,
+                queue_families: queue_families,
+                available_features: Features::from(available_features),
+            });
+        }
+        output
     }
 
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
@@ -558,7 +565,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// fn do_something(physical_device: PhysicalDevice) {
     ///     let _loaded_extensions = physical_device.instance().loaded_extensions();
-    ///     // ... 
+    ///     // ...
     /// }
     /// ```
     #[inline]
