@@ -203,6 +203,7 @@ instance_extensions! {
     ext_debug_report => b"VK_EXT_debug_report",
     nn_vi_surface => b"VK_NN_vi_surface",
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
+    khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
 }
 
 device_extensions! {
