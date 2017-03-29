@@ -100,6 +100,11 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
+    fn default_layout(&self) -> Layout {
+        Layout::PresentSrc
+    }
+
+    #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
     }

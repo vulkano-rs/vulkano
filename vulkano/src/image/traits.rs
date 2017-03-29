@@ -92,6 +92,10 @@ pub unsafe trait Image {
         self.inner().supports_blit_destination()
     }
 
+    /// Returns the layout that the image has when it is first used in a primary command buffer,
+    /// and the layout it must be returned to before the end of the command buffer.
+    fn default_layout(&self) -> Layout;
+
     /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
     /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
     /// access to `other` (as defined by `other_offset` and `other_size`).
@@ -165,6 +169,11 @@ unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
+    }
+
+    #[inline]
+    fn default_layout(&self) -> Layout {
+        (**self).default_layout()
     }
 
     #[inline]

@@ -151,6 +151,11 @@ unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync,
     }
 
     #[inline]
+    fn default_layout(&self) -> Layout {
+        Layout::ShaderReadOnlyOptimal       // TODO: ?
+    }
+
+    #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.image.key()
     }

@@ -221,6 +221,11 @@ unsafe impl<F, A> Image for AttachmentImageAccess<F, A>
     }
 
     #[inline]
+    fn default_layout(&self) -> Layout {
+        self.img.attachment_layout
+    }
+
+    #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
         self.img.image.key()
     }
