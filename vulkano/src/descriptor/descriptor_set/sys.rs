@@ -58,6 +58,20 @@ pub trait DescriptorPoolAlloc {
 
 macro_rules! descriptors_count {
     ($($name:ident,)+) => (
+        /// Number of available descriptors slots in a pool.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use vulkano::descriptor::descriptor_set::DescriptorsCount;
+        ///
+        /// let _descriptors = DescriptorsCount {
+        ///     uniform_buffer: 10,
+        ///     input_attachment: 5,
+        ///     .. DescriptorsCount::zero()
+        /// };
+        /// ```
+        ///
         #[derive(Debug, Copy, Clone)]
         pub struct DescriptorsCount {
             $(
@@ -222,11 +236,14 @@ impl UnsafeDescriptorPool {
     /// # Panic
     ///
     /// - Panics if all the descriptors count are 0.
+    /// - Panics if `max_sets` is 0.
     ///
     pub fn new(device: Arc<Device>, count: &DescriptorsCount, max_sets: u32,
                free_descriptor_set_bit: bool) -> Result<UnsafeDescriptorPool, OomError>
     {
         let vk = device.pointers();
+
+        assert_ne!(max_sets, 0, "The maximum number of sets can't be 0");
 
         let mut pool_sizes: SmallVec<[_; 10]> = SmallVec::new();
 
@@ -253,7 +270,7 @@ impl UnsafeDescriptorPool {
         elem!(combined_image_sampler, vk::DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         elem!(input_attachment, vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
 
-        assert!(!pool_sizes.is_empty());
+        assert!(!pool_sizes.is_empty(), "All the descriptors count of a pool are 0");
 
         let pool = unsafe {
             let infos = vk::DescriptorPoolCreateInfo {
@@ -281,12 +298,6 @@ impl UnsafeDescriptorPool {
         })
     }
 
-    /// Returns the device this pool was created from.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Allocates descriptor sets from the pool, one for each layout.
     /// Returns an iterator to the allocated sets, or an error.
     ///
@@ -312,13 +323,15 @@ impl UnsafeDescriptorPool {
         where I: IntoIterator<Item = &'l UnsafeDescriptorSetLayout>
     {
         let layouts: SmallVec<[_; 8]> = layouts.into_iter().map(|l| {
-            assert_eq!(self.device.internal_object(), l.device().internal_object());
+            assert_eq!(self.device.internal_object(), l.device().internal_object(),
+                       "Tried to allocate from a pool with a set layout of a different device");
             l.internal_object()
         }).collect();
 
         self.alloc_impl(&layouts)
     }
 
+    // Actual implementation of `alloc`. Separated so that it is not inlined.
     unsafe fn alloc_impl(&mut self, layouts: &SmallVec<[vk::DescriptorSetLayout; 8]>)
                          -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError>
     {
@@ -392,6 +405,7 @@ impl UnsafeDescriptorPool {
         }
     }
 
+    // Actual implementation of `free`. Separated so that it is not inlined.
     unsafe fn free_impl(&mut self, sets: &SmallVec<[vk::DescriptorSet; 8]>)
                         -> Result<(), OomError>
     {
@@ -409,6 +423,13 @@ impl UnsafeDescriptorPool {
         try!(check_errors(vk.ResetDescriptorPool(self.device.internal_object(), self.pool,
                                                  0 /* reserved flags */)));
         Ok(())
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeDescriptorPool {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
@@ -487,6 +508,10 @@ impl ExactSizeIterator for UnsafeDescriptorPoolAllocIter {
 }
 
 /// Low-level descriptor set.
+///
+/// Contrary to most other objects in this library, this one doesn't free itself automatically and
+/// doesn't hold the pool or the device it is associated to.
+/// Instead it is an object meant to be used with the `UnsafeDescriptorPool`.
 pub struct UnsafeDescriptorSet {
     set: vk::DescriptorSet,
 }
@@ -496,7 +521,8 @@ impl UnsafeDescriptorSet {
     //       add a `copy` method that just takes a copy, and an `update` method that takes both
     //       writes and copies and that actually performs the operation
 
-    /// Modifies a descriptor set. Doesn't check that the writes or copies are correct.
+    /// Modifies a descriptor set. Doesn't check that the writes or copies are correct, and
+    /// doesn't check whether the descriptor set is in use.
     ///
     /// **Important**: You must ensure that the `UnsafeDescriptorSetLayout` object is alive before
     /// updating a descriptor set.
@@ -507,7 +533,9 @@ impl UnsafeDescriptorSet {
     /// - The `UnsafeDescriptorSetLayout` object this set was created with must be alive.
     /// - Doesn't verify that the things you write in the descriptor set match its layout.
     /// - Doesn't keep the resources alive. You have to do that yourself.
-    /// - Updating a descriptor set obeys synchronization rules that aren't checked here.
+    /// - Updating a descriptor set obeys synchronization rules that aren't checked here. Once a
+    ///   command buffer contains a pointer/reference to a descriptor set, it is illegal to write
+    ///   to it.
     ///
     pub unsafe fn write<I>(&mut self, device: &Arc<Device>, writes: I)
         where I: Iterator<Item = DescriptorWrite>
@@ -518,11 +546,12 @@ impl UnsafeDescriptorSet {
         // one for buffer descriptors (buffer_descriptors), one for buffer view descriptors
         // (buffer_views_descriptors), and one for the final list of writes (raw_writes).
         // Only the final list is passed to Vulkan, but it will contain pointers to the first three
-        // lists in pImageInfo, pBufferInfo and pTexelBufferView.
+        // lists in `pImageInfo`, `pBufferInfo` and `pTexelBufferView`.
         //
         // In order to handle that, we start by writing null pointers as placeholders in the final
-        // writes, and we store in raw_writes_img_infos, raw_writes_buf_infos and
-        // raw_writes_buf_view_infos the offsets of the pointers compared to the start of the list.
+        // writes, and we store in `raw_writes_img_infos`, `raw_writes_buf_infos` and
+        // `raw_writes_buf_view_infos` the offsets of the pointers compared to the start of the
+        // list.
         // Once we have finished iterating all the writes requested by the user, we modify
         // `raw_writes` to point to the correct locations.
 
@@ -681,7 +710,7 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
 
 /// Represents a single write entry to a descriptor set.
 ///
-/// Use the various constructors to build a `DescriptorWrite`. While it is not unsafe to build a
+/// Use the various constructors to build a `DescriptorWrite`. While it is safe to build a
 /// `DescriptorWrite`, it is unsafe to actually use it to write to a descriptor set.
 pub struct DescriptorWrite {
     binding: u32,
@@ -883,23 +912,120 @@ impl DescriptorWrite {
     }
 }
 
-/* TODO: restore
 #[cfg(test)]
 mod tests {
+    use std::iter;
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::DescriptorBufferDesc;
+    use descriptor::descriptor::DescriptorBufferContentDesc;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::DescriptorsCount;
     use descriptor::descriptor_set::UnsafeDescriptorPool;
-
+    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 
     #[test]
-    fn create() {
+    fn pool_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = UnsafeDescriptorPool::new(&device);
+        let desc = DescriptorsCount {
+            uniform_buffer: 1,
+            .. DescriptorsCount::zero()
+        };
+
+        let _ = UnsafeDescriptorPool::new(device, &desc, 10, false).unwrap();
     }
 
     #[test]
-    fn device() {
+    #[should_panic(expected = "The maximum number of sets can't be 0")]
+    fn zero_max_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let pool = UnsafeDescriptorPool::new(&device);
-        assert_eq!(&**pool.device() as *const _, &*device as *const _);
+        let desc = DescriptorsCount {
+            uniform_buffer: 1,
+            .. DescriptorsCount::zero()
+        };
+
+        let _ = UnsafeDescriptorPool::new(device, &desc, 0, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "All the descriptors count of a pool are 0")]
+    fn zero_descriptors() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = UnsafeDescriptorPool::new(device, &DescriptorsCount::zero(), 10, false);
+    }
+
+    #[test]
+    fn basic_alloc() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let layout = DescriptorDesc {
+            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                dynamic: Some(false),
+                storage: false,
+                content: DescriptorBufferContentDesc::F32,
+            }),
+            array_count: 1,
+            stages: ShaderStages::all_graphics(),
+            readonly: true,
+        };
+
+        let set_layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
+
+        let desc = DescriptorsCount {
+            uniform_buffer: 10,
+            .. DescriptorsCount::zero()
+        };
+
+        let mut pool = UnsafeDescriptorPool::new(device, &desc, 10, false).unwrap();
+        unsafe {
+            let sets = pool.alloc(iter::once(&set_layout)).unwrap();
+            assert_eq!(sets.count(), 1);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Tried to allocate from a pool with a set layout of a different device")]
+    fn alloc_diff_device() {
+        let (device1, _) = gfx_dev_and_queue!();
+        let (device2, _) = gfx_dev_and_queue!();
+
+        let layout = DescriptorDesc {
+            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                dynamic: Some(false),
+                storage: false,
+                content: DescriptorBufferContentDesc::F32,
+            }),
+            array_count: 1,
+            stages: ShaderStages::all_graphics(),
+            readonly: true,
+        };
+
+        let set_layout = UnsafeDescriptorSetLayout::new(device1, iter::once(Some(layout))).unwrap();
+
+        let desc = DescriptorsCount {
+            uniform_buffer: 10,
+            .. DescriptorsCount::zero()
+        };
+
+        let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
+        unsafe {
+            let _ = pool.alloc(iter::once(&set_layout));
+        }
+    }
+
+    #[test]
+    fn alloc_zero() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let desc = DescriptorsCount {
+            uniform_buffer: 1,
+            .. DescriptorsCount::zero()
+        };
+
+        let mut pool = UnsafeDescriptorPool::new(device, &desc, 1, false).unwrap();
+        unsafe {
+            let sets = pool.alloc(iter::empty()).unwrap();
+            assert_eq!(sets.count(), 0);
+        }
     }
 }
-*/
