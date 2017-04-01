@@ -41,24 +41,24 @@ use image::Image;
 use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::pool::DescriptorPool;
-pub use self::pool::DescriptorPoolAlloc;
-pub use self::pool::DescriptorPoolAllocError;
-pub use self::pool::DescriptorWrite;
-pub use self::pool::DescriptorsCount;
-pub use self::pool::UnsafeDescriptorPool;
-pub use self::pool::UnsafeDescriptorPoolAllocIter;
-pub use self::pool::UnsafeDescriptorSet;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;
 pub use self::simple::*;
+pub use self::sys::DescriptorPool;
+pub use self::sys::DescriptorPoolAlloc;
+pub use self::sys::DescriptorPoolAllocError;
+pub use self::sys::DescriptorWrite;
+pub use self::sys::DescriptorsCount;
+pub use self::sys::UnsafeDescriptorPool;
+pub use self::sys::UnsafeDescriptorPoolAllocIter;
+pub use self::sys::UnsafeDescriptorSet;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
 
-mod pool;
 mod simple;
 mod std_pool;
+mod sys;
 mod unsafe_layout;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
