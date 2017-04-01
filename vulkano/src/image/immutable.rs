@@ -118,6 +118,12 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     pub fn dimensions(&self) -> Dimensions {
         self.dimensions
     }
+
+    /// Returns the number of mipmap levels of the image.
+    #[inline]
+    pub fn mipmap_levels(&self) -> u32 {
+        self.image.mipmap_levels()
+    }
 }
 
 // FIXME: wrong
