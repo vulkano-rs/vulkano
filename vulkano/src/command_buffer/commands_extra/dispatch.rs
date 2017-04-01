@@ -11,13 +11,13 @@ use std::error;
 use std::fmt;
 
 use command_buffer::cb::AddCommand;
-use command_buffer::cmd::CmdBindDescriptorSets;
-use command_buffer::cmd::CmdBindDescriptorSetsError;
-use command_buffer::cmd::CmdBindPipeline;
-use command_buffer::cmd::CmdDispatchRaw;
-use command_buffer::cmd::CmdDispatchRawError;
-use command_buffer::cmd::CmdPushConstants;
-use command_buffer::cmd::CmdPushConstantsError;
+use command_buffer::commands_raw::CmdBindDescriptorSets;
+use command_buffer::commands_raw::CmdBindDescriptorSetsError;
+use command_buffer::commands_raw::CmdBindPipeline;
+use command_buffer::commands_raw::CmdDispatchRaw;
+use command_buffer::commands_raw::CmdDispatchRawError;
+use command_buffer::commands_raw::CmdPushConstants;
+use command_buffer::commands_raw::CmdPushConstantsError;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use pipeline::ComputePipelineAbstract;
 

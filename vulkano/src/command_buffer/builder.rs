@@ -16,7 +16,8 @@ use device::DeviceOwned;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
-use command_buffer::cmd;
+use command_buffer::commands_extra;
+use command_buffer::commands_raw;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
@@ -43,32 +44,32 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     // TODO: not safe because of signalling NaNs
     #[inline]
-    fn fill_buffer<B, O>(self, buffer: B, data: u32) -> Result<O, cmd::CmdFillBufferError>
-        where Self: Sized + AddCommand<cmd::CmdFillBuffer<B::Target>, Out = O>,
+    fn fill_buffer<B, O>(self, buffer: B, data: u32) -> Result<O, commands_raw::CmdFillBufferError>
+        where Self: Sized + AddCommand<commands_raw::CmdFillBuffer<B::Target>, Out = O>,
               B: IntoBuffer
     {
-        let cmd = cmd::CmdFillBuffer::new(buffer.into_buffer(), data)?;
+        let cmd = commands_raw::CmdFillBuffer::new(buffer.into_buffer(), data)?;
         Ok(self.add(cmd))
     }
 
     /// Adds a command that writes data to a buffer.
     #[inline]
-    fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, cmd::CmdUpdateBufferError>
-        where Self: Sized + AddCommand<cmd::CmdUpdateBuffer<B::Target, D>, Out = O>,
+    fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, commands_raw::CmdUpdateBufferError>
+        where Self: Sized + AddCommand<commands_raw::CmdUpdateBuffer<B::Target, D>, Out = O>,
               B: IntoBuffer
     {
-        let cmd = cmd::CmdUpdateBuffer::new(buffer.into_buffer(), data)?;
+        let cmd = commands_raw::CmdUpdateBuffer::new(buffer.into_buffer(), data)?;
         Ok(self.add(cmd))
     }
 
     /// Adds a command that copies from a buffer to another.
     #[inline]
-    fn copy_buffer<S, D, O>(self, src: S, dest: D) -> Result<O, cmd::CmdCopyBufferError>
-        where Self: Sized + AddCommand<cmd::CmdCopyBuffer<S::Target, D::Target>, Out = O>,
+    fn copy_buffer<S, D, O>(self, src: S, dest: D) -> Result<O, commands_raw::CmdCopyBufferError>
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBuffer<S::Target, D::Target>, Out = O>,
               S: IntoBuffer,
               D: IntoBuffer
     {
-        let cmd = cmd::CmdCopyBuffer::new(src.into_buffer(), dest.into_buffer())?;
+        let cmd = commands_raw::CmdCopyBuffer::new(src.into_buffer(), dest.into_buffer())?;
         Ok(self.add(cmd))
     }
 
@@ -85,11 +86,11 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     // TODO: not safe because of signalling NaNs
     #[inline]
     fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
-                                     -> Result<O, cmd::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<cmd::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
+                                     -> Result<O, commands_raw::CmdCopyBufferToImageError>
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
               B: IntoBuffer, I: IntoImage
     {
-        let cmd = cmd::CmdCopyBufferToImage::new(buffer.into_buffer(), image.into_image())?;
+        let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.into_buffer(), image.into_image())?;
         Ok(self.add(cmd))
     }
 
@@ -97,11 +98,11 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn copy_buffer_to_image_dimensions<B, I, O>(self, buffer: B, image: I, offset: [u32; 3],
                                                 size: [u32; 3], first_layer: u32, num_layers: u32,
-                                                mipmap: u32) -> Result<O, cmd::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<cmd::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
+                                                mipmap: u32) -> Result<O, commands_raw::CmdCopyBufferToImageError>
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
               B: IntoBuffer, I: IntoImage
     {
-        let cmd = cmd::CmdCopyBufferToImage::with_dimensions(buffer.into_buffer(),
+        let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.into_buffer(),
                                                              image.into_image(), offset, size,
                                                              first_layer, num_layers, mipmap)?;
         Ok(self.add(cmd))
@@ -117,19 +118,19 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn begin_render_pass<F, C, O>(self, framebuffer: F, secondary: bool, clear_values: C)
                                   -> O
-        where Self: Sized + AddCommand<cmd::CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>, Out = O>,
               F: FramebufferAbstract + RenderPassDescClearValues<C>
     {
-        let cmd = cmd::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);
+        let cmd = commands_raw::CmdBeginRenderPass::new(framebuffer, secondary, clear_values);
         self.add(cmd)
     }
 
     /// Adds a command that jumps to the next subpass of the current render pass.
     #[inline]
     fn next_subpass<O>(self, secondary: bool) -> O
-        where Self: Sized + AddCommand<cmd::CmdNextSubpass, Out = O>
+        where Self: Sized + AddCommand<commands_raw::CmdNextSubpass, Out = O>
     {
-        let cmd = cmd::CmdNextSubpass::new(secondary);
+        let cmd = commands_raw::CmdNextSubpass::new(secondary);
         self.add(cmd)
     }
 
@@ -139,9 +140,9 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     /// the command buffer or add further commands.
     #[inline]
     fn end_render_pass<O>(self) -> O
-        where Self: Sized + AddCommand<cmd::CmdEndRenderPass, Out = O>
+        where Self: Sized + AddCommand<commands_raw::CmdEndRenderPass, Out = O>
     {
-        let cmd = cmd::CmdEndRenderPass::new();
+        let cmd = commands_raw::CmdEndRenderPass::new();
         self.add(cmd)
     }
 
@@ -151,11 +152,11 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn draw<P, S, Pc, V, O>(self, pipeline: P, dynamic: DynamicState, vertices: V, sets: S,
                             push_constants: Pc) -> O
-        where Self: Sized + AddCommand<cmd::CmdDraw<V, P, S, Pc>, Out = O>,
+        where Self: Sized + AddCommand<commands_extra::CmdDraw<V, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone
     {
-        let cmd = cmd::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
+        let cmd = commands_extra::CmdDraw::new(pipeline, dynamic, vertices, sets, push_constants);
         self.add(cmd)
     }
 
@@ -165,26 +166,26 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn draw_indexed<P, S, Pc, V, Ib, I, O>(self, pipeline: P, dynamic: DynamicState,
         vertices: V, index_buffer: Ib, sets: S, push_constants: Pc) -> O
-        where Self: Sized + AddCommand<cmd::CmdDrawIndexed<V, Ib::Target, P, S, Pc>, Out = O>,
+        where Self: Sized + AddCommand<commands_extra::CmdDrawIndexed<V, Ib::Target, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
               Ib: IntoBuffer,
               Ib::Target: TypedBuffer<Content = [I]>,
               I: Index + 'static
     {
-        let cmd = cmd::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.into_buffer(),
+        let cmd = commands_extra::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.into_buffer(),
                                            sets, push_constants);
         self.add(cmd)
     }
 
     /// Executes a compute shader.
     fn dispatch<P, S, Pc, O>(self, dimensions: [u32; 3], pipeline: P, sets: S, push_constants: Pc)
-                             -> Result<O, cmd::CmdDispatchError>
-        where Self: Sized + AddCommand<cmd::CmdDispatch<P, S, Pc>, Out = O>,
+                             -> Result<O, commands_extra::CmdDispatchError>
+        where Self: Sized + AddCommand<commands_extra::CmdDispatch<P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: Clone + ComputePipelineAbstract,
     {
-        let cmd = try!(cmd::CmdDispatch::new(dimensions, pipeline, sets, push_constants));
+        let cmd = try!(commands_extra::CmdDispatch::new(dimensions, pipeline, sets, push_constants));
         Ok(self.add(cmd))
     }
 
@@ -199,7 +200,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
 pub unsafe trait CommandBufferBuilderBuffered {
     /// Adds a pipeline barrier to the underlying command buffer and bypasses the flushing
     /// mechanism.
-    fn add_non_buffered_pipeline_barrier(&mut self, cmd: &cmd::CmdPipelineBarrier);
+    fn add_non_buffered_pipeline_barrier(&mut self, cmd: &commands_raw::CmdPipelineBarrier);
 
     /// Flushes all the commands that haven't been flushed to the inner builder.
     fn flush(&mut self);

@@ -16,7 +16,7 @@ use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
-use command_buffer::cmd;
+use command_buffer::commands_raw;
 use image::Image;
 use device::Device;
 use device::DeviceOwned;
@@ -128,19 +128,19 @@ macro_rules! pass_through {
 }
 
 // FIXME: implement manually
-pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
-pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
-pass_through!((V), cmd::CmdBindVertexBuffers<V>);
-pass_through!((C), cmd::CmdExecuteCommands<C>);
+pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
+pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
+pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
+pass_through!((C), commands_raw::CmdExecuteCommands<C>);
 
-unsafe impl<I, O, B> AddCommand<cmd::CmdBindIndexBuffer<B>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdBindIndexBuffer<B>, Out = O>,
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdBindIndexBuffer<B>, Out = O>,
           B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdBindIndexBuffer<B>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBindIndexBuffer<B>) -> Self::Out {
         self.add_buffer(command.buffer(), false);
 
         SubmitSyncBuilderLayer {
@@ -151,13 +151,13 @@ unsafe impl<I, O, B> AddCommand<cmd::CmdBindIndexBuffer<B>> for SubmitSyncBuilde
     }
 }
 
-unsafe impl<I, O, P> AddCommand<cmd::CmdBindPipeline<P>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdBindPipeline<P>, Out = O>
+unsafe impl<I, O, P> AddCommand<commands_raw::CmdBindPipeline<P>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdBindPipeline<P>, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdBindPipeline<P>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdBindPipeline<P>) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -166,15 +166,15 @@ unsafe impl<I, O, P> AddCommand<cmd::CmdBindPipeline<P>> for SubmitSyncBuilderLa
     }
 }
 
-unsafe impl<I, O, S, D> AddCommand<cmd::CmdBlitImage<S, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdBlitImage<S, D>, Out = O>,
+unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdBlitImage<S, D>, Out = O>,
           S: Image + Send + Sync + Clone + 'static,
           D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdBlitImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBlitImage<S, D>) -> Self::Out {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
@@ -186,13 +186,13 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdBlitImage<S, D>> for SubmitSyncBuilde
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdClearAttachments> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdClearAttachments, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdClearAttachments> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdClearAttachments, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdClearAttachments) -> Self::Out {
+    fn add(self, command: commands_raw::CmdClearAttachments) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -201,15 +201,15 @@ unsafe impl<I, O> AddCommand<cmd::CmdClearAttachments> for SubmitSyncBuilderLaye
     }
 }
 
-unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBuffer<S, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdCopyBuffer<S, D>, Out = O>,
+unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdCopyBuffer<S, D>, Out = O>,
           S: Buffer + Send + Sync + Clone + 'static,
           D: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdCopyBuffer<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyBuffer<S, D>) -> Self::Out {
         self.add_buffer(command.source(), false);
         self.add_buffer(command.destination(), true);
 
@@ -221,15 +221,15 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBuffer<S, D>> for SubmitSyncBuild
     }
 }
 
-unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBufferToImage<S, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdCopyBufferToImage<S, D>, Out = O>,
+unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdCopyBufferToImage<S, D>, Out = O>,
           S: Buffer + Send + Sync + Clone + 'static,
           D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdCopyBufferToImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyBufferToImage<S, D>) -> Self::Out {
         self.add_buffer(command.source(), false);
         self.add_image(command.destination(), true);
 
@@ -241,15 +241,15 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyBufferToImage<S, D>> for SubmitSy
     }
 }
 
-unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyImage<S, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdCopyImage<S, D>, Out = O>,
+unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdCopyImage<S, D>, Out = O>,
           S: Image + Send + Sync + Clone + 'static,
           D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdCopyImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyImage<S, D>) -> Self::Out {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
@@ -261,13 +261,13 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdCopyImage<S, D>> for SubmitSyncBuilde
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdDispatchRaw> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdDispatchRaw, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdDispatchRaw> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdDispatchRaw, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdDispatchRaw) -> Self::Out {
+    fn add(self, command: commands_raw::CmdDispatchRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -276,13 +276,13 @@ unsafe impl<I, O> AddCommand<cmd::CmdDispatchRaw> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdDrawRaw> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdDrawRaw, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdDrawRaw> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdDrawRaw, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdDrawRaw) -> Self::Out {
+    fn add(self, command: commands_raw::CmdDrawRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -291,13 +291,13 @@ unsafe impl<I, O> AddCommand<cmd::CmdDrawRaw> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdDrawIndexedRaw> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdDrawIndexedRaw, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdDrawIndexedRaw> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdDrawIndexedRaw, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdDrawIndexedRaw) -> Self::Out {
+    fn add(self, command: commands_raw::CmdDrawIndexedRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -306,13 +306,13 @@ unsafe impl<I, O> AddCommand<cmd::CmdDrawIndexedRaw> for SubmitSyncBuilderLayer<
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdEndRenderPass> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdEndRenderPass, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdEndRenderPass, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdEndRenderPass) -> Self::Out {
+    fn add(self, command: commands_raw::CmdEndRenderPass) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -321,14 +321,14 @@ unsafe impl<I, O> AddCommand<cmd::CmdEndRenderPass> for SubmitSyncBuilderLayer<I
     }
 }
 
-unsafe impl<I, O, B> AddCommand<cmd::CmdFillBuffer<B>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdFillBuffer<B>, Out = O>,
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdFillBuffer<B>, Out = O>,
           B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdFillBuffer<B>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdFillBuffer<B>) -> Self::Out {
         self.add_buffer(command.buffer(), true);
 
         SubmitSyncBuilderLayer {
@@ -339,13 +339,13 @@ unsafe impl<I, O, B> AddCommand<cmd::CmdFillBuffer<B>> for SubmitSyncBuilderLaye
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdNextSubpass> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdNextSubpass, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdNextSubpass> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdNextSubpass, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdNextSubpass) -> Self::Out {
+    fn add(self, command: commands_raw::CmdNextSubpass) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -354,13 +354,13 @@ unsafe impl<I, O> AddCommand<cmd::CmdNextSubpass> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<I, O, Pc, Pl> AddCommand<cmd::CmdPushConstants<Pc, Pl>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdPushConstants<Pc, Pl>, Out = O>
+unsafe impl<I, O, Pc, Pl> AddCommand<commands_raw::CmdPushConstants<Pc, Pl>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdPushConstants<Pc, Pl>, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdPushConstants<Pc, Pl>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdPushConstants<Pc, Pl>) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -369,15 +369,15 @@ unsafe impl<I, O, Pc, Pl> AddCommand<cmd::CmdPushConstants<Pc, Pl>> for SubmitSy
     }
 }
 
-unsafe impl<I, O, S, D> AddCommand<cmd::CmdResolveImage<S, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdResolveImage<S, D>, Out = O>,
+unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdResolveImage<S, D>, Out = O>,
           S: Image + Send + Sync + Clone + 'static,
           D: Image + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdResolveImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdResolveImage<S, D>) -> Self::Out {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
@@ -389,13 +389,13 @@ unsafe impl<I, O, S, D> AddCommand<cmd::CmdResolveImage<S, D>> for SubmitSyncBui
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdSetEvent> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdSetEvent, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdSetEvent> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdSetEvent, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdSetEvent) -> Self::Out {
+    fn add(self, command: commands_raw::CmdSetEvent) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -404,13 +404,13 @@ unsafe impl<I, O> AddCommand<cmd::CmdSetEvent> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<I, O> AddCommand<cmd::CmdSetState> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdSetState, Out = O>
+unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdSetState, Out = O>
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: cmd::CmdSetState) -> Self::Out {
+    fn add(self, command: commands_raw::CmdSetState) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
             buffers: self.buffers,
@@ -419,14 +419,14 @@ unsafe impl<I, O> AddCommand<cmd::CmdSetState> for SubmitSyncBuilderLayer<I>
     }
 }
 
-unsafe impl<I, O, B, D> AddCommand<cmd::CmdUpdateBuffer<B, D>> for SubmitSyncBuilderLayer<I>
-    where I: AddCommand<cmd::CmdUpdateBuffer<B, D>, Out = O>,
+unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdUpdateBuffer<B, D>, Out = O>,
           B: Buffer + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: cmd::CmdUpdateBuffer<B, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdUpdateBuffer<B, D>) -> Self::Out {
         self.add_buffer(command.buffer(), true);
 
         SubmitSyncBuilderLayer {

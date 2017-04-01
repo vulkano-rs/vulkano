@@ -51,7 +51,8 @@ use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 
 pub mod cb;
-pub mod cmd;
+pub mod commands_extra;
+pub mod commands_raw;
 pub mod pool;
 pub mod submit;
 

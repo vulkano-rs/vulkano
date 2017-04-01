@@ -11,7 +11,7 @@ use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::CommandBufferBuilder;
-use command_buffer::cmd;
+use command_buffer::commands_raw;
 use device::Device;
 use device::DeviceOwned;
 
@@ -84,26 +84,26 @@ macro_rules! pass_through {
     }
 }
 
-pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
-pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
-pass_through!((B), cmd::CmdBindIndexBuffer<B>);
-pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
-pass_through!((V), cmd::CmdBindVertexBuffers<V>);
-pass_through!((S, D), cmd::CmdBlitImage<S, D>);
-pass_through!((), cmd::CmdClearAttachments);
-pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
-pass_through!((S, D), cmd::CmdCopyBufferToImage<S, D>);
-pass_through!((S, D), cmd::CmdCopyImage<S, D>);
-pass_through!((), cmd::CmdDispatchRaw);
-pass_through!((), cmd::CmdDrawIndexedRaw);
-pass_through!((B), cmd::CmdDrawIndirectRaw<B>);
-pass_through!((), cmd::CmdDrawRaw);
-pass_through!((), cmd::CmdEndRenderPass);
-pass_through!((C), cmd::CmdExecuteCommands<C>);
-pass_through!((B), cmd::CmdFillBuffer<B>);
-pass_through!((), cmd::CmdNextSubpass);
-pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
-pass_through!((S, D), cmd::CmdResolveImage<S, D>);
-pass_through!((), cmd::CmdSetEvent);
-pass_through!((), cmd::CmdSetState);
-pass_through!((B, D), cmd::CmdUpdateBuffer<B, D>);
+pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
+pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
+pass_through!((B), commands_raw::CmdBindIndexBuffer<B>);
+pass_through!((Pl), commands_raw::CmdBindPipeline<Pl>);
+pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
+pass_through!((S, D), commands_raw::CmdBlitImage<S, D>);
+pass_through!((), commands_raw::CmdClearAttachments);
+pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);
+pass_through!((S, D), commands_raw::CmdCopyBufferToImage<S, D>);
+pass_through!((S, D), commands_raw::CmdCopyImage<S, D>);
+pass_through!((), commands_raw::CmdDispatchRaw);
+pass_through!((), commands_raw::CmdDrawIndexedRaw);
+pass_through!((B), commands_raw::CmdDrawIndirectRaw<B>);
+pass_through!((), commands_raw::CmdDrawRaw);
+pass_through!((), commands_raw::CmdEndRenderPass);
+pass_through!((C), commands_raw::CmdExecuteCommands<C>);
+pass_through!((B), commands_raw::CmdFillBuffer<B>);
+pass_through!((), commands_raw::CmdNextSubpass);
+pass_through!((Pc, Pl), commands_raw::CmdPushConstants<Pc, Pl>);
+pass_through!((S, D), commands_raw::CmdResolveImage<S, D>);
+pass_through!((), commands_raw::CmdSetEvent);
+pass_through!((), commands_raw::CmdSetState);
+pass_through!((B, D), commands_raw::CmdUpdateBuffer<B, D>);

@@ -8,6 +8,8 @@
 // according to those terms.
 
 //! All the commands used in the internals of vulkano.
+//!
+//! This module only contains the base commands that have direct equivalents in the Vulkan API.
 
 pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
@@ -19,11 +21,7 @@ pub use self::clear_attachments::CmdClearAttachments;
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};
 pub use self::copy_buffer_to_image::{CmdCopyBufferToImage, CmdCopyBufferToImageError};
 pub use self::copy_image::{CmdCopyImage, CmdCopyImageError};
-pub use self::dispatch::{CmdDispatch, CmdDispatchError};
-//pub use self::dispatch_indirect::{CmdDispatchIndirect, CmdDispatchIndirectError};
 pub use self::dispatch_raw::{CmdDispatchRaw, CmdDispatchRawError};
-pub use self::draw::CmdDraw;
-pub use self::draw_indexed::CmdDrawIndexed;
 pub use self::draw_indexed_raw::CmdDrawIndexedRaw;
 pub use self::draw_indirect_raw::CmdDrawIndirectRaw;
 pub use self::draw_raw::CmdDrawRaw;
@@ -48,11 +46,7 @@ mod clear_attachments;
 mod copy_buffer;
 mod copy_buffer_to_image;
 mod copy_image;
-mod dispatch;
-//mod dispatch_indirect;
 mod dispatch_raw;
-mod draw;
-mod draw_indexed;
 mod draw_indexed_raw;
 mod draw_indirect_raw;
 mod draw_raw;

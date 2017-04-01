@@ -9,12 +9,12 @@
 
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
-use command_buffer::cmd::CmdBindDescriptorSets;
-use command_buffer::cmd::CmdBindPipeline;
-use command_buffer::cmd::CmdBindVertexBuffers;
-use command_buffer::cmd::CmdDrawRaw;
-use command_buffer::cmd::CmdPushConstants;
-use command_buffer::cmd::CmdSetState;
+use command_buffer::commands_raw::CmdBindDescriptorSets;
+use command_buffer::commands_raw::CmdBindPipeline;
+use command_buffer::commands_raw::CmdBindVertexBuffers;
+use command_buffer::commands_raw::CmdDrawRaw;
+use command_buffer::commands_raw::CmdPushConstants;
+use command_buffer::commands_raw::CmdSetState;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
