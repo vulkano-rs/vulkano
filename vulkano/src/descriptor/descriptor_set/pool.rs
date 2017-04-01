@@ -710,12 +710,12 @@ macro_rules! smallvec {
 
 impl DescriptorWrite {
     #[inline]
-    pub fn storage_image<I>(binding: u32, image: &I) -> DescriptorWrite
+    pub fn storage_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
         where I: ImageView
     {
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_storage_image_layout() as u32;
                 DescriptorWriteInner::StorageImage(image.inner().internal_object(), layout)
@@ -724,21 +724,21 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn sampler(binding: u32, sampler: &Arc<Sampler>) -> DescriptorWrite {
+    pub fn sampler(binding: u32, array_element: u32, sampler: &Arc<Sampler>) -> DescriptorWrite {
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::Sampler(sampler.internal_object()))
         }
     }
 
     #[inline]
-    pub fn sampled_image<I>(binding: u32, image: &I) -> DescriptorWrite
+    pub fn sampled_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
         where I: ImageView
     {
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_sampled_image_layout() as u32;
                 DescriptorWriteInner::SampledImage(image.inner().internal_object(), layout)
@@ -747,12 +747,12 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn combined_image_sampler<I>(binding: u32, sampler: &Arc<Sampler>, image: &I) -> DescriptorWrite
+    pub fn combined_image_sampler<I>(binding: u32, array_element: u32, sampler: &Arc<Sampler>, image: &I) -> DescriptorWrite
         where I: ImageView
     {
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_combined_image_sampler_layout() as u32;
                 DescriptorWriteInner::CombinedImageSampler(sampler.internal_object(), image.inner().internal_object(), layout)
@@ -761,7 +761,7 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn uniform_texel_buffer<'a, F, B>(binding: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
+    pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
         where B: Buffer,
               F: 'static + Send + Sync,
     {
@@ -769,13 +769,13 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::UniformTexelBuffer(view.internal_object())),
         }
     }
 
     #[inline]
-    pub fn storage_texel_buffer<'a, F, B>(binding: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
+    pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
         where B: Buffer + 'static,
               F: 'static + Send + Sync,
     {
@@ -783,13 +783,13 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::StorageTexelBuffer(view.internal_object())),
         }
     }
 
     #[inline]
-    pub unsafe fn uniform_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
         let size = buffer.size();
@@ -797,7 +797,7 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 DescriptorWriteInner::UniformBuffer(buffer.internal_object(), offset, size)
             }),
@@ -805,7 +805,7 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub unsafe fn storage_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
         let size = buffer.size();
@@ -813,7 +813,7 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 DescriptorWriteInner::StorageBuffer(buffer.internal_object(), offset, size)
             }),
@@ -821,7 +821,7 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub unsafe fn dynamic_uniform_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn dynamic_uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
         let size = buffer.size();
@@ -829,14 +829,14 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::DynamicUniformBuffer(buffer.internal_object(),
                                                                         offset, size)),
         }
     }
 
     #[inline]
-    pub unsafe fn dynamic_storage_buffer<B>(binding: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn dynamic_storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
         where B: Buffer
     {
         let size = buffer.size();
@@ -844,19 +844,19 @@ impl DescriptorWrite {
 
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::DynamicStorageBuffer(buffer.internal_object(),
                                                                         offset, size)),
         }
     }
 
     #[inline]
-    pub fn input_attachment<I>(binding: u32, image: &I) -> DescriptorWrite
+    pub fn input_attachment<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
         where I: ImageView
     {
         DescriptorWrite {
             binding: binding,
-            first_array_element: 0,
+            first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_input_attachment_layout() as u32;
                 DescriptorWriteInner::InputAttachment(image.inner().internal_object(), layout)

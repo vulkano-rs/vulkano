@@ -218,10 +218,10 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
             DescriptorType::UniformBuffer => unsafe {
-                DescriptorWrite::uniform_buffer(binding_id as u32, &buffer)
+                DescriptorWrite::uniform_buffer(binding_id as u32, 0, &buffer)
             },
             DescriptorType::StorageBuffer => unsafe {
-                DescriptorWrite::storage_buffer(binding_id as u32, &buffer)
+                DescriptorWrite::storage_buffer(binding_id as u32, 0, &buffer)
             },
             _ => panic!()
         });
@@ -268,13 +268,13 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
             DescriptorType::SampledImage => unsafe {
-                DescriptorWrite::sampled_image(binding_id as u32, &image_view)
+                DescriptorWrite::sampled_image(binding_id as u32, 0, &image_view)
             },
             DescriptorType::StorageImage => unsafe {
-                DescriptorWrite::storage_image(binding_id as u32, &image_view)
+                DescriptorWrite::storage_image(binding_id as u32, 0, &image_view)
             },
             DescriptorType::InputAttachment => unsafe {
-                DescriptorWrite::input_attachment(binding_id as u32, &image_view)
+                DescriptorWrite::input_attachment(binding_id as u32, 0, &image_view)
             },
             _ => panic!()
         });
@@ -316,7 +316,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
             DescriptorType::CombinedImageSampler => unsafe {
-                DescriptorWrite::combined_image_sampler(binding_id as u32, &self.1, &image_view)
+                DescriptorWrite::combined_image_sampler(binding_id as u32, 0, &self.1, &image_view)
             },
             _ => panic!()
         });
@@ -337,6 +337,56 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             })
+        }
+    }
+}
+
+// TODO: DRY
+unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)>
+    where T: IntoImageView, L: PipelineLayoutAbstract
+{
+    type Out = (R, Vec<SimpleDescriptorSetImg<T::Target>>);
+
+    fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
+              -> SimpleDescriptorSetBuilder<L, Self::Out>
+    {
+        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        assert_eq!(set_id, i.set_id);       // TODO: Result instead
+        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+
+        assert_eq!(desc.array_count as usize, self.len());     // not implemented
+
+        let mut imgs = Vec::new();
+        for (num, (img, sampler)) in self.into_iter().enumerate() {
+            let image_view = img.into_image_view();
+
+            i.writes.push(match desc.ty.ty().unwrap() {
+                DescriptorType::CombinedImageSampler => unsafe {
+                    DescriptorWrite::combined_image_sampler(binding_id as u32, num as u32,
+                                                            &sampler, &image_view)
+                },
+                _ => panic!()
+            });
+
+            imgs.push(SimpleDescriptorSetImg {
+                image: image_view,
+                sampler: Some(sampler),
+                write: !desc.readonly,
+                first_mipmap: 0,            // FIXME:
+                num_mipmaps: 1,         // FIXME:
+                first_layer: 0,         // FIXME:
+                num_layers: 1,          // FIXME:
+                layout: Layout::General,            // FIXME:
+                stage: PipelineStages::none(),          // FIXME:
+                access: AccessFlagBits::none(),         // FIXME:
+            });
+        }
+
+        SimpleDescriptorSetBuilder {
+            layout: i.layout,
+            set_id: i.set_id,
+            writes: i.writes,
+            resources: (i.resources, imgs),
         }
     }
 }
