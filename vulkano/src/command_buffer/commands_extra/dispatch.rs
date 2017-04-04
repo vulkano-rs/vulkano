@@ -40,7 +40,7 @@ impl<P, S, Pc> CmdDispatch<P, S, Pc>
         let bind_pipeline = CmdBindPipeline::bind_compute_pipeline(pipeline.clone());
         let descriptor_sets = try!(CmdBindDescriptorSets::new(true, pipeline.clone(), sets));
         let push_constants = try!(CmdPushConstants::new(pipeline.clone(), push_constants));
-        let dispatch_raw = try!(unsafe { CmdDispatchRaw::new(dimensions) });
+        let dispatch_raw = try!(unsafe { CmdDispatchRaw::new(pipeline.device().clone(), dimensions) });
 
         Ok(CmdDispatch {
             push_constants: push_constants,
