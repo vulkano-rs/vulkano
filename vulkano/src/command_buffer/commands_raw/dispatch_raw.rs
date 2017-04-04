@@ -40,7 +40,8 @@ impl CmdDispatchRaw {
     ///
     /// While building the command is always safe, care must be taken when it is added to a command
     /// buffer. A correct combination of compute pipeline, descriptor set and push constants must
-    /// have be bound beforehand.
+    /// have been bound beforehand.
+    ///
     #[inline]
     pub unsafe fn new(device: Arc<Device>, dimensions: [u32; 3])
                       -> Result<CmdDispatchRaw, CmdDispatchRawError>
