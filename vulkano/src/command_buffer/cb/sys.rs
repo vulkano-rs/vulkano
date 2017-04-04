@@ -86,6 +86,14 @@ pub enum Flags {
     OneTimeSubmit,
 }
 
+/// Command buffer being built.
+///
+/// You can add commands to an `UnsafeCommandBufferBuilder` by using the `AddCommand` trait.
+/// The `AddCommand<&Cmd>` trait is implemented on the `UnsafeCommandBufferBuilder` for any `Cmd`
+/// that is a raw Vulkan command.
+///
+/// When you are finished adding commands, you can use the `CommandBufferBuild` trait to turn this
+/// builder into an `UnsafeCommandBuffer`.
 pub struct UnsafeCommandBufferBuilder<P> where P: CommandPool {
     // The Vulkan command buffer. Will be 0 if `build()` has been called.
     cmd: vk::CommandBuffer,
@@ -109,13 +117,14 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     /// # Safety
     ///
     /// Creating and destroying an unsafe command buffer is not unsafe per se, but the commands
-    /// that you add to it are unchecked and do not have any synchronization.
+    /// that you add to it are unchecked, do not have any synchronization, and are not kept alive.
     ///
-    /// In other words, it is your job to make sure that the commands you add are valid and that
-    /// they do not introduce any race condition.
+    /// In other words, it is your job to make sure that the commands you add are valid, that they
+    /// don't use resources that have been destroyed, and that they do not introduce any race
+    /// condition.
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
-    /// > be able to submit invalid commands.
+    /// > submit invalid commands.
     pub unsafe fn new<R, F>(pool: P, kind: Kind<R, F>, flags: Flags)
                             -> Result<UnsafeCommandBufferBuilder<P>, OomError>
         where R: RenderPassAbstract, F: FramebufferAbstract
@@ -126,7 +135,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
         };
 
         let cmd = try!(pool.alloc(secondary, 1)).next().unwrap();
-        
+
         match UnsafeCommandBufferBuilder::already_allocated(pool, cmd, kind, flags) {
             Ok(cmd) => Ok(cmd),
             Err(err) => {
@@ -141,7 +150,7 @@ impl<P> UnsafeCommandBufferBuilder<P> where P: CommandPool {
     ///
     /// # Safety
     ///
-    /// See also `new`.
+    /// See the `new` method.
     ///
     /// The allocated command buffer must belong to the pool and must not be used anywhere else
     /// in the code for the duration of this command buffer.
@@ -273,6 +282,9 @@ unsafe impl<P> CommandBufferBuild for UnsafeCommandBufferBuilder<P>
     }
 }
 
+/// Command buffer that has been built.
+///
+/// Doesn't perform any synchronization and doesn't keep the object it uses alive.
 pub struct UnsafeCommandBuffer<P> where P: CommandPool {
     // The Vulkan command buffer.
     cmd: vk::CommandBuffer,
