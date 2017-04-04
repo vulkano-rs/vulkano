@@ -78,19 +78,20 @@ unsafe impl<I> DeviceOwned for AbstractStorageLayer<I> where I: DeviceOwned {
     }
 }
 
-unsafe impl<I, O> CommandBufferBuild for AbstractStorageLayer<I>
-    where I: CommandBufferBuild<Out = O>
+unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
+    where I: CommandBufferBuild<Out = O, Err = E>
 {
     type Out = AbstractStorageLayer<O>;
+    type Err = E;
 
     #[inline]
-    fn build(mut self) -> Self::Out {
-        let inner = self.inner.build();
+    fn build(mut self) -> Result<Self::Out, E> {
+        let inner = try!(self.inner.build());
 
-        AbstractStorageLayer {
+        Ok(AbstractStorageLayer {
             inner: inner,
             commands: self.commands,
-        }
+        })
     }
 }
 

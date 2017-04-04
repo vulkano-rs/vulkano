@@ -189,9 +189,14 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         Ok(self.add(cmd))
     }
 
+    /// Builds the actual command buffer.
+    ///
+    /// You must call this function after you have finished adding commands to the command buffer
+    /// builder. A command buffer will returned, which you can then submit or use in an "execute
+    /// commands" command.
     #[inline]
-    fn build<O>(self) -> O
-        where Self: Sized + CommandBufferBuild<Out = O>
+    fn build(self) -> Result<Self::Out, Self::Err>
+        where Self: Sized + CommandBufferBuild
     {
         CommandBufferBuild::build(self)
     }

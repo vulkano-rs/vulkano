@@ -78,18 +78,19 @@ impl<I> SubmitSyncBuilderLayer<I> {
     }
 }
 
-unsafe impl<I, O> CommandBufferBuild for SubmitSyncBuilderLayer<I>
-    where I: CommandBufferBuild<Out = O>
+unsafe impl<I, O, E> CommandBufferBuild for SubmitSyncBuilderLayer<I>
+    where I: CommandBufferBuild<Out = O, Err = E>
 {
     type Out = SubmitSyncLayer<O>;
+    type Err = E;
 
     #[inline]
-    fn build(self) -> Self::Out {
-        SubmitSyncLayer {
-            inner: self.inner.build(),
+    fn build(self) -> Result<Self::Out, E> {
+        Ok(SubmitSyncLayer {
+            inner: try!(self.inner.build()),
             buffers: self.buffers,
             images: self.images,
-        }
+        })
     }
 }
 

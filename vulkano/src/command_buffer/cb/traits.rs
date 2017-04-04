@@ -21,9 +21,11 @@ pub unsafe trait AddCommand<C> {
 pub unsafe trait CommandBufferBuild {
     /// The type of the built command buffer.
     type Out;
+    /// Error that can be returned when building.
+    type Err;
 
     /// Builds the command buffer.
-    fn build(self) -> Self::Out;
+    fn build(self) -> Result<Self::Out, Self::Err>;
 }
 
 /*trait Builder {

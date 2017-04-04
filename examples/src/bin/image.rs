@@ -184,7 +184,7 @@ fn main() {
             .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
                   set.clone(), ())
             .end_render_pass()
-            .build();
+            .build().unwrap();
 
         let future = future
             .then_execute(queue.clone(), cb)

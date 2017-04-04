@@ -41,13 +41,14 @@ impl<I> AutoPipelineBarriersLayer<I> {
     }
 }*/
 
-unsafe impl<I, O> CommandBufferBuild for AutoPipelineBarriersLayer<I>
-    where I: CommandBufferBuild<Out = O>
+unsafe impl<I, O, E> CommandBufferBuild for AutoPipelineBarriersLayer<I>
+    where I: CommandBufferBuild<Out = O, Err = E>
 {
     type Out = O;
+    type Err = E;
 
     #[inline]
-    fn build(self) -> O {
+    fn build(self) -> Result<O, E> {
         self.inner.build()
     }
 }

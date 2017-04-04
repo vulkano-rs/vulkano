@@ -60,14 +60,15 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
     }
 }
 
-unsafe impl<P, O> CommandBufferBuild for AutoCommandBufferBuilder<P>
-    where Cb<P>: CommandBufferBuild<Out = O>,
+unsafe impl<P, O, E> CommandBufferBuild for AutoCommandBufferBuilder<P>
+    where Cb<P>: CommandBufferBuild<Out = O, Err = E>,
           P: CommandPool
 {
     type Out = O;
+    type Err = E;
 
     #[inline]
-    fn build(self) -> Self::Out {
+    fn build(self) -> Result<O, E> {
         // TODO: wrap around?
         CommandBufferBuild::build(self.inner)
     }

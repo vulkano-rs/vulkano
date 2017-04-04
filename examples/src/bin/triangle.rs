@@ -397,7 +397,7 @@ fn main() {
             .end_render_pass()
 
             // Finish building the command buffer by calling `build`.
-            .build();
+            .build().unwrap();
 
         let future = future
             .then_execute(queue.clone(), command_buffer)

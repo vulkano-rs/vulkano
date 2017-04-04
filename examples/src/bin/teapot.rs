@@ -189,7 +189,7 @@ fn main() {
                 (vertex_buffer.clone(), normals_buffer.clone()), 
                 index_buffer.clone(), set.clone(), ())
             .end_render_pass()
-            .build();
+            .build().unwrap();
         
         let future = future
             .then_execute(queue.clone(), command_buffer)

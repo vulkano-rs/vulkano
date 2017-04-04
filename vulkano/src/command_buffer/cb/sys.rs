@@ -261,23 +261,24 @@ unsafe impl<P> CommandBufferBuild for UnsafeCommandBufferBuilder<P>
     where P: CommandPool
 {
     type Out = UnsafeCommandBuffer<P>;
+    type Err = OomError;
 
     #[inline]
-    fn build(mut self) -> Self::Out {
+    fn build(mut self) -> Result<Self::Out, OomError> {
         unsafe {
             debug_assert_ne!(self.cmd, 0);
             let cmd = self.cmd;
             let vk = self.device.pointers();
-            check_errors(vk.EndCommandBuffer(cmd)).unwrap();       // TODO: handle error
+            try!(check_errors(vk.EndCommandBuffer(cmd)));
             self.cmd = 0;       // Prevents the `Drop` impl of the builder from destroying the cb.
 
-            UnsafeCommandBuffer {
+            Ok(UnsafeCommandBuffer {
                 cmd: cmd,
                 device: self.device.clone(),
                 pool: self.pool.take().unwrap().finish(),
                 flags: self.flags,
                 already_submitted: AtomicBool::new(false),
-            }
+            })
         }
     }
 }
@@ -345,5 +346,14 @@ unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
         self.cmd
+    }
+}
+
+impl<P> Drop for UnsafeCommandBuffer<P> where P: CommandPool {
+    #[inline]
+    fn drop(&mut self) {
+        //unsafe {
+            // FIXME: vk.FreeCommandBuffers()
+        //}
     }
 }
