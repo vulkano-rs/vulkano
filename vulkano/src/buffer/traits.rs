@@ -168,7 +168,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
 }
 
 /// Utility trait.
-pub unsafe trait IntoBuffer {
+pub unsafe trait Buffer {
     type Target: BufferAccess;
 
     fn into_buffer(self) -> Self::Target;

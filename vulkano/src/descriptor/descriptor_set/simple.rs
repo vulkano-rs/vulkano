@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
-use buffer::IntoBuffer;
+use buffer::Buffer;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
@@ -201,7 +201,7 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: IntoBuffer, L: PipelineLayoutAbstract
+    where T: Buffer, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetBuf<T::Target>);
 

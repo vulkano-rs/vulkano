@@ -15,7 +15,7 @@ use std::sync::Arc;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use buffer::traits::IntoBuffer;
+use buffer::traits::Buffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -161,7 +161,7 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: BufferAccess {
+unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: BufferAccess {
     type Target = Self;
 
     #[inline]

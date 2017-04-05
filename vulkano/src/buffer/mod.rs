@@ -70,7 +70,7 @@ pub use self::sys::BufferCreationError;
 pub use self::sys::Usage as BufferUsage;
 pub use self::traits::BufferAccess;
 pub use self::traits::BufferInner;
-pub use self::traits::IntoBuffer;
+pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
