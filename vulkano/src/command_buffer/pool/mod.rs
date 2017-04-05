@@ -27,6 +27,7 @@ pub use self::standard::StandardCommandPool;
 pub use self::standard::StandardCommandPoolFinished;
 pub use self::sys::UnsafeCommandPool;
 pub use self::sys::UnsafeCommandPoolAllocIter;
+pub use self::sys::CommandPoolTrimError;
 
 mod standard;
 mod sys;
