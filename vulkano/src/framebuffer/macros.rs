@@ -77,7 +77,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
             use $crate::image::Layout;
-            use $crate::image::ImageView;
+            use $crate::image::ImageViewAccess;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
 
@@ -103,7 +103,7 @@ macro_rules! ordered_passes_renderpass {
                 use $crate::framebuffer::AttachmentsList;
                 use $crate::framebuffer::FramebufferCreationError;
                 use $crate::framebuffer::RenderPassDescAttachmentsList;
-                use $crate::image::traits::ImageView;
+                use $crate::image::traits::ImageViewAccess;
                 use super::CustomRenderPassDesc;
                 pub struct AttachmentsStart;
                 ordered_passes_renderpass!{[] __impl_attachments__ [] [] [$($atch_name),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
@@ -158,8 +158,8 @@ macro_rules! ordered_passes_renderpass {
                 }
             }
 
-            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>> for CustomRenderPassDesc {
-                fn check_attachments_list(&self, list: Vec<Arc<ImageView + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for CustomRenderPassDesc {
+                fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
                     // FIXME: correct safety checks
                     assert_eq!(list.len(), self.num_attachments());
                     Ok(Box::new(list) as Box<_>)
@@ -388,7 +388,7 @@ macro_rules! ordered_passes_renderpass {
 
     ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
         unsafe impl<$($prev_params),*> RenderPassDescAttachmentsList<$prev<$($prev_params),*>> for CustomRenderPassDesc
-            where $($prev_params: ImageView + Send + Sync + 'static),*
+            where $($prev_params: ImageViewAccess + Send + Sync + 'static),*
         {
             //type List = ($($prev_params,)*);
 

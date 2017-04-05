@@ -19,7 +19,7 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPassCreationError;
 use image::Layout as ImageLayout;
-use image::ImageView;
+use image::ImageViewAccess;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -45,7 +45,7 @@ use vk;
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
 pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
-                                 RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>>
+                                 RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>>
 {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;

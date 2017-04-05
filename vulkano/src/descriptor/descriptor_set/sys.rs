@@ -24,7 +24,7 @@ use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageView;
+use image::ImageViewAccess;
 use sampler::Sampler;
 
 use check_errors;
@@ -740,7 +740,7 @@ macro_rules! smallvec {
 impl DescriptorWrite {
     #[inline]
     pub fn storage_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -763,7 +763,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn sampled_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -777,7 +777,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn combined_image_sampler<I>(binding: u32, array_element: u32, sampler: &Arc<Sampler>, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -881,7 +881,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn input_attachment<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,

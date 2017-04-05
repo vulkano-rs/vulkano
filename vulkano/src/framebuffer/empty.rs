@@ -18,7 +18,7 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use image::ImageView;
+use image::ImageViewAccess;
 
 /// Description of an empty render pass.
 ///
@@ -143,9 +143,9 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 }
 
-unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>> for EmptySinglePassRenderPassDesc {
+unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn check_attachments_list(&self, list: Vec<Arc<ImageView + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
         if list.is_empty() {
             Ok(Box::new(()) as Box<_>)
         } else {

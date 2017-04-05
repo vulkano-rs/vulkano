@@ -54,7 +54,7 @@ pub use self::sys::ImageCreationError;
 pub use self::sys::Layout;
 pub use self::sys::Usage;
 pub use self::traits::ImageAccess;
-pub use self::traits::ImageView;
+pub use self::traits::ImageViewAccess;
 pub use self::traits::Image;
 pub use self::traits::IntoImageView;
 

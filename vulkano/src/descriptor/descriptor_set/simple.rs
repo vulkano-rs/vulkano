@@ -481,7 +481,7 @@ pub struct SimpleDescriptorSetImg<I> {
 }
 
 /*unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
-    where I: ImageView
+    where I: ImageViewAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {

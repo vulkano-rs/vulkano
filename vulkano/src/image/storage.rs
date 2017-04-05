@@ -27,7 +27,7 @@ use image::sys::Usage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageView;
+use image::traits::ImageViewAccess;
 use image::traits::Image;
 use image::traits::IntoImageView;
 use instance::QueueFamily;
@@ -218,7 +218,7 @@ unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
     }
 }
 
-unsafe impl<F, A> ImageView for StorageImage<F, A>
+unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]

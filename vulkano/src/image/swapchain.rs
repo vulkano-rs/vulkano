@@ -18,7 +18,7 @@ use image::ViewType;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageView;
+use image::traits::ImageViewAccess;
 use image::traits::Image;
 use image::traits::IntoImageView;
 use image::sys::Layout;
@@ -133,7 +133,7 @@ unsafe impl<P> ImageContent<P> for SwapchainImage {
     }
 }
 
-unsafe impl ImageView for SwapchainImage {
+unsafe impl ImageViewAccess for SwapchainImage {
     #[inline]
     fn parent(&self) -> &ImageAccess {
         self

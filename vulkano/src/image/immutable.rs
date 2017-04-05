@@ -22,7 +22,7 @@ use image::sys::UnsafeImageView;
 use image::sys::Usage;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
-use image::traits::ImageView;
+use image::traits::ImageViewAccess;
 use image::traits::Image;
 use image::traits::IntoImageView;
 use instance::QueueFamily;
@@ -185,7 +185,7 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
     }
 }
 
-unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
+unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]

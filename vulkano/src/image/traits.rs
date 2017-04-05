@@ -208,13 +208,13 @@ pub unsafe trait ImageContent<P>: ImageAccess {
 
 /// Utility trait.
 pub unsafe trait IntoImageView {
-    type Target: ImageView;
+    type Target: ImageViewAccess;
 
     fn into_image_view(self) -> Self::Target;
 }
 
 /// Trait for types that represent image views.
-pub unsafe trait ImageView {
+pub unsafe trait ImageViewAccess {
     fn parent(&self) -> &ImageAccess;
 
     /// Returns the dimensions of the image view.
@@ -259,7 +259,7 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
+unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAccess {
     #[inline]
     fn parent(&self) -> &ImageAccess {
         (**self).parent()
@@ -303,6 +303,6 @@ unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
     }
 }
 
-pub unsafe trait AttachmentImageView: ImageView {
+pub unsafe trait AttachmentImageView: ImageViewAccess {
     fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
 }

@@ -10,7 +10,7 @@
 use std::cmp;
 use std::sync::Arc;
 use SafeDeref;
-use image::ImageView;
+use image::ImageViewAccess;
 use image::sys::UnsafeImageView;
 //use sync::AccessFlagBits;
 //use sync::PipelineStages;
@@ -54,7 +54,7 @@ unsafe impl AttachmentsList for () {
     }
 }
 
-unsafe impl AttachmentsList for Vec<Arc<ImageView + Send + Sync>> {
+unsafe impl AttachmentsList for Vec<Arc<ImageViewAccess + Send + Sync>> {
     #[inline]
     fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
         self.iter().map(|img| img.inner()).collect()
@@ -90,8 +90,8 @@ unsafe impl AttachmentsList for Vec<Arc<ImageView + Send + Sync>> {
 macro_rules! impl_into_atch_list {
     ($first:ident $(, $rest:ident)*) => (
         unsafe impl<$first $(, $rest)*> AttachmentsList for ($first, $($rest),*)
-            where $first: ImageView,
-                  $($rest: ImageView,)*
+            where $first: ImageViewAccess,
+                  $($rest: ImageViewAccess,)*
         {
             #[inline]
             #[allow(non_snake_case)]
