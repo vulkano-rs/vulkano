@@ -28,7 +28,6 @@ use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
 use sync::Fence;
-use sync::FenceWaitError;
 use sync::PipelineStages;
 use sync::Semaphore;
 

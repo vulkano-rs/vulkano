@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use buffer::Buffer;
 use buffer::IntoBuffer;
 use buffer::TypedBuffer;
 use device::DeviceOwned;
@@ -22,7 +21,6 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
-use image::Image;
 use image::IntoImage;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;

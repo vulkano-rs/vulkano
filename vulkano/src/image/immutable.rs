@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter::Empty;
 use std::sync::Arc;
 use smallvec::SmallVec;
 

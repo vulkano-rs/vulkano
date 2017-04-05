@@ -14,9 +14,6 @@ use command_buffer::submit::SubmitPresentBuilder;
 use sync::PipelineStages;
 use sync::Semaphore;
 
-use vk;
-use VulkanObject;
-
 /// Prototype for a submission that waits on semaphores.
 ///
 /// This prototype can't actually be submitted because it doesn't correspond to anything in Vulkan.

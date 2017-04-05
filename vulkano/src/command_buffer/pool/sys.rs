@@ -117,11 +117,9 @@ impl UnsafeCommandPool {
         if !self.device.loaded_extensions().khr_maintenance1 {
             return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
         }
-        unsafe {
-            let flags = 0;
-            let vk = self.device.pointers();
-            vk.TrimCommandPoolKHR(self.device.internal_object(), self.pool, flags);
-        }
+
+        let vk = self.device.pointers();
+        vk.TrimCommandPoolKHR(self.device.internal_object(), self.pool, 0 /* reserved */);
         Ok(())
     }
 

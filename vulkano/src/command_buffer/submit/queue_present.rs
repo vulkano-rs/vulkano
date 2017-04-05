@@ -14,12 +14,8 @@ use std::mem;
 use std::ptr;
 use smallvec::SmallVec;
 
-use command_buffer::cb::UnsafeCommandBuffer;
-use command_buffer::pool::CommandPool;
 use device::Queue;
 use swapchain::Swapchain;
-use sync::Fence;
-use sync::PipelineStages;
 use sync::Semaphore;
 
 use check_errors;
@@ -96,7 +92,7 @@ impl<'a> SubmitPresentBuilder<'a> {
     ///
     /// Panics if no swapchain image has been added to the builder.
     ///
-    pub fn submit(mut self, queue: &Queue) -> Result<(), SubmitPresentError> {
+    pub fn submit(self, queue: &Queue) -> Result<(), SubmitPresentError> {
         unsafe {
             debug_assert_eq!(self.swapchains.len(), self.image_indices.len());
             assert!(!self.swapchains.is_empty(),

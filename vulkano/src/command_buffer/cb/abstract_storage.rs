@@ -85,7 +85,7 @@ unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
     type Err = E;
 
     #[inline]
-    fn build(mut self) -> Result<Self::Out, E> {
+    fn build(self) -> Result<Self::Out, E> {
         let inner = try!(self.inner.build());
 
         Ok(AbstractStorageLayer {

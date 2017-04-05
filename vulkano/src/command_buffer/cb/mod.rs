@@ -71,9 +71,6 @@
 //! The `CommandsList` trait is implemented on any command buffer or command buffer builder that
 //! exposes a list of commands. It is required by some of the layers.
 
-use command_buffer::pool::CommandPool;
-use device::DeviceOwned;
-
 pub use self::abstract_storage::AbstractStorageLayer;
 pub use self::auto_barriers::AutoPipelineBarriersLayer;
 pub use self::context_check::ContextCheckLayer;

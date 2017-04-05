@@ -204,7 +204,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// > **Note**: This is an expensive operation, so you may want to merge as many builders as
     /// > possible together and avoid submitting them one by one.
     ///
-    pub fn submit(mut self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
+    pub fn submit(self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
         unsafe {
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();

@@ -37,7 +37,6 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::Sharing;
-use SafeDeref;
 
 /// Image whose purpose is to be used as a framebuffer attachment.
 ///

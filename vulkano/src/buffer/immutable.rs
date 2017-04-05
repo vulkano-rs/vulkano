@@ -21,8 +21,6 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use smallvec::SmallVec;
 

@@ -25,8 +25,6 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 
 use OomError;
 

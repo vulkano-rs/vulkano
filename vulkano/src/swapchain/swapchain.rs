@@ -20,7 +20,6 @@ use std::time::Duration;
 
 use buffer::Buffer;
 use command_buffer::submit::SubmitAnyBuilder;
-use command_buffer::submit::SubmitCommandBufferBuilder;
 use command_buffer::submit::SubmitPresentBuilder;
 use command_buffer::submit::SubmitSemaphoresWaitBuilder;
 use device::Device;
@@ -40,7 +39,6 @@ use swapchain::Surface;
 use swapchain::SurfaceTransform;
 use swapchain::SurfaceSwapchainLock;
 use sync::AccessFlagBits;
-use sync::Fence;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -50,7 +48,6 @@ use check_errors;
 use Error;
 use OomError;
 use Success;
-use SynchronizedVulkanObject;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -626,7 +623,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
                 builder.add_swapchain(&self.swapchain, self.image_id);
                 SubmitAnyBuilder::QueuePresent(builder)
             },
-            SubmitAnyBuilder::CommandBuffer(mut cb) => {
+            SubmitAnyBuilder::CommandBuffer(cb) => {
                 try!(cb.submit(&queue.unwrap()));        // FIXME: wrong because build_submission can be called multiple times
                 let mut builder = SubmitPresentBuilder::new();
                 builder.add_swapchain(&self.swapchain, self.image_id);

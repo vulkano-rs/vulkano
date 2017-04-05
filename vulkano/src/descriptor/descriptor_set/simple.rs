@@ -26,7 +26,6 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use image::Image;
-use image::ImageView;
 use image::IntoImageView;
 use image::sys::Layout;
 use sampler::Sampler;
@@ -267,13 +266,13 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
-            DescriptorType::SampledImage => unsafe {
+            DescriptorType::SampledImage => {
                 DescriptorWrite::sampled_image(binding_id as u32, 0, &image_view)
             },
-            DescriptorType::StorageImage => unsafe {
+            DescriptorType::StorageImage => {
                 DescriptorWrite::storage_image(binding_id as u32, 0, &image_view)
             },
-            DescriptorType::InputAttachment => unsafe {
+            DescriptorType::InputAttachment => {
                 DescriptorWrite::input_attachment(binding_id as u32, 0, &image_view)
             },
             _ => panic!()
@@ -315,7 +314,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
-            DescriptorType::CombinedImageSampler => unsafe {
+            DescriptorType::CombinedImageSampler => {
                 DescriptorWrite::combined_image_sampler(binding_id as u32, 0, &self.1, &image_view)
             },
             _ => panic!()
@@ -361,7 +360,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)
             let image_view = img.into_image_view();
 
             i.writes.push(match desc.ty.ty().unwrap() {
-                DescriptorType::CombinedImageSampler => unsafe {
+                DescriptorType::CombinedImageSampler => {
                     DescriptorWrite::combined_image_sampler(binding_id as u32, num as u32,
                                                             &sampler, &image_view)
                 },
