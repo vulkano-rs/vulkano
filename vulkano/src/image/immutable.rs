@@ -24,7 +24,7 @@ use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use image::traits::Image;
-use image::traits::IntoImageView;
+use image::traits::ImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -138,7 +138,7 @@ unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImageView for Arc<ImmutableImage<F, A>>
+unsafe impl<F, A> ImageView for Arc<ImmutableImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     type Target = Self;

@@ -130,7 +130,7 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which render pass implementation is used.
-    // TODO: allow IntoImageView
+    // TODO: allow ImageView
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
                    -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList + Send + Sync>>>, FramebufferCreationError>
         where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia>

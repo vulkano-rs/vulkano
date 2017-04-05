@@ -31,7 +31,7 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use image::traits::Image;
-use image::traits::IntoImageView;
+use image::traits::ImageView;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -291,7 +291,7 @@ unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
     }
 }
 
-unsafe impl<F, A> IntoImageView for Arc<AttachmentImage<F, A>>
+unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     type Target = AttachmentImageAccess<F, A>;

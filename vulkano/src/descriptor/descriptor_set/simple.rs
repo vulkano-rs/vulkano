@@ -26,7 +26,7 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use image::ImageAccess;
-use image::IntoImageView;
+use image::ImageView;
 use image::sys::Layout;
 use sampler::Sampler;
 use sync::AccessFlagBits;
@@ -251,7 +251,7 @@ pub unsafe trait SimpleDescriptorSetImageExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetImg<T::Target>);
 
@@ -299,7 +299,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetImg<T::Target>);
 
@@ -342,7 +342,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
 
 // TODO: DRY
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)>
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, Vec<SimpleDescriptorSetImg<T::Target>>);
 

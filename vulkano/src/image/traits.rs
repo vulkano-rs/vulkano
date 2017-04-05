@@ -207,7 +207,7 @@ pub unsafe trait ImageContent<P>: ImageAccess {
 }
 
 /// Utility trait.
-pub unsafe trait IntoImageView {
+pub unsafe trait ImageView {
     type Target: ImageViewAccess;
 
     fn into_image_view(self) -> Self::Target;

@@ -56,7 +56,7 @@ pub use self::sys::Usage;
 pub use self::traits::ImageAccess;
 pub use self::traits::ImageViewAccess;
 pub use self::traits::Image;
-pub use self::traits::IntoImageView;
+pub use self::traits::ImageView;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private
