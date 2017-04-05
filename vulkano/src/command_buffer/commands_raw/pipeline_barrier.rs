@@ -18,7 +18,7 @@ use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
-use image::Image;
+use image::ImageAccess;
 use image::Layout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -197,7 +197,7 @@ impl<'a> CmdPipelineBarrier<'a> {
                   layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
                   dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
                   queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)
-        where I: Image
+        where I: ImageAccess
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 

@@ -15,7 +15,7 @@ use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ViewType;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
@@ -91,7 +91,7 @@ impl SwapchainImage {
     }
 }
 
-unsafe impl Image for SwapchainImage {
+unsafe impl ImageAccess for SwapchainImage {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -135,7 +135,7 @@ unsafe impl<P> ImageContent<P> for SwapchainImage {
 
 unsafe impl ImageView for SwapchainImage {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 

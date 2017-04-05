@@ -37,7 +37,7 @@
 
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use image::Image;
+use image::ImageAccess;
 use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
@@ -74,7 +74,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 
     /// Returns the list of images used by this descriptor set. Includes image views.
     // TODO: meh for boxing
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet {
@@ -89,7 +89,7 @@ unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet 
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         (**self).images_list()
     }
 }

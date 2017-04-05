@@ -27,7 +27,7 @@ use device::DeviceOwned;
 use device::Queue;
 use format::Format;
 use format::FormatDesc;
-use image::Image;
+use image::ImageAccess;
 use image::ImageDimensions;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
@@ -482,7 +482,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         if let Some(sc_img) = self.image.upgrade() {
@@ -673,7 +673,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that

@@ -26,7 +26,7 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
@@ -38,7 +38,7 @@ use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::Sharing;
 
-/// Image whose purpose is to be used as a framebuffer attachment.
+/// ImageAccess whose purpose is to be used as a framebuffer attachment.
 ///
 /// The image is always two-dimensional and has only one mipmap, but it can have any kind of
 /// format. Trying to use a format that the backend doesn't support for rendering will result in
@@ -210,7 +210,7 @@ impl<F, A> Clone for AttachmentImageAccess<F, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<F, A> Image for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     where F: 'static + Send + Sync,
           A: MemoryPool
 {
@@ -309,7 +309,7 @@ unsafe impl<F, A> ImageView for AttachmentImageAccess<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 

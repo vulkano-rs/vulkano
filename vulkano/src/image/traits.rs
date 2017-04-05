@@ -29,13 +29,13 @@ use VulkanObject;
 
 /// Utility trait.
 pub unsafe trait IntoImage {
-    type Target: Image;
+    type Target: ImageAccess;
 
     fn into_image(self) -> Self::Target;
 }
 
 /// Trait for types that represent images.
-pub unsafe trait Image {
+pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;
 
@@ -118,7 +118,7 @@ pub unsafe trait Image {
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, other: &Image,
+                       self_num_mipmaps: u32, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32) -> bool
     {
@@ -165,7 +165,7 @@ pub unsafe trait Image {
     unsafe fn increase_gpu_lock(&self);
 }
 
-unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
+unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
@@ -197,11 +197,11 @@ unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
 /// given image.
 // TODO: isn't that for image views instead?
-pub unsafe trait ImageClearValue<T>: Image {
+pub unsafe trait ImageClearValue<T>: ImageAccess {
     fn decode(&self, T) -> Option<ClearValue>;
 }
 
-pub unsafe trait ImageContent<P>: Image {
+pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
 }
@@ -215,7 +215,7 @@ pub unsafe trait IntoImageView {
 
 /// Trait for types that represent image views.
 pub unsafe trait ImageView {
-    fn parent(&self) -> &Image;
+    fn parent(&self) -> &ImageAccess;
 
     /// Returns the dimensions of the image view.
     fn dimensions(&self) -> Dimensions;
@@ -261,7 +261,7 @@ pub unsafe trait ImageView {
 
 unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         (**self).parent()
     }
 

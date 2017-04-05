@@ -13,7 +13,7 @@ use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use device::DeviceOwned;
 use device::Queue;
-use image::Image;
+use image::ImageAccess;
 use memory::Content;
 
 use SafeDeref;
@@ -124,7 +124,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image,
+    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32) -> bool
     {

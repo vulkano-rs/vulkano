@@ -25,7 +25,7 @@ use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
-use image::Image;
+use image::ImageAccess;
 use image::IntoImageView;
 use image::sys::Layout;
 use sampler::Sampler;
@@ -74,7 +74,7 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         unimplemented!()
     }
 }
@@ -110,7 +110,7 @@ macro_rules! simple_descriptor_set {
 
         $(
             // Here `$val` can be either a buffer or an image. However we can't create an extension
-            // trait for both buffers and image, because `impl<T: Image> ExtTrait for T {}` would
+            // trait for both buffers and image, because `impl<T: ImageAccess> ExtTrait for T {}` would
             // conflict with `impl<T: BufferAccess> ExtTrait for T {}`.
             //
             // Therefore we use a trick: we create two traits, one for buffers

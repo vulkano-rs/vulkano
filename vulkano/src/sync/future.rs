@@ -23,7 +23,7 @@ use command_buffer::submit::SubmitSemaphoresWaitBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use image::Image;
+use image::ImageAccess;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
@@ -105,7 +105,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
@@ -233,7 +233,7 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         (**self).check_image_access(image, exclusive, queue)
@@ -293,7 +293,7 @@ unsafe impl GpuFuture for DummyFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         Err(())
@@ -400,7 +400,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         self.previous.check_image_access(image, exclusive, queue).map(|_| None)
@@ -531,7 +531,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()> {
         if let Some(ref previous) = self.previous {
             previous.check_image_access(image, exclusive, queue)
@@ -690,7 +690,7 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         let first = self.first.check_image_access(image, exclusive, queue);

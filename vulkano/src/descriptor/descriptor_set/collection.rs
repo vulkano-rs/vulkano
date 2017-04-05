@@ -13,7 +13,7 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
-use image::Image;
+use image::ImageAccess;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -39,7 +39,7 @@ pub unsafe trait DescriptorSetsCollection {
     fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
 
     /// Returns the list of images used by this descriptor set. Includes image views.
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl DescriptorSetsCollection for () {
@@ -69,7 +69,7 @@ unsafe impl DescriptorSetsCollection for () {
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         Box::new(iter::empty())
     }
 }
@@ -112,7 +112,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         DescriptorSet::images_list(self)
     }
 }
@@ -206,7 +206,7 @@ macro_rules! impl_collection {
             }
 
             #[inline]
-            fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+            fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
                 #![allow(non_snake_case)]
 
                 let &(ref first, $(ref $others,)*) = self;

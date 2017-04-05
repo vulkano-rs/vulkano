@@ -24,7 +24,7 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
@@ -166,7 +166,7 @@ unsafe impl<F, A> IntoImageView for Arc<StorageImage<F, A>>
     }
 }
 
-unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -222,7 +222,7 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 
