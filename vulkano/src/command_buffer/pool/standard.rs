@@ -101,7 +101,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         let mut per_thread = match per_thread.entry(curr_thread_id()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let new_pool = try!(UnsafeCommandPool::new(&self.device, self.queue_family(),
+                let new_pool = try!(UnsafeCommandPool::new(self.device.clone(), self.queue_family(),
                                                            false, true));
 
                 entry.insert(StandardCommandPoolPerThread {
