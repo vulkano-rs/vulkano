@@ -28,7 +28,7 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::IntoImage;
+use image::traits::Image;
 use image::traits::IntoImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
@@ -143,7 +143,7 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImage for Arc<StorageImage<F, A>>
+unsafe impl<F, A> Image for Arc<StorageImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     type Target = Self;

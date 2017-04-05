@@ -19,7 +19,7 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::IntoImage;
+use image::traits::Image;
 use image::traits::IntoImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -176,7 +176,7 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-unsafe impl IntoImage for SwapchainImage {
+unsafe impl Image for SwapchainImage {
     type Target = SwapchainImage;
 
     fn into_image(self) -> Self::Target {
@@ -192,7 +192,7 @@ unsafe impl IntoImageView for SwapchainImage {
     }
 }
 
-unsafe impl IntoImage for Arc<SwapchainImage> {
+unsafe impl Image for Arc<SwapchainImage> {
     type Target = Arc<SwapchainImage>;
 
     fn into_image(self) -> Self::Target {

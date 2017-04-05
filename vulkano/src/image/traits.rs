@@ -28,7 +28,7 @@ use SafeDeref;
 use VulkanObject;
 
 /// Utility trait.
-pub unsafe trait IntoImage {
+pub unsafe trait Image {
     type Target: ImageAccess;
 
     fn into_image(self) -> Self::Target;

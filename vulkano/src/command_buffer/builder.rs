@@ -21,7 +21,7 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
-use image::IntoImage;
+use image::Image;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
@@ -86,7 +86,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
                                      -> Result<O, commands_raw::CmdCopyBufferToImageError>
         where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
-              B: Buffer, I: IntoImage
+              B: Buffer, I: Image
     {
         let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.into_buffer(), image.into_image())?;
         Ok(self.add(cmd))
@@ -98,7 +98,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
                                                 size: [u32; 3], first_layer: u32, num_layers: u32,
                                                 mipmap: u32) -> Result<O, commands_raw::CmdCopyBufferToImageError>
         where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
-              B: Buffer, I: IntoImage
+              B: Buffer, I: Image
     {
         let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.into_buffer(),
                                                              image.into_image(), offset, size,
