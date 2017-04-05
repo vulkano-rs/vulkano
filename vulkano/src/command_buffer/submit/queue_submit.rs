@@ -301,7 +301,6 @@ impl From<Error> for SubmitCommandBufferError {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
     use std::time::Duration;
     use super::*;
     use sync::Fence;
@@ -309,7 +308,7 @@ mod tests {
     #[test]
     fn empty_submit() {
         let (device, queue) = gfx_dev_and_queue!();
-        let mut builder = SubmitCommandBufferBuilder::new();
+        let builder = SubmitCommandBufferBuilder::new();
         builder.submit(&queue).unwrap();
     }
 

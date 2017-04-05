@@ -354,7 +354,6 @@ unsafe impl<F, A> ImageView for AttachmentImageAccess<F, A>
 mod tests {
     use super::AttachmentImage;
     use format::Format;
-    use image::Image;
 
     #[test]
     fn create_regular() {
