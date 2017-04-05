@@ -12,7 +12,7 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -34,7 +34,7 @@ pub struct CmdCopyBuffer<S, D> {
 }
 
 impl<S, D> CmdCopyBuffer<S, D>
-    where S: Buffer, D: Buffer
+    where S: BufferAccess, D: BufferAccess
 {
     /// Builds a new command.
     ///
@@ -113,8 +113,8 @@ unsafe impl<S, D> DeviceOwned for CmdCopyBuffer<S, D>
 }
 
 unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBuffer<S, D>> for UnsafeCommandBufferBuilder<P>
-    where S: Buffer,
-          D: Buffer,
+    where S: BufferAccess,
+          D: BufferAccess,
           P: CommandPool,
 {
     type Out = UnsafeCommandBufferBuilder<P>;

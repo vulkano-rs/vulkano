@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::os::raw::c_void;
 use std::ptr;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
@@ -42,7 +42,7 @@ pub struct CmdUpdateBuffer<B, D> {
 }
 
 impl<B, D> CmdUpdateBuffer<B, D>
-    where B: Buffer
+    where B: BufferAccess
 {
     /// Builds a command that writes data to a buffer.
     ///
@@ -103,7 +103,7 @@ unsafe impl<B, D> DeviceOwned for CmdUpdateBuffer<B, D>
 }
 
 unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommandBufferBuilder<P>
-    where B: Buffer,
+    where B: BufferAccess,
           P: CommandPool,
 {
     type Out = UnsafeCommandBufferBuilder<P>;

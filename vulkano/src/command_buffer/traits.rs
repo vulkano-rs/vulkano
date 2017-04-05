@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::pool::CommandPool;
 use command_buffer::submit::SubmitAnyBuilder;
@@ -91,7 +91,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         }
     }
 
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
     fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
@@ -125,7 +125,7 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         (**self).check_buffer_access(buffer, exclusive, queue)
@@ -229,7 +229,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         match self.command_buffer.check_buffer_access(buffer, exclusive, queue) {

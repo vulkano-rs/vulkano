@@ -68,7 +68,7 @@ pub use self::immutable::ImmutableBuffer;
 pub use self::slice::BufferSlice;
 pub use self::sys::BufferCreationError;
 pub use self::sys::Usage as BufferUsage;
-pub use self::traits::Buffer;
+pub use self::traits::BufferAccess;
 pub use self::traits::BufferInner;
 pub use self::traits::IntoBuffer;
 pub use self::traits::TypedBuffer;

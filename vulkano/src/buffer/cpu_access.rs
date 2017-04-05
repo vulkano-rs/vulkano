@@ -32,7 +32,7 @@ use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::Buffer;
+use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::IntoBuffer;
 use buffer::traits::TypedBuffer;
@@ -296,7 +296,7 @@ unsafe impl<T: ?Sized, A> IntoBuffer for Arc<CpuAccessibleBuffer<T, A>>
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
+unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]

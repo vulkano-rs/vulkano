@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -103,7 +103,7 @@ pub unsafe trait Image {
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, other: &Buffer, other_offset: usize,
+                        self_num_mipmaps: u32, other: &BufferAccess, other_offset: usize,
                         other_size: usize) -> bool
     {
         // TODO: should we really provide a default implementation?

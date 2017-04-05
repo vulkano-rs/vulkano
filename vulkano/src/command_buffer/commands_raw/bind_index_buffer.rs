@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::TypedBuffer;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
@@ -36,7 +36,7 @@ pub struct CmdBindIndexBuffer<B> {
 }
 
 impl<B, I> CmdBindIndexBuffer<B>
-    where B: Buffer + TypedBuffer<Content = [I]>,
+    where B: BufferAccess + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// Builds the command.

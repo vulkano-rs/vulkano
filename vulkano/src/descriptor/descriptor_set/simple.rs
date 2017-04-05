@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use buffer::IntoBuffer;
 use descriptor::descriptor::DescriptorDesc;
@@ -69,7 +69,7 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         unimplemented!()
     }
 
@@ -111,7 +111,7 @@ macro_rules! simple_descriptor_set {
         $(
             // Here `$val` can be either a buffer or an image. However we can't create an extension
             // trait for both buffers and image, because `impl<T: Image> ExtTrait for T {}` would
-            // conflict with `impl<T: Buffer> ExtTrait for T {}`.
+            // conflict with `impl<T: BufferAccess> ExtTrait for T {}`.
             //
             // Therefore we use a trick: we create two traits, one for buffers
             // (`SimpleDescriptorSetBufferExt`) and one for images (`SimpleDescriptorSetImageExt`),
@@ -412,7 +412,7 @@ pub struct SimpleDescriptorSetBuf<B> {
 }
 
 /*unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
-    where B: Buffer
+    where B: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -443,7 +443,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 }
 
 /*unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
-    where V: BufferViewRef, V::Buffer: Buffer
+    where V: BufferViewRef, V::BufferAccess: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {

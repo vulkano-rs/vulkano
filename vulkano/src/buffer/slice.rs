@@ -12,7 +12,7 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
-use buffer::traits::Buffer;
+use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
 use buffer::traits::IntoBuffer;
@@ -161,7 +161,7 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: Buffer {
+unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: BufferAccess {
     type Target = Self;
 
     #[inline]
@@ -170,7 +170,7 @@ unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: Buffer {
     }
 }
 
-unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAccess {
     #[inline]
     fn inner(&self) -> BufferInner {
         let inner = self.resource.inner();
@@ -187,7 +187,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
 
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
+                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
     {
         let self_offset = self.offset + self_offset;
         // FIXME: spurious failures ; needs investigation
@@ -214,7 +214,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
+unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: BufferAccess, T: 'static {
     type Content = T;
 }
 

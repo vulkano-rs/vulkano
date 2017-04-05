@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use buffer::BufferView;
 use descriptor::descriptor::DescriptorType;
@@ -791,7 +791,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
-        where B: Buffer,
+        where B: BufferAccess,
               F: 'static + Send + Sync,
     {
         assert!(view.uniform_texel_buffer());
@@ -805,7 +805,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
-        where B: Buffer + 'static,
+        where B: BufferAccess + 'static,
               F: 'static + Send + Sync,
     {
         assert!(view.storage_texel_buffer());
@@ -819,7 +819,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -835,7 +835,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -851,7 +851,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn dynamic_uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -866,7 +866,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn dynamic_storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -959,7 +959,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+            ty: DescriptorDescTy::BufferAccess(DescriptorBufferDesc {
                 dynamic: Some(false),
                 storage: false,
                 content: DescriptorBufferContentDesc::F32,
@@ -990,7 +990,7 @@ mod tests {
         let (device2, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+            ty: DescriptorDescTy::BufferAccess(DescriptorBufferDesc {
                 dynamic: Some(false),
                 storage: false,
                 content: DescriptorBufferContentDesc::F32,

@@ -13,7 +13,7 @@ use std::ptr;
 use std::u32;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
@@ -149,7 +149,7 @@ impl<'a> CmdPipelineBarrier<'a> {
                    source_access: AccessFlagBits, dest_stage: PipelineStages,
                    dest_access: AccessFlagBits, by_region: bool,
                    queue_transfer: Option<(u32, u32)>, offset: usize, size: usize)
-        where B: Buffer
+        where B: BufferAccess
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 

@@ -11,7 +11,7 @@ use std::any::Any;
 use std::error::Error;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
@@ -57,7 +57,7 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         self.inner.check_buffer_access(buffer, exclusive, queue)

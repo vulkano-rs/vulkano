@@ -12,7 +12,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::AllocatedCommandBuffer;
@@ -323,7 +323,7 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         Err(())

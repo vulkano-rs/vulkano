@@ -151,7 +151,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+            ty: DescriptorDescTy::BufferAccess(DescriptorBufferDesc {
                 dynamic: Some(false),
                 storage: false,
                 content: DescriptorBufferContentDesc::F32,

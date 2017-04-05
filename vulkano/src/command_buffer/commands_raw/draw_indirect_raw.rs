@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::sync::Arc;
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -25,7 +25,7 @@ pub struct CmdDrawIndirectRaw<B> {
     stride: u32,
 }
 
-impl<B> CmdDrawIndirectRaw<B> where B: Buffer {
+impl<B> CmdDrawIndirectRaw<B> where B: BufferAccess {
     #[inline]
     pub unsafe fn new(buffer: B, offset: usize, draw_count: u32) -> CmdDrawIndirectRaw<B> {
         let real_offset = offset + buffer.inner().offset;
@@ -52,7 +52,7 @@ unsafe impl<B> DeviceOwned for CmdDrawIndirectRaw<B>
 }
 
 unsafe impl<'a, B, P> AddCommand<&'a CmdDrawIndirectRaw<B>> for UnsafeCommandBufferBuilder<P>
-    where B: Buffer,
+    where B: BufferAccess,
           P: CommandPool
 {
     type Out = UnsafeCommandBufferBuilder<P>;

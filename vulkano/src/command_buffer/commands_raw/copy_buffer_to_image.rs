@@ -10,7 +10,7 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -48,7 +48,7 @@ pub struct CmdCopyBufferToImage<S, D> {
     extent: [u32; 3],
 }
 
-impl<S, D> CmdCopyBufferToImage<S, D> where S: Buffer, D: Image {
+impl<S, D> CmdCopyBufferToImage<S, D> where S: BufferAccess, D: Image {
     #[inline]
     pub fn new(source: S, destination: D)
                -> Result<CmdCopyBufferToImage<S, D>, CmdCopyBufferToImageError>

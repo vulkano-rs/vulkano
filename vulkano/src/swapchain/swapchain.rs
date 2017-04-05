@@ -18,7 +18,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitPresentBuilder;
 use command_buffer::submit::SubmitSemaphoresWaitBuilder;
@@ -475,7 +475,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         Err(())
@@ -666,7 +666,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that

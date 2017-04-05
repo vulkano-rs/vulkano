@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::iter;
-use buffer::Buffer;
+use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
@@ -36,7 +36,7 @@ pub unsafe trait DescriptorSetsCollection {
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
     /// Returns the list of buffers used by this descriptor set. Includes buffer views.
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a>;
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
 
     /// Returns the list of images used by this descriptor set. Includes image views.
     fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
@@ -64,7 +64,7 @@ unsafe impl DescriptorSetsCollection for () {
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         Box::new(iter::empty())
     }
 
@@ -107,7 +107,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         DescriptorSet::buffers_list(self)
     }
 
@@ -193,7 +193,7 @@ macro_rules! impl_collection {
             }
 
             #[inline]
-            fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+            fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
                 #![allow(non_snake_case)]
 
                 let &(ref first, $(ref $others,)*) = self;
