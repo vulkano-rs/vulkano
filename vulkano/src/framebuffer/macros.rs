@@ -63,6 +63,7 @@ macro_rules! ordered_passes_renderpass {
 
         mod scope {
             #![allow(non_camel_case_types)]
+            #![allow(non_snake_case)]
 
             use std::sync::Arc;
             use $crate::format::ClearValue;
