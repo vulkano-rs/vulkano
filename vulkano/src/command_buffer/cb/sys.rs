@@ -251,6 +251,7 @@ impl<P> Drop for UnsafeCommandBufferBuilder<P> where P: CommandPool {
             if self.cmd == 0 {
                 return;
             }
+
             // FIXME: vk.FreeCommandBuffers()
         //}
     }
