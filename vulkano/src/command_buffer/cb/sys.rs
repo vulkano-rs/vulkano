@@ -251,7 +251,6 @@ impl<P> Drop for UnsafeCommandBufferBuilder<P> where P: CommandPool {
             if self.cmd == 0 {
                 return;
             }
-
             // FIXME: vk.FreeCommandBuffers()
         //}
     }
@@ -278,6 +277,7 @@ unsafe impl<P> CommandBufferBuild for UnsafeCommandBufferBuilder<P>
                 pool: self.pool.take().unwrap().finish(),
                 flags: self.flags,
                 already_submitted: AtomicBool::new(false),
+                secondary_cb: self.secondary_cb
             })
         }
     }
@@ -302,6 +302,9 @@ pub struct UnsafeCommandBuffer<P> where P: CommandPool {
     // True if the command buffer has always been submitted once. Only relevant if `flags` is
     // `OneTimeSubmit`.
     already_submitted: AtomicBool,
+
+    // True if this command buffer belongs to a secondary pool - needed for Drop
+    secondary_cb: bool
 }
 
 unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
@@ -352,8 +355,10 @@ unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> where P: CommandPool {
 impl<P> Drop for UnsafeCommandBuffer<P> where P: CommandPool {
     #[inline]
     fn drop(&mut self) {
-        //unsafe {
-            // FIXME: vk.FreeCommandBuffers()
-        //}
+        // release this command buffer for reuse
+        use command_buffer::pool::CommandPoolFinished;
+        unsafe {
+            self.pool.free(self.secondary_cb, Some(self.cmd.into()).into_iter());
+        }
     }
 }
