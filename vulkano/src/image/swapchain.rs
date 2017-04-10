@@ -7,40 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 
-use command_buffer::Submission;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ViewType;
-use image::traits::AccessRange;
-use image::traits::CommandBufferState;
-use image::traits::CommandListState;
-use image::traits::GpuAccessResult;
 use image::traits::Image;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageView;
-use image::traits::PipelineBarrierRequest;
-use image::traits::PipelineMemoryBarrierRequest;
-use image::traits::SubmitInfos;
-use image::traits::TrackedImage;
-use image::traits::Transition;
+use image::traits::IntoImage;
+use image::traits::IntoImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
-use sync::AccessFlagBits;
-use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
 
 use OomError;
 
@@ -64,13 +48,6 @@ pub struct SwapchainImage {
     format: Format,
     swapchain: Arc<Swapchain>,
     id: u32,
-    guarded: Mutex<Guarded>,
-}
-
-#[derive(Debug)]
-struct Guarded {
-    present_layout: bool,
-    latest_submission: Option<Weak<Submission>>,    // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl SwapchainImage {
@@ -88,10 +65,6 @@ impl SwapchainImage {
             format: format,
             swapchain: swapchain.clone(),
             id: id,
-            guarded: Mutex::new(Guarded {
-                present_layout: false,
-                latest_submission: None,
-            }),
         }))
     }
 
@@ -125,77 +98,23 @@ unsafe impl Image for SwapchainImage {
     }
 
     #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
+    fn default_layout(&self) -> Layout {
+        Layout::PresentSrc
     }
 
     #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+        self.image.key()
     }
 
     #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+        // Swapchain image are only accessible after being acquired.
+        false
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::PresentSrc, false, true)
-    }
-
-    #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::PresentSrc, false, true)
-    }
-
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let mut guarded = self.guarded.lock().unwrap();
-
-        let dependency = mem::replace(&mut guarded.latest_submission, Some(Arc::downgrade(submission)));
-        let dependency = dependency.and_then(|d| d.upgrade());
-
-        // TODO: use try!()? - Mixthos
-        let signal = Semaphore::new(submission.queue().device().clone());
-        let wait = self.swapchain.image_semaphore(self.id, signal.clone()).expect("Try to render to a swapchain image that was not acquired first");
-
-        if guarded.present_layout {
-            return GpuAccessResult {
-                dependencies: if let Some(dependency) = dependency {
-                    vec![dependency]
-                } else {
-                    vec![]
-                },
-                additional_wait_semaphore: Some(wait),
-                additional_signal_semaphore: Some(signal),
-                before_transitions: vec![],
-                after_transitions: vec![],
-            };
-        }
-
-        guarded.present_layout = true;
-
-        GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
-            additional_wait_semaphore: Some(wait),
-            additional_signal_semaphore: Some(signal),
-            before_transitions: vec![Transition {
-                block: (0, 0),
-                from: Layout::Undefined,
-                to: Layout::PresentSrc,
-            }],
-            after_transitions: vec![],
-        }
+    unsafe fn increase_gpu_lock(&self) {
     }
 }
 
@@ -221,19 +140,9 @@ unsafe impl ImageView for SwapchainImage {
     }
 
     #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
-    }
-
-    #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.image.dimensions();
         Dimensions::Dim2d { width: dims.width(), height: dims.height() }
-    }
-
-    #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
     }
 
     #[inline]
@@ -267,107 +176,34 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-unsafe impl TrackedImage for SwapchainImage {
-    type CommandListState = SwapchainImageCbState;
-    type FinishedState = SwapchainImageFinishedState;
+unsafe impl IntoImage for SwapchainImage {
+    type Target = SwapchainImage;
 
-    fn initial_state(&self) -> SwapchainImageCbState {
-        SwapchainImageCbState {
-            stages: PipelineStages { top_of_pipe: true, .. PipelineStages::none() },
-            access: AccessFlagBits { memory_read: true, .. AccessFlagBits::none() },
-            command_num: 0,
-            layout: Layout::PresentSrc,
-        }
+    fn into_image(self) -> Self::Target {
+        self
     }
 }
 
-pub struct SwapchainImageCbState {
-    stages: PipelineStages,
-    access: AccessFlagBits,
-    command_num: usize,
-    layout: Layout,
-}
+unsafe impl IntoImageView for SwapchainImage {
+    type Target = SwapchainImage;
 
-/// Trait for objects that represent the state of a slice of the image in a list of commands.
-impl CommandListState for SwapchainImageCbState {
-    type FinishedState = SwapchainImageFinishedState;
-
-    fn transition(self, num_command: usize, _: &UnsafeImage, _: u32, _: u32, _: u32, _: u32,
-                  _: bool, layout: Layout, stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-    {
-        let new_state = SwapchainImageCbState {
-            stages: stage,
-            access: access,
-            command_num: num_command,
-            layout: layout,
-        };
-
-        let transition = PipelineBarrierRequest {
-            after_command_num: self.command_num,
-            source_stage: self.stages,
-            destination_stages: stage,
-            by_region: true,
-            memory_barrier: Some(PipelineMemoryBarrierRequest {
-                first_mipmap: 0,
-                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
-                first_layer: 0,
-                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
-
-                old_layout: self.layout,
-                new_layout: layout,
-
-                source_access: self.access,
-                destination_access: access,
-            })
-        };
-
-        (new_state, Some(transition))
-    }
-
-    fn finish(self) -> (SwapchainImageFinishedState, Option<PipelineBarrierRequest>) {
-        let finished = SwapchainImageFinishedState;
-
-        let transition = PipelineBarrierRequest {
-            after_command_num: self.command_num,
-            source_stage: self.stages,
-            destination_stages: PipelineStages {
-                bottom_of_pipe: true,
-                .. PipelineStages::none()
-            },
-            by_region: true,
-            memory_barrier: Some(PipelineMemoryBarrierRequest {
-                first_mipmap: 0,
-                num_mipmaps: 1,     // Swapchain images always have 1 mipmap.
-                first_layer: 0,
-                num_layers: 1,      // Swapchain images always have 1 layer.        // TODO: that's maybe not true?
-
-                old_layout: self.layout,
-                new_layout: Layout::PresentSrc,
-
-                source_access: self.access,
-                destination_access: AccessFlagBits {
-                    memory_read: true,
-                    .. AccessFlagBits::none()
-                },
-            })
-        };
-
-        (finished, Some(transition))
+    fn into_image_view(self) -> Self::Target {
+        self
     }
 }
 
-pub struct SwapchainImageFinishedState;
+unsafe impl IntoImage for Arc<SwapchainImage> {
+    type Target = Arc<SwapchainImage>;
 
-impl CommandBufferState for SwapchainImageFinishedState {
-    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where I: Image, F: FnOnce() -> Arc<Fence>
-    {
-        SubmitInfos {
-            pre_semaphore: None,        // FIXME:
-            post_semaphore: None,       // FIXME:
-            pre_barrier: None,          // FIXME: transition from undefined at first usage
-            post_barrier: None,
-        }
+    fn into_image(self) -> Self::Target {
+        self
+    }
+}
+
+unsafe impl IntoImageView for Arc<SwapchainImage> {
+    type Target = Arc<SwapchainImage>;
+
+    fn into_image_view(self) -> Self::Target {
+        self
     }
 }

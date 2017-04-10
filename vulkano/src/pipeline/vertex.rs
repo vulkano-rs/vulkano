@@ -11,10 +11,10 @@
 //!
 //! When you create a graphics pipeline object, you need to pass an object which indicates the
 //! layout of the vertex buffer(s) that will serve as input for the vertex shader. This is done
-//! by passing an implementation of the `Definition` trait.
+//! by passing an implementation of the `VertexDefinition` trait.
 //!
 //! In addition to this, the object that you pass when you create the graphics pipeline must also
-//! implement the `Source` trait. This trait has a template parameter which corresponds to the
+//! implement the `VertexSource` trait. This trait has a template parameter which corresponds to the
 //! list of vertex buffers.
 //!
 //! The vulkano library provides some structs that already implement these traits.
@@ -23,7 +23,7 @@
 //!
 //! # Implementing `Vertex`
 //!
-//! The implementations of the `Definition` trait that are provided by vulkano (like
+//! The implementations of the `VertexDefinition` trait that are provided by vulkano (like
 //! `SingleBufferDefinition`) require you to use a buffer whose content is `[V]` where `V`
 //! implements the `Vertex` trait.
 //!
@@ -72,9 +72,11 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::Buffer;
+use buffer::BufferInner;
 use buffer::TypedBuffer;
 use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
+use SafeDeref;
 use vk;
 
 /// How the vertex source should be unrolled.
@@ -163,7 +165,7 @@ pub struct AttributeInfo {
 }
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait Definition<I>: 'static + Send + Sync {
+pub unsafe trait VertexDefinition<I>: VertexSource<Vec<Arc<Buffer + Send + Sync>>> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.
@@ -173,6 +175,18 @@ pub unsafe trait Definition<I>: 'static + Send + Sync {
     /// interface.
     fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
                                                   IncompatibleVertexDefinitionError>;
+}
+
+unsafe impl<I, T> VertexDefinition<I> for T where T: SafeDeref, T::Target: VertexDefinition<I> {
+    type BuffersIter = <T::Target as VertexDefinition<I>>::BuffersIter;
+    type AttribsIter = <T::Target as VertexDefinition<I>>::AttribsIter;
+
+    #[inline]
+    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
+                                                  IncompatibleVertexDefinitionError>
+    {
+        (**self).definition(interface)
+    }
 }
 
 /// Error that can happen when the vertex definition doesn't match the input of the vertex shader.
@@ -215,18 +229,24 @@ impl fmt::Display for IncompatibleVertexDefinitionError {
 }
 
 
-/// Extension trait of `Definition`. The `L` parameter is an acceptable vertex source for this
+/// Extension trait of `VertexDefinition`. The `L` parameter is an acceptable vertex source for this
 /// vertex definition.
-pub unsafe trait Source<L>: 'static + Send + Sync {
-    /// Iterator used by `decode`.
-    type Iter: ExactSizeIterator<Item = Arc<Buffer>>;
-
-    /// Checks and returns the list of buffers, number of vertices and number of instances.
+pub unsafe trait VertexSource<L> {
+    /// Checks and returns the list of buffers with offsets, number of vertices and number of instances.
     // TODO: return error if problem
-    fn decode(&self, L) -> (Self::Iter, usize, usize);
+    // TODO: better than a Vec
+    // TODO: return a struct instead
+    fn decode<'l>(&self, &'l L) -> (Vec<BufferInner<'l>>, usize, usize);
 }
 
-/// Implementation of `Definition` for a single vertex buffer.
+unsafe impl<L, T> VertexSource<L> for T where T: SafeDeref, T::Target: VertexSource<L> {
+    #[inline]
+    fn decode<'l>(&self, list: &'l L) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (**self).decode(list)
+    }
+}
+
+/// Implementation of `VertexDefinition` for a single vertex buffer.
 pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
 
 impl<T> SingleBufferDefinition<T> {
@@ -234,7 +254,7 @@ impl<T> SingleBufferDefinition<T> {
     pub fn new() -> SingleBufferDefinition<T> { SingleBufferDefinition(PhantomData) }
 }
 
-unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
+unsafe impl<T, I> VertexDefinition<I> for SingleBufferDefinition<T>
     where T: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = OptionIntoIter<(u32, usize, InputRate)>;
@@ -279,15 +299,24 @@ unsafe impl<T, I> Definition<I> for SingleBufferDefinition<T>
     }
 }
 
-unsafe impl<'a, B, V> Source<&'a Arc<B>> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = [V]> + 'static, V: Vertex + 'static
+unsafe impl<V> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for SingleBufferDefinition<V>
+    where V: Vertex
 {
-    type Iter = OptionIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: &'a Arc<B>) -> (OptionIntoIter<Arc<Buffer>>, usize, usize) {
-        let iter = Some(source.clone() as Arc<_>).into_iter();
-        (iter, source.len(), 1)
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+        // FIXME: safety
+        assert_eq!(source.len(), 1);
+        let len = source[0].size() / mem::size_of::<V>();
+        (vec![source[0].inner()], len, 1)
+    }
+}
+
+unsafe impl<'a, B, V> VertexSource<B> for SingleBufferDefinition<V>
+    where B: TypedBuffer<Content = [V]>, V: Vertex
+{
+    #[inline]
+    fn decode<'l>(&self, source: &'l B) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (vec![source.inner()], source.len(), 1)
     }
 }
 
@@ -300,7 +329,7 @@ impl<T, U> TwoBuffersDefinition<T, U> {
     pub fn new() -> TwoBuffersDefinition<T, U> { TwoBuffersDefinition(PhantomData) }
 }
 
-unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
+unsafe impl<T, U, I> VertexDefinition<I> for TwoBuffersDefinition<T, U>
     where T: Vertex, U: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
@@ -352,18 +381,23 @@ unsafe impl<T, U, I> Definition<I> for TwoBuffersDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for TwoBuffersDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, T: 'static
+unsafe impl<T, U> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for TwoBuffersDefinition<T, U>
+    where T: Vertex, U: Vertex
 {
-    type Iter = VecIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
-              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
-    {
-        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, [source.0.len(), source.1.len()].iter().cloned().min().unwrap(), 1)
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+        unimplemented!()        // FIXME: implement
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for TwoBuffersDefinition<T, U>
+    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
+          U: Vertex, Bu: TypedBuffer<Content = [U]>
+{
+    #[inline]
+    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
+        let vertices = [source.0.len(), source.1.len()].iter().cloned().min().unwrap();
+        (vec![source.0.inner(), source.1.inner()], vertices, 1)
     }
 }
 
@@ -376,7 +410,7 @@ impl<T, U> OneVertexOneInstanceDefinition<T, U> {
     pub fn new() -> OneVertexOneInstanceDefinition<T, U> { OneVertexOneInstanceDefinition(PhantomData) }
 }
 
-unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
+unsafe impl<T, U, I> VertexDefinition<I> for OneVertexOneInstanceDefinition<T, U>
     where T: Vertex, U: Vertex, I: ShaderInterfaceDef
 {
     type BuffersIter = VecIntoIter<(u32, usize, InputRate)>;
@@ -428,18 +462,22 @@ unsafe impl<T, U, I> Definition<I> for OneVertexOneInstanceDefinition<T, U>
     }
 }
 
-unsafe impl<'a, T, U, Bt, Bu> Source<(&'a Arc<Bt>, &'a Arc<Bu>)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex + 'static, Bt: TypedBuffer<Content = [T]> + 'static, T: 'static,
-          U: Vertex + 'static, Bu: TypedBuffer<Content = [U]> + 'static, U: 'static
+unsafe impl<T, U> VertexSource<Vec<Arc<Buffer + Send + Sync>>> for OneVertexOneInstanceDefinition<T, U>
+    where T: Vertex, U: Vertex
 {
-    type Iter = VecIntoIter<Arc<Buffer>>;
-
     #[inline]
-    fn decode(&self, source: (&'a Arc<Bt>, &'a Arc<Bu>))
-              -> (VecIntoIter<Arc<Buffer>>, usize, usize)
-    {
-        let iter = vec![source.0.clone() as Arc<_>, source.1.clone() as Arc<_>].into_iter();
-        (iter, source.0.len(), source.1.len())
+    fn decode<'l>(&self, source: &'l Vec<Arc<Buffer + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+        unimplemented!()        // FIXME: implement
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
+    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
+          U: Vertex, Bu: TypedBuffer<Content = [U]>
+{
+    #[inline]
+    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
+        (vec![source.0.inner(), source.1.inner()], source.0.len(), source.1.len())
     }
 }
 
@@ -452,6 +490,7 @@ macro_rules! impl_vertex {
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
             fn member(name: &str) -> Option<$crate::pipeline::vertex::VertexMemberInfo> {
+                use std::ptr;
                 #[allow(unused_imports)]
                 use $crate::format::Format;
                 use $crate::pipeline::vertex::VertexMemberInfo;
@@ -463,13 +502,13 @@ macro_rules! impl_vertex {
                         let (ty, array_size) = unsafe {
                             #[inline] fn f<T: VertexMember>(_: &T) -> (VertexMemberTy, usize)
                                       { T::format() }
-                            let dummy = 0usize as *const $out;
+                            let dummy: *const $out = ptr::null();
                             f(&(&*dummy).$member)
                         };
 
                         return Some(VertexMemberInfo {
                             offset: unsafe {
-                                let dummy = 0usize as *const $out;
+                                let dummy: *const $out = ptr::null();
                                 let member = (&(&*dummy).$member) as *const _;
                                 member as usize
                             },

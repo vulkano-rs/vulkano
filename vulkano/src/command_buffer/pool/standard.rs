@@ -26,6 +26,7 @@ use command_buffer::pool::UnsafeCommandPoolAllocIter;
 use instance::QueueFamily;
 
 use device::Device;
+use device::DeviceOwned;
 use OomError;
 use VulkanObject;
 
@@ -100,7 +101,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         let mut per_thread = match per_thread.entry(curr_thread_id()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let new_pool = try!(UnsafeCommandPool::new(&self.device, self.queue_family(),
+                let new_pool = try!(UnsafeCommandPool::new(self.device.clone(), self.queue_family(),
                                                            false, true));
 
                 entry.insert(StandardCommandPoolPerThread {
@@ -167,13 +168,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     }
 
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    #[inline]
     fn queue_family(&self) -> QueueFamily {
         self.device.physical_device().queue_family_by_id(self.queue_family).unwrap()
+    }
+}
+
+unsafe impl DeviceOwned for StandardCommandPool {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
@@ -201,13 +204,15 @@ unsafe impl CommandPoolFinished for StandardCommandPoolFinished {
     }
 
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.pool.device()
-    }
-
-    #[inline]
     fn queue_family(&self) -> QueueFamily {
         self.pool.queue_family()
+    }
+}
+
+unsafe impl DeviceOwned for StandardCommandPoolFinished {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.pool.device()
     }
 }
 

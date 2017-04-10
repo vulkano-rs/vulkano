@@ -16,7 +16,10 @@ extern crate vulkano;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
+use vulkano::command_buffer::CommandBufferBuilder;
+use vulkano::sync::GpuFuture;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 fn main() {
@@ -78,25 +81,22 @@ fn main() {
     mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
-    mod renderpass {
-        single_pass_renderpass!{
+    let renderpass = Arc::new(
+        single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: ::vulkano::format::B8G8R8A8Srgb,
+                    format: images[0].format(),
+                    samples: 1,
                 }
             },
             pass: {
                 color: [color],
                 depth_stencil: {}
             }
-        }
-    }
-
-    let renderpass = renderpass::CustomRenderPass::new(&device, &renderpass::Formats {
-        color: (vulkano::format::B8G8R8A8Srgb, 1)
-    }).unwrap();
+        ).unwrap()
+    );
 
     let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
                                                                  vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
@@ -124,22 +124,7 @@ fn main() {
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let descriptor_pool = vulkano::descriptor::descriptor_set::DescriptorPool::new(&device);
-    mod pipeline_layout {
-        pipeline_layout!{
-            set0: {
-                tex: CombinedImageSampler
-            }
-        }
-    }
-
-    let pipeline_layout = pipeline_layout::CustomPipeline::new(&device).unwrap();
-    let set = pipeline_layout::set0::Set::new(&descriptor_pool, &pipeline_layout, &pipeline_layout::set0::Descriptors {
-        tex: (&sampler, &texture)
-    });
-
-
-    let pipeline = vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly {
@@ -163,37 +148,50 @@ fn main() {
         fragment_shader: fs.main_entry_point(),
         depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::disabled(),
         blend: vulkano::pipeline::blend::Blend::pass_through(),
-        layout: &pipeline_layout,
-        render_pass: vulkano::framebuffer::Subpass::from(&renderpass, 0).unwrap(),
-    }).unwrap();
+        render_pass: vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap(),
+    }).unwrap());
+
+    let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
+        tex: (texture.clone(), sampler.clone())
+    }));
 
     let framebuffers = images.iter().map(|image| {
-        let attachments = renderpass::AList {
-            color: &image,
-        };
+        let attachments = renderpass.desc().start_attachments()
+            .color(image.clone());
+        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
 
-        vulkano::framebuffer::Framebuffer::new(&renderpass, [images[0].dimensions()[0], images[0].dimensions()[1], 1], attachments).unwrap()
+        vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
     }).collect::<Vec<_>>();
 
-
-    let command_buffers = framebuffers.iter().map(|framebuffer| {
-        vulkano::command_buffer::PrimaryCommandBufferBuilder::new(&device, queue.family())
-            .copy_buffer_to_color_image(&pixel_buffer, &texture, 0, 0 .. 1, [0, 0, 0],
-                                        [texture.dimensions().width(), texture.dimensions().height(), 1])
-            //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
-            .draw_inline(&renderpass, &framebuffer, renderpass::ClearValues {
-                color: [0.0, 0.0, 1.0, 1.0]
-            })
-            .draw(&pipeline, &vertex_buffer, &vulkano::command_buffer::DynamicState::none(),
-                  &set, &())
-            .draw_end()
-            .build()
-    }).collect::<Vec<_>>();
+    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
 
     loop {
-        let image_num = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
-        vulkano::command_buffer::submit(&command_buffers[image_num], &queue).unwrap();
-        swapchain.present(&queue, image_num).unwrap();
+        while submissions.len() >= 4 {
+            submissions.remove(0);
+        }
+
+        let (image_num, future) = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
+
+        let cb = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer_to_image(pixel_buffer.clone(), texture.clone())
+            .unwrap()
+            //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
+            .begin_render_pass(
+                framebuffers[image_num].clone(), false,
+                renderpass.desc().start_clear_values()
+                    .color([0.0, 0.0, 1.0, 1.0]))
+            .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
+                  set.clone(), ())
+            .end_render_pass()
+            .build().unwrap();
+
+        let future = future
+            .then_execute(queue.clone(), cb)
+            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+            .then_signal_fence();
+        future.flush().unwrap();
+        submissions.push(Box::new(future) as Box<_>);
 
         for ev in window.window().poll_events() {
             match ev {

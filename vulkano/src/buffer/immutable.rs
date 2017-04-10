@@ -20,24 +20,21 @@
 
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::AccessRange;
 use buffer::traits::Buffer;
-use buffer::traits::GpuAccessResult;
+use buffer::traits::BufferInner;
+use buffer::traits::IntoBuffer;
 use buffer::traits::TypedBuffer;
-use command_buffer::Submission;
 use device::Device;
+use device::DeviceOwned;
+use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -56,8 +53,6 @@ pub struct ImmutableBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPoo
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
-
-    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
 
     started_reading: AtomicBool,
 
@@ -137,7 +132,6 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
-            latest_write_submission: Mutex::new(None),
             started_reading: AtomicBool::new(false),
             marker: PhantomData,
         }))
@@ -161,79 +155,37 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
     }
 }
 
+// FIXME: wrong
+unsafe impl<T: ?Sized, A> IntoBuffer for Arc<ImmutableBuffer<T, A>>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type Target = Self;
+
+    #[inline]
+    fn into_buffer(self) -> Self {
+        self
+    }
+}
+
 unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        &self.inner
-    }
-    
-    #[inline]
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
-        vec![0]
+    fn inner(&self) -> BufferInner {
+        BufferInner {
+            buffer: &self.inner,
+            offset: 0,
+        }
     }
 
     #[inline]
-    fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
-    }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
-        Some(true)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        true       // FIXME:
     }
 
     #[inline]
-    fn host_accesses(&self, _: usize) -> bool {
-        false
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!()
-        }
-
-        let write = {
-            let mut write = false;
-            while let Some(range) = ranges.next() {
-                if range.write { write = true; break; }
-            }
-            write
-        };
-
-        if write {
-            assert!(self.started_reading.load(Ordering::Acquire) == false);
-        }
-
-        let dependency = {
-            let mut latest_submission = self.latest_write_submission.lock().unwrap();
-
-            if write {
-                mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
-            } else {
-                latest_submission.clone()
-            }
-        };
-        let dependency = dependency.and_then(|d| d.upgrade());
-
-        if write {
-            assert!(self.started_reading.load(Ordering::Acquire) == false);
-        } else {        
-            self.started_reading.store(true, Ordering::Release);
-        }
-
-        GpuAccessResult {
-            dependencies: if let Some(dependency) = dependency {
-                vec![dependency]
-            } else {
-                vec![]
-            },
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-        }
+    unsafe fn increase_gpu_lock(&self) {
+        // FIXME:
     }
 }
 
@@ -241,4 +193,13 @@ unsafe impl<T: ?Sized, A> TypedBuffer for ImmutableBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Content = T;
+}
+
+unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
 }

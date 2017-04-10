@@ -55,6 +55,8 @@ pub use self::sys::Layout;
 pub use self::sys::Usage;
 pub use self::traits::Image;
 pub use self::traits::ImageView;
+pub use self::traits::IntoImage;
+pub use self::traits::IntoImageView;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private
@@ -194,6 +196,11 @@ impl Dimensions {
     }
 
     #[inline]
+    pub fn width_height_depth(&self) -> [u32; 3] {
+        [self.width(), self.height(), self.depth()]
+    }
+
+    #[inline]
     pub fn array_layers(&self) -> u32 {
         match *self {
             Dimensions::Dim1d { .. } => 1,
@@ -315,6 +322,11 @@ impl ImageDimensions {
             ImageDimensions::Dim2d { .. } => 1,
             ImageDimensions::Dim3d { depth, .. }  => depth,
         }
+    }
+
+    #[inline]
+    pub fn width_height_depth(&self) -> [u32; 3] {
+        [self.width(), self.height(), self.depth()]
     }
 
     #[inline]

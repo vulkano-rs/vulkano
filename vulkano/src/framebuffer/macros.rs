@@ -7,17 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
+/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
+        $device:expr,
         attachments: { $($a:tt)* },
         pass: {
             color: [$($color_atch:ident),*],
             depth_stencil: {$($depth_atch:ident)*}
         }
-    ) => {
-        ordered_passes_renderpass!{
+    ) => (
+        ordered_passes_renderpass!(
+            $device,
             attachments: { $($a)* },
             passes: [
                 {
@@ -26,20 +28,22 @@ macro_rules! single_pass_renderpass {
                     input: []
                 }
             ]
-        }
-    }
+        )
+    )
 }
 
-/// Builds a `CustomRenderPass` object that provides a safe wrapper around `UnsafeRenderPass`.
+/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
+        $device:expr,
         attachments: {
             $(
                 $atch_name:ident: {
                     load: $load:ident,
                     store: $store:ident,
-                    format: $format:ty,
+                    format: $format:expr,
+                    samples: $samples:expr,
                     $(initial_layout: $init_layout:expr,)*
                     $(final_layout: $final_layout:expr,)*
                 }
@@ -54,116 +58,138 @@ macro_rules! ordered_passes_renderpass {
                 }
             ),*
         ]
-    ) => {
-        use std::vec::IntoIter as VecIntoIter;
-        use std::sync::Arc;
-        use $crate::device::Device;
-        use $crate::format::ClearValue;
-        use $crate::framebuffer::UnsafeRenderPass;
-        use $crate::framebuffer::RenderPass;
+    ) => ({
         use $crate::framebuffer::RenderPassDesc;
-        use $crate::framebuffer::RenderPassClearValues;
-        use $crate::framebuffer::RenderPassAttachmentsList;
-        use $crate::framebuffer::LayoutAttachmentDescription;
-        use $crate::framebuffer::LayoutPassDescription;
-        use $crate::framebuffer::LayoutPassDependencyDescription;
-        use $crate::framebuffer::FramebufferCreationError;
-        use $crate::framebuffer::RenderPassCreationError;
-        use $crate::image::Layout;
-        use $crate::image::traits::Image;
-        use $crate::image::traits::ImageView;
-        use $crate::sync::AccessFlagBits;
-        use $crate::sync::PipelineStages;
 
-        #[derive(Debug, Clone)]
-        pub struct Formats {
-            $(
-                pub $atch_name: ($format, u32),
-            )*
-        }
+        mod scope {
+            #![allow(non_camel_case_types)]
+            #![allow(non_snake_case)]
 
-        pub struct CustomRenderPass {
-            render_pass: UnsafeRenderPass,
-            formats: Formats,
-        }
+            use std::sync::Arc;
+            use $crate::format::ClearValue;
+            use $crate::format::Format;
+            use $crate::framebuffer::AttachmentsList;
+            use $crate::framebuffer::FramebufferCreationError;
+            use $crate::framebuffer::RenderPassDesc;
+            use $crate::framebuffer::RenderPassDescAttachmentsList;
+            use $crate::framebuffer::RenderPassDescClearValues;
+            use $crate::framebuffer::LayoutAttachmentDescription;
+            use $crate::framebuffer::LayoutPassDescription;
+            use $crate::framebuffer::LayoutPassDependencyDescription;
+            use $crate::image::Layout;
+            use $crate::image::ImageView;
+            use $crate::sync::AccessFlagBits;
+            use $crate::sync::PipelineStages;
 
-        impl CustomRenderPass {
-            pub fn raw(device: &Arc<Device>, formats: &Formats)
-                       -> Result<CustomRenderPass, RenderPassCreationError>
-            {
-                #![allow(unsafe_code)]
+            pub struct CustomRenderPassDesc {
+                $(
+                    pub $atch_name: (Format, u32),
+                )*
+            }
 
-                let rp = try!(unsafe {
-                    UnsafeRenderPass::new(device, AttachmentsIter(formats.clone(), 0),
-                                          PassesIter(0), DependenciesIter(0, 0))
-                });
+            impl CustomRenderPassDesc {
+                #[inline]
+                pub fn start_attachments(&self) -> atch::AttachmentsStart {
+                    atch::AttachmentsStart
+                }
 
-                Ok(CustomRenderPass {
-                    render_pass: rp,
-                    formats: formats.clone(),
-                })
+                #[inline]
+                pub fn start_clear_values(&self) -> cv::ClearValuesStart {
+                    cv::ClearValuesStart
+                }
+            }
+
+            pub mod atch {
+                use $crate::framebuffer::AttachmentsList;
+                use $crate::framebuffer::FramebufferCreationError;
+                use $crate::framebuffer::RenderPassDescAttachmentsList;
+                use $crate::image::traits::ImageView;
+                use super::CustomRenderPassDesc;
+                pub struct AttachmentsStart;
+                ordered_passes_renderpass!{[] __impl_attachments__ [] [] [$($atch_name),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
+            }
+    
+            pub mod cv {
+                use std::iter;
+                use $crate::format::ClearValue;
+                use $crate::framebuffer::RenderPassDescClearValues;
+                use super::CustomRenderPassDesc;
+                pub struct ClearValuesStart;
+                ordered_passes_renderpass!{[] __impl_clear_values__ [] [] [$($atch_name: $load),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
+            }
+
+            #[allow(unsafe_code)]
+            unsafe impl RenderPassDesc for CustomRenderPassDesc {
+                #[inline]
+                fn num_attachments(&self) -> usize {
+                    num_attachments()
+                }
+
+                #[inline]
+                fn attachment(&self, id: usize) -> Option<LayoutAttachmentDescription> {
+                    attachment(self, id)
+                }
+
+                #[inline]
+                fn num_subpasses(&self) -> usize {
+                    num_subpasses()
+                }
+
+                #[inline]
+                fn subpass(&self, id: usize) -> Option<LayoutPassDescription> {
+                    subpass(id)
+                }
+
+                #[inline]
+                fn num_dependencies(&self) -> usize {
+                    num_dependencies()
+                }
+
+                #[inline]
+                fn dependency(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
+                    dependency(id)
+                }
+            }
+
+            unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
+                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+                    // FIXME: safety checks
+                    Box::new(values.into_iter())
+                }
+            }
+
+            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>> for CustomRenderPassDesc {
+                fn check_attachments_list(&self, list: Vec<Arc<ImageView + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+                    // FIXME: correct safety checks
+                    assert_eq!(list.len(), self.num_attachments());
+                    Ok(Box::new(list) as Box<_>)
+                }
             }
 
             #[inline]
-            pub fn new(device: &Arc<Device>, formats: &Formats)
-                       -> Result<Arc<CustomRenderPass>, RenderPassCreationError>
-            {
-                Ok(Arc::new(try!(CustomRenderPass::raw(device, formats))))
-            }
-        }
-
-        #[allow(unsafe_code)]
-        unsafe impl RenderPass for CustomRenderPass {
-            #[inline]
-            fn inner(&self) -> &UnsafeRenderPass {
-                &self.render_pass
-            }
-        }
-
-        #[allow(unsafe_code)]
-        unsafe impl RenderPassDesc for CustomRenderPass {
-            type AttachmentsIter = AttachmentsIter;
-            type PassesIter = PassesIter;
-            type DependenciesIter = DependenciesIter;
-
-            #[inline]
-            fn attachments(&self) -> Self::AttachmentsIter {
-                AttachmentsIter(self.formats.clone(), 0)
+            fn num_attachments() -> usize {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                #![allow(unused_variables)]
+                let mut num = 0;
+                $(let $atch_name = num; num += 1;)*
+                num
             }
 
             #[inline]
-            fn passes(&self) -> Self::PassesIter {
-                PassesIter(0)
-            }
-
-            #[inline]
-            fn dependencies(&self) -> Self::DependenciesIter {
-                DependenciesIter(0, 0)
-            }
-        }
-
-        #[derive(Debug, Clone)]
-        pub struct AttachmentsIter(Formats, usize);
-        impl ExactSizeIterator for AttachmentsIter {}
-        impl Iterator for AttachmentsIter {
-            type Item = LayoutAttachmentDescription;
-
-            #[inline]
-            fn next(&mut self) -> Option<LayoutAttachmentDescription> {
+            fn attachment(desc: &CustomRenderPassDesc, id: usize) -> Option<LayoutAttachmentDescription> {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
 
                 let mut num = 0;
 
                 $({
-                    if self.1 == num {
-                        self.1 += 1;
-
+                    if id == num {
                         let (initial_layout, final_layout) = attachment_layouts(num);
 
                         return Some($crate::framebuffer::LayoutAttachmentDescription {
-                            format: $crate::format::FormatDesc::format(&(self.0).$atch_name.0),
-                            samples: (self.0).$atch_name.1,
+                            format: desc.$atch_name.0,
+                            samples: desc.$atch_name.1,
                             load: $crate::framebuffer::LoadOp::$load,
                             store: $crate::framebuffer::StoreOp::$store,
                             initial_layout: initial_layout,
@@ -178,25 +204,17 @@ macro_rules! ordered_passes_renderpass {
             }
 
             #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
+            fn num_subpasses() -> usize {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
                 #![allow(unused_variables)]
                 let mut num = 0;
-                $(let $atch_name = num; num += 1;)*
-                num -= self.1;
-                (num, Some(num))
+                $($(let $color_atch = num;)* num += 1;)*
+                num
             }
-        }
-
-        #[derive(Debug, Clone)]
-        pub struct PassesIter(usize);
-        impl ExactSizeIterator for PassesIter {}
-        impl Iterator for PassesIter {
-            type Item = LayoutPassDescription;
 
             #[inline]
-            fn next(&mut self) -> Option<LayoutPassDescription> {
+            fn subpass(id: usize) -> Option<LayoutPassDescription> {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
                 #![allow(unused_variables)]
@@ -210,9 +228,7 @@ macro_rules! ordered_passes_renderpass {
                 let mut cur_pass_num = 0;
 
                 $({
-                    if self.0 == cur_pass_num {
-                        self.0 += 1;
-
+                    if id == cur_pass_num {
                         let mut depth = None;
                         $(
                             depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
@@ -247,40 +263,21 @@ macro_rules! ordered_passes_renderpass {
             }
 
             #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-                let mut num = 0;
-                $($(let $color_atch = num;)* num += 1;)*
-                num -= self.0;
-                (num, Some(num))
+            fn num_dependencies() -> usize {
+                num_subpasses().saturating_sub(1)
             }
-        }
-
-        #[derive(Debug, Clone)]
-        pub struct DependenciesIter(usize, usize);
-        impl ExactSizeIterator for DependenciesIter {}
-        impl Iterator for DependenciesIter {
-            type Item = LayoutPassDependencyDescription;
 
             #[inline]
-            fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
-                let num_passes = PassesIter(0).len();
+            fn dependency(id: usize) -> Option<LayoutPassDependencyDescription> {
+                let num_passes = num_subpasses();
 
-                self.1 += 1;
-                if self.1 >= num_passes {
-                    self.0 += 1;
-                    self.1 = self.0 + 1;
-                }
-
-                if self.0 >= num_passes || self.1 >= num_passes {
+                if id + 1 >= num_passes {
                     return None;
                 }
 
                 Some(LayoutPassDependencyDescription {
-                    source_subpass: self.0,
-                    destination_subpass: self.1,
+                    source_subpass: id,
+                    destination_subpass: id + 1,
                     src_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
                     dst_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
                     src_access: AccessFlagBits::all(),         // TODO: correct values
@@ -289,203 +286,239 @@ macro_rules! ordered_passes_renderpass {
                 })
             }
 
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                let num_passes = PassesIter(0).len();
+            /// Returns the initial and final layout of an attachment, given its num.
+            ///
+            /// The value always correspond to the first and last usages of an attachment.
+            fn attachment_layouts(num: usize) -> (Layout, Layout) {
+                #![allow(unused_assignments)]
+                #![allow(unused_mut)]
+                #![allow(unused_variables)]
 
-                let out = (num_passes - self.1 - 1) +
-                          ((self.0 + 1) .. num_passes).map(|p| p * (num_passes - p - 1))
-                                                      .fold(0, |a, b| a + b);
-                (out, Some(out))
+                let mut attachment_num = 0;
+                $(
+                    let $atch_name = attachment_num;
+                    attachment_num += 1;
+                )*
+
+                let mut initial_layout = None;
+                let mut final_layout = None;
+
+                $({
+                    $(
+                        if $depth_atch == num {
+                            if initial_layout.is_none() {
+                                initial_layout = Some(Layout::DepthStencilAttachmentOptimal);
+                            }
+                            final_layout = Some(Layout::DepthStencilAttachmentOptimal);
+                        }
+                    )*
+
+                    $(
+                        if $color_atch == num {
+                            if initial_layout.is_none() {
+                                initial_layout = Some(Layout::ColorAttachmentOptimal);
+                            }
+                            final_layout = Some(Layout::ColorAttachmentOptimal);
+                        }
+                    )*
+
+                    $(
+                        if $input_atch == num {
+                            if initial_layout.is_none() {
+                                initial_layout = Some(Layout::ShaderReadOnlyOptimal);
+                            }
+                            final_layout = Some(Layout::ShaderReadOnlyOptimal);
+                        }
+                    )*
+                })*
+
+                $(if $atch_name == num {
+                    $(initial_layout = Some($init_layout);)*
+                    $(final_layout = Some($final_layout);)*
+                })*
+
+                (initial_layout.unwrap(), final_layout.unwrap())
             }
         }
 
-        /// Returns the initial and final layout of an attachment, given its num.
-        ///
-        /// The value always correspond to the first and last usages of an attachment.
-        fn attachment_layouts(num: usize) -> (Layout, Layout) {
-            #![allow(unused_assignments)]
-            #![allow(unused_mut)]
-            #![allow(unused_variables)]
-
-            let mut attachment_num = 0;
+        scope::CustomRenderPassDesc {
             $(
-                let $atch_name = attachment_num;
-                attachment_num += 1;
+                $atch_name: ($format, $samples),
             )*
+        }.build_render_pass($device)
+    });
 
-            let mut initial_layout = None;
-            let mut final_layout = None;
 
-            $({
-                $(
-                    if $depth_atch == num {
-                        if initial_layout.is_none() {
-                            initial_layout = Some(Layout::DepthStencilAttachmentOptimal);
-                        }
-                        final_layout = Some(Layout::DepthStencilAttachmentOptimal);
-                    }
-                )*
 
-                $(
-                    if $color_atch == num {
-                        if initial_layout.is_none() {
-                            initial_layout = Some(Layout::ColorAttachmentOptimal);
-                        }
-                        final_layout = Some(Layout::ColorAttachmentOptimal);
-                    }
-                )*
 
-                $(
-                    if $input_atch == num {
-                        if initial_layout.is_none() {
-                            initial_layout = Some(Layout::ShaderReadOnlyOptimal);
-                        }
-                        final_layout = Some(Layout::ShaderReadOnlyOptimal);
-                    }
-                )*
-            })*
 
-            $(if $atch_name == num {
-                $(initial_layout = Some($init_layout);)*
-                $(final_layout = Some($final_layout);)*
-            })*
 
-            (initial_layout.unwrap(), final_layout.unwrap())
+
+    ([] __impl_attachments__ [] [] [] [$($params:ident),*]) => {
+        unsafe impl RenderPassDescAttachmentsList<AttachmentsStart> for CustomRenderPassDesc {
+            type List = ();
+
+            fn check_attachments_list(&self, attachments: AttachmentsStart) -> Result<(), FramebufferCreationError> {
+                Ok(())        // FIXME:
+            }
+        }
+    };
+
+    ([] __impl_attachments__ [] [] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$first_param> {
+            current: $first_param,
         }
 
-        #[allow(non_camel_case_types)]
-        pub struct AList<'a, $($atch_name: 'a),*> {
-            $(
-                pub $atch_name: &'a Arc<$atch_name>,
-            )*
+        impl AttachmentsStart {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$first_param> {
+                $next {
+                    current: next,
+                }
+            }
         }
 
-        #[allow(non_camel_case_types)]
-        #[allow(unsafe_code)]
-        unsafe impl<'a, $($atch_name: 'static + ImageView),*> RenderPassAttachmentsList<AList<'a, $($atch_name),*>> for CustomRenderPass {
-            // TODO: shouldn't build a Vec
-            type AttachmentsIter = VecIntoIter<(Arc<ImageView>, Arc<Image>, Layout, Layout)>;
+        impl<$first_param> $next<$first_param> {
+            fn check_attachments_list(self) -> Result<($first_param,), FramebufferCreationError> {
+                Ok((self.current,))     // FIXME: check attachment
+            }
+        }
 
-            #[inline]
-            fn convert_attachments_list(&self, l: AList<'a, $($atch_name),*>) -> Result<Self::AttachmentsIter, FramebufferCreationError> {
-                #![allow(unused_assignments)]
+        ordered_passes_renderpass!{[] __impl_attachments__ [$next] [$first_param] [$($rest),*] [$($rest_params),*]}
+    };
 
-                let mut result = Vec::new();
+    ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
+        unsafe impl<$($prev_params),*> RenderPassDescAttachmentsList<$prev<$($prev_params),*>> for CustomRenderPassDesc
+            where $($prev_params: ImageView + Send + Sync + 'static),*
+        {
+            //type List = ($($prev_params,)*);
 
-                let mut num = 0;
-                $({
+            fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+                Ok(Box::new(try!(attachments.check_attachments_list())))
+                
+                // FIXME:
+                /*$({
                     if !l.$atch_name.identity_swizzle() {
                         return Err(FramebufferCreationError::AttachmentNotIdentitySwizzled);
                     }
-
-                    // FIXME: lots of checks missing (format, samples, layout, etc.)
-
-                    let (initial_layout, final_layout) = attachment_layouts(num);
-                    num += 1;
-                    result.push((l.$atch_name.clone() as Arc<_>, ImageView::parent_arc(&l.$atch_name), initial_layout, final_layout));
-                })*
-
-                Ok(result.into_iter())
+                })**/
             }
         }
-
-        ordered_passes_renderpass!{__impl_clear_values__ [0] [] [$($atch_name $format, $load,)*] }
     };
 
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, Clear, $($rest:tt)*]) => {
-        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)* $atch_name [$num] $format,] [$($rest)*] }
-    };
-
-    (__impl_clear_values__ [$num:expr] [$($s:tt)*] [$atch_name:ident $format:ty, $misc:ident, $($rest:tt)*]) => {
-        ordered_passes_renderpass!{__impl_clear_values__ [$num+1] [$($s)*] [$($rest)*] }
-    };
-
-    (__impl_clear_values__ [$total:expr] [$($atch:ident [$num:expr] $format:ty,)+] []) => {
-        #[allow(non_camel_case_types)]
-        pub struct ClearValues<$($atch),+> {
-            $(
-                pub $atch: $atch,
-            )+
+    ([] __impl_attachments__ [$prev:ident] [$($prev_params:ident),*] [$next:ident $(, $rest:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$($prev_params,)* $first_param> {
+            prev: $prev<$($prev_params),*>,
+            current: $first_param,
         }
 
-        #[allow(non_camel_case_types)]
-        #[allow(unsafe_code)]
-        unsafe impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),*>
-            RenderPassClearValues<ClearValues<$($atch),*>> for CustomRenderPass
-        {
-            type ClearValuesIter = ClearValuesIter<$($atch),+>;
-
-            #[inline]
-            fn convert_clear_values(&self, val: ClearValues<$($atch),+>)
-                                    -> ClearValuesIter<$($atch),+>
-            {
-                ClearValuesIter(self.formats.clone(), val, 0)
-            }
-        }
-
-        #[allow(non_camel_case_types)]
-        pub struct ClearValuesIter<$($atch),*>(Formats, ClearValues<$($atch),+>, usize);
-
-        #[allow(non_camel_case_types)]
-        impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),+>
-            Iterator for ClearValuesIter<$($atch),+>
-        {
-            type Item = $crate::format::ClearValue;
-
-            #[inline]
-            fn next(&mut self) -> Option<Self::Item> {
-                use $crate::format::FormatDesc;
-
-                $(
-                    if self.2 == $num {
-                        self.2 += 1;
-                        return Some((self.0).$atch.0.decode_clear_value((self.1).$atch.clone().into()));
-                    }
-                )+
-
-                if self.2 >= $total {
-                    None
-                } else {
-                    Some(ClearValue::None)
+        impl<$($prev_params),*> $prev<$($prev_params),*> {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$($prev_params,)* $first_param> {
+                $next {
+                    prev: self,
+                    current: next,
                 }
             }
+        }
 
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                let len = $total - self.2;
-                (len, Some(len))
+        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param> {
+            fn check_attachments_list(self) -> Result<($($prev_params,)* $first_param), FramebufferCreationError> {
+                let ($($prev_params,)*) = try!(self.prev.check_attachments_list());
+                // FIXME: check attachment
+                Ok(($($prev_params,)* self.current))
             }
         }
 
-        #[allow(non_camel_case_types)]
-        impl<$($atch: Clone + Into<<$format as $crate::format::FormatDesc>::ClearValue>),+>
-            ExactSizeIterator for ClearValuesIter<$($atch),+> {}
+        ordered_passes_renderpass!{[] __impl_attachments__ [$next] [$($prev_params,)* $first_param] [$($rest),*] [$($rest_params),*]}
     };
 
-    (__impl_clear_values__ [$total:expr] [] []) => {
-        pub type ClearValues = ();
 
-        #[allow(unsafe_code)]
-        unsafe impl RenderPassClearValues<()> for CustomRenderPass {
-            type ClearValuesIter = ClearValuesIter;
 
+
+
+
+
+    ([] __impl_clear_values__ [] [] [] [$($params:ident),*]) => {
+        unsafe impl RenderPassDescClearValues<ClearValuesStart> for CustomRenderPassDesc {
             #[inline]
-            fn convert_clear_values(&self, val: ()) -> ClearValuesIter {
-                ClearValuesIter
+            fn convert_clear_values(&self, values: ClearValuesStart) -> Box<Iterator<Item = ClearValue>> {
+                Box::new(iter::empty())
+            }
+        }
+    };
+
+    ([] __impl_clear_values__ [] [] [$next:ident: Clear $(, $rest:ident: $rest_load:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$first_param> {
+            current: $first_param,
+        }
+
+        impl ClearValuesStart {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$first_param> {
+                $next {
+                    current: next,
+                }
             }
         }
 
-        pub struct ClearValuesIter;
-
-        impl Iterator for ClearValuesIter {
-            type Item = $crate::format::ClearValue;
+        impl<$first_param> $next<$first_param>
+            where $first_param: Into<ClearValue>
+        {
             #[inline]
-            fn next(&mut self) -> Option<Self::Item> { None }
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(0)) }
+            fn convert_clear_values(self) -> iter::Once<ClearValue> {
+                // FIXME: check format
+                iter::once(self.current.into())
+            }
         }
 
-        impl ExactSizeIterator for ClearValuesIter {}
+        ordered_passes_renderpass!{[] __impl_clear_values__ [$next] [$first_param] [$($rest: $rest_load),*] [$($rest_params),*]}
+    };
+
+    ([] __impl_clear_values__ [] [] [$next:ident: $other:ident $(, $rest:ident: $rest_load:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        ordered_passes_renderpass!{[] __impl_clear_values__ [] [] [$($rest: $rest_load),*] [$first_param, $($rest_params),*]}
+    };
+
+    ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [] [$($params:ident),*]) => {
+        unsafe impl<$($prev_params),*> RenderPassDescClearValues<$prev<$($prev_params),*>> for CustomRenderPassDesc
+            where $($prev_params: Into<ClearValue>),*
+        {
+            #[inline]
+            fn convert_clear_values(&self, values: $prev<$($prev_params,)*>) -> Box<Iterator<Item = ClearValue>> {
+                Box::new(values.convert_clear_values())
+            }
+        }
+    };
+
+    ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [$next:ident: Clear $(, $rest:ident: $rest_load:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        pub struct $next<$($prev_params,)* $first_param> {
+            prev: $prev<$($prev_params,)*>,
+            current: $first_param,
+        }
+
+        impl<$($prev_params,)*> $prev<$($prev_params,)*> {
+            pub fn $next<$first_param>(self, next: $first_param) -> $next<$($prev_params,)* $first_param> {
+                $next {
+                    prev: self,
+                    current: next,
+                }
+            }
+        }
+
+        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param>
+            where $first_param: Into<ClearValue>
+                  $(, $prev_params: Into<ClearValue>)*
+        {
+            #[inline]
+            fn convert_clear_values(self) -> Box<Iterator<Item = ClearValue>> {
+                // TODO: subopptimal iterator
+                let prev = self.prev.convert_clear_values();
+                // FIXME: check format
+                Box::new(prev.chain(iter::once(self.current.into())))
+            }
+        }
+
+        ordered_passes_renderpass!{[] __impl_clear_values__ [$next] [$($prev_params,)* $first_param] [$($rest: $rest_load),*] [$($rest_params),*]}
+    };
+
+    ([] __impl_clear_values__ [$prev:ident] [$($prev_params:ident),*] [$next:ident: $other:ident $(, $rest:ident: $rest_load:ident)*] [$first_param:ident, $($rest_params:ident),*]) => {
+        ordered_passes_renderpass!{[] __impl_clear_values__ [$prev] [$($prev_params,)*] [$($rest: $rest_load),*] [$first_param, $($rest_params),*]}
     };
 }

@@ -22,7 +22,7 @@
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
 //!
-//! // Creating the instance. See the documentation of the `instance` module. 
+//! // Creating the instance. See the documentation of the `instance` module.
 //! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
@@ -49,23 +49,23 @@
 //!
 //! Two of the parameters that you pass to `Device::new` are the list of the features and the list
 //! of extensions to enable on the newly-created device.
-//! 
+//!
 //! > **Note**: Device extensions are the same as instance extensions, except for the device.
 //! > Features are similar to extensions, except that they are part of the core Vulkan
 //! > specifications instead of being separate documents.
-//! 
+//!
 //! Some Vulkan capabilities, such as swapchains (that allow you to render on the screen) or
 //! geometry shaders for example, require that you enable a certain feature or extension when you
 //! create the device. Contrary to OpenGL, you can't use the functions provided by a feature or an
 //! extension if you didn't explicitly enable it when creating the device.
-//! 
+//!
 //! Not all physical devices support all possible features and extensions. For example mobile
 //! devices tend to not support geometry shaders, because their hardware is not capable of it. You
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
 //! TODO: oops, there's no method for querying supported extensions in vulkan yet.
 //!
 //! > **Note**: The fact that you need to manually enable features at initialization also means
-//! > that you don't need to worry about a capability not being supported later on in your code.  
+//! > that you don't need to worry about a capability not being supported later on in your code.
 //!
 //! # Queues
 //!
@@ -74,7 +74,7 @@
 //!
 //! > **Note**: You can think of a queue like a CPU thread. Each queue executes its commands one
 //! > after the other, and queues run concurrently. A GPU behaves similarly to the hyper-threading
-//! > technology, in the sense that queues will only run partially in parallel. 
+//! > technology, in the sense that queues will only run partially in parallel.
 //!
 //! The Vulkan API requires that you specify the list of queues that you are going to use at the
 //! same time as when you create the device. This is done in vulkano by passing an iterator where
@@ -95,6 +95,7 @@ use std::fmt;
 use std::error;
 use std::hash::BuildHasherDefault;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -104,12 +105,12 @@ use smallvec::SmallVec;
 use fnv::FnvHasher;
 
 use command_buffer::pool::StandardCommandPool;
+use descriptor::descriptor_set::StdDescriptorPool;
 use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
 use memory::pool::StdMemoryPool;
-use sync::Semaphore;
 
 use Error;
 use OomError;
@@ -128,6 +129,7 @@ pub struct Device {
     device: vk::Device,
     vk: vk::DevicePointers,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
+    standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
     standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
@@ -281,6 +283,7 @@ impl Device {
             device: device,
             vk: vk,
             standard_pool: Mutex::new(Weak::new()),
+            standard_descriptor_pool: Mutex::new(Weak::new()),
             standard_command_pools: Mutex::new(Default::default()),
             features: requested_features.clone(),
             extensions: extensions.clone(),
@@ -359,6 +362,20 @@ impl Device {
         new_pool
     }
 
+    /// Returns the standard descriptor pool used by default if you don't provide any other pool.
+    pub fn standard_descriptor_pool(me: &Arc<Self>) -> Arc<StdDescriptorPool> {
+        let mut pool = me.standard_descriptor_pool.lock().unwrap();
+
+        if let Some(p) = pool.upgrade() {
+            return p;
+        }
+
+        // The weak pointer is empty, so we create the pool.
+        let new_pool = Arc::new(StdDescriptorPool::new(me.clone()));
+        *pool = Arc::downgrade(&new_pool);
+        new_pool
+    }
+
     /// Returns the standard command buffer pool used by default if you don't provide any other
     /// pool.
     ///
@@ -423,6 +440,24 @@ impl Drop for Device {
     }
 }
 
+/// Implemented on objects that belong to a Vulkan device.
+///
+/// # Safety
+///
+/// - `device()` must return the correct device.
+///
+pub unsafe trait DeviceOwned {
+    /// Returns the device that owns `Self`.
+    fn device(&self) -> &Arc<Device>;
+}
+
+unsafe impl<T> DeviceOwned for T where T: Deref, T::Target: DeviceOwned {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        (**self).device()
+    }
+}
+
 /// Iterator that returns the queues produced when creating a device.
 pub struct QueuesIter {
     next_queue: usize,
@@ -450,7 +485,6 @@ impl Iterator for QueuesIter {
                 device: self.device.clone(),
                 family: family,
                 id: id,
-                dedicated_semaphore: Mutex::new(None),
             }))
         }
     }
@@ -477,6 +511,8 @@ pub enum DeviceCreationError {
     UnsupportedFeatures,
     /// The priority of one of the queues is out of the [0.0; 1.0] range.
     PriorityOutOfRange,
+    /// Some of the requested device extensions are not supported by the physical device.
+    ExtensionNotPresent,
 }
 
 impl error::Error for DeviceCreationError {
@@ -496,6 +532,9 @@ impl error::Error for DeviceCreationError {
             DeviceCreationError::PriorityOutOfRange => {
                 "the priority of one of the queues is out of the [0.0; 1.0] range"
             },
+            DeviceCreationError::ExtensionNotPresent => {
+                "some of the requested device extensions are not supported by the physical device"
+            }
         }
     }
 }
@@ -513,27 +552,20 @@ impl From<Error> for DeviceCreationError {
         match err {
             Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
             Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
+            Error::ExtensionNotPresent => DeviceCreationError::ExtensionNotPresent,
             _ => panic!("Unexpected error value: {}", err as i32)
         }
     }
 }
 
 /// Represents a queue where commands can be submitted.
-// TODO: should use internal synchronization
+// TODO: should use internal synchronization?
 #[derive(Debug)]
 pub struct Queue {
     queue: Mutex<vk::Queue>,
     device: Arc<Device>,
     family: u32,
     id: u32,    // id within family
-
-    // For safety purposes, each command buffer submitted to a queue has to both wait on and
-    // signal the semaphore specified here.
-    //
-    // If this is `None`, then that means we haven't used the semaphore yet.
-    //
-    // For more infos, see TODO: see what?
-    dedicated_semaphore: Mutex<Option<Arc<Semaphore>>>,
 }
 
 impl Queue {
@@ -541,6 +573,14 @@ impl Queue {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+
+    /// Returns true if this is the same queue as another one.
+    #[inline]
+    pub fn is_same(&self, other: &Queue) -> bool {
+        self.id == other.id &&
+            self.family == other.family &&
+            self.device.internal_object() == other.device.internal_object()
     }
 
     /// Returns the family this queue belongs to.
@@ -555,50 +595,17 @@ impl Queue {
         self.id
     }
 
-    /// See the docs of wait().
+    /// Waits until all work on this queue has finished.
+    ///
+    /// Just like `Device::wait()`, you shouldn't have to call this function in a typical program.
     #[inline]
-    pub fn wait_raw(&self) -> Result<(), OomError> {
+    pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
             let queue = self.queue.lock().unwrap();
             try!(check_errors(vk.QueueWaitIdle(*queue)));
             Ok(())
         }
-    }
-    
-    /// Waits until all work on this queue has finished.
-    ///
-    /// Just like `Device::wait()`, you shouldn't have to call this function.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn wait(&self) {
-        self.wait_raw().unwrap();
-    }
-
-    // TODO: the design of this functions depends on https://github.com/KhronosGroup/Vulkan-Docs/issues/155
-    /*// TODO: document
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn dedicated_semaphore(&self) -> Result<(Arc<Semaphore>, bool), OomError> {
-        let mut sem = self.dedicated_semaphore.lock().unwrap();
-
-        if let Some(ref semaphore) = *sem {
-            return Ok((semaphore.clone(), true));
-        }
-
-        let semaphore = try!(Semaphore::new(&self.device));
-        *sem = Some(semaphore.clone());
-        Ok((semaphore, false))
-    }*/
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn dedicated_semaphore(&self, signalled: Arc<Semaphore>) -> Option<Arc<Semaphore>> {
-        let mut sem = self.dedicated_semaphore.lock().unwrap();
-        mem::replace(&mut *sem, Some(signalled))
     }
 }
 

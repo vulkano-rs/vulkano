@@ -34,10 +34,11 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer;
+use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
-use vulkano::command_buffer::PrimaryCommandBufferBuilder;
-use vulkano::command_buffer::Submission;
-use vulkano::descriptor::pipeline_layout::EmptyPipeline;
+use vulkano::descriptor::pipeline_layout::PipelineLayout;
+use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 use vulkano::device::Device;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
@@ -54,6 +55,7 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -225,57 +227,37 @@ fn main() {
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    mod render_pass {
-        use vulkano::format::Format;
-
-        // Calling this macro creates multiple structs based on the macro's parameters:
-        //
-        // - `CustomRenderPass` is the main struct that represents the render pass.
-        // - `Formats` can be used to indicate the list of the formats of the attachments.
-        // - `AList` can be used to indicate the actual list of images that are attached.
-        //
-        // Render passes can also have multiple subpasses, the only restriction being that all
-        // the passes will use the same framebuffer dimensions. Here we only have one pass, so
-        // we use the appropriate macro.
-        single_pass_renderpass!{
-            attachments: {
-                // `color` is a custom name we give to the first and only attachment.
-                color: {
-                    // `load: Clear` means that we ask the GPU to clear the content of this
-                    // attachment at the start of the drawing.
-                    load: Clear,
-                    // `store: Store` means that we ask the GPU to store the output of the draw
-                    // in the actual image. We could also ask it to discard the result.
-                    store: Store,
-                    // `format: <ty>` indicates the type of the format of the image. This has to
-                    // be one of the types of the `vulkano::format` module (or alternatively one
-                    // of your structs that implements the `FormatDesc` trait). Here we use the
-                    // generic `vulkano::format::Format` enum because we don't know the format in
-                    // advance.
-                    format: Format,
-                }
-            },
-            pass: {
-                // We use the attachment named `color` as the one and only color attachment.
-                color: [color],
-                // No depth-stencil attachment is indicated with empty brackets.
-                depth_stencil: {}
+    let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+        attachments: {
+            // `color` is a custom name we give to the first and only attachment.
+            color: {
+                // `load: Clear` means that we ask the GPU to clear the content of this
+                // attachment at the start of the drawing.
+                load: Clear,
+                // `store: Store` means that we ask the GPU to store the output of the draw
+                // in the actual image. We could also ask it to discard the result.
+                store: Store,
+                // `format: <ty>` indicates the type of the format of the image. This has to
+                // be one of the types of the `vulkano::format` module (or alternatively one
+                // of your structs that implements the `FormatDesc` trait). Here we use the
+                // generic `vulkano::format::Format` enum because we don't know the format in
+                // advance.
+                format: images[0].format(),
+                // TODO:
+                samples: 1,
             }
+        },
+        pass: {
+            // We use the attachment named `color` as the one and only color attachment.
+            color: [color],
+            // No depth-stencil attachment is indicated with empty brackets.
+            depth_stencil: {}
         }
-    }
-
-    // The macro above only created the custom struct that represents our render pass. We also have
-    // to actually instanciate that struct.
-    //
-    // To do so, we have to pass the actual values of the formats of the attachments.
-    let render_pass = render_pass::CustomRenderPass::new(&device, &render_pass::Formats {
-        // Use the format of the images and one sample.
-        color: (images[0].format(), 1)
-    }).unwrap();
+    ).unwrap());
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+    let pipeline = Arc::new(GraphicsPipeline::new(&device, GraphicsPipelineParams {
         // We need to indicate the layout of the vertices.
         // The type `SingleBufferDefinition` actually contains a template parameter corresponding
         // to the type of each vertex. But in this code it is automatically inferred.
@@ -328,15 +310,10 @@ fn main() {
         // attachments without any change.
         blend: Blend::pass_through(),
 
-        // Shaders can usually access resources such as images or buffers. This parameters is here
-        // to indicate the layout of the accessed resources, which is also called the *pipeline
-        // layout*. Here we don't access anything, so we just create an `EmptyPipeline` object.
-        layout: &EmptyPipeline::new(&device).unwrap(),
-
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
-        render_pass: Subpass::from(&render_pass, 0).unwrap(),
-    }).unwrap();
+        render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
+    }).unwrap());
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
@@ -344,26 +321,40 @@ fn main() {
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
     let framebuffers = images.iter().map(|image| {
+        // When we create the framebuffer we need to pass the actual list of images for the
+        // framebuffer's attachments.
+        //
+        // The type of data that corresponds to this list depends on the way you created the
+        // render pass. With the `single_pass_renderpass!` macro you need to call
+        // `.desc().start_attachments()`. The returned object will have a method whose name is the
+        // name of the first attachment. When called, it returns an object that will have a method
+        // whose name is the name of the second attachment. And so on. Only the object returned
+        // by the method of the last attachment can be passed to `Framebuffer::new`.
+        let attachments = render_pass.desc().start_attachments().color(image.clone());
+
+        // Actually creating the framebuffer. Note that we have to pass the dimensions of the
+        // framebuffer. These dimensions must be inferior or equal to the intersection of the
+        // dimensions of all the attachments.
         let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        Framebuffer::new(&render_pass, dimensions, render_pass::AList {
-            // The `AList` struct was generated by the render pass macro above, and contains one
-            // member for each attachment.
-            color: image
-        }).unwrap()
+        Framebuffer::new(render_pass.clone(), dimensions, attachments).unwrap()
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!
 
     // In the loop below we are going to submit commands to the GPU. Submitting a command produces
-    // a `Submission` object which holds the resources for as long as they are in use by the GPU.
+    // an object that implements the `GpuFuture` trait, which holds the resources for as long as
+    // they are in use by the GPU.
     //
-    // Destroying a `Submission` blocks until the GPU is finished executing it. In order to avoid
+    // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store them in a `Vec` and clean them from time to time.
-    let mut submissions: Vec<Arc<Submission>> = Vec::new();
+    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
 
     loop {
-        // Clearing the old submissions by keeping alive only the ones whose destructor would block.
-        submissions.retain(|s| s.destroying_would_block());
+        // Clearing the old submissions by keeping alive only the ones which probably aren't
+        // finished.
+        while submissions.len() >= 4 {
+            submissions.remove(0);
+        }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
@@ -372,7 +363,7 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
-        let image_num = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
+        let (image_num, future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -383,41 +374,44 @@ fn main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer = PrimaryCommandBufferBuilder::new(&device, queue.family())
+        let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
             //
-            // The third parameter contains the list of values to clear the attachments with. Only
-            // the attachments that use `load: Clear` appear in this struct.
-            .draw_inline(&render_pass, &framebuffers[image_num], render_pass::ClearValues {
-                color: [0.0, 0.0, 1.0, 1.0]
-            })
+            // The third parameter builds the list of values to clear the attachments with. The API
+            // is similar to the list of attachments when building the framebuffers, except that
+            // only the attachments that use `load: Clear` appear in the list.
+            .begin_render_pass(framebuffers[image_num].clone(), false,
+                               render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
 
             // We are now inside the first subpass of the render pass. We add a draw command.
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-            .draw(&pipeline, &vertex_buffer, &DynamicState::none(), (), &())
+            .draw(pipeline.clone(), DynamicState::none(), vertex_buffer.clone(), (), ())
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
             // next subpass.
-            .draw_end()
+            .end_render_pass()
 
             // Finish building the command buffer by calling `build`.
-            .build();
+            .build().unwrap();
 
-        // Now all we need to do is submit the command buffer to the queue.
-        submissions.push(command_buffer::submit(&command_buffer, &queue).unwrap());
+        let future = future
+            .then_execute(queue.clone(), command_buffer)
 
-        // The color output is now expected to contain our triangle. But in order to show it on
-        // the screen, we have to *present* the image by calling `present`.
-        //
-        // This function does not actually present the image immediately. Instead it submits a
-        // present command at the end of the queue. This means that it will only be presented once
-        // the GPU has finished executing the command buffer that draws the triangle.
-        swapchain.present(&queue, image_num).unwrap();
+            // The color output is now expected to contain our triangle. But in order to show it on
+            // the screen, we have to *present* the image by calling `present`.
+            //
+            // This function does not actually present the image immediately. Instead it submits a
+            // present command at the end of the queue. This means that it will only be presented once
+            // the GPU has finished executing the command buffer that draws the triangle.
+            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+            .then_signal_fence();
+        future.flush().unwrap();
+        submissions.push(Box::new(future) as Box<_>);
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
         // `command_buffer::submit`, or `present` will block for some time. This happens when the

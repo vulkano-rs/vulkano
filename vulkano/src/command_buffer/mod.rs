@@ -41,29 +41,24 @@
 // API has several different command buffer wrappers, but they all use the same internal
 // struct. The restrictions are enforced only in the public types.
 
-pub use self::inner::Submission;
-pub use self::outer::submit;
-pub use self::outer::PrimaryCommandBufferBuilder;
-pub use self::outer::PrimaryCommandBufferBuilderInlineDraw;
-pub use self::outer::PrimaryCommandBufferBuilderSecondaryDraw;
-pub use self::outer::PrimaryCommandBuffer;
-pub use self::outer::SecondaryGraphicsCommandBufferBuilder;
-pub use self::outer::SecondaryGraphicsCommandBuffer;
-pub use self::outer::SecondaryComputeCommandBufferBuilder;
-pub use self::outer::SecondaryComputeCommandBuffer;
-pub use self::submit::CommandBuffer;
-pub use self::submit::Submit;
+pub use self::auto::AutoCommandBufferBuilder;
+pub use self::builder::CommandBufferBuilder;
+pub use self::builder::CommandBufferBuilderBuffered;
+pub use self::traits::CommandBuffer;
+pub use self::traits::CommandBufferExecFuture;
 
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 
-mod inner;
-mod outer;
-
+pub mod cb;
+pub mod commands_extra;
+pub mod commands_raw;
 pub mod pool;
-pub mod std;
 pub mod submit;
-pub mod sys;
+
+mod auto;
+mod builder;
+mod traits;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -82,6 +77,14 @@ pub struct DrawIndexedIndirectCommand {
     pub first_index: u32,
     pub vertex_offset: u32,
     pub first_instance: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DispatchIndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
 }
 
 /// The dynamic state to use for a draw command.

@@ -8,13 +8,16 @@
 // according to those terms.
 
 use std::error;
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 use std::fmt;
 use std::ptr;
 use std::str;
 
 use Error;
 use OomError;
+use VulkanObject;
+use VulkanPointers;
+use instance::PhysicalDevice;
 use instance::loader;
 use instance::loader::LoadingError;
 use vk;
@@ -29,7 +32,7 @@ macro_rules! extensions {
             $(
                 pub $ext: bool,
             )*
-            
+
             /// This field ensures that an instance of this `Extensions` struct
             /// can only be created through Vulkano functions and the update
             /// syntax. This way, extensions can be added to Vulkano without
@@ -93,7 +96,7 @@ macro_rules! instance_extensions {
             $sname,
             $( $ext => $s,)*
         }
-        
+
         impl $sname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<$sname, SupportedExtensionsError> {
@@ -103,39 +106,83 @@ macro_rules! instance_extensions {
                     let mut num = 0;
                     try!(check_errors(entry_points.EnumerateInstanceExtensionProperties(
                         ptr::null(), &mut num, ptr::null_mut())));
-                    
+
                     let mut properties = Vec::with_capacity(num as usize);
                     try!(check_errors(entry_points.EnumerateInstanceExtensionProperties(
                         ptr::null(), &mut num, properties.as_mut_ptr())));
                     properties.set_len(num as usize);
                     properties
                 };
-                
+
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = property.extensionName;
+                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
                     $(
-                        // TODO: this is VERY inefficient
                         // TODO: Check specVersion?
-                        let same = {
-                            let mut i = 0;
-                            while name[i] != 0 && $s[i] != 0 && name[i] as u8 == $s[i] && i < $s.len() { i += 1; }
-                            name[i] == 0 && (i >= $s.len() || name[i] as u8 == $s[i])
-                        };
-                        if same {
+                        if name.to_bytes() == &$s[..] {
                             extensions.$ext = true;
                         }
                     )*
                 }
-                
+
                 Ok(extensions)
             }
-            
+
             /// Returns an `Extensions` object with extensions supported by the core driver.
             pub fn supported_by_core() -> Result<$sname, LoadingError> {
                 match $sname::supported_by_core_raw() {
                     Ok(l) => Ok(l),
                     Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+                }
+            }
+        }
+    );
+}
+
+macro_rules! device_extensions {
+    ($sname:ident, $($ext:ident => $s:expr,)*) => (
+        extensions! {
+            $sname,
+            $( $ext => $s,)*
+        }
+
+        impl $sname {
+            /// See the docs of supported_by_device().
+            pub fn supported_by_device_raw(physical_device: &PhysicalDevice) -> Result<$sname, SupportedExtensionsError> {
+                let vk = physical_device.instance().pointers();
+
+                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                    let mut num = 0;
+                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut())));
+
+                    let mut properties = Vec::with_capacity(num as usize);
+                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr())));
+                    properties.set_len(num as usize);
+                    properties
+                };
+
+                let mut extensions = $sname::none();
+                for property in properties {
+                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
+                    $(
+                        // TODO: Check specVersion?
+                        if name.to_bytes() == &$s[..] {
+                            extensions.$ext = true;
+                        }
+                    )*
+                }
+
+                Ok(extensions)
+            }
+
+            /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
+            pub fn supported_by_device(physical_device: &PhysicalDevice) -> $sname {
+                match $sname::supported_by_device_raw(physical_device) {
+                    Ok(l) => l,
+                    Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
@@ -158,10 +205,12 @@ instance_extensions! {
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
 }
 
-extensions! {
+device_extensions! {
     DeviceExtensions,
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
+    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
+    khr_maintenance1 => b"VK_KHR_maintenance1",
 }
 
 /// Error that can happen when loading the list of layers.
