@@ -56,7 +56,7 @@ use vk;
 /// The framebuffer constructor will perform various checks to make sure that the number of images
 /// is correct and that each image can be used with this render pass.
 ///
-/// ```
+/// ```ignore       // FIXME: unignore
 /// # use std::sync::Arc;
 /// # use vulkano::framebuffer::RenderPassAbstract;
 /// use vulkano::framebuffer::Framebuffer;
@@ -87,7 +87,7 @@ use vk;
 /// whose name is the name of the second attachment, and so on. See the documentation of the macros
 /// for more details. TODO: put link here
 ///
-/// ```
+/// ```ignore       // FIXME: unignore
 /// # #[macro_use] extern crate vulkano;
 /// # fn main() {
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;

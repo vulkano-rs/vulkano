@@ -28,7 +28,7 @@ use device::Queue;
 ///
 /// Creating a slice:
 ///
-/// ```no_run
+/// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
 /// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
 ///                                                         unsafe { std::mem::uninitialized() };
@@ -37,7 +37,7 @@ use device::Queue;
 ///
 /// Selecting a slice of a buffer that contains `[T]`:
 ///
-/// ```no_run
+/// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
 /// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
 ///                                                         unsafe { std::mem::uninitialized() };
