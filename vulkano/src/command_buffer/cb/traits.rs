@@ -16,22 +16,3 @@ pub unsafe trait AddCommand<C> {
     /// command appended at the end of it.
     fn add(self, cmd: C) -> Self::Out;
 }
-
-/// Turns a command buffer builder into a real command buffer.
-pub unsafe trait CommandBufferBuild {
-    /// The type of the built command buffer.
-    type Out;
-    /// Error that can be returned when building.
-    type Err;
-
-    /// Builds the command buffer.
-    fn build(self) -> Result<Self::Out, Self::Err>;
-}
-
-/*trait Builder {
-    fn cmd1<B>(self, b: B) -> <Self as AddCommand<Cmd1<B>>>::Out
-        where Self: Sized + AddCommand<Cmd1<B>>
-    {
-        self.add(Cmd1(b))
-    }
-}*/

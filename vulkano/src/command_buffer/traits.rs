@@ -100,6 +100,17 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     // FIXME: lots of other methods
 }
 
+/// Turns a command buffer builder into a real command buffer.
+pub unsafe trait CommandBufferBuild {
+    /// The type of the built command buffer.
+    type Out;
+    /// Error that can be returned when building.
+    type Err;
+
+    /// Builds the command buffer.
+    fn build(self) -> Result<Self::Out, Self::Err>;
+}
+
 unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer {
     type Pool = <T::Target as CommandBuffer>::Pool;
 
