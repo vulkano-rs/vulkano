@@ -84,7 +84,9 @@ pub use self::sys::Flags;
 pub use self::sys::UnsafeCommandBufferBuilder;
 pub use self::sys::UnsafeCommandBuffer;
 pub use self::traits::AddCommand;
-pub use self::traits::CommandBufferBuild;
+
+// TODO: remove this line
+pub use command_buffer::traits::CommandBufferBuild;
 
 mod abstract_storage;
 mod auto_barriers;
