@@ -43,31 +43,31 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     // TODO: not safe because of signalling NaNs
     #[inline]
     fn fill_buffer<B, O>(self, buffer: B, data: u32) -> Result<O, commands_raw::CmdFillBufferError>
-        where Self: Sized + AddCommand<commands_raw::CmdFillBuffer<B::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdFillBuffer<B::Access>, Out = O>,
               B: Buffer
     {
-        let cmd = commands_raw::CmdFillBuffer::new(buffer.into_buffer(), data)?;
+        let cmd = commands_raw::CmdFillBuffer::new(buffer.access(), data)?;
         Ok(self.add(cmd))
     }
 
     /// Adds a command that writes data to a buffer.
     #[inline]
     fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, commands_raw::CmdUpdateBufferError>
-        where Self: Sized + AddCommand<commands_raw::CmdUpdateBuffer<B::Target, D>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdUpdateBuffer<B::Access, D>, Out = O>,
               B: Buffer
     {
-        let cmd = commands_raw::CmdUpdateBuffer::new(buffer.into_buffer(), data)?;
+        let cmd = commands_raw::CmdUpdateBuffer::new(buffer.access(), data)?;
         Ok(self.add(cmd))
     }
 
     /// Adds a command that copies from a buffer to another.
     #[inline]
     fn copy_buffer<S, D, O>(self, src: S, dest: D) -> Result<O, commands_raw::CmdCopyBufferError>
-        where Self: Sized + AddCommand<commands_raw::CmdCopyBuffer<S::Target, D::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBuffer<S::Access, D::Access>, Out = O>,
               S: Buffer,
               D: Buffer
     {
-        let cmd = commands_raw::CmdCopyBuffer::new(src.into_buffer(), dest.into_buffer())?;
+        let cmd = commands_raw::CmdCopyBuffer::new(src.access(), dest.access())?;
         Ok(self.add(cmd))
     }
 
@@ -85,10 +85,10 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
                                      -> Result<O, commands_raw::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Target>, Out = O>,
               B: Buffer, I: Image
     {
-        let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.into_buffer(), image.into_image())?;
+        let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.access(), image.into_image())?;
         Ok(self.add(cmd))
     }
 
@@ -97,10 +97,10 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     fn copy_buffer_to_image_dimensions<B, I, O>(self, buffer: B, image: I, offset: [u32; 3],
                                                 size: [u32; 3], first_layer: u32, num_layers: u32,
                                                 mipmap: u32) -> Result<O, commands_raw::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Target>, Out = O>,
               B: Buffer, I: Image
     {
-        let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.into_buffer(),
+        let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.access(),
                                                              image.into_image(), offset, size,
                                                              first_layer, num_layers, mipmap)?;
         Ok(self.add(cmd))
@@ -164,14 +164,14 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn draw_indexed<P, S, Pc, V, Ib, I, O>(self, pipeline: P, dynamic: DynamicState,
         vertices: V, index_buffer: Ib, sets: S, push_constants: Pc) -> O
-        where Self: Sized + AddCommand<commands_extra::CmdDrawIndexed<V, Ib::Target, P, S, Pc>, Out = O>,
+        where Self: Sized + AddCommand<commands_extra::CmdDrawIndexed<V, Ib::Access, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
               Ib: Buffer,
-              Ib::Target: TypedBuffer<Content = [I]>,
+              Ib::Access: TypedBuffer<Content = [I]>,
               I: Index + 'static
     {
-        let cmd = commands_extra::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.into_buffer(),
+        let cmd = commands_extra::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.access(),
                                            sets, push_constants);
         self.add(cmd)
     }

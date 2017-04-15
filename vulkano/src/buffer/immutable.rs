@@ -159,10 +159,10 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
 unsafe impl<T: ?Sized, A> Buffer for Arc<ImmutableBuffer<T, A>>
     where T: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_buffer(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }

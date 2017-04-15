@@ -203,12 +203,12 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
     where T: Buffer, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetBuf<T::Target>);
+    type Out = (R, SimpleDescriptorSetBuf<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let buffer = self.into_buffer();
+        let buffer = self.access();
 
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
