@@ -221,7 +221,12 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> Layout {
+        self.img.attachment_layout
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
         self.img.attachment_layout
     }
 

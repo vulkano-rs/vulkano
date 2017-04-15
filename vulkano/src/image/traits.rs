@@ -103,9 +103,11 @@ pub unsafe trait ImageAccess {
         self.inner().supports_blit_destination()
     }
 
-    /// Returns the layout that the image has when it is first used in a primary command buffer,
-    /// and the layout it must be returned to before the end of the command buffer.
-    fn default_layout(&self) -> Layout;
+    /// Returns the layout that the image has when it is first used in a primary command buffer.
+    fn initial_layout_requirement(&self) -> Layout;
+
+    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    fn final_layout_requirement(&self) -> Layout;
 
     /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
     /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
@@ -183,8 +185,13 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
-        (**self).default_layout()
+    fn initial_layout_requirement(&self) -> Layout {
+        (**self).initial_layout_requirement()
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
+        (**self).final_layout_requirement()
     }
 
     #[inline]
