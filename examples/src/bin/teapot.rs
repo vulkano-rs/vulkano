@@ -19,7 +19,7 @@ extern crate vulkano_win;
 use vulkano_win::VkSurfaceBuild;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::sync::GpuFuture;
-use vulkano::image::IntoImageView;
+use vulkano::image::ImageView;
 
 use std::sync::Arc;
 
@@ -112,7 +112,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: vulkano::image::Image::format(&depth_buffer),
+                    format: vulkano::image::ImageAccess::format(&depth_buffer),
                     samples: 1,
                 }
             },

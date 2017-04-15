@@ -959,7 +959,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::BufferAccess(DescriptorBufferDesc {
+            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
                 dynamic: Some(false),
                 storage: false,
                 content: DescriptorBufferContentDesc::F32,
@@ -990,7 +990,7 @@ mod tests {
         let (device2, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::BufferAccess(DescriptorBufferDesc {
+            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
                 dynamic: Some(false),
                 storage: false,
                 content: DescriptorBufferContentDesc::F32,

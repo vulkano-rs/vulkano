@@ -121,7 +121,7 @@ pub enum DescriptorDescTy {
         multisampled: bool,
         array_layers: DescriptorImageDescArray,
     },
-    BufferAccess(DescriptorBufferDesc),
+    Buffer(DescriptorBufferDesc),
 }
 
 impl DescriptorDescTy {
@@ -138,7 +138,7 @@ impl DescriptorDescTy {
                 else { DescriptorType::StorageImage }
             },
             DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
-            DescriptorDescTy::BufferAccess(ref desc) => {
+            DescriptorDescTy::Buffer(ref desc) => {
                 let dynamic = match desc.dynamic { Some(d) => d, None => return None };
                 match (desc.storage, dynamic) {
                     (false, false) => DescriptorType::UniformBuffer,
@@ -175,7 +175,7 @@ impl DescriptorDescTy {
                 me_multisampled == other_multisampled && me_array_layers == other_array_layers
             },
 
-            (&DescriptorDescTy::BufferAccess(ref me), &DescriptorDescTy::BufferAccess(ref other)) => {
+            (&DescriptorDescTy::Buffer(ref me), &DescriptorDescTy::Buffer(ref other)) => {
                 if me.storage != other.storage {
                     return false;
                 }
