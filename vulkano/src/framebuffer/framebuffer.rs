@@ -62,7 +62,7 @@ use vk;
 /// use vulkano::framebuffer::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
-/// # let my_image: Arc<vulkano::image::ImageView> = return;
+/// # let my_image: Arc<vulkano::image::ImageViewAccess> = return;
 /// // let render_pass: Arc<RenderPassAbstract + Send + Sync> = ...;
 /// let framebuffer = Framebuffer::new(render_pass.clone(), [1024, 768, 1],
 ///                                    vec![my_image.clone() as Arc<_>]).unwrap();
@@ -78,7 +78,7 @@ use vk;
 ///
 /// > **Note**: The reason why `Vec<Arc<ImageView + Send + Sync>>` always works (see previous section) is that
 /// > render pass descriptions are required to always implement
-/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>>`.
+/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>>`.
 ///
 /// When it comes to the `single_pass_renderpass!` and `ordered_passes_renderpass!` macros, you can
 /// build a list of attachments by calling `start_attachments()` on the render pass description,
@@ -111,7 +111,7 @@ use vk;
 ///     }
 /// ).unwrap();
 ///
-/// # let my_image: Arc<vulkano::image::ImageView> = return;
+/// # let my_image: Arc<vulkano::image::ImageViewAccess> = return;
 /// let framebuffer = {
 ///     let atch = render_pass.desc().start_attachments().foo(my_image.clone() as Arc<_>);
 ///     Framebuffer::new(render_pass, [1024, 768, 1], atch).unwrap()
@@ -130,7 +130,7 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
     /// Builds a new framebuffer.
     ///
     /// The `attachments` parameter depends on which render pass implementation is used.
-    // TODO: allow IntoImageView
+    // TODO: allow ImageView
     pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
                    -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList + Send + Sync>>>, FramebufferCreationError>
         where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia>

@@ -53,10 +53,10 @@ pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
 pub use self::sys::Layout;
 pub use self::sys::Usage;
+pub use self::traits::ImageAccess;
+pub use self::traits::ImageViewAccess;
 pub use self::traits::Image;
 pub use self::traits::ImageView;
-pub use self::traits::IntoImage;
-pub use self::traits::IntoImageView;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private

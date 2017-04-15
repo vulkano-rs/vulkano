@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::TypedBuffer;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
@@ -38,7 +38,7 @@ pub struct CmdDrawIndexed<V, Ib, P, S, Pc>
 impl<V, Ib, I, P, S, Pc> CmdDrawIndexed<V, Ib, P, S, Pc>
     where P: GraphicsPipelineAbstract, 
           S: DescriptorSetsCollection,
-          Ib: Buffer + TypedBuffer<Content = [I]>,
+          Ib: BufferAccess + TypedBuffer<Content = [I]>,
           I: Index + 'static
 {
     /// See the documentation of the `draw` method.

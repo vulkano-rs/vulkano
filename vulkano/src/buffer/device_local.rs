@@ -24,9 +24,9 @@ use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::Buffer;
+use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::IntoBuffer;
+use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
 use device::Device;
 use device::DeviceOwned;
@@ -161,7 +161,7 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
 #[derive(Debug, Copy, Clone)]
 pub struct DeviceLocalBufferAccess<P>(P);
 
-unsafe impl<T: ?Sized, A> IntoBuffer for Arc<DeviceLocalBuffer<T, A>>
+unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
     where T: 'static + Send + Sync,
           A: MemoryPool
 {
@@ -173,7 +173,7 @@ unsafe impl<T: ?Sized, A> IntoBuffer for Arc<DeviceLocalBuffer<T, A>>
     }
 }
 
-unsafe impl<P, T: ?Sized, A> Buffer for DeviceLocalBufferAccess<P>
+unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
           A: MemoryPool

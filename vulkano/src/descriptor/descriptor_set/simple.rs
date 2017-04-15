@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferViewRef;
-use buffer::IntoBuffer;
+use buffer::Buffer;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
@@ -25,8 +25,8 @@ use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
-use image::Image;
-use image::IntoImageView;
+use image::ImageAccess;
+use image::ImageView;
 use image::sys::Layout;
 use sampler::Sampler;
 use sync::AccessFlagBits;
@@ -69,12 +69,12 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         unimplemented!()
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         unimplemented!()
     }
 }
@@ -110,8 +110,8 @@ macro_rules! simple_descriptor_set {
 
         $(
             // Here `$val` can be either a buffer or an image. However we can't create an extension
-            // trait for both buffers and image, because `impl<T: Image> ExtTrait for T {}` would
-            // conflict with `impl<T: Buffer> ExtTrait for T {}`.
+            // trait for both buffers and image, because `impl<T: ImageAccess> ExtTrait for T {}` would
+            // conflict with `impl<T: BufferAccess> ExtTrait for T {}`.
             //
             // Therefore we use a trick: we create two traits, one for buffers
             // (`SimpleDescriptorSetBufferExt`) and one for images (`SimpleDescriptorSetImageExt`),
@@ -201,7 +201,7 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: IntoBuffer, L: PipelineLayoutAbstract
+    where T: Buffer, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetBuf<T::Target>);
 
@@ -251,7 +251,7 @@ pub unsafe trait SimpleDescriptorSetImageExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetImg<T::Target>);
 
@@ -299,7 +299,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, SimpleDescriptorSetImg<T::Target>);
 
@@ -342,7 +342,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
 
 // TODO: DRY
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)>
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
     type Out = (R, Vec<SimpleDescriptorSetImg<T::Target>>);
 
@@ -412,7 +412,7 @@ pub struct SimpleDescriptorSetBuf<B> {
 }
 
 /*unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
-    where B: Buffer
+    where B: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -443,7 +443,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 }
 
 /*unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
-    where V: BufferViewRef, V::Buffer: Buffer
+    where V: BufferViewRef, V::BufferAccess: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -481,7 +481,7 @@ pub struct SimpleDescriptorSetImg<I> {
 }
 
 /*unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
-    where I: ImageView
+    where I: ImageViewAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {

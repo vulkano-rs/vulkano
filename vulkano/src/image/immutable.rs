@@ -20,11 +20,11 @@ use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageContent;
+use image::traits::ImageViewAccess;
+use image::traits::Image;
 use image::traits::ImageView;
-use image::traits::IntoImage;
-use image::traits::IntoImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -126,7 +126,7 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImage for Arc<ImmutableImage<F, A>>
+unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     type Target = Self;
@@ -138,7 +138,7 @@ unsafe impl<F, A> IntoImage for Arc<ImmutableImage<F, A>>
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImageView for Arc<ImmutableImage<F, A>>
+unsafe impl<F, A> ImageView for Arc<ImmutableImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     type Target = Self;
@@ -149,7 +149,7 @@ unsafe impl<F, A> IntoImageView for Arc<ImmutableImage<F, A>>
     }
 }
 
-unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -185,11 +185,11 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
     }
 }
 
-unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
+unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 

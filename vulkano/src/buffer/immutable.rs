@@ -28,9 +28,9 @@ use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::Buffer;
+use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::IntoBuffer;
+use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
 use device::Device;
 use device::DeviceOwned;
@@ -156,7 +156,7 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> where A: MemoryPool {
 }
 
 // FIXME: wrong
-unsafe impl<T: ?Sized, A> IntoBuffer for Arc<ImmutableBuffer<T, A>>
+unsafe impl<T: ?Sized, A> Buffer for Arc<ImmutableBuffer<T, A>>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Target = Self;
@@ -167,7 +167,7 @@ unsafe impl<T: ?Sized, A> IntoBuffer for Arc<ImmutableBuffer<T, A>>
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for ImmutableBuffer<T, A>
+unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]

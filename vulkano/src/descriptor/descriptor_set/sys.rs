@@ -17,14 +17,14 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use buffer::BufferView;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageView;
+use image::ImageViewAccess;
 use sampler::Sampler;
 
 use check_errors;
@@ -740,7 +740,7 @@ macro_rules! smallvec {
 impl DescriptorWrite {
     #[inline]
     pub fn storage_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -763,7 +763,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn sampled_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -777,7 +777,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn combined_image_sampler<I>(binding: u32, array_element: u32, sampler: &Arc<Sampler>, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,
@@ -791,7 +791,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
-        where B: Buffer,
+        where B: BufferAccess,
               F: 'static + Send + Sync,
     {
         assert!(view.uniform_texel_buffer());
@@ -805,7 +805,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &Arc<BufferView<F, B>>) -> DescriptorWrite
-        where B: Buffer + 'static,
+        where B: BufferAccess + 'static,
               F: 'static + Send + Sync,
     {
         assert!(view.storage_texel_buffer());
@@ -819,7 +819,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -835,7 +835,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -851,7 +851,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn dynamic_uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -866,7 +866,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub unsafe fn dynamic_storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
-        where B: Buffer
+        where B: BufferAccess
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
@@ -881,7 +881,7 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn input_attachment<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
-        where I: ImageView
+        where I: ImageViewAccess
     {
         DescriptorWrite {
             binding: binding,

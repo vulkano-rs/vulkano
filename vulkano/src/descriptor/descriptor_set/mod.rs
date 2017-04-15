@@ -35,9 +35,9 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use image::Image;
+use image::ImageAccess;
 use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
@@ -70,11 +70,11 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 
     /// Returns the list of buffers used by this descriptor set. Includes buffer views.
     // TODO: meh for boxing
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a>;
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
 
     /// Returns the list of images used by this descriptor set. Includes image views.
     // TODO: meh for boxing
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet {
@@ -84,12 +84,12 @@ unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet 
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         (**self).buffers_list()
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         (**self).images_list()
     }
 }

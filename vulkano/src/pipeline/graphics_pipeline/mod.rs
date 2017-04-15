@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::u32;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use device::Device;
 use device::DeviceOwned;
@@ -1193,13 +1193,13 @@ impl Drop for Inner {
 
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<Buffer + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<Buffer + Send + Sync>>>
+    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<BufferAccess + Send + Sync>>>
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {

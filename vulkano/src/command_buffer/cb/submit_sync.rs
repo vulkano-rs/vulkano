@@ -10,14 +10,14 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
-use image::Image;
+use image::ImageAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -38,8 +38,8 @@ use sync::GpuFuture;
 ///
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
-    buffers: Vec<(Box<Buffer + Send + Sync>, bool)>,
-    images: Vec<(Box<Image + Send + Sync>, bool)>,
+    buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
+    images: Vec<(Box<ImageAccess + Send + Sync>, bool)>,
 }
 
 impl<I> SubmitSyncBuilderLayer<I> {
@@ -55,7 +55,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
     // Adds a buffer to the list.
     fn add_buffer<B>(&mut self, buffer: &B, exclusive: bool)
-        where B: Buffer + Send + Sync + Clone + 'static
+        where B: BufferAccess + Send + Sync + Clone + 'static
     {
         for &mut (ref existing_buf, ref mut existing_exclusive) in self.buffers.iter_mut() {
             if existing_buf.conflicts_buffer(0, existing_buf.size(), buffer, 0, buffer.size()) {
@@ -71,7 +71,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
     // Adds an image to the list.
     fn add_image<T>(&mut self, image: &T, exclusive: bool)
-        where T: Image + Send + Sync + Clone + 'static
+        where T: ImageAccess + Send + Sync + Clone + 'static
     {
         // FIXME: actually implement
         self.images.push((Box::new(image.clone()), exclusive));
@@ -136,7 +136,7 @@ pass_through!((C), commands_raw::CmdExecuteCommands<C>);
 
 unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdBindIndexBuffer<B>, Out = O>,
-          B: Buffer + Send + Sync + Clone + 'static
+          B: BufferAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -169,8 +169,8 @@ unsafe impl<I, O, P> AddCommand<commands_raw::CmdBindPipeline<P>> for SubmitSync
 
 unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdBlitImage<S, D>, Out = O>,
-          S: Image + Send + Sync + Clone + 'static,
-          D: Image + Send + Sync + Clone + 'static
+          S: ImageAccess + Send + Sync + Clone + 'static,
+          D: ImageAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -204,8 +204,8 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdClearAttachments> for SubmitSyncBu
 
 unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdCopyBuffer<S, D>, Out = O>,
-          S: Buffer + Send + Sync + Clone + 'static,
-          D: Buffer + Send + Sync + Clone + 'static
+          S: BufferAccess + Send + Sync + Clone + 'static,
+          D: BufferAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -224,8 +224,8 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for Submit
 
 unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdCopyBufferToImage<S, D>, Out = O>,
-          S: Buffer + Send + Sync + Clone + 'static,
-          D: Image + Send + Sync + Clone + 'static
+          S: BufferAccess + Send + Sync + Clone + 'static,
+          D: ImageAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -244,8 +244,8 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
 
 unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdCopyImage<S, D>, Out = O>,
-          S: Image + Send + Sync + Clone + 'static,
-          D: Image + Send + Sync + Clone + 'static
+          S: ImageAccess + Send + Sync + Clone + 'static,
+          D: ImageAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -324,7 +324,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuild
 
 unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdFillBuffer<B>, Out = O>,
-          B: Buffer + Send + Sync + Clone + 'static
+          B: BufferAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -372,8 +372,8 @@ unsafe impl<I, O, Pc, Pl> AddCommand<commands_raw::CmdPushConstants<Pc, Pl>> for
 
 unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdResolveImage<S, D>, Out = O>,
-          S: Image + Send + Sync + Clone + 'static,
-          D: Image + Send + Sync + Clone + 'static
+          S: ImageAccess + Send + Sync + Clone + 'static,
+          D: ImageAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -422,7 +422,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for SubmitSyncBuilderLay
 
 unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdUpdateBuffer<B, D>, Out = O>,
-          B: Buffer + Send + Sync + Clone + 'static
+          B: BufferAccess + Send + Sync + Clone + 'static
 {
     type Out = SubmitSyncBuilderLayer<O>;
 
@@ -441,8 +441,8 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
 /// Layer around a command buffer that handles synchronization between command buffers.
 pub struct SubmitSyncLayer<I> {
     inner: I,
-    buffers: Vec<(Box<Buffer + Send + Sync>, bool)>,
-    images: Vec<(Box<Image + Send + Sync>, bool)>,
+    buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
+    images: Vec<(Box<ImageAccess + Send + Sync>, bool)>,
 }
 
 unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
@@ -482,7 +482,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         // FIXME: implement
@@ -490,7 +490,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         // FIXME: implement

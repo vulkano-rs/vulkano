@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use buffer::IntoBuffer;
+use buffer::Buffer;
 use buffer::TypedBuffer;
 use device::DeviceOwned;
 use command_buffer::DynamicState;
@@ -21,7 +21,7 @@ use descriptor::descriptor_set::DescriptorSetsCollection;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
-use image::IntoImage;
+use image::Image;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
@@ -44,7 +44,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn fill_buffer<B, O>(self, buffer: B, data: u32) -> Result<O, commands_raw::CmdFillBufferError>
         where Self: Sized + AddCommand<commands_raw::CmdFillBuffer<B::Target>, Out = O>,
-              B: IntoBuffer
+              B: Buffer
     {
         let cmd = commands_raw::CmdFillBuffer::new(buffer.into_buffer(), data)?;
         Ok(self.add(cmd))
@@ -54,7 +54,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, commands_raw::CmdUpdateBufferError>
         where Self: Sized + AddCommand<commands_raw::CmdUpdateBuffer<B::Target, D>, Out = O>,
-              B: IntoBuffer
+              B: Buffer
     {
         let cmd = commands_raw::CmdUpdateBuffer::new(buffer.into_buffer(), data)?;
         Ok(self.add(cmd))
@@ -64,8 +64,8 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn copy_buffer<S, D, O>(self, src: S, dest: D) -> Result<O, commands_raw::CmdCopyBufferError>
         where Self: Sized + AddCommand<commands_raw::CmdCopyBuffer<S::Target, D::Target>, Out = O>,
-              S: IntoBuffer,
-              D: IntoBuffer
+              S: Buffer,
+              D: Buffer
     {
         let cmd = commands_raw::CmdCopyBuffer::new(src.into_buffer(), dest.into_buffer())?;
         Ok(self.add(cmd))
@@ -86,7 +86,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
                                      -> Result<O, commands_raw::CmdCopyBufferToImageError>
         where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
-              B: IntoBuffer, I: IntoImage
+              B: Buffer, I: Image
     {
         let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.into_buffer(), image.into_image())?;
         Ok(self.add(cmd))
@@ -98,7 +98,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
                                                 size: [u32; 3], first_layer: u32, num_layers: u32,
                                                 mipmap: u32) -> Result<O, commands_raw::CmdCopyBufferToImageError>
         where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Target, I::Target>, Out = O>,
-              B: IntoBuffer, I: IntoImage
+              B: Buffer, I: Image
     {
         let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.into_buffer(),
                                                              image.into_image(), offset, size,
@@ -167,7 +167,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
         where Self: Sized + AddCommand<commands_extra::CmdDrawIndexed<V, Ib::Target, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
-              Ib: IntoBuffer,
+              Ib: Buffer,
               Ib::Target: TypedBuffer<Content = [I]>,
               I: Index + 'static
     {

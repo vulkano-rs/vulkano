@@ -10,13 +10,13 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
-use image::Image;
+use image::ImageAccess;
 use VulkanObject;
 use VulkanPointers;
 use vk;
@@ -48,7 +48,7 @@ pub struct CmdCopyBufferToImage<S, D> {
     extent: [u32; 3],
 }
 
-impl<S, D> CmdCopyBufferToImage<S, D> where S: Buffer, D: Image {
+impl<S, D> CmdCopyBufferToImage<S, D> where S: BufferAccess, D: ImageAccess {
     #[inline]
     pub fn new(source: S, destination: D)
                -> Result<CmdCopyBufferToImage<S, D>, CmdCopyBufferToImageError>

@@ -15,12 +15,12 @@ use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ViewType;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
+use image::traits::ImageViewAccess;
+use image::traits::Image;
 use image::traits::ImageView;
-use image::traits::IntoImage;
-use image::traits::IntoImageView;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -91,7 +91,7 @@ impl SwapchainImage {
     }
 }
 
-unsafe impl Image for SwapchainImage {
+unsafe impl ImageAccess for SwapchainImage {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
@@ -133,9 +133,9 @@ unsafe impl<P> ImageContent<P> for SwapchainImage {
     }
 }
 
-unsafe impl ImageView for SwapchainImage {
+unsafe impl ImageViewAccess for SwapchainImage {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 
@@ -176,7 +176,7 @@ unsafe impl ImageView for SwapchainImage {
     }
 }
 
-unsafe impl IntoImage for SwapchainImage {
+unsafe impl Image for SwapchainImage {
     type Target = SwapchainImage;
 
     fn into_image(self) -> Self::Target {
@@ -184,7 +184,7 @@ unsafe impl IntoImage for SwapchainImage {
     }
 }
 
-unsafe impl IntoImageView for SwapchainImage {
+unsafe impl ImageView for SwapchainImage {
     type Target = SwapchainImage;
 
     fn into_image_view(self) -> Self::Target {
@@ -192,7 +192,7 @@ unsafe impl IntoImageView for SwapchainImage {
     }
 }
 
-unsafe impl IntoImage for Arc<SwapchainImage> {
+unsafe impl Image for Arc<SwapchainImage> {
     type Target = Arc<SwapchainImage>;
 
     fn into_image(self) -> Self::Target {
@@ -200,7 +200,7 @@ unsafe impl IntoImage for Arc<SwapchainImage> {
     }
 }
 
-unsafe impl IntoImageView for Arc<SwapchainImage> {
+unsafe impl ImageView for Arc<SwapchainImage> {
     type Target = Arc<SwapchainImage>;
 
     fn into_image_view(self) -> Self::Target {

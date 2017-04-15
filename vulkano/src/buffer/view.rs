@@ -43,7 +43,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use buffer::TypedBuffer;
 use device::Device;
@@ -61,14 +61,14 @@ use vk;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
-pub struct BufferView<F, B> where B: Buffer {
+pub struct BufferView<F, B> where B: BufferAccess {
     view: vk::BufferView,
     buffer: B,
     marker: PhantomData<F>,
     atomic_accesses: bool,
 }
 
-impl<F, B> BufferView<F, B> where B: Buffer {
+impl<F, B> BufferView<F, B> where B: BufferAccess {
     /// Builds a new buffer view.
     #[inline]
     pub fn new(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
@@ -82,7 +82,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(org_buffer: B, format: F)
                             -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where B: Buffer, F: FormatDesc + 'static
+        where B: BufferAccess, F: FormatDesc + 'static
     {
         let (view, format_props) = {
             let size = org_buffer.size();
@@ -176,7 +176,7 @@ impl<F, B> BufferView<F, B> where B: Buffer {
     }
 }
 
-unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
+unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: BufferAccess {
     type Object = vk::BufferView;
 
     #[inline]
@@ -186,7 +186,7 @@ unsafe impl<F, B> VulkanObject for BufferView<F, B> where B: Buffer {
 }
 
 unsafe impl<F, B> DeviceOwned for BufferView<F, B>
-    where B: Buffer
+    where B: BufferAccess
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -194,7 +194,7 @@ unsafe impl<F, B> DeviceOwned for BufferView<F, B>
     }
 }
 
-impl<F, B> Drop for BufferView<F, B> where B: Buffer {
+impl<F, B> Drop for BufferView<F, B> where B: BufferAccess {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -206,14 +206,14 @@ impl<F, B> Drop for BufferView<F, B> where B: Buffer {
 }
 
 pub unsafe trait BufferViewRef {
-    type Buffer: Buffer;
+    type BufferAccess: BufferAccess;
     type Format;
 
-    fn view(&self) -> &BufferView<Self::Format, Self::Buffer>;
+    fn view(&self) -> &BufferView<Self::Format, Self::BufferAccess>;
 }
 
-unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
-    type Buffer = B;
+unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: BufferAccess {
+    type BufferAccess = B;
     type Format = F;
 
     #[inline]
@@ -222,8 +222,8 @@ unsafe impl<F, B> BufferViewRef for BufferView<F, B> where B: Buffer {
     }
 }
 
-unsafe impl<T, F, B> BufferViewRef for T where T: SafeDeref<Target = BufferView<F, B>>, B: Buffer {
-    type Buffer = B;
+unsafe impl<T, F, B> BufferViewRef for T where T: SafeDeref<Target = BufferView<F, B>>, B: BufferAccess {
+    type BufferAccess = B;
     type Format = F;
 
     #[inline]

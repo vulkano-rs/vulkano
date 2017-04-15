@@ -11,7 +11,7 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
@@ -45,7 +45,7 @@ unsafe impl<B> DeviceOwned for CmdFillBuffer<B>
 }
 
 impl<B> CmdFillBuffer<B>
-    where B: Buffer
+    where B: BufferAccess
 {
     /// Builds a command that writes data to a buffer.
     // TODO: not safe because of signalling NaNs

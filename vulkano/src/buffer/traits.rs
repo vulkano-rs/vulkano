@@ -13,14 +13,14 @@ use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use device::DeviceOwned;
 use device::Queue;
-use image::Image;
+use image::ImageAccess;
 use memory::Content;
 
 use SafeDeref;
 use VulkanObject;
 
 /// Trait for objects that represent either a buffer or a slice of a buffer.
-pub unsafe trait Buffer: DeviceOwned {
+pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
 
@@ -93,7 +93,7 @@ pub unsafe trait Buffer: DeviceOwned {
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize)
+                        other: &BufferAccess, other_offset: usize, other_size: usize)
                         -> bool
     {
         // TODO: should we really provide a default implementation?
@@ -124,7 +124,7 @@ pub unsafe trait Buffer: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &Image,
+    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32) -> bool
     {
@@ -168,8 +168,8 @@ pub unsafe trait Buffer: DeviceOwned {
 }
 
 /// Utility trait.
-pub unsafe trait IntoBuffer {
-    type Target: Buffer;
+pub unsafe trait Buffer {
+    type Target: BufferAccess;
 
     fn into_buffer(self) -> Self::Target;
 }
@@ -184,7 +184,7 @@ pub struct BufferInner<'a> {
     pub offset: usize,
 }
 
-unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
+unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -197,7 +197,7 @@ unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
 
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
+                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
     {
         (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
@@ -218,7 +218,7 @@ unsafe impl<T> Buffer for T where T: SafeDeref, T::Target: Buffer {
     }
 }
 
-pub unsafe trait TypedBuffer: Buffer {
+pub unsafe trait TypedBuffer: BufferAccess {
     type Content: ?Sized + 'static;
 }
 
