@@ -269,7 +269,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
                                               Fo, Fl, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
+               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -305,6 +305,75 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                     .union(params.fragment_shader.layout().clone())
                     .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
+                    .build(device).unwrap();      // TODO: error
+
+        GraphicsPipeline::new_inner(device, params, pl)
+    }
+
+    /// Builds a new graphics pipeline object with a geometry and tessellation shaders.
+    ///
+    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
+    ///
+    /// In order to avoid compiler errors caused by not being able to infer template parameters,
+    /// this function assumes that you will use a vertex shader, a tessellation control shader, a
+    /// tessellation evaluation shader, a geometry shader and a fragment shader. See the other
+    /// constructors for other possibilities.
+    #[inline]
+    pub fn with_tessellation_and_geometry<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi,
+                             Go, Gl, Fs, Fi, Fo, Fl>
+              (device: &Arc<Device>,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
+                                              Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi,
+                                              Fo, Fl, Rp>)
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>, Gl>>, Rp>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vi>,
+              Vl: PipelineLayoutDescNames + Clone,
+              Fl: PipelineLayoutDescNames + Clone,
+              Tcl: PipelineLayoutDescNames + Clone,
+              Tel: PipelineLayoutDescNames + Clone,
+              Gl: PipelineLayoutDescNames + Clone,
+              Tci: ShaderInterfaceDefMatch<Vo>,
+              Tei: ShaderInterfaceDefMatch<Tco>,
+              Gi: ShaderInterfaceDefMatch<Teo>,
+              Vo: ShaderInterfaceDef,
+              Tco: ShaderInterfaceDef,
+              Teo: ShaderInterfaceDef,
+              Go: ShaderInterfaceDef,
+              Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
+              Fo: ShaderInterfaceDef,
+              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
+    {
+        assert!(params.tessellation.is_some());     // TODO:
+        assert!(params.geometry_shader.is_some());     // TODO:
+
+        if let Some(ref tess) = params.tessellation {
+            if let Some(ref gs) = params.geometry_shader {
+                if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                }
+                if let Err(err) = tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                }
+                if let Err(err) = gs.input().matches(tess.tessellation_evaluation_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(err));
+                }
+                if let Err(err) = params.fragment_shader.input().matches(gs.output()) {
+                    return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                }
+
+            } else {
+                unreachable!()
+            }
+
+        } else {
+            unreachable!()
+        }
+
+        let pl = params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
                     .build(device).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner(device, params, pl)
