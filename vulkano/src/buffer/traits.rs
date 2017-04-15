@@ -20,6 +20,16 @@ use SafeDeref;
 use VulkanObject;
 
 /// Trait for objects that represent either a buffer or a slice of a buffer.
+pub unsafe trait Buffer {
+    /// Object that represents a GPU access to the buffer.
+    type Access: BufferAccess;
+
+    /// Builds an object that represents a GPU access to the buffer.
+    fn access(self) -> Self::Access;
+}
+
+/// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
+/// buffer.
 pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
@@ -165,13 +175,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
     unsafe fn increase_gpu_lock(&self);
-}
-
-/// Utility trait.
-pub unsafe trait Buffer {
-    type Target: BufferAccess;
-
-    fn into_buffer(self) -> Self::Target;
 }
 
 /// Inner information about a buffer.

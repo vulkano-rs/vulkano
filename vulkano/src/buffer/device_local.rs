@@ -165,10 +165,10 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
     where T: 'static + Send + Sync,
           A: MemoryPool
 {
-    type Target = DeviceLocalBufferAccess<Arc<DeviceLocalBuffer<T, A>>>;
+    type Access = DeviceLocalBufferAccess<Arc<DeviceLocalBuffer<T, A>>>;
 
     #[inline]
-    fn into_buffer(self) -> Self::Target {
+    fn access(self) -> Self::Access {
         DeviceLocalBufferAccess(self)
     }
 }

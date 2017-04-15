@@ -162,10 +162,10 @@ impl<T, B> BufferSlice<[T], B> {
 }
 
 unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: BufferAccess {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_buffer(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }

@@ -288,10 +288,10 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
 unsafe impl<T: ?Sized, A> Buffer for Arc<CpuAccessibleBuffer<T, A>>
     where T: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_buffer(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }
