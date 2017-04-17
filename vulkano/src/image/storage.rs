@@ -18,7 +18,9 @@ use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
+use format::Format;
 use image::Dimensions;
+use image::ImageDimensions;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
@@ -151,6 +153,21 @@ unsafe impl<F, A> Image for Arc<StorageImage<F, A>>
     #[inline]
     fn access(self) -> Self {
         self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
     }
 }
 

@@ -13,6 +13,7 @@ use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
+use image::ImageDimensions;
 use image::Dimensions;
 use image::ViewType;
 use image::traits::ImageAccess;
@@ -179,8 +180,24 @@ unsafe impl ImageViewAccess for SwapchainImage {
 unsafe impl Image for SwapchainImage {
     type Access = SwapchainImage;
 
+    #[inline]
     fn access(self) -> Self::Access {
         self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
     }
 }
 
@@ -195,8 +212,24 @@ unsafe impl ImageView for SwapchainImage {
 unsafe impl Image for Arc<SwapchainImage> {
     type Access = Arc<SwapchainImage>;
 
+    #[inline]
     fn access(self) -> Self::Access {
         self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
     }
 }
 
