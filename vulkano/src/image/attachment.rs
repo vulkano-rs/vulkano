@@ -280,10 +280,10 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
 unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = AttachmentImageAccess<F, A>;
+    type Access = AttachmentImageAccess<F, A>;
 
     #[inline]
-    fn into_image(self) -> AttachmentImageAccess<F, A> {
+    fn access(self) -> AttachmentImageAccess<F, A> {
         AttachmentImageAccess {
             img: self, 
             already_locked: AtomicBool::new(false),
@@ -294,10 +294,10 @@ unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
 unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = AttachmentImageAccess<F, A>;
+    type Access = AttachmentImageAccess<F, A>;
 
     #[inline]
-    fn into_image_view(self) -> AttachmentImageAccess<F, A> {
+    fn access(self) -> AttachmentImageAccess<F, A> {
         AttachmentImageAccess {
             img: self, 
             already_locked: AtomicBool::new(false),

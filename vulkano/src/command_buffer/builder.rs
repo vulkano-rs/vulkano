@@ -85,10 +85,10 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn copy_buffer_to_image<B, I, O>(self, buffer: B, image: I)
                                      -> Result<O, commands_raw::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Access>, Out = O>,
               B: Buffer, I: Image
     {
-        let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.access(), image.into_image())?;
+        let cmd = commands_raw::CmdCopyBufferToImage::new(buffer.access(), image.access())?;
         Ok(self.add(cmd))
     }
 
@@ -97,11 +97,11 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     fn copy_buffer_to_image_dimensions<B, I, O>(self, buffer: B, image: I, offset: [u32; 3],
                                                 size: [u32; 3], first_layer: u32, num_layers: u32,
                                                 mipmap: u32) -> Result<O, commands_raw::CmdCopyBufferToImageError>
-        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Target>, Out = O>,
+        where Self: Sized + AddCommand<commands_raw::CmdCopyBufferToImage<B::Access, I::Access>, Out = O>,
               B: Buffer, I: Image
     {
         let cmd = commands_raw::CmdCopyBufferToImage::with_dimensions(buffer.access(),
-                                                             image.into_image(), offset, size,
+                                                             image.access(), offset, size,
                                                              first_layer, num_layers, mipmap)?;
         Ok(self.add(cmd))
     }
