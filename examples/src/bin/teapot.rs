@@ -68,7 +68,7 @@ fn main() {
     };
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap().into_image_view();
+    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap().access();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                 ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
