@@ -34,6 +34,15 @@ pub unsafe trait Image {
 
     /// Builds an object that represents a GPU access to the image.
     fn access(self) -> Self::Access;
+
+    /// Returns the format of this image.
+    fn format(&self) -> Format;
+
+    /// Returns the number of samples of this image.
+    fn samples(&self) -> u32;
+
+    /// Returns the dimensions of the image.
+    fn dimensions(&self) -> ImageDimensions;
 }
 
 /// Trait for types that represent the way a GPU can access an image.
