@@ -135,6 +135,7 @@ impl_always!((B), commands_raw::CmdBindIndexBuffer<B>);
 impl_always!((Pl), commands_raw::CmdBindPipeline<Pl>);
 impl_always!((V), commands_raw::CmdBindVertexBuffers<V>);
 impl_always!((Pc, Pl), commands_raw::CmdPushConstants<Pc, Pl>);
+impl_always!((), commands_raw::CmdSetState);
 
 macro_rules! impl_inside_only {
     (($($param:ident),*), $cmd:ty) => {
@@ -191,7 +192,6 @@ impl_outside_only!((), commands_raw::CmdDispatchRaw);
 impl_outside_only!((B), commands_raw::CmdFillBuffer<B>);
 impl_outside_only!((S, D), commands_raw::CmdResolveImage<S, D>);
 impl_outside_only!((), commands_raw::CmdSetEvent);
-impl_outside_only!((), commands_raw::CmdSetState);
 impl_outside_only!((B, D), commands_raw::CmdUpdateBuffer<B, D>);
 
 unsafe impl<'a, I, O, Rp, F> AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>> for ContextCheckLayer<I>
