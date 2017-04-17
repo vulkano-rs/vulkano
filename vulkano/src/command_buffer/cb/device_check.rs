@@ -50,6 +50,15 @@ unsafe impl<I> DeviceOwned for DeviceCheckLayer<I>
 unsafe impl<I> CommandBufferBuilder for DeviceCheckLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 unsafe impl<I, O, E> CommandBufferBuild for DeviceCheckLayer<I>

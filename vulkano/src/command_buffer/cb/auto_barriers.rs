@@ -65,6 +65,15 @@ unsafe impl<I> DeviceOwned for AutoPipelineBarriersLayer<I>
 unsafe impl<I> CommandBufferBuilder for AutoPipelineBarriersLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 macro_rules! pass_through {

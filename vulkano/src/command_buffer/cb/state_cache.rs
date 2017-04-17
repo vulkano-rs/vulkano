@@ -78,6 +78,15 @@ unsafe impl<I> DeviceOwned for StateCacheLayer<I>
 unsafe impl<I> CommandBufferBuilder for StateCacheLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCacheLayer<I>

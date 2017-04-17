@@ -95,7 +95,16 @@ unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
     }
 }
 
-unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: DeviceOwned {
+unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: CommandBufferBuilder {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 macro_rules! pass_through {

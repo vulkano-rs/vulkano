@@ -198,6 +198,12 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     {
         CommandBufferBuild::build(self)
     }
+
+    /// Returns true if the pool of the builder supports graphics operations.
+    fn supports_graphics(&self) -> bool;
+
+    /// Returns true if the pool of the builder supports compute operations.
+    fn supports_compute(&self) -> bool;
 }
 
 pub unsafe trait CommandBufferBuilderBuffered {
