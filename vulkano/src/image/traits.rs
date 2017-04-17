@@ -208,14 +208,16 @@ pub unsafe trait ImageContent<P>: ImageAccess {
     fn matches_format(&self) -> bool;
 }
 
-/// Utility trait.
+/// Trait for types that represent image views.
 pub unsafe trait ImageView {
-    type Target: ImageViewAccess;
+    /// Object that represents a GPU access to the image view.
+    type Access: ImageViewAccess;
 
-    fn into_image_view(self) -> Self::Target;
+    /// Builds an object that represents a GPU access to the image view.
+    fn access(self) -> Self::Access;
 }
 
-/// Trait for types that represent image views.
+/// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAccess {
     fn parent(&self) -> &ImageAccess;
 

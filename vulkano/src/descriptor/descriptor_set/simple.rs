@@ -253,12 +253,12 @@ pub unsafe trait SimpleDescriptorSetImageExt<L, R> {
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
     where T: ImageView, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetImg<T::Target>);
+    type Out = (R, SimpleDescriptorSetImg<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let image_view = self.into_image_view();
+        let image_view = self.access();
 
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
@@ -301,12 +301,12 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
     where T: ImageView, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetImg<T::Target>);
+    type Out = (R, SimpleDescriptorSetImg<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let image_view = self.0.into_image_view();
+        let image_view = self.0.access();
 
         let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
@@ -344,7 +344,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)>
     where T: ImageView, L: PipelineLayoutAbstract
 {
-    type Out = (R, Vec<SimpleDescriptorSetImg<T::Target>>);
+    type Out = (R, Vec<SimpleDescriptorSetImg<T::Access>>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
@@ -357,7 +357,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)
 
         let mut imgs = Vec::new();
         for (num, (img, sampler)) in self.into_iter().enumerate() {
-            let image_view = img.into_image_view();
+            let image_view = img.access();
 
             i.writes.push(match desc.ty.ty().unwrap() {
                 DescriptorType::CombinedImageSampler => {

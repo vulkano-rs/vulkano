@@ -141,10 +141,10 @@ unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
 unsafe impl<F, A> ImageView for Arc<ImmutableImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_image_view(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }
