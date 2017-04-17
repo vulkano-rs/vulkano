@@ -129,10 +129,10 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
 unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_image(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }

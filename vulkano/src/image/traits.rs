@@ -27,14 +27,16 @@ use sampler::Sampler;
 use SafeDeref;
 use VulkanObject;
 
-/// Utility trait.
+/// Trait for types that represent images.
 pub unsafe trait Image {
-    type Target: ImageAccess;
+    /// Object that represents a GPU access to the image.
+    type Access: ImageAccess;
 
-    fn into_image(self) -> Self::Target;
+    /// Builds an object that represents a GPU access to the image.
+    fn access(self) -> Self::Access;
 }
 
-/// Trait for types that represent images.
+/// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;

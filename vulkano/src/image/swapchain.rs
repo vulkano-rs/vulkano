@@ -177,9 +177,9 @@ unsafe impl ImageViewAccess for SwapchainImage {
 }
 
 unsafe impl Image for SwapchainImage {
-    type Target = SwapchainImage;
+    type Access = SwapchainImage;
 
-    fn into_image(self) -> Self::Target {
+    fn access(self) -> Self::Access {
         self
     }
 }
@@ -193,9 +193,9 @@ unsafe impl ImageView for SwapchainImage {
 }
 
 unsafe impl Image for Arc<SwapchainImage> {
-    type Target = Arc<SwapchainImage>;
+    type Access = Arc<SwapchainImage>;
 
-    fn into_image(self) -> Self::Target {
+    fn access(self) -> Self::Access {
         self
     }
 }
