@@ -51,7 +51,7 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
             let c = cb::AutoPipelineBarriersLayer::new(c);
             let c = cb::SubmitSyncBuilderLayer::new(c);
             let c = cb::StateCacheLayer::new(c);
-            let c = cb::ContextCheckLayer::new(c);
+            let c = cb::ContextCheckLayer::new(c, false, true);
             let c = cb::QueueTyCheckLayer::new(c, supports_graphics, supports_compute);
             let c = cb::DeviceCheckLayer::new(c);
             c
