@@ -64,6 +64,15 @@ unsafe impl<I> DeviceOwned for ContextCheckLayer<I>
 unsafe impl<I> CommandBufferBuilder for ContextCheckLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 // TODO: actually implement

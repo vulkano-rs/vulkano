@@ -106,6 +106,15 @@ unsafe impl<I> DeviceOwned for SubmitSyncBuilderLayer<I>
 unsafe impl<I> CommandBufferBuilder for SubmitSyncBuilderLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 // FIXME: implement manually

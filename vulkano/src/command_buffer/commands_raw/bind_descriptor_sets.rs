@@ -95,6 +95,15 @@ impl<S, P> CmdBindDescriptorSets<S, P>
     }
 }
 
+impl<S, P> CmdBindDescriptorSets<S, P> {
+    /// True if we bind to the graphics pipeline. False if the compute pipeline.
+    // TODO: should be an enum?
+    #[inline]
+    pub fn is_graphics(&self) -> bool {
+        self.pipeline_ty == vk::PIPELINE_BIND_POINT_GRAPHICS
+    }
+}
+
 unsafe impl<S, Pl> DeviceOwned for CmdBindDescriptorSets<S, Pl>
     where Pl: DeviceOwned
 {

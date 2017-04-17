@@ -40,6 +40,9 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
     pub fn new(device: Arc<Device>, queue_family: QueueFamily)
                -> Result<AutoCommandBufferBuilder<Arc<StandardCommandPool>>, OomError>
     {
+        let supports_graphics = queue_family.supports_graphics();
+        let supports_compute = queue_family.supports_compute();
+
         let pool = Device::standard_command_pool(&device, queue_family);
 
         let cmd = unsafe {
@@ -49,7 +52,7 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
             let c = cb::SubmitSyncBuilderLayer::new(c);
             let c = cb::StateCacheLayer::new(c);
             let c = cb::ContextCheckLayer::new(c);
-            let c = cb::QueueTyCheckLayer::new(c);
+            let c = cb::QueueTyCheckLayer::new(c, supports_graphics, supports_compute);
             let c = cb::DeviceCheckLayer::new(c);
             c
         };
@@ -119,6 +122,15 @@ unsafe impl<P> CommandBufferBuilder for AutoCommandBufferBuilder<P>
     where Cb<P>: CommandBufferBuilder,
           P: CommandPool
 {
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.inner.supports_graphics()
+    }
+
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.inner.supports_compute()
+    }
 }
 
 macro_rules! pass_through {
