@@ -81,6 +81,7 @@ pub mod query;
 pub mod sampler;
 pub mod swapchain;
 pub mod sync;
+pub mod extensions;
 
 use std::error;
 use std::fmt;
