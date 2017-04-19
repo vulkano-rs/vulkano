@@ -67,6 +67,14 @@ use sync::Sharing;
 /// or a depth buffer that is only used once) then use a transient image as it may improve
 /// performances.
 ///
+/// # Regular vs storage
+/// 
+/// Calling `AttachmentImage::storage` will create a storage image.
+///
+/// A storage image is similiar to a regular image attachment except that it is used in cases
+/// where shader outputs will be stored in a texture binding instead of a framebuffer. Storage 
+/// images support re-use as a regular image attachment after the new pixel data has been stored.
+
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
 pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
@@ -109,6 +117,24 @@ impl<F> AttachmentImage<F> {
                       -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
+        AttachmentImage::new_impl(device, dimensions, format, usage)
+    }
+
+    /// Same as `new`, except that the image allows the storage usage.
+    ///
+    /// Storage images allow shaders to write pixels into texture bindings.
+    pub fn storage(device: &Arc<Device>, dimensions: [u32; 2], format: F)
+                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let usage = Usage {
+            transfer_source: true,
+            transfer_dest: true,
+            sampled: true,
+            storage: true,
+            .. Usage::none()
+        };
+
         AttachmentImage::new_impl(device, dimensions, format, usage)
     }
 
