@@ -384,17 +384,20 @@ fn main() {
             // only the attachments that use `load: Clear` appear in the list.
             .begin_render_pass(framebuffers[image_num].clone(), false,
                                render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
+            .unwrap()
 
             // We are now inside the first subpass of the render pass. We add a draw command.
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
             .draw(pipeline.clone(), DynamicState::none(), vertex_buffer.clone(), (), ())
+            .unwrap()
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
             // next subpass.
             .end_render_pass()
+            .unwrap()
 
             // Finish building the command buffer by calling `build`.
             .build().unwrap();

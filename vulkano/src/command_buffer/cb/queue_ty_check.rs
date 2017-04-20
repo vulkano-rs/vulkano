@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use device::Device;
@@ -110,12 +111,12 @@ macro_rules! q_ty_impl_always {
             type Out = QueueTyCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                QueueTyCheckLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
                     supports_graphics: self.supports_graphics,
                     supports_compute: self.supports_compute,
-                }
+                })
             }
         }
     }
@@ -135,13 +136,16 @@ macro_rules! q_ty_impl_graphics {
             type Out = QueueTyCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                assert!(self.supports_graphics());      // TODO: proper error
-                QueueTyCheckLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if !self.supports_graphics() {
+                    return Err(CommandAddError::GraphicsOperationsNotSupported);
+                }
+
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
                     supports_graphics: self.supports_graphics,
                     supports_compute: self.supports_compute,
-                }
+                })
             }
         }
     }
@@ -167,13 +171,16 @@ macro_rules! q_ty_impl_compute {
             type Out = QueueTyCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                assert!(self.supports_compute());      // TODO: proper error
-                QueueTyCheckLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if !self.supports_compute() {
+                    return Err(CommandAddError::ComputeOperationsNotSupported);
+                }
+
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
                     supports_graphics: self.supports_graphics,
                     supports_compute: self.supports_compute,
-                }
+                })
             }
         }
     }
@@ -189,13 +196,13 @@ macro_rules! q_ty_impl_graphics_or_compute {
             type Out = QueueTyCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                assert!(self.supports_graphics() || self.supports_compute());      // TODO: proper error
-                QueueTyCheckLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                assert!(self.supports_graphics() || self.supports_compute());      // TODO: proper error?
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
                     supports_graphics: self.supports_graphics,
                     supports_compute: self.supports_compute,
-                }
+                })
             }
         }
     }
@@ -211,18 +218,22 @@ unsafe impl<I, O, Pl> AddCommand<commands_raw::CmdBindPipeline<Pl>> for QueueTyC
     type Out = QueueTyCheckLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdBindPipeline<Pl>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdBindPipeline<Pl>) -> Result<Self::Out, CommandAddError> {
         if command.is_graphics() {
-            assert!(self.supports_graphics());      // TODO: proper error
+            if !self.supports_graphics() {
+                return Err(CommandAddError::GraphicsOperationsNotSupported);
+            }
         } else {
-            assert!(self.supports_compute());       // TODO: proper error
+            if !self.supports_compute() {
+                return Err(CommandAddError::ComputeOperationsNotSupported);
+            }
         }
 
-        QueueTyCheckLayer {
-            inner: self.inner.add(command),
+        Ok(QueueTyCheckLayer {
+            inner: self.inner.add(command)?,
             supports_graphics: self.supports_graphics,
             supports_compute: self.supports_compute,
-        }
+        })
     }
 }
 
@@ -232,17 +243,21 @@ unsafe impl<I, O, S, Pl> AddCommand<commands_raw::CmdBindDescriptorSets<S, Pl>> 
     type Out = QueueTyCheckLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdBindDescriptorSets<S, Pl>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdBindDescriptorSets<S, Pl>) -> Result<Self::Out, CommandAddError> {
         if command.is_graphics() {
-            assert!(self.supports_graphics());      // TODO: proper error
+            if !self.supports_graphics() {
+                return Err(CommandAddError::GraphicsOperationsNotSupported);
+            }
         } else {
-            assert!(self.supports_compute());       // TODO: proper error
+            if !self.supports_compute() {
+                return Err(CommandAddError::ComputeOperationsNotSupported);
+            }
         }
 
-        QueueTyCheckLayer {
-            inner: self.inner.add(command),
+        Ok(QueueTyCheckLayer {
+            inner: self.inner.add(command)?,
             supports_graphics: self.supports_graphics,
             supports_compute: self.supports_compute,
-        }
+        })
     }
 }

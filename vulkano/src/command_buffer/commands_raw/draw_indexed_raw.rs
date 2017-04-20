@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -66,7 +67,7 @@ unsafe impl<'a, P> AddCommand<&'a CmdDrawIndexedRaw> for UnsafeCommandBufferBuil
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdDrawIndexedRaw) -> Self::Out {
+    fn add(self, command: &'a CmdDrawIndexedRaw) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -74,6 +75,6 @@ unsafe impl<'a, P> AddCommand<&'a CmdDrawIndexedRaw> for UnsafeCommandBufferBuil
                               command.first_index, command.vertex_offset, command.first_instance);
         }
 
-        self
+        Ok(self)
     }
 }

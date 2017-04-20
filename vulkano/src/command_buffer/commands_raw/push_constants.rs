@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -70,7 +71,7 @@ unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCo
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdPushConstants<Pc, Pl>) -> Self::Out {
+    fn add(self, command: &'a CmdPushConstants<Pc, Pl>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -92,7 +93,7 @@ unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCo
             }
         }
 
-        self
+        Ok(self)
     }
 }
 

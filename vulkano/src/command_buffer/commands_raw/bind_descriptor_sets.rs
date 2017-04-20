@@ -13,6 +13,7 @@ use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -119,7 +120,7 @@ unsafe impl<'a, P, Pl, S> AddCommand<&'a CmdBindDescriptorSets<S, Pl>> for Unsaf
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdBindDescriptorSets<S, Pl>) -> Self::Out {
+    fn add(self, command: &'a CmdBindDescriptorSets<S, Pl>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -131,7 +132,7 @@ unsafe impl<'a, P, Pl, S> AddCommand<&'a CmdBindDescriptorSets<S, Pl>> for Unsaf
             }
         }
 
-        self
+        Ok(self)
     }
 }
 

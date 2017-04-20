@@ -19,6 +19,7 @@ use command_buffer::commands_raw::CmdBindDescriptorSetsError;
 use command_buffer::commands_raw::CmdBindPipeline;
 use command_buffer::commands_raw::CmdPushConstants;
 use command_buffer::commands_raw::CmdPushConstantsError;
+use command_buffer::CommandAddError;
 use command_buffer::DispatchIndirectCommand;
 use command_buffer::RawCommandBufferPrototype;
 use command_buffer::CommandsList;

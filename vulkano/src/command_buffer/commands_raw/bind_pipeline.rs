@@ -10,6 +10,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -105,7 +106,7 @@ unsafe impl<'a, P, Pl> AddCommand<&'a CmdBindPipeline<Pl>> for UnsafeCommandBuff
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdBindPipeline<Pl>) -> Self::Out {
+    fn add(self, command: &'a CmdBindPipeline<Pl>) -> Result<Self::Out, CommandAddError> {
         if command.raw_pipeline != 0 {
             unsafe {
                 let vk = self.device().pointers();
@@ -114,7 +115,7 @@ unsafe impl<'a, P, Pl> AddCommand<&'a CmdBindPipeline<Pl>> for UnsafeCommandBuff
             }
         }
 
-        self
+        Ok(self)
     }
 }
 

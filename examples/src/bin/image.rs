@@ -180,10 +180,10 @@ fn main() {
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
                 renderpass.desc().start_clear_values()
-                    .color([0.0, 0.0, 1.0, 1.0]))
+                    .color([0.0, 0.0, 1.0, 1.0])).unwrap()
             .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
-                  set.clone(), ())
-            .end_render_pass()
+                  set.clone(), ()).unwrap()
+            .end_render_pass().unwrap()
             .build().unwrap();
 
         let future = future

@@ -16,6 +16,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::commands_raw;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use device::Device;
@@ -115,15 +116,15 @@ macro_rules! pass_through {
             type Out = AbstractStorageLayer<I>;
 
             #[inline]
-            fn add(mut self, command: $cmd) -> Self::Out {
-                let new_inner = AddCommand::add(self.inner, &command);
+            fn add(mut self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                let new_inner = AddCommand::add(self.inner, &command)?;
                 // TODO: should store a lightweight version of the command
                 self.commands.push(Box::new(command) as Box<_>);
                 
-                AbstractStorageLayer {
+                Ok(AbstractStorageLayer {
                     inner: new_inner,
                     commands: self.commands,
-                }
+                })
             }
         }
     }

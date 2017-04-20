@@ -10,6 +10,7 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -80,7 +81,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdBlitImage<S, D>> for UnsafeCommandBuf
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdBlitImage<S, D>) -> Self::Out {
+    fn add(self, command: &'a CmdBlitImage<S, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             debug_assert!(command.source_layout == vk::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ||
                           command.source_layout == vk::IMAGE_LAYOUT_GENERAL);
@@ -133,7 +134,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdBlitImage<S, D>> for UnsafeCommandBuf
                             1, &region as *const _, command.filter);
         }
 
-        self
+        Ok(self)
     }
 }
 

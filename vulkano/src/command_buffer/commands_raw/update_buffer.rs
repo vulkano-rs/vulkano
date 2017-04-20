@@ -15,6 +15,7 @@ use std::ptr;
 
 use buffer::BufferAccess;
 use buffer::BufferInner;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -109,7 +110,7 @@ unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommand
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Self::Out {
+    fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let data = if command.data_ptr.is_null() {
                 &command.data as *const D as *const _
@@ -122,7 +123,7 @@ unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommand
             vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size, data);
         }
 
-        self
+        Ok(self)
     }
 }
 

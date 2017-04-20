@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use command_buffer::CommandAddError;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
@@ -73,7 +74,7 @@ unsafe impl<'a, P> AddCommand<&'a CmdSetState> for UnsafeCommandBufferBuilder<P>
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdSetState) -> Self::Out {
+    fn add(self, command: &'a CmdSetState) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -93,6 +94,6 @@ unsafe impl<'a, P> AddCommand<&'a CmdSetState> for UnsafeCommandBufferBuilder<P>
             }
         }
 
-        self
+        Ok(self)
     }
 }

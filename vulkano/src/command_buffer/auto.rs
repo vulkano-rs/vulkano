@@ -16,6 +16,7 @@ use command_buffer::commands_raw;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -142,10 +143,10 @@ macro_rules! pass_through {
             type Out = AutoCommandBufferBuilder<P>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                AutoCommandBufferBuilder {
-                    inner: self.inner.add(command),
-                }
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(AutoCommandBufferBuilder {
+                    inner: self.inner.add(command)?,
+                })
             }
         }
     }

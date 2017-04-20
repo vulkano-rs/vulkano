@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use command_buffer::DynamicState;
@@ -95,7 +96,7 @@ unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCac
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdBindPipeline<Pl>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBindPipeline<Pl>) -> Result<Self::Out, CommandAddError> {
         let raw_pipeline = command.sys().internal_object();
 
         let new_command = {
@@ -116,12 +117,12 @@ unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCac
             }
         };
 
-        StateCacheLayer {
-            inner: self.inner.add(new_command),
+        Ok(StateCacheLayer {
+            inner: self.inner.add(new_command)?,
             dynamic_state: DynamicState::none(),
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
-        }
+        })
     }
 }
 
@@ -131,16 +132,16 @@ unsafe impl<Cb, I, O> AddCommand<commands_raw::CmdExecuteCommands<Cb>> for State
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdExecuteCommands<Cb>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdExecuteCommands<Cb>) -> Result<Self::Out, CommandAddError> {
         // After a secondary command buffer is added, all states at reset to the "unknown" state.
-        let new_inner = self.inner.add(command);
+        let new_inner = self.inner.add(command)?;
 
-        StateCacheLayer {
+        Ok(StateCacheLayer {
             inner: new_inner,
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
-        }
+        })
     }
 }
 
@@ -150,7 +151,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacheLayer<I>
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdSetState) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdSetState) -> Result<Self::Out, CommandAddError> {
         // We need to synchronize `self.dynamic_state` with the state in `command`.
         // While doing so, we tweak `command` to erase the states that are the same as what's
         // already in `self.dynamic_state`.
@@ -168,12 +169,12 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacheLayer<I>
 
         // TODO: missing implementations
 
-        StateCacheLayer {
-            inner: self.inner.add(commands_raw::CmdSetState::new(command.device().clone(), command_state)),
+        Ok(StateCacheLayer {
+            inner: self.inner.add(commands_raw::CmdSetState::new(command.device().clone(), command_state))?,
             dynamic_state: self.dynamic_state,
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
-        }
+        })
     }
 }
 
@@ -197,13 +198,13 @@ macro_rules! pass_through {
             type Out = StateCacheLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                StateCacheLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(StateCacheLayer {
+                    inner: self.inner.add(command)?,
                     dynamic_state: self.dynamic_state,
                     graphics_pipeline: self.graphics_pipeline,
                     compute_pipeline: self.compute_pipeline,
-                }
+                })
             }
         }
     }

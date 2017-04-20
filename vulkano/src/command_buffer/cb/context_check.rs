@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use device::Device;
@@ -119,12 +120,12 @@ macro_rules! impl_always {
             type Out = ContextCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                ContextCheckLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(ContextCheckLayer {
+                    inner: self.inner.add(command)?,
                     inside_render_pass: self.inside_render_pass,
                     allow_render_pass_ops: self.allow_render_pass_ops,
-                }
+                })
             }
         }
     }
@@ -145,14 +146,16 @@ macro_rules! impl_inside_only {
             type Out = ContextCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                assert!(self.inside_render_pass);       // TODO: proper error
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if !self.inside_render_pass {
+                    return Err(CommandAddError::ForbiddenOutsideRenderPass);
+                }
 
-                ContextCheckLayer {
-                    inner: self.inner.add(command),
+                Ok(ContextCheckLayer {
+                    inner: self.inner.add(command)?,
                     inside_render_pass: self.inside_render_pass,
                     allow_render_pass_ops: self.allow_render_pass_ops,
-                }
+                })
             }
         }
     }
@@ -171,14 +174,16 @@ macro_rules! impl_outside_only {
             type Out = ContextCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                assert!(!self.inside_render_pass);       // TODO: proper error
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if self.inside_render_pass {
+                    return Err(CommandAddError::ForbiddenInsideRenderPass);
+                }
 
-                ContextCheckLayer {
-                    inner: self.inner.add(command),
+                Ok(ContextCheckLayer {
+                    inner: self.inner.add(command)?,
                     inside_render_pass: self.inside_render_pass,
                     allow_render_pass_ops: self.allow_render_pass_ops,
-                }
+                })
             }
         }
     }
@@ -200,15 +205,20 @@ unsafe impl<'a, I, O, Rp, F> AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>>
     type Out = ContextCheckLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdBeginRenderPass<Rp, F>) -> Self::Out {
-        assert!(!self.inside_render_pass);       // TODO: proper error
-        assert!(self.allow_render_pass_ops);     // TODO: proper error
+    fn add(self, command: commands_raw::CmdBeginRenderPass<Rp, F>) -> Result<Self::Out, CommandAddError> {
+        if self.inside_render_pass {
+            return Err(CommandAddError::ForbiddenInsideRenderPass);
+        }
+        
+        if !self.allow_render_pass_ops {
+            return Err(CommandAddError::ForbiddenInSecondaryCommandBuffer);
+        }
 
-        ContextCheckLayer {
-            inner: self.inner.add(command),
+        Ok(ContextCheckLayer {
+            inner: self.inner.add(command)?,
             inside_render_pass: true,
             allow_render_pass_ops: true,
-        }
+        })
     }
 }
 
@@ -218,16 +228,22 @@ unsafe impl<'a, I, O> AddCommand<commands_raw::CmdNextSubpass> for ContextCheckL
     type Out = ContextCheckLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdNextSubpass) -> Self::Out {
-        assert!(self.inside_render_pass);       // TODO: proper error
-        assert!(self.allow_render_pass_ops);    // TODO: proper error
+    fn add(self, command: commands_raw::CmdNextSubpass) -> Result<Self::Out, CommandAddError> {
+        if !self.inside_render_pass {
+            return Err(CommandAddError::ForbiddenOutsideRenderPass);
+        }
+
+        if !self.allow_render_pass_ops {
+            return Err(CommandAddError::ForbiddenInSecondaryCommandBuffer);
+        }
+
         // FIXME: check number of subpasses
 
-        ContextCheckLayer {
-            inner: self.inner.add(command),
+        Ok(ContextCheckLayer {
+            inner: self.inner.add(command)?,
             inside_render_pass: true,
             allow_render_pass_ops: true,
-        }
+        })
     }
 }
 
@@ -237,15 +253,21 @@ unsafe impl<'a, I, O> AddCommand<commands_raw::CmdEndRenderPass> for ContextChec
     type Out = ContextCheckLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdEndRenderPass) -> Self::Out {
-        assert!(self.inside_render_pass);       // TODO: proper error
-        assert!(self.allow_render_pass_ops);    // TODO: proper error
+    fn add(self, command: commands_raw::CmdEndRenderPass) -> Result<Self::Out, CommandAddError> {
+        if !self.inside_render_pass {
+            return Err(CommandAddError::ForbiddenOutsideRenderPass);
+        }
+
+        if !self.allow_render_pass_ops {
+            return Err(CommandAddError::ForbiddenInSecondaryCommandBuffer);
+        }
+
         // FIXME: check number of subpasses
 
-        ContextCheckLayer {
-            inner: self.inner.add(command),
+        Ok(ContextCheckLayer {
+            inner: self.inner.add(command)?,
             inside_render_pass: false,
             allow_render_pass_ops: true,
-        }
+        })
     }
 }
