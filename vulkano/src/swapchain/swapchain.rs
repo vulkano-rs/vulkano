@@ -29,6 +29,7 @@ use format::Format;
 use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
+use image::Layout;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
@@ -323,7 +324,7 @@ impl Swapchain {
         // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
         // function on the image instead. But since we know that this method on `SwapchainImage`
         // always returns false anyway (by design), we don't need to do it.
-        assert!(before.check_image_access(&swapchain_image, true, &queue).is_ok());         // TODO: return error instead
+        assert!(before.check_image_access(&swapchain_image, Layout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
 
         PresentFuture {
             previous: before,
@@ -482,11 +483,12 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         if let Some(sc_img) = self.image.upgrade() {
-            if sc_img.inner().internal_object() == image.inner().internal_object() {
+            // FIXME: if it's the image's first ever usage, check if == Undefined instead
+            if layout == Layout::PresentSrc && sc_img.inner().internal_object() == image.inner().internal_object() {
                 Ok(None)
             } else {
                 Err(())
@@ -673,7 +675,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that

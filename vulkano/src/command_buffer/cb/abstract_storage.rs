@@ -21,6 +21,7 @@ use command_buffer::CommandBufferBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Layout;
 use image::ImageAccess;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
@@ -64,10 +65,10 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        self.inner.check_image_access(image, exclusive, queue)
+        self.inner.check_image_access(image, layout, exclusive, queue)
     }
 }
 

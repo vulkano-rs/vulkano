@@ -21,6 +21,7 @@ use command_buffer::submit::SubmitCommandBufferBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Layout;
 use image::ImageAccess;
 use sync::AccessFlagBits;
 use sync::DummyFuture;
@@ -94,7 +95,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
 
     // FIXME: lots of other methods
@@ -132,10 +133,10 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        (**self).check_image_access(image, exclusive, queue)
+        (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
 
@@ -239,12 +240,12 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        match self.command_buffer.check_image_access(image, exclusive, queue) {
+        match self.command_buffer.check_image_access(image, layout, exclusive, queue) {
             Ok(v) => Ok(v),
-            Err(()) => self.previous.check_image_access(image, exclusive, queue),
+            Err(()) => self.previous.check_image_access(image, layout, exclusive, queue),
         }
     }
 }

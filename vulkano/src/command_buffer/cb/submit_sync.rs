@@ -17,6 +17,7 @@ use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
+use image::Layout;
 use image::ImageAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -39,7 +40,7 @@ use sync::GpuFuture;
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
     buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
-    images: Vec<(Box<ImageAccess + Send + Sync>, bool)>,
+    images: Vec<(Box<ImageAccess + Send + Sync>, Layout, bool)>,
 }
 
 impl<I> SubmitSyncBuilderLayer<I> {
@@ -74,7 +75,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
         where T: ImageAccess + Send + Sync + Clone + 'static
     {
         // FIXME: actually implement
-        self.images.push((Box::new(image.clone()), exclusive));
+        self.images.push((Box::new(image.clone()), image.initial_layout_requirement(), exclusive));
     }
 }
 
@@ -451,7 +452,7 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
 pub struct SubmitSyncLayer<I> {
     inner: I,
     buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
-    images: Vec<(Box<ImageAccess + Send + Sync>, bool)>,
+    images: Vec<(Box<ImageAccess + Send + Sync>, Layout, bool)>,
 }
 
 unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
@@ -474,8 +475,8 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
             }
         }
 
-        for &(ref image, exclusive) in self.images.iter() {
-            if future.check_image_access(image, exclusive, queue).is_ok() {
+        for &(ref image, layout, exclusive) in self.images.iter() {
+            if future.check_image_access(image, layout, exclusive, queue).is_ok() {
                 unsafe { image.increase_gpu_lock(); }
                 continue;
             }
@@ -499,7 +500,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
         // FIXME: implement
