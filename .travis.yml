@@ -19,6 +19,8 @@ addons:
     - cmake-data
 
 script:
+    # Check whitespace with git
+    - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
     - cargo test -v --manifest-path vulkano-shader-derive/Cargo.toml
