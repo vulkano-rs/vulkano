@@ -115,4 +115,3 @@ pass_through!((S, D), commands_raw::CmdResolveImage<S, D>);
 pass_through!((), commands_raw::CmdSetEvent);
 pass_through!((), commands_raw::CmdSetState);
 pass_through!((B, D), commands_raw::CmdUpdateBuffer<B, D>);
-
