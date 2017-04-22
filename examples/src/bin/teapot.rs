@@ -89,7 +89,7 @@ fn main() {
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::from_data(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), 
+                               ::from_data(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()),
                                 vs::ty::Data {
                                     world : <cgmath::Matrix4<f32> as cgmath::SquareMatrix>::identity().into(),
                                     view : (view * scale).into(),
@@ -169,12 +169,12 @@ fn main() {
 
         {
             // aquiring write lock for the uniform buffer
-            let mut buffer_content = uniform_buffer.write().unwrap(); 
+            let mut buffer_content = uniform_buffer.write().unwrap();
 
             let rotation = cgmath::Matrix3::from_angle_y(cgmath::Rad(time::precise_time_ns() as f32 * 0.000000001));
 
-            // since write lock implementd Deref and DerefMut traits, 
-            // we can update content directly 
+            // since write lock implementd Deref and DerefMut traits,
+            // we can update content directly
             buffer_content.world = cgmath::Matrix4::from(rotation).into();
         }
 
@@ -187,11 +187,11 @@ fn main() {
                     .color([0.0, 0.0, 1.0, 1.0]).depth((1f32)))
             .draw_indexed(
                 pipeline.clone(), vulkano::command_buffer::DynamicState::none(),
-                (vertex_buffer.clone(), normals_buffer.clone()), 
+                (vertex_buffer.clone(), normals_buffer.clone()),
                 index_buffer.clone(), set.clone(), ())
             .end_render_pass()
             .build().unwrap();
-        
+
         let future = future
             .then_execute(queue.clone(), command_buffer)
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)

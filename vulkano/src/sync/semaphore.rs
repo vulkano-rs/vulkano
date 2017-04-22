@@ -21,7 +21,7 @@ use check_errors;
 use vk;
 
 /// Used to provide synchronization between command buffers during their execution.
-/// 
+///
 /// It is similar to a fence, except that it is purely on the GPU side. The CPU can't query a
 /// semaphore's status or wait for it to be signaled.
 #[derive(Debug)]

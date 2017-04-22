@@ -54,7 +54,7 @@ impl<S, P> CmdBindDescriptorSets<S, P>
     /// Returns an error if the sets are not compatible with the pipeline layout.
     #[inline]
     pub fn new(graphics: bool, pipeline_layout: P, sets: S)
-               -> Result<CmdBindDescriptorSets<S, P>, CmdBindDescriptorSetsError> 
+               -> Result<CmdBindDescriptorSets<S, P>, CmdBindDescriptorSetsError>
     {
         if !PipelineLayoutSetsCompatible::is_compatible(pipeline_layout.desc(), &sets) {
             return Err(CmdBindDescriptorSetsError::IncompatibleSets);
@@ -71,7 +71,7 @@ impl<S, P> CmdBindDescriptorSets<S, P>
                     Some(set) => set.internal_object(),
                     None => { add_new = true; continue; },
                 };
-                
+
                 if add_new {
                     let mut v = SmallVec::new(); v.push(set);
                     raw_sets.push((set_num as u32, v));

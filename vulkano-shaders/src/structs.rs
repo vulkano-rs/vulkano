@@ -55,7 +55,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
 
     // The members of this struct.
     let mut rust_members = Vec::with_capacity(members.len());
-    
+
     // Padding structs will be named `_paddingN` where `N` is determined by this variable.
     let mut next_padding_num = 0;
 
@@ -174,7 +174,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
             });
         }
     }
-    
+
     // We can only implement Clone if there's no unsized member in the struct.
     let (impl_text, derive_text) = if current_rust_offset.is_some() {
         let i = format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \

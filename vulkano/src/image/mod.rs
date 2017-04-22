@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Images storage (1D, 2D, 3D, arrays, etc.).
-//! 
+//!
 //! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
 //! most common usage is to store a 2D array of color pixels (in other words an *image* in the
 //! everyday language), but it can also be used to store arbitrary data.
@@ -262,13 +262,13 @@ impl Dimensions {
     #[inline]
     pub fn to_view_type(&self) -> ViewType {
         match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d, 
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray, 
-            Dimensions::Dim2d { .. } => ViewType::Dim2d, 
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray, 
-            Dimensions::Dim3d { .. } => ViewType::Dim3d, 
-            Dimensions::Cubemap { .. } => ViewType::Cubemap, 
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
+            Dimensions::Dim1d { .. } => ViewType::Dim1d,
+            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
+            Dimensions::Dim2d { .. } => ViewType::Dim2d,
+            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
+            Dimensions::Dim3d { .. } => ViewType::Dim3d,
+            Dimensions::Cubemap { .. } => ViewType::Cubemap,
+            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
         }
     }
 }

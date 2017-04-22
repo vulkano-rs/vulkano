@@ -263,7 +263,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     fn num_subpasses(&self) -> usize {
         self.render_pass.num_subpasses()
     }
-    
+
     #[inline]
     fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
         self.render_pass.subpass(num)

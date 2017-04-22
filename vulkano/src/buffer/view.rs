@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! View of a buffer, in order to use it as a uniform texel buffer or storage texel buffer.
-//! 
+//!
 //! In order to use a buffer as a uniform texel buffer or a storage texel buffer, you have to
 //! create a `BufferView`, which indicates which format the data is in.
-//! 
+//!
 //! In order to create a view from a buffer, the buffer must have been created with either the
 //! `uniform_texel_buffer` or the `storage_texel_buffer` usage.
 //!

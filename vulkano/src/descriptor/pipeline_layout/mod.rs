@@ -42,7 +42,7 @@
 //! graphics pipeline as parameter.
 //!
 //! # Custom pipeline layouts
-//! 
+//!
 //! In some situations, it is better (as in, faster) to share the same descriptor set or sets
 //! between multiple pipelines that each use different descriptors. To do so, you have to create a
 //! pipeline layout object in advance and pass it when you create the pipelines.

@@ -8,14 +8,14 @@
 // according to those terms.
 
 //! Description of a single descriptor.
-//! 
+//!
 //! This module contains traits and structs related to describing a single descriptor. A descriptor
 //! is a slot where you can bind a buffer or an image so that it can be accessed from your shaders.
 //! In order to specify which buffer or image to bind to a descriptor, see the `descriptor_set`
 //! module.
-//! 
+//!
 //! There are four different kinds of descriptors that give access to buffers:
-//! 
+//!
 //! - Uniform texel buffers. Gives read-only access to the content of a buffer. Only supports
 //!   certain buffer formats.
 //! - Storage texel buffers. Gives read and/or write access to the content of a buffer. Only
@@ -25,9 +25,9 @@
 //!   sometimes slower than uniform texel buffers.
 //! - Storage buffers. Gives read and/or write access to the content of a buffer. Less restrictive
 //!   but sometimes slower than uniform buffers and storage texel buffers.
-//! 
+//!
 //! There are five different kinds of descriptors related to images:
-//! 
+//!
 //! - Storage images. Gives read and/or write access to individual pixels in an image. The image
 //!   cannot be sampled. In other words, you have exactly specify which pixel to read or write.
 //! - Sampled images. Gives read-only access to an image. Before you can use a sampled image in a
@@ -36,10 +36,10 @@
 //! - Samplers. Doesn't contain an image but a sampler object that describes how an image will be
 //!   accessed. This is meant to be combined with a sampled image (see above).
 //! - Combined image and sampler. Similar to a sampled image, but also directly includes the
-//!   sampler which indicates how the sampling is done. 
+//!   sampler which indicates how the sampling is done.
 //! - Input attachments. The fastest but also most restrictive access to images. Must be integrated
 //!   in a render pass. Can only give access to the same pixel as the one you're processing.
-//! 
+//!
 
 use std::cmp;
 use std::ops::BitOr;

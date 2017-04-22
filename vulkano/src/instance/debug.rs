@@ -24,7 +24,7 @@
 //! # use std::sync::Arc;
 //! # let instance: Arc<Instance> = unsafe { ::std::mem::uninitialized() };
 //! use vulkano::instance::debug::DebugCallback;
-//! 
+//!
 //! let _callback = DebugCallback::errors_and_warnings(&instance, |msg| {
 //!     println!("Debug callback: {:?}", msg.description);
 //! }).ok();
@@ -34,7 +34,7 @@
 //!
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugCallback`'s constructor in a
-//! variable, it will be immediately destroyed and your callback will not work. 
+//! variable, it will be immediately destroyed and your callback will not work.
 //!
 
 use std::error;

@@ -334,7 +334,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     fn num_attachments(&self) -> usize {
         self.desc.num_attachments()
     }
-    
+
     #[inline]
     fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
         self.desc.attachment(num)
@@ -344,7 +344,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     fn num_subpasses(&self) -> usize {
         self.desc.num_subpasses()
     }
-    
+
     #[inline]
     fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
         self.desc.subpass(num)

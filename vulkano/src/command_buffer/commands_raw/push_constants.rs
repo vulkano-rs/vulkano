@@ -40,7 +40,7 @@ impl<Pc, Pl> CmdPushConstants<Pc, Pl>
     /// Returns an error if the push constants are not compatible with the pipeline layout.
     #[inline]
     pub fn new(pipeline_layout: Pl, push_constants: Pc)
-               -> Result<CmdPushConstants<Pc, Pl>, CmdPushConstantsError> 
+               -> Result<CmdPushConstants<Pc, Pl>, CmdPushConstantsError>
     {
         if !PipelineLayoutPushConstantsCompatible::is_compatible(pipeline_layout.desc(), &push_constants) {
             return Err(CmdPushConstantsError::IncompatibleData);
@@ -76,7 +76,7 @@ unsafe impl<'a, P, Pc, Pl> AddCommand<&'a CmdPushConstants<Pc, Pl>> for UnsafeCo
             let cmd = self.internal_object();
 
             let data_raw = &command.push_constants as *const Pc as *const u8;
-            
+
             for num_range in 0 .. command.pipeline_layout.desc().num_push_constants_ranges() {
                 let range = match command.pipeline_layout.desc().push_constants_range(num_range) {
                     Some(r) => r,

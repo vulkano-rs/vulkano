@@ -59,7 +59,7 @@ impl Event {
             event: event,
         })
     }
-    
+
     /// Builds a new event.
     ///
     /// # Panic

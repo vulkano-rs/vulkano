@@ -8,13 +8,13 @@
 // according to those terms.
 
 //! Allows you to create surfaces that fill a whole display, outside of the windowing system.
-//! 
+//!
 //! **As far as the author knows, no existing device supports these features. Therefore the code
 //! here is mostly a draft and needs rework in both the API and the implementation.**
-//! 
+//!
 //! The purpose of the objects in this module is to let you create a `Surface` object that
 //! represents a location on the screen. This is done in four steps:
-//! 
+//!
 //! - Choose a `Display` where the surface will be located. A `Display` represents a display
 //!   display, usually a monitor. The available displays can be enumerated with
 //!   `Display::enumerate`.
@@ -107,7 +107,7 @@ impl DisplayPlane {
             }
         }).collect::<Vec<_>>().into_iter())
     }
-    
+
     /// Enumerates all the display planes that are available on a given physical device.
     ///
     /// # Panic
@@ -184,7 +184,7 @@ impl Display {
             }
         }).collect::<Vec<_>>().into_iter())
     }
-    
+
     /// Enumerates all the displays that are available on a given physical device.
     ///
     /// # Panic
@@ -255,7 +255,7 @@ impl Display {
         let num = unsafe {
             let mut num = 0;
             try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                             self.properties.display, 
+                                                             self.properties.display,
                                                              &mut num, ptr::null_mut())));
             num
         };
@@ -278,7 +278,7 @@ impl Display {
             }
         }).collect::<Vec<_>>().into_iter())
     }
-    
+
     /// Returns a list of all modes available on this display.
     ///
     /// # Panic

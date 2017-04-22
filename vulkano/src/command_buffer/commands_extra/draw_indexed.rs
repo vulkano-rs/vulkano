@@ -36,7 +36,7 @@ pub struct CmdDrawIndexed<V, Ib, P, S, Pc>
 }
 
 impl<V, Ib, I, P, S, Pc> CmdDrawIndexed<V, Ib, P, S, Pc>
-    where P: GraphicsPipelineAbstract, 
+    where P: GraphicsPipelineAbstract,
           S: DescriptorSetsCollection,
           Ib: BufferAccess + TypedBuffer<Content = [I]>,
           I: Index + 'static

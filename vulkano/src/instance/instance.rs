@@ -558,7 +558,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// fn do_something(physical_device: PhysicalDevice) {
     ///     let _loaded_extensions = physical_device.instance().loaded_extensions();
-    ///     // ... 
+    ///     // ...
     /// }
     /// ```
     #[inline]

@@ -40,7 +40,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// resources used by these submissions.
     ///
     /// It is highly recommended to call `cleanup_finished` from time to time. Doing so will
-    /// prevent memory usage from increasing over time, and will also destroy the locks on 
+    /// prevent memory usage from increasing over time, and will also destroy the locks on
     /// resources used by the GPU.
     fn cleanup_finished(&mut self);
 

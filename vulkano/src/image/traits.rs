@@ -64,7 +64,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_depth(&self) -> bool {
         let format = self.format();
@@ -72,7 +72,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_stencil(&self) -> bool {
         let format = self.format();

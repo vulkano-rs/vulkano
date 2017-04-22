@@ -53,7 +53,7 @@ struct Inner {
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
     pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
-                         specialization: &Css) 
+                         specialization: &Css)
                          -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants

@@ -212,7 +212,7 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
     }
 }
 
-/// Traits that allow determining whether 
+/// Traits that allow determining whether
 pub unsafe trait PipelineLayoutSetsCompatible<Other: ?Sized>: PipelineLayoutDesc
     where Other: DescriptorSetsCollection
 {
@@ -244,12 +244,12 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSetsCompatible<U> for T
             }
         }*/
 
-        // FIXME: 
+        // FIXME:
         true
     }
 }
 
-/// Traits that allow determining whether 
+/// Traits that allow determining whether
 // TODO: require a trait on Pc
 pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>: PipelineLayoutDesc {
     /// Returns true if `Pc` can be used with a pipeline that uses `self` as layout.

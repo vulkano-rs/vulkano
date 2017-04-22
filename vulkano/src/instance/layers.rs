@@ -28,7 +28,7 @@ use version::Version;
 /// to pass its name (returned by `LayerProperties::name()`) when creating the
 /// [`Instance`](struct.Instance.html).
 ///
-/// This function returns an error if it failed to load the Vulkan library. 
+/// This function returns an error if it failed to load the Vulkan library.
 ///
 /// > **Note**: It is possible that one of the layers enumerated here is no longer available when
 /// > you create the `Instance`. This will lead to an error when calling `Instance::new`. The

@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! This module provides support for query pools.
-//! 
+//!
 //! In Vulkan, queries are not created individually. Instead you manipulate **query pools**, which
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.

@@ -8,13 +8,13 @@
 // according to those terms.
 
 //! Buffer that is written once then read for as long as it is alive.
-//! 
+//!
 //! Use this buffer when you have data that you never modify.
 //!
 //! Only the first ever command buffer that uses this buffer can write to it (for example by
 //! copying from another buffer). Any subsequent command buffer **must** only read from the buffer,
 //! or a panic will happen.
-//! 
+//!
 //! The buffer will be stored in device-local memory if possible
 //!
 

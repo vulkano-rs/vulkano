@@ -44,21 +44,21 @@
 //! use vulkano::pipeline::vertex::;
 //! # let device: Arc<Device> = unsafe { std::mem::uninitialized() };
 //! # let queue: Arc<Queue> = unsafe { std::mem::uninitialized() };
-//! 
+//!
 //! struct Vertex {
 //!     position: [f32; 2]
 //! }
-//! 
+//!
 //! impl_vertex!(Vertex, position);
-//! 
+//!
 //! let usage = BufferUsage {
 //!     vertex_buffer: true,
 //!     .. BufferUsage::none()
 //! };
-//! 
+//!
 //! let vertex_buffer = BufferAccess::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)
 //!                                                     .expect("failed to create buffer");
-//! 
+//!
 //! // TODO: finish example
 //! # }
 //! ```

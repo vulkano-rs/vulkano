@@ -97,7 +97,7 @@ macro_rules! impl_into_atch_list {
             #[allow(non_snake_case)]
             fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
                 let &(ref $first, $(ref $rest,)*) = self;
-                
+
                 vec![
                     &$first.inner(),
                     $(
@@ -135,7 +135,7 @@ macro_rules! impl_into_atch_list {
 
         impl_into_atch_list!($($rest),*);
     );
-    
+
     () => ();
 }
 

@@ -36,7 +36,7 @@ use vk;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
 /// let mem_ty = device.physical_device().memory_types().next().unwrap();
-/// 
+///
 /// // Allocates 1kB of memory.
 /// let memory = DeviceMemory::alloc(&device, mem_ty, 1024).unwrap();
 /// ```
@@ -52,7 +52,7 @@ impl<D> DeviceMemory<D> where D: SafeDeref<Target = Device> {
     /// Allocates a chunk of memory from the device.
     ///
     /// Some platforms may have a limit on the maximum size of a single allocation. For example,
-    /// certain systems may fail to create allocations with a size greater than or equal to 4GB. 
+    /// certain systems may fail to create allocations with a size greater than or equal to 4GB.
     ///
     /// # Panic
     ///
@@ -176,7 +176,7 @@ impl<D> Drop for DeviceMemory<D> where D: SafeDeref<Target = Device> {
 /// is not host-accessible.
 ///
 /// In order to access the content of the allocated memory, you can use the `read_write` method.
-/// This method returns a guard object that derefs to the content. 
+/// This method returns a guard object that derefs to the content.
 ///
 /// # Example
 ///
@@ -184,7 +184,7 @@ impl<D> Drop for DeviceMemory<D> where D: SafeDeref<Target = Device> {
 /// use vulkano::memory::DeviceMemory;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-/// // The memory type must be mappable. 
+/// // The memory type must be mappable.
 /// let mem_ty = device.physical_device().memory_types()
 ///                     .filter(|t| t.is_host_visible())
 ///                     .next().unwrap();    // Vk specs guarantee that this can't fail
@@ -375,7 +375,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
                            .next().unwrap();
-    
+
         match DeviceMemory::alloc(&device, mem_ty, 0xffffffffffffffff) {
             Err(OomError::OutOfDeviceMemory) => (),
             _ => panic!()
@@ -390,7 +390,7 @@ mod tests {
         let heap_size = mem_ty.heap().size();
 
         let mut allocs = Vec::new();
-    
+
         for _ in 0 .. 4 {
             match DeviceMemory::alloc(&device, mem_ty, heap_size / 3) {
                 Err(OomError::OutOfDeviceMemory) => return,     // test succeeded

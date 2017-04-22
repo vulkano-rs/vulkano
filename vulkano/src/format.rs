@@ -49,11 +49,11 @@
 //!   conversion.
 //!
 //! # Choosing a format
-//! 
+//!
 //! The following formats are guaranteed to be supported for everything that is related to
 //! texturing (ie. blitting source and sampling them linearly). You should choose one of these
 //! formats if you have an image that you are going to sample from:
-//! 
+//!
 //! // TODO: use vulkano enums
 //! - B4G4R4A4_UNORM_PACK16
 //! - R5G6B5_UNORM_PACK16
@@ -140,7 +140,7 @@ macro_rules! formats {
 
         impl Format {
             /*pub fn is_supported_for_vertex_attributes(&self) -> bool {
-                
+
             }
 
             .. other functions ..

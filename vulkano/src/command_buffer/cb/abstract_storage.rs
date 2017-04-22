@@ -119,7 +119,7 @@ macro_rules! pass_through {
                 let new_inner = AddCommand::add(self.inner, &command);
                 // TODO: should store a lightweight version of the command
                 self.commands.push(Box::new(command) as Box<_>);
-                
+
                 AbstractStorageLayer {
                     inner: new_inner,
                     commands: self.commands,

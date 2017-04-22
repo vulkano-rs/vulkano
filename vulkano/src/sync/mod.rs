@@ -8,9 +8,9 @@
 // according to those terms.
 
 //! Synchronization primitives for Vulkan objects.
-//! 
+//!
 //! In Vulkan, you have to manually ensure two things:
-//! 
+//!
 //! - That a buffer or an image are not read and written simultaneously (similarly to the CPU).
 //! - That writes to a buffer or an image are propagated to other queues by inserting memory
 //!   barriers.

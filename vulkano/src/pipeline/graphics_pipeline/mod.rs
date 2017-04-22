@@ -1270,7 +1270,7 @@ pub enum GraphicsPipelineCreationError {
     /// The interface between the vertex shader and the fragment shader mismatches.
     VertexFragmentStagesMismatch(ShaderInterfaceMismatchError),
 
-    /// The interface between the tessellation control shader and the tessellation evaluation 
+    /// The interface between the tessellation control shader and the tessellation evaluation
     /// shader mismatches.
     TessControlTessEvalStagesMismatch(ShaderInterfaceMismatchError),
 

@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! Buffer whose content is accessible to the CPU.
-//! 
+//!
 //! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
 //! but may not perform as well as other buffer types.
-//! 
+//!
 //! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
 //! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
 //! or write and write simultaneously will block.

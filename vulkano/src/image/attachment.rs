@@ -286,7 +286,7 @@ unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
     #[inline]
     fn access(self) -> AttachmentImageAccess<F, A> {
         AttachmentImageAccess {
-            img: self, 
+            img: self,
             already_locked: AtomicBool::new(false),
         }
     }
@@ -315,7 +315,7 @@ unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
     #[inline]
     fn access(self) -> AttachmentImageAccess<F, A> {
         AttachmentImageAccess {
-            img: self, 
+            img: self,
             already_locked: AtomicBool::new(false),
         }
     }

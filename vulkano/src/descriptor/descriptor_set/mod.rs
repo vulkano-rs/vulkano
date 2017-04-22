@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! Descriptor sets creation and management
-//! 
+//!
 //! This module is dedicated to managing descriptor sets. There are three concepts in Vulkan
 //! related to descriptor sets:
-//! 
+//!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
 //!   instance of this object. This is represented with the `UnsafeDescriptorSetLayout` type in
@@ -21,9 +21,9 @@
 //!   `UnsafeDescriptorPool` type in vulkano.
 //! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
 //!   represented with the `UnsafeDescriptorSet` type in vulkano.
-//! 
+//!
 //! In addition to this, vulkano defines the following:
-//! 
+//!
 //! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
 //!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
 //!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.

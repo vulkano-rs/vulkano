@@ -108,7 +108,7 @@ macro_rules! ordered_passes_renderpass {
                 pub struct AttachmentsStart;
                 ordered_passes_renderpass!{[] __impl_attachments__ [] [] [$($atch_name),*] [A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z]}
             }
-    
+
             pub mod cv {
                 use std::iter;
                 use $crate::format::ClearValue;
@@ -394,7 +394,7 @@ macro_rules! ordered_passes_renderpass {
 
             fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
                 Ok(Box::new(try!(attachments.check_attachments_list())))
-                
+
                 // FIXME:
                 /*$({
                     if !l.$atch_name.identity_swizzle() {

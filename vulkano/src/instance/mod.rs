@@ -16,7 +16,7 @@
 //! ```no_run
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
-//! 
+//!
 //! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
@@ -88,7 +88,7 @@
 //! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
 //! // compile-time.
 //! let app_infos = ApplicationInfo::from_cargo_toml();
-//! 
+//!
 //! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
 //! ```
 //!

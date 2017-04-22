@@ -73,7 +73,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
     #[inline]
     fn num_push_constants_ranges(&self) -> usize {
         // We simply call `push_constants_range` repeatidely to determine when it is over.
-        // TODO: consider caching this 
+        // TODO: consider caching this
         (self.a.num_push_constants_ranges() ..).filter(|&n| {
             self.push_constants_range(n).is_none()
         }).next().unwrap()
@@ -119,14 +119,14 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
                     continue 'outer_loop;
                 }
             }
-            
+
             if num == 0 {
                 return Some(pc);
             } else {
                 num -= 1;
             }
         }
-        
+
         None
     }
 }

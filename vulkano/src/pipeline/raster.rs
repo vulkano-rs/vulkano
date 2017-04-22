@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Stage when triangles are turned into pixels.
-//! 
+//!
 //! The rasterization is the stage when collections of triangles are turned into collections
 //! of pixels or samples.
 //!

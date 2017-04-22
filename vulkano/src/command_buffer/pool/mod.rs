@@ -8,10 +8,10 @@
 // according to those terms.
 
 //! In the Vulkan API, command buffers must be allocated from *command pools*.
-//! 
+//!
 //! A command pool holds and manages the memory of one or more command buffers. If you destroy a
 //! command pool, all of its command buffers are automatically destroyed.
-//! 
+//!
 //! In vulkano, creating a command buffer requires passing an implementation of the `CommandPool`
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.

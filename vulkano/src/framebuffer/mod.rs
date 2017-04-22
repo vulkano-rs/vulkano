@@ -8,11 +8,11 @@
 // according to those terms.
 
 //! Targets on which your draw commands are executed.
-//! 
+//!
 //! # Render passes and framebuffers
 //!
 //! There are two concepts in Vulkan:
-//! 
+//!
 //! - A *render pass* describes the target which you are going to render to. It is a collection
 //!   of descriptions of one or more attachments (ie. image that are rendered to), and of one or
 //!   multiples subpasses. The render pass contains the format and number of samples of each

@@ -88,9 +88,9 @@ impl Swapchain {
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
     /// supported by the implementation. All the parameters that you pass to `Swapchain::new`
-    /// must be supported. 
+    /// must be supported.
     ///
-    /// The `clipped` parameter indicates whether the implementation is allowed to discard 
+    /// The `clipped` parameter indicates whether the implementation is allowed to discard
     /// rendering operations that affect regions of the surface which aren't visible. This is
     /// important to take into account if your fragment shader has side-effects or if you want to
     /// read back the content of the image afterwards.
@@ -336,7 +336,7 @@ impl Swapchain {
 
     /// Returns the number of images of the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn num_images(&self) -> u32 {
         self.num_images
@@ -344,7 +344,7 @@ impl Swapchain {
 
     /// Returns the format of the images of the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn format(&self) -> Format {
         self.format
@@ -352,7 +352,7 @@ impl Swapchain {
 
     /// Returns the dimensions of the images of the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
         self.dimensions
@@ -360,7 +360,7 @@ impl Swapchain {
 
     /// Returns the number of layers of the images of the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn layers(&self) -> u32 {
         self.layers
@@ -368,7 +368,7 @@ impl Swapchain {
 
     /// Returns the transform that was passed when creating the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn transform(&self) -> SurfaceTransform {
         self.transform
@@ -376,7 +376,7 @@ impl Swapchain {
 
     /// Returns the alpha mode that was passed when creating the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn composite_alpha(&self) -> CompositeAlpha {
         self.alpha
@@ -384,7 +384,7 @@ impl Swapchain {
 
     /// Returns the present mode that was passed when creating the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn present_mode(&self) -> PresentMode {
         self.mode
@@ -392,7 +392,7 @@ impl Swapchain {
 
     /// Returns the value of `clipped` that was passed when creating the swapchain.
     ///
-    /// See the documentation of `Swapchain::new`. 
+    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn clipped(&self) -> bool {
         self.clipped

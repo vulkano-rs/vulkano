@@ -422,7 +422,7 @@ pub struct SimpleDescriptorSetBuf<B> {
             all_graphics: true,
             .. PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             shader_read: true,
@@ -453,7 +453,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
             all_graphics: true,
             .. PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             shader_read: true,
@@ -491,7 +491,7 @@ pub struct SimpleDescriptorSetImg<I> {
             all_graphics: true,
             .. PipelineStages::none()
         };
-        
+
         let access = AccessFlagBits {
             uniform_read: true,
             input_attachment_read: true,

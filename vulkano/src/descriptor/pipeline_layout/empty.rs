@@ -15,15 +15,15 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 /// Description of an empty pipeline layout.
 ///
 /// # Example
-/// 
+///
 /// ```
 /// # use std::sync::Arc;
 /// # use vulkano::device::Device;
 /// use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 /// use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-/// 
+///
 /// # let device: Arc<Device> = return;
-/// let pipeline_layout = EmptyPipelineDesc.build(&device).unwrap(); 
+/// let pipeline_layout = EmptyPipelineDesc.build(&device).unwrap();
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub struct EmptyPipelineDesc;

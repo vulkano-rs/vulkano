@@ -8,11 +8,11 @@
 // according to those terms.
 
 //! Stage of a graphics pipeline.
-//! 
+//!
 //! In Vulkan, shaders are grouped in *shader modules*. Each shader module is built from SPIR-V
 //! code and can contain one or more entry points. Note that for the moment the official
 //! GLSL-to-SPIR-V compiler does not support multiple entry points.
-//! 
+//!
 //! The vulkano library does not provide any functionnality that checks and introspects the SPIR-V
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
@@ -264,7 +264,7 @@ impl<P> Drop for ShaderModule<P> where P: SafeDeref<Target = Device> {
 ///
 /// Can be obtained by calling `vertex_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct VertexShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct VertexShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -314,7 +314,7 @@ impl<'a, S, I, O, L, P> VertexShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `tess_control_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -325,7 +325,7 @@ pub struct TessControlShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -363,7 +363,7 @@ impl<'a, S, I, O, L, P> TessControlShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `tess_evaluation_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -374,7 +374,7 @@ pub struct TessEvaluationShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -412,7 +412,7 @@ impl<'a, S, I, O, L, P> TessEvaluationShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `geometry_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -424,7 +424,7 @@ pub struct GeometryShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> GeometryShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> GeometryShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -503,7 +503,7 @@ impl GeometryShaderExecutionMode {
 ///
 /// Can be obtained by calling `fragment_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>> 
+pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -514,7 +514,7 @@ pub struct FragmentShaderEntryPoint<'a, S, I, O, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P> 
+impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
@@ -552,7 +552,7 @@ impl<'a, S, I, O, L, P> FragmentShaderEntryPoint<'a, S, I, O, L, P>
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
 #[derive(Debug, Copy, Clone)]
-pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>> 
+pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>>
     where P: 'a + SafeDeref<Target = Device>
 {
     module: &'a ShaderModule<P>,
@@ -561,7 +561,7 @@ pub struct ComputeShaderEntryPoint<'a, S, L, P = Arc<Device>>
     marker: PhantomData<S>,
 }
 
-impl<'a, S, L, P> ComputeShaderEntryPoint<'a, S, L, P> 
+impl<'a, S, L, P> ComputeShaderEntryPoint<'a, S, L, P>
     where P: 'a + SafeDeref<Target = Device>
 {
     /// Returns the module this entry point comes from.
