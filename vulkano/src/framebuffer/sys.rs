@@ -311,6 +311,8 @@ impl<D> RenderPass<D> {
             vk.GetRenderAreaGranularity(self.device.internal_object(),
                                         self.render_pass, &mut out);
 
+            debug_assert_ne!(out.width, 0);
+            debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
             *granularity = Some(gran);
             gran
@@ -475,7 +477,14 @@ impl From<Error> for RenderPassCreationError {
 #[cfg(test)]
 mod tests {
     use format::Format;
+    use framebuffer::RenderPass;
     use framebuffer::RenderPassCreationError;
+
+    #[test]
+    fn empty() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = RenderPass::empty_single_pass(device).unwrap();
+    }
 
     #[test]
     fn too_many_color_atch() {
@@ -509,5 +518,25 @@ mod tests {
             Err(RenderPassCreationError::ColorAttachmentsLimitExceeded) => (),
             _ => panic!()
         }
+    }
+
+    #[test]
+    fn non_zero_granularity() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = single_pass_renderpass! {
+            device.clone(),
+            attachments: {
+                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
+            },
+            pass: {
+                color: [a],
+                depth_stencil: {}
+            }
+        }.unwrap();
+
+        let granularity = rp.granularity();
+        assert_ne!(granularity[0], 0);
+        assert_ne!(granularity[1], 0);
     }
 }
