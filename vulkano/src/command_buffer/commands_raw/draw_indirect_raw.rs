@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 use buffer::BufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -58,7 +59,7 @@ unsafe impl<'a, B, P> AddCommand<&'a CmdDrawIndirectRaw<B>> for UnsafeCommandBuf
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdDrawIndirectRaw<B>) -> Self::Out {
+    fn add(self, command: &'a CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -66,6 +67,6 @@ unsafe impl<'a, B, P> AddCommand<&'a CmdDrawIndirectRaw<B>> for UnsafeCommandBuf
                                command.offset, command.draw_count, command.stride);
         }
 
-        self
+        Ok(self)
     }
 }

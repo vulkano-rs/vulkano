@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 use buffer::BufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -149,7 +150,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBufferToImage<S, D>> for UnsafeCo
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdCopyBufferToImage<S, D>) -> Self::Out {
+    fn add(self, command: &'a CmdCopyBufferToImage<S, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             debug_assert!(command.destination_layout == vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ||
                           command.destination_layout == vk::IMAGE_LAYOUT_GENERAL);
@@ -182,7 +183,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBufferToImage<S, D>> for UnsafeCo
                                     command.destination_layout, 1, &region as *const _);
         }
 
-        self
+        Ok(self)
     }
 }
 

@@ -13,6 +13,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -120,7 +121,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBuffer<S, D>> for UnsafeCommandBu
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdCopyBuffer<S, D>) -> Self::Out {
+    fn add(self, command: &'a CmdCopyBuffer<S, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -134,7 +135,7 @@ unsafe impl<'a, P, S, D> AddCommand<&'a CmdCopyBuffer<S, D>> for UnsafeCommandBu
             vk.CmdCopyBuffer(cmd, command.source_raw, command.destination_raw, 1, &region);
         }
 
-        self
+        Ok(self)
     }
 }
 

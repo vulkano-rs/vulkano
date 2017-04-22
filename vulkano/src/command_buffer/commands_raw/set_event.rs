@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::sync::Arc;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -44,7 +45,7 @@ unsafe impl<'a, P> AddCommand<&'a CmdSetEvent> for UnsafeCommandBufferBuilder<P>
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdSetEvent) -> Self::Out {
+    fn add(self, command: &'a CmdSetEvent) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -55,6 +56,6 @@ unsafe impl<'a, P> AddCommand<&'a CmdSetEvent> for UnsafeCommandBufferBuilder<P>
             }
         }
 
-        self
+        Ok(self)
     }
 }

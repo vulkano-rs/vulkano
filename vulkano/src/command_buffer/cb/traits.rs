@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use command_buffer::CommandAddError;
+
 /// Adds a command to a command buffer builder.
 pub unsafe trait AddCommand<C> {
     /// The new command buffer builder type.
@@ -14,5 +16,5 @@ pub unsafe trait AddCommand<C> {
 
     /// Adds the command. This takes ownership of the builder and returns a new builder with the
     /// command appended at the end of it.
-    fn add(self, cmd: C) -> Self::Out;
+    fn add(self, cmd: C) -> Result<Self::Out, CommandAddError>;
 }

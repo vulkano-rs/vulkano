@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 
 use command_buffer::cb::AddCommand;
+use command_buffer::CommandAddError;
 use command_buffer::commands_raw::CmdBindDescriptorSets;
 use command_buffer::commands_raw::CmdBindDescriptorSetsError;
 use command_buffer::commands_raw::CmdBindPipeline;
@@ -60,11 +61,11 @@ unsafe impl<Cb, P, S, Pc, O, O1, O2, O3> AddCommand<CmdDispatch<P, S, Pc>> for C
     type Out = O;
 
     #[inline]
-    fn add(self, command: CmdDispatch<P, S, Pc>) -> O {
-        self.add(command.push_constants)
-            .add(command.descriptor_sets)
-            .add(command.bind_pipeline)
-            .add(command.dispatch_raw)
+    fn add(self, command: CmdDispatch<P, S, Pc>) -> Result<Self::Out, CommandAddError> {
+        Ok(self.add(command.push_constants)?
+               .add(command.descriptor_sets)?
+               .add(command.bind_pipeline)?
+               .add(command.dispatch_raw)?)
     }
 }
 
