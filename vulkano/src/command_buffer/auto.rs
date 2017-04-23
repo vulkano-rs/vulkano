@@ -162,6 +162,7 @@ pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);
 pass_through!((S, D), commands_raw::CmdCopyBufferToImage<S, D>);
 pass_through!((), commands_raw::CmdDrawRaw);
 pass_through!((), commands_raw::CmdDrawIndexedRaw);
+pass_through!((B), commands_raw::CmdDrawIndirectRaw<B>);
 pass_through!((), commands_raw::CmdEndRenderPass);
 pass_through!((C), commands_raw::CmdExecuteCommands<C>);
 pass_through!((B), commands_raw::CmdFillBuffer<B>);
