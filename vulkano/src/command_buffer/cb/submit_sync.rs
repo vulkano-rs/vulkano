@@ -317,6 +317,24 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawIndexedRaw> for SubmitSyncBuil
     }
 }
 
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdDrawIndirectRaw<B>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdDrawIndirectRaw<B>, Out = O>,
+          B: BufferAccess + Send + Sync + Clone + 'static
+{
+    type Out = SubmitSyncBuilderLayer<O>;
+
+    #[inline]
+    fn add(mut self, command: commands_raw::CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
+        self.add_buffer(command.buffer(), true);
+
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
+            buffers: self.buffers,
+            images: self.images,
+        })
+    }
+}
+
 unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdEndRenderPass, Out = O>
 {

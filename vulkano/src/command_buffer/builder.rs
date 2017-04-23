@@ -14,6 +14,7 @@ use std::sync::Arc;
 use buffer::Buffer;
 use buffer::TypedBuffer;
 use device::DeviceOwned;
+use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
@@ -195,6 +196,24 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
               I: Index + 'static
     {
         let cmd = commands_extra::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.access(),
+                                           sets, push_constants);
+        self.add(cmd)
+    }
+
+    /// Adds an indirect draw command.
+    ///
+    /// Can only be used from inside a render pass.
+    #[inline]
+    fn draw_indirect<P, S, Pc, V, B, I, O>(self, pipeline: P, dynamic: DynamicState,
+        vertices: V, indirect_buffer: B, sets: S, push_constants: Pc) -> Result<O, CommandAddError>
+        where Self: Sized + AddCommand<commands_extra::CmdDrawIndirect<V, B::Access, P, S, Pc>, Out = O>,
+              S: DescriptorSetsCollection,
+              P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
+              B: Buffer,
+              B::Access: TypedBuffer<Content = [DrawIndirectCommand]>,
+              I: Index + 'static
+    {
+        let cmd = commands_extra::CmdDrawIndirect::new(pipeline, dynamic, vertices, indirect_buffer.access(),
                                            sets, push_constants);
         self.add(cmd)
     }
