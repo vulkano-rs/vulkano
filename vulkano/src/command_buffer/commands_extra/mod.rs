@@ -15,8 +15,10 @@ pub use self::dispatch::{CmdDispatch, CmdDispatchError};
 //pub use self::dispatch_indirect::{CmdDispatchIndirect, CmdDispatchIndirectError};
 pub use self::draw::CmdDraw;
 pub use self::draw_indexed::CmdDrawIndexed;
+pub use self::draw_indirect::CmdDrawIndirect;
 
 mod dispatch;
 //mod dispatch_indirect;
 mod draw;
 mod draw_indexed;
+mod draw_indirect;
