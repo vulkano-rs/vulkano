@@ -467,7 +467,11 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for OneVert
 {
     #[inline]
     fn decode<'l>(&self, source: &'l Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
-        unimplemented!()        // FIXME: implement
+        // FIXME: safety
+        assert_eq!(source.len(), 2);
+        let len = source[0].size() / mem::size_of::<T>();
+        let inst = source[0].size() / mem::size_of::<U>();
+        (vec![source[0].inner(), source[1].inner()], len, inst)
     }
 }
 
