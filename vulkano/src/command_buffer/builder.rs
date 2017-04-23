@@ -204,14 +204,13 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     ///
     /// Can only be used from inside a render pass.
     #[inline]
-    fn draw_indirect<P, S, Pc, V, B, I, O>(self, pipeline: P, dynamic: DynamicState,
+    fn draw_indirect<P, S, Pc, V, B, O>(self, pipeline: P, dynamic: DynamicState,
         vertices: V, indirect_buffer: B, sets: S, push_constants: Pc) -> Result<O, CommandAddError>
         where Self: Sized + AddCommand<commands_extra::CmdDrawIndirect<V, B::Access, P, S, Pc>, Out = O>,
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
               B: Buffer,
-              B::Access: TypedBuffer<Content = [DrawIndirectCommand]>,
-              I: Index + 'static
+              B::Access: TypedBuffer<Content = [DrawIndirectCommand]>
     {
         let cmd = commands_extra::CmdDrawIndirect::new(pipeline, dynamic, vertices, indirect_buffer.access(),
                                            sets, push_constants);
