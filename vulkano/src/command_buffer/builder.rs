@@ -12,6 +12,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use buffer::Buffer;
+use buffer::TypedBuffer;
 use buffer::TypedBufferAccess;
 use device::DeviceOwned;
 use command_buffer::DrawIndirectCommand;
@@ -61,9 +62,10 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     #[inline]
     fn update_buffer<B, D, O>(self, buffer: B, data: D) -> Result<O, CommandBufferBuilderError<commands_raw::CmdUpdateBufferError>>
         where Self: Sized + AddCommand<commands_raw::CmdUpdateBuffer<B::Access, D>, Out = O>,
-              B: Buffer
+              B: Buffer + TypedBuffer<Content = D>,
+              D: 'static
     {
-        let cmd = match commands_raw::CmdUpdateBuffer::new(buffer.access(), data) {
+        let cmd = match commands_raw::CmdUpdateBuffer::new(buffer, data) {
             Ok(cmd) => cmd,
             Err(err) => return Err(CommandBufferBuilderError::CommandBuildError(err)),
         };
