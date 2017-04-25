@@ -161,12 +161,17 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: BufferAccess {
-    type Access = Self;
+unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+    type Access = BufferSlice<T, B::Access>;
 
     #[inline]
-    fn access(self) -> Self {
-        self
+    fn access(self) -> Self::Access {
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource.access(),
+            offset: self.offset,
+            size: self.size,
+        }
     }
 
     #[inline]
