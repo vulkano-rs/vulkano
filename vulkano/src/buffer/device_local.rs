@@ -27,7 +27,7 @@ use buffer::sys::Usage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -209,7 +209,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 }
 
-unsafe impl<P, T: ?Sized, A> TypedBuffer for DeviceLocalBufferAccess<P>
+unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
           A: MemoryPool

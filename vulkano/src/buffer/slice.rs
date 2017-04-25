@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::TypedBuffer;
+use buffer::traits::TypedBufferAccess;
 use buffer::traits::Buffer;
 use device::Device;
 use device::DeviceOwned;
@@ -224,7 +224,7 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: BufferAccess, T: 'static {
+unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess, T: 'static {
     type Content = T;
 }
 
@@ -238,7 +238,7 @@ unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
 }
 
 impl<T: ?Sized, B> From<B> for BufferSlice<T, B>
-    where B: TypedBuffer<Content = T>, T: 'static
+    where B: TypedBufferAccess<Content = T>, T: 'static
 {
     #[inline]
     fn from(r: B) -> BufferSlice<T, B> {

@@ -31,7 +31,7 @@ use buffer::sys::Usage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -194,7 +194,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A>
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for ImmutableBuffer<T, A>
+unsafe impl<T: ?Sized, A> TypedBufferAccess for ImmutableBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Content = T;

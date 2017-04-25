@@ -12,7 +12,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use buffer::Buffer;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use device::DeviceOwned;
 use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
@@ -192,7 +192,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
               Ib: Buffer,
-              Ib::Access: TypedBuffer<Content = [I]>,
+              Ib::Access: TypedBufferAccess<Content = [I]>,
               I: Index + 'static
     {
         let cmd = commands_extra::CmdDrawIndexed::new(pipeline, dynamic, vertices, index_buffer.access(),
@@ -210,7 +210,7 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
               S: DescriptorSetsCollection,
               P: VertexSource<V> + GraphicsPipelineAbstract + Clone,
               B: Buffer,
-              B::Access: TypedBuffer<Content = [DrawIndirectCommand]>
+              B::Access: TypedBufferAccess<Content = [DrawIndirectCommand]>
     {
         let cmd = commands_extra::CmdDrawIndirect::new(pipeline, dynamic, vertices, indirect_buffer.access(),
                                            sets, push_constants);

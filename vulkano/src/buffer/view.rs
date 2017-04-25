@@ -45,7 +45,7 @@ use std::sync::Arc;
 
 use buffer::BufferAccess;
 use buffer::BufferInner;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use format::FormatDesc;
@@ -72,7 +72,7 @@ impl<F, B> BufferView<F, B> where B: BufferAccess {
     /// Builds a new buffer view.
     #[inline]
     pub fn new(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where B: TypedBuffer<Content = [F::Pixel]>, F: StrongStorage + 'static
+        where B: TypedBufferAccess<Content = [F::Pixel]>, F: StrongStorage + 'static
     {
         unsafe {
             BufferView::unchecked(buffer, format)

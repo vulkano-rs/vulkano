@@ -48,14 +48,14 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
+    fn len(&self) -> usize where Self: TypedBufferAccess, Self::Content: Content {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 
     /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
-        where Self: Sized + TypedBuffer
+        where Self: Sized + TypedBufferAccess
     {
         BufferSlice::from(self)
     }
@@ -70,7 +70,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>,
+        where Self: Sized + TypedBufferAccess<Content = [T]>,
               T: 'static
     {
         BufferSlice::slice(self.as_buffer_slice(), range)
@@ -79,7 +79,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Builds a `BufferSlice` object holding the buffer by value.
     #[inline]
     fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
-        where Self: Sized + TypedBuffer
+        where Self: Sized + TypedBufferAccess
     {
         BufferSlice::from(self)
     }
@@ -94,7 +94,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>,
+        where Self: Sized + TypedBufferAccess<Content = [T]>,
               T: 'static
     {
         self.slice(index .. (index + 1))
@@ -225,10 +225,10 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     }
 }
 
-pub unsafe trait TypedBuffer: BufferAccess {
+pub unsafe trait TypedBufferAccess: BufferAccess {
     type Content: ?Sized + 'static;
 }
 
-unsafe impl<T> TypedBuffer for T where T: SafeDeref, T::Target: TypedBuffer {
-    type Content = <T::Target as TypedBuffer>::Content;
+unsafe impl<T> TypedBufferAccess for T where T: SafeDeref, T::Target: TypedBufferAccess {
+    type Content = <T::Target as TypedBufferAccess>::Content;
 }

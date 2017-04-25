@@ -8,7 +8,7 @@
 // according to those terms.
 
 use buffer::BufferAccess;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use command_buffer::CommandAddError;
 use command_buffer::DynamicState;
 use command_buffer::DrawIndirectCommand;
@@ -35,7 +35,7 @@ pub struct CmdDrawIndirect<V, I, P, S, Pc> {
 
 impl<V, I, P, S, Pc> CmdDrawIndirect<V, I, P, S, Pc>
     where P: GraphicsPipelineAbstract, S: DescriptorSetsCollection,
-          I: BufferAccess + TypedBuffer<Content = [DrawIndirectCommand]>
+          I: BufferAccess + TypedBufferAccess<Content = [DrawIndirectCommand]>
 {
     /// See the documentation of the `draw` method.
     pub fn new(pipeline: P, dynamic: DynamicState, vertices: V, indirect_buffer: I, sets: S,

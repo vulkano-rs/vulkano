@@ -13,7 +13,7 @@ use std::mem;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use command_buffer::commands_raw::CmdBindDescriptorSets;
 use command_buffer::commands_raw::CmdBindDescriptorSetsError;
 use command_buffer::commands_raw::CmdBindPipeline;
@@ -62,7 +62,7 @@ impl<L, B, Pl, S, Pc> CmdDispatchIndirect<L, B, Pl, S, Pc>
     pub unsafe fn new(previous: L, pipeline: Arc<ComputePipeline<Pl>>, sets: S, push_constants: Pc,
                       buffer: B)
                       -> Result<CmdDispatchIndirect<L, B, Pl, S, Pc>, CmdDispatchIndirectError>
-        where B: TypedBuffer<Content = DispatchIndirectCommand>
+        where B: TypedBufferAccess<Content = DispatchIndirectCommand>
     {
         let previous = CmdBindPipeline::bind_compute_pipeline(previous, pipeline.clone());
         let device = previous.device().clone();
