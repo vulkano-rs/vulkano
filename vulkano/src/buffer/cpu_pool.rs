@@ -385,6 +385,11 @@ unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
     fn access(self) -> Self {
         self
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.size
+    }
 }
 
 impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {

@@ -168,6 +168,11 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: BufferAccess {
     fn access(self) -> Self {
         self
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.size
+    }
 }
 
 unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAccess {

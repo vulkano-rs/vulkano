@@ -26,6 +26,9 @@ pub unsafe trait Buffer {
 
     /// Builds an object that represents a GPU access to the buffer.
     fn access(self) -> Self::Access;
+
+    /// Returns the size of the buffer in bytes.
+    fn size(&self) -> usize;
 }
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a

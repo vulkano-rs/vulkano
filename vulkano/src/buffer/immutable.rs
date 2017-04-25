@@ -165,6 +165,11 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<ImmutableBuffer<T, A>>
     fn access(self) -> Self {
         self
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A>

@@ -294,6 +294,11 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<CpuAccessibleBuffer<T, A>>
     fn access(self) -> Self {
         self
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>

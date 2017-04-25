@@ -171,6 +171,11 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
     fn access(self) -> Self::Access {
         DeviceLocalBufferAccess(self)
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
 }
 
 unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
