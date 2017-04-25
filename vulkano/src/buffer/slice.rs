@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
+use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use buffer::traits::Buffer;
 use device::Device;
@@ -67,6 +68,34 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B>
 }
 
 impl<T: ?Sized, B> BufferSlice<T, B> {
+    #[inline]
+    pub fn from_typed_buffer(r: B) -> BufferSlice<T, B>
+        where B: TypedBuffer<Content = T>, T: 'static
+    {
+        let size = r.size();
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: r,
+            offset: 0,
+            size: size,
+        }
+    }
+
+    #[inline]
+    pub fn from_typed_buffer_access(r: B) -> BufferSlice<T, B>
+        where B: TypedBufferAccess<Content = T>, T: 'static
+    {
+        let size = r.size();
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: r,
+            offset: 0,
+            size: size,
+        }
+    }
+
     /// Returns the buffer that this slice belongs to.
     pub fn buffer(&self) -> &B {
         &self.resource
@@ -234,22 +263,6 @@ unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.resource.device()
-    }
-}
-
-impl<T: ?Sized, B> From<B> for BufferSlice<T, B>
-    where B: TypedBufferAccess<Content = T>, T: 'static
-{
-    #[inline]
-    fn from(r: B) -> BufferSlice<T, B> {
-        let size = r.size();
-
-        BufferSlice {
-            marker: PhantomData,
-            resource: r,
-            offset: 0,
-            size: size,
-        }
     }
 }
 

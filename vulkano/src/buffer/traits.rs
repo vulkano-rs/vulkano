@@ -29,6 +29,54 @@ pub unsafe trait Buffer {
 
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
+
+    /// Returns the length of the buffer in number of elements.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    #[inline]
+    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
+        self.size() / <Self::Content as Content>::indiv_size()
+    }
+
+    /// Builds a `BufferSlice` object holding part of the buffer.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    ///
+    /// This method can be used when you want to perform an operation on some part of the buffer
+    /// and not on the whole buffer.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn slice<T>(self, range: Range<usize>) -> Option<BufferSlice<[T], Self>>
+        where Self: Sized + TypedBuffer<Content = [T]>,
+              T: 'static
+    {
+        BufferSlice::slice(self.into_buffer_slice(), range)
+    }
+
+    /// Builds a `BufferSlice` object holding the buffer by value.
+    #[inline]
+    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
+        where Self: Sized + TypedBuffer
+    {
+        BufferSlice::from_typed_buffer(self)
+    }
+
+    /// Builds a `BufferSlice` object holding part of the buffer.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    ///
+    /// This method can be used when you want to perform an operation on a specific element of the
+    /// buffer and not on the whole buffer.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn index<T>(self, index: usize) -> Option<BufferSlice<[T], Self>>
+        where Self: Sized + TypedBuffer<Content = [T]>,
+              T: 'static
+    {
+        self.slice(index .. (index + 1))
+    }
 }
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
@@ -57,7 +105,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
         where Self: Sized + TypedBufferAccess
     {
-        BufferSlice::from(self)
+        BufferSlice::from_typed_buffer_access(self)
     }
 
     /// Builds a `BufferSlice` object holding part of the buffer by reference.
@@ -81,7 +129,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
         where Self: Sized + TypedBufferAccess
     {
-        BufferSlice::from(self)
+        BufferSlice::from_typed_buffer_access(self)
     }
 
     /// Builds a `BufferSlice` object holding part of the buffer by reference.
@@ -223,6 +271,10 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
     }
+}
+
+pub unsafe trait TypedBuffer: Buffer {
+    type Content: ?Sized + 'static;
 }
 
 pub unsafe trait TypedBufferAccess: BufferAccess {
