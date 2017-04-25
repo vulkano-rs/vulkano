@@ -20,6 +20,8 @@ use SafeDeref;
 use VulkanObject;
 
 /// Trait for objects that represent either a buffer or a slice of a buffer.
+///
+/// See also `TypedBuffer`.
 pub unsafe trait Buffer {
     /// Object that represents a GPU access to the buffer.
     type Access: BufferAccess;
@@ -79,8 +81,16 @@ pub unsafe trait Buffer {
     }
 }
 
+/// Extension trait for `Buffer`. Indicates the type of the content of the buffer.
+pub unsafe trait TypedBuffer: Buffer {
+    /// The type of the content of the buffer.
+    type Content: ?Sized + 'static;
+}
+
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
+///
+/// See also `TypedBufferAccess`.
 pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
@@ -273,11 +283,9 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     }
 }
 
-pub unsafe trait TypedBuffer: Buffer {
-    type Content: ?Sized + 'static;
-}
-
+/// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBufferAccess: BufferAccess {
+    /// The type of the content.
     type Content: ?Sized + 'static;
 }
 
