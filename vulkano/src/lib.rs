@@ -15,8 +15,8 @@
 //!   starting to use Vulkan.
 //!
 //! - The `PhysicalDevice` object represents an implementation of Vulkan available on the system
-//!   (eg. a graphics card, a CPU implementation, multiple graphics card working together, etc.).
-//!   Physical devices can be enumerated from an instance with `PhysicalDevice::enumerate()`.
+//!   (eg. a graphics card, a software implementation, etc.). Physical devices can be enumerated
+//!   from an instance with `PhysicalDevice::enumerate()`.
 //!
 //! - Once you have chosen a physical device to use, you can create a `Device` object from it. The
 //!   `Device` is the most important object of Vulkan, as it represents an open channel of
