@@ -96,8 +96,8 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
                 samples: attachment.samples,
                 loadOp: attachment.load as u32,
                 storeOp: attachment.store as u32,
-                stencilLoadOp: attachment.load as u32,       // TODO: allow user to choose
-                stencilStoreOp: attachment.store as u32,      // TODO: allow user to choose
+                stencilLoadOp: attachment.stencil_load as u32,
+                stencilStoreOp: attachment.stencil_store as u32,
                 initialLayout: attachment.initial_layout as u32,
                 finalLayout: attachment.final_layout as u32,
             }
