@@ -14,6 +14,7 @@ use framebuffer::FramebufferCreationError;
 use framebuffer::FramebufferSys;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
+use image::ImageViewAccess;
 use pipeline::shader::ShaderInterfaceDef;
 
 use SafeDeref;
@@ -28,6 +29,10 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
 
     /// Returns the width, height and array layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
+
+    /// Returns all the attachments of the framebuffer.
+    // TODO: meh for trait object
+    fn attachments(&self) -> Vec<&ImageViewAccess>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -57,6 +62,11 @@ unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: Framebuf
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
+    }
+
+    #[inline]
+    fn attachments(&self) -> Vec<&ImageViewAccess> {
+        FramebufferAbstract::attachments(&**self)
     }
 }
 

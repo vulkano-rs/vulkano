@@ -28,6 +28,9 @@ pub unsafe trait AttachmentsList {
     /// For example if one view is 256x256x2 and another one is 128x512x3, then this function
     /// should return 128x256x2.
     fn intersection_dimensions(&self) -> Option<[u32; 3]>;
+
+    // TODO: meh for API
+    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess>;
 }
 
 unsafe impl<T> AttachmentsList for T where T: SafeDeref, T::Target: AttachmentsList {
@@ -40,6 +43,11 @@ unsafe impl<T> AttachmentsList for T where T: SafeDeref, T::Target: AttachmentsL
     fn intersection_dimensions(&self) -> Option<[u32; 3]> {
         (**self).intersection_dimensions()
     }
+
+    #[inline]
+    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
+        (**self).as_image_view_accesses()
+    }
 }
 
 unsafe impl AttachmentsList for () {
@@ -51,6 +59,11 @@ unsafe impl AttachmentsList for () {
     #[inline]
     fn intersection_dimensions(&self) -> Option<[u32; 3]> {
         None
+    }
+
+    #[inline]
+    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
+        vec![]
     }
 }
 
@@ -84,6 +97,11 @@ unsafe impl AttachmentsList for Vec<Arc<ImageViewAccess + Send + Sync>> {
         }
 
         dims
+    }
+
+    #[inline]
+    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
+        self.iter().map(|p| &**p as &ImageViewAccess).collect()
     }
 }
 
@@ -130,6 +148,19 @@ macro_rules! impl_into_atch_list {
                 )*
 
                 Some(dims)
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
+                let &(ref $first, $(ref $rest,)*) = self;
+                
+                vec![
+                    &*$first,
+                    $(
+                        &*$rest,
+                    )*
+                ]
             }
         }
 
