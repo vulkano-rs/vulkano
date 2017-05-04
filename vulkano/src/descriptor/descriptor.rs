@@ -254,7 +254,8 @@ impl DescriptorImageDesc {
                 match (my_max, other_max) {
                     (Some(m), Some(o)) => if m < o { return false; },
                     (Some(_), None) => (),
-                    (None, _) => return false,
+                    (None, Some(_)) => return false,
+                    (None, None) => (),     // TODO: is this correct?
                 };
             },
             _ => return false
