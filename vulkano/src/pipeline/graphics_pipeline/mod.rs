@@ -27,6 +27,7 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use format::ClearValue;
@@ -403,34 +404,19 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.vertex_shader.layout())
-        {
-            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-        }
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.fragment_shader.layout())
-        {
-            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-        }
+        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                   params.vertex_shader.layout())?;
+        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                   params.fragment_shader.layout())?;
         if let Some(ref geometry_shader) = params.geometry_shader {
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       geometry_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
+            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                       geometry_shader.layout())?;
         }
         if let Some(ref tess) = params.tessellation {
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_control_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_evaluation_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
+            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                       tess.tessellation_control_shader.layout())?;
+            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                       tess.tessellation_evaluation_shader.layout())?;
         }
 
         // Check that the subpass can accept the output of the fragment shader.
@@ -1259,7 +1245,7 @@ pub enum GraphicsPipelineCreationError {
     OomError(OomError),
 
     /// The pipeline layout is not compatible with what the shaders expect.
-    IncompatiblePipelineLayout,
+    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 
     /// The interface between the vertex shader and the geometry shader mismatches.
     VertexGeometryStagesMismatch(ShaderInterfaceMismatchError),
@@ -1438,7 +1424,7 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => {
                 "the interface between the geometry shader and the fragment shader mismatches"
             },
-            GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
                 "the pipeline layout is not compatible with what the shaders expect"
             },
             GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
@@ -1540,6 +1526,7 @@ impl error::Error for GraphicsPipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
@@ -1564,6 +1551,13 @@ impl From<OomError> for GraphicsPipelineCreationError {
     #[inline]
     fn from(err: OomError) -> GraphicsPipelineCreationError {
         GraphicsPipelineCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutNotSupersetError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutNotSupersetError) -> GraphicsPipelineCreationError {
+        GraphicsPipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }
 
