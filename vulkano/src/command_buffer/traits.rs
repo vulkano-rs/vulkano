@@ -48,6 +48,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// This function returns an object that implements the `GpuFuture` trait. See the
     /// documentation of the `sync` module for more information.
+    ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
     /// and call `.then_signal_future()` before doing so.
@@ -72,6 +73,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// This function returns an object that implements the `GpuFuture` trait. See the
     /// documentation of the `sync` module for more information.
+    ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
     /// and call `.then_signal_future()` before doing so.
