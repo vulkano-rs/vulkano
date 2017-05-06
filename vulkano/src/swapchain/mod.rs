@@ -154,14 +154,14 @@
 //!
 //! TODO: suboptimal stuff
 //!
-//! ```no_run
+//! ```
 //! # use std::time::Duration;
 //! use vulkano::swapchain::AcquireError;
 //! use vulkano::sync::GpuFuture;
 //!
 //! // let mut swapchain = Swapchain::new(...);
-//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = unsafe { ::std::mem::uninitialized() };
-//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = unsafe { ::std::mem::uninitialized() };
+//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = return;
+//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!
 //! loop {
