@@ -16,6 +16,7 @@ use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
 use command_buffer::CommandBufferExecFuture;
 use command_buffer::submit::SubmitAnyBuilder;
+use command_buffer::submit::SubmitBindSparseError;
 use command_buffer::submit::SubmitPresentError;
 use command_buffer::submit::SubmitCommandBufferError;
 use device::DeviceOwned;
@@ -454,6 +455,16 @@ impl From<SubmitCommandBufferError> for FlushError {
         match err {
             SubmitCommandBufferError::OomError(err) => FlushError::OomError(err),
             SubmitCommandBufferError::DeviceLost => FlushError::DeviceLost,
+        }
+    }
+}
+
+impl From<SubmitBindSparseError> for FlushError {
+    #[inline]
+    fn from(err: SubmitBindSparseError) -> FlushError {
+        match err {
+            SubmitBindSparseError::OomError(err) => FlushError::OomError(err),
+            SubmitBindSparseError::DeviceLost => FlushError::DeviceLost,
         }
     }
 }

@@ -76,6 +76,8 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+        // TODO: review this function
+
         let first = try!(self.first.build_submission());
         let second = try!(self.second.build_submission());
 
@@ -102,6 +104,14 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
                 try!(a.submit(&self.first.queue().clone().unwrap()));
                 SubmitAnyBuilder::SemaphoresWait(b)
             },
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(b)) => {
+                try!(b.submit(&self.second.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(a)
+            },
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                try!(a.submit(&self.first.queue().clone().unwrap()));
+                SubmitAnyBuilder::SemaphoresWait(b)
+            },
             (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
                 // TODO: we may want to add debug asserts here
                 let new = a.merge(b);
@@ -117,6 +127,28 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
             },
             (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::CommandBuffer(b)) => {
                 unimplemented!()
+            },
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                unimplemented!()
+            },
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::BindSparse(b)) => {
+                unimplemented!()
+            },
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                unimplemented!()
+            },
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::BindSparse(b)) => {
+                unimplemented!()
+            },
+            (SubmitAnyBuilder::BindSparse(mut a), SubmitAnyBuilder::BindSparse(b)) => {
+                match a.merge(b) {
+                    Ok(()) => SubmitAnyBuilder::BindSparse(a),
+                    Err(_) => {
+                        // TODO: this happens if both bind sparse have been given a fence already
+                        //       annoying, but not impossible, to handle
+                        unimplemented!()
+                    }
+                }
             },
         })
     }

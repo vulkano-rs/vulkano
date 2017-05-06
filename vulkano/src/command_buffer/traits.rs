@@ -220,7 +220,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
                 builder.add_command_buffer(self.command_buffer.inner());
                 SubmitAnyBuilder::CommandBuffer(builder)
             },
-            SubmitAnyBuilder::QueuePresent(present) => {
+            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_) => {
                 unimplemented!()        // TODO:
                 /*present.submit();     // TODO: wrong
                 let mut builder = SubmitCommandBufferBuilder::new();

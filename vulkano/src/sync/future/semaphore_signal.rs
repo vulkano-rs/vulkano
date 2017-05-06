@@ -97,6 +97,12 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
                     builder.add_signal_semaphore(&self.semaphore);
                     try!(builder.submit(&queue));
                 },
+                SubmitAnyBuilder::BindSparse(_) => {
+                    unimplemented!()        // TODO: how to do that?
+                    /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
+                    builder.add_signal_semaphore(&self.semaphore);
+                    try!(builder.submit(&queue));*/
+                },
                 SubmitAnyBuilder::QueuePresent(present) => {
                     try!(present.submit(&queue));
                     let mut builder = SubmitCommandBufferBuilder::new();
