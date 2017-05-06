@@ -36,6 +36,8 @@ use sync::Semaphore;
 use VulkanObject;
 
 /// Represents an event that will happen on the GPU in the future.
+///
+/// See the documentation of the `sync` module for explanations about futures.
 // TODO: consider switching all methods to take `&mut self` for optimization purposes
 pub unsafe trait GpuFuture: DeviceOwned {
     /// If possible, checks whether the submission has finished. If so, gives up ownership of the

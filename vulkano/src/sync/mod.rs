@@ -18,16 +18,21 @@
 //!
 //! # Futures
 //!
-//! Whenever you want ask the GPU to start an operation (for example executing a command buffer),
-//! you need to call a function from vulkano that returns a *future*. A future is an object that
-//! implements [the `GpuFuture` trait](trait.GpuFuture.html) and that represents the point in time
-//! when the operation is over.
+//! Whenever you ask the GPU to start an operation by using a function of the vulkano library (for
+//! example executing a command buffer), this function will return a *future*. A future is an
+//! object that implements [the `GpuFuture` trait](trait.GpuFuture.html) and that represents the
+//! point in time when this operation is over.
+//!
+//! No function in vulkano immediately sends an operation to the GPU (with the exception of some
+//! unsafe low-level functions). Instead they return a future that is in the pending state. Before
+//! the GPU actually starts doing anything, you have to *flush* the future by calling the `flush()`
+//! method or one of its derivatives.
 //!
 //! Futures serve several roles:
 //!
-//! - Futures can be used to build dependencies between submissions so that you can ask that an
-//!   operation starts only after a previous operation is finished.
-//! - Submitting an operation to the GPU is a costly operation. When chaining multiple operations
+//! - Futures can be used to build dependencies between operations and makes it possible to ask
+//!   that an operation starts only after a previous operation is finished.
+//! - Submitting an operation to the GPU is a costly operation. By chaining multiple operations
 //!   with futures you will submit them all at once instead of one by one, thereby reducing this
 //!   cost.
 //! - Futures keep alive the resources and objects used by the GPU so that they don't get destroyed
@@ -35,48 +40,66 @@
 //!
 //! The last point means that you should keep futures alive in your program for as long as their
 //! corresponding operation is potentially still being executed by the GPU. Dropping a future
-//! earlier will block the current thread until the GPU has finished the operation, which is not
-//! usually not what you want.
+//! earlier will block the current thread (after flushing, if necessary) until the GPU has finished
+//! the operation, which is usually not what you want.
 //!
-//! In other words if you write a function in your program that submits an operation to the GPU,
-//! you should always make this function return the corresponding future and let the caller handle
-//! it.
+//! If you write a function that submits an operation to the GPU in your program, you are
+//! encouraged to let this function return the corresponding future and let the caller handle it.
+//! This way the caller will be able to chain multiple futures together and decide when it wants to
+//! keep the future alive or drop it.
 //!
-//! # Dependencies between futures
+//! # Executing an operation after a future
 //!
-//! Building dependencies between futures is important, as it is what *proves* vulkano that
-//! some an operation is indeed safe. For example if you submit two operations that modify the same
-//! buffer, then you need to make sure that one of them gets executed after the other. Failing to
-//! add a dependency would mean that these two operations could potentially execute simultaneously
-//! on the GPU, which would be unsafe.
+//! Respecting the order of operations on the GPU is important, as it is what *proves* vulkano that
+//! what you are doing is indeed safe. For example if you submit two operations that modify the
+//! same buffer, then you need to execute one after the other instead of submitting them
+//! independantly. Failing to do so would mean that these two operations could potentially execute
+//! simultaneously on the GPU, which would be unsafe.
 //!
-//! Adding a dependency is done by calling one of the methods of the `GpuFuture` trait. For example
-//! calling `prev_future.then_execute(command_buffer)` takes ownership of `prev_future` and returns
-//! a new future in which `command_buffer` starts executing after the moment corresponding to
-//! `prev_future` happens. The new future corresponds to the moment when the execution of
-//! `command_buffer` ends.
+//! This is done by calling one of the methods of the `GpuFuture` trait. For example calling
+//! `prev_future.then_execute(command_buffer)` takes ownership of `prev_future` and will make sure
+//! to only start executing `command_buffer` after the moment corresponding to `prev_future`
+//! happens. The object returned by the `then_execute` function is itself a future that corresponds
+//! to the moment when the execution of `command_buffer` ends.
 //!
-//! ## Between different GPU queues
+//! ## Between two different GPU queues
 //!
 //! When you want to perform an operation after another operation on two different queues, you
 //! **must** put a *semaphore* between them. Failure to do so would result in a runtime error.
-//!
 //! Adding a semaphore is a simple as replacing `prev_future.then_execute(...)` with
 //! `prev_future.then_signal_semaphore().then_execute(...)`.
 //!
-//! In practice you usually want to use `then_signal_semaphore_and_flush()` instead of
-//! `then_signal_semaphore()`, as the execution will start sooner.
+//! > **Note**: A common use-case is using a transfer queue (ie. a queue that is only capable of
+//! > performing transfer operations) to write data to a buffer, then read that data from the
+//! > rendering queue.
 //!
-//! TODO: using semaphores to dispatch to multiple queues
+//! What happens when you do so is that the first queue will execute the first set of operations
+//! (represented by `prev_future` in the example), then put a semaphore in the signalled state.
+//! Meanwhile the second queue blocks (if necessary) until that same semaphore gets signalled, and
+//! then only will execute the second set of operations.
+//!
+//! Since you want to avoid blocking the second queue as much as possible, you probably want to
+//! flush the operation to the first queue as soon as possible. This can easily be done by calling
+//! `then_signal_semaphore_and_flush()` instead of `then_signal_semaphore()`.
+//!
+//! ## Between several different GPU queues
+//!
+//! The `then_signal_semaphore()` method is appropriate when you perform an operation in one queue,
+//! and want to see the result in another queue. However in some situations you want to start
+//! multiple operations on several different queues.
+//!
+//! TODO: this is not yet implemented
 //!
 //! # Fences
 //!
 //! A `Fence` is an object that is used to signal the CPU when an operation on the GPU is finished.
 //!
-//! If you want to perform an operation on the CPU after an operation on the GPU is finished (eg.
-//! if you want to read on the CPU data written by the GPU), then you need to ask the GPU to signal
-//! a fence after the operation and wait for that fence to be *signalled* on the CPU.
+//! Signalling a fence is done by calling `then_signal_fence()` on a future. Just like semaphores,
+//! you are encouraged to use `then_signal_fence_and_flush()` instead.
 //!
+//! Signalling a fence is kind of a "terminator" to a chain of futures.
+//!
+//! TODO: lots of problems with how to use fences
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
