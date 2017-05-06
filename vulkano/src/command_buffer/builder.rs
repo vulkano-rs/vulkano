@@ -26,6 +26,7 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
 use image::Image;
+use instance::QueueFamily;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::vertex::VertexSource;
@@ -247,10 +248,19 @@ pub unsafe trait CommandBufferBuilder: DeviceOwned {
     }
 
     /// Returns true if the pool of the builder supports graphics operations.
-    fn supports_graphics(&self) -> bool;
+    #[inline]
+    fn supports_graphics(&self) -> bool {
+        self.queue_family().supports_graphics()
+    }
 
     /// Returns true if the pool of the builder supports compute operations.
-    fn supports_compute(&self) -> bool;
+    #[inline]
+    fn supports_compute(&self) -> bool {
+        self.queue_family().supports_compute()
+    }
+
+    /// Returns the queue family of the command buffer builder.
+    fn queue_family(&self) -> QueueFamily;
 }
 
 /// Error that can happen when adding a command to a command buffer builder.
@@ -320,6 +330,10 @@ pub enum CommandAddError {
 
     /// The queue family doesn't support compute operations.
     ComputeOperationsNotSupported,
+
+    /// Trying to execute a secondary command buffer in a primary command buffer of a different
+    /// queue family.
+    QueueFamilyMismatch,
 }
 
 impl error::Error for CommandAddError {
@@ -340,6 +354,10 @@ impl error::Error for CommandAddError {
             },
             CommandAddError::ComputeOperationsNotSupported => {
                 "the queue family doesn't support compute operations"
+            },
+            CommandAddError::QueueFamilyMismatch => {
+                "trying to execute a secondary command buffer in a primary command buffer of a \
+                 different queue family"
             },
         }
     }

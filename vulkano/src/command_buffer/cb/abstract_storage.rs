@@ -23,6 +23,7 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
+use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -98,13 +99,8 @@ unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
 
 unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: CommandBufferBuilder {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 

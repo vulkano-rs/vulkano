@@ -14,6 +14,7 @@ use std::sync::atomic::AtomicBool;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
+use command_buffer::CommandBufferBuilder;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::AllocatedCommandBuffer;
 use command_buffer::pool::CommandPool;
@@ -27,6 +28,7 @@ use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
 use image::ImageAccess;
+use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::GpuFuture;
@@ -232,6 +234,13 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> where P: CommandPoo
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+unsafe impl<P> CommandBufferBuilder for UnsafeCommandBufferBuilder<P> where P: CommandPool {
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.pool.as_ref().unwrap().queue_family()
     }
 }
 

@@ -22,6 +22,7 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
+use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::DummyFuture;
 use sync::GpuFuture;
@@ -35,6 +36,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
 
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+
+    /// Returns the queue family of the command buffer.
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.inner().queue_family()
+    }
 
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue.
