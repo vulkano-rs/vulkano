@@ -44,6 +44,12 @@ impl<Cb> CmdExecuteCommands<Cb> {
             command_buffer: command_buffer,
         }*/
     }
+
+    /// Returns the command buffer to be executed.
+    #[inline]
+    pub fn command_buffer(&self) -> &Cb {
+        &self.command_buffer
+    }
 }
 
 unsafe impl<Cb> DeviceOwned for CmdExecuteCommands<Cb>

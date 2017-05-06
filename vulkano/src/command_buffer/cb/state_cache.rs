@@ -16,6 +16,7 @@ use command_buffer::commands_raw;
 use command_buffer::DynamicState;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
 use VulkanObject;
 use vk;
 
@@ -80,13 +81,8 @@ unsafe impl<I> CommandBufferBuilder for StateCacheLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 

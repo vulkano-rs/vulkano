@@ -15,6 +15,7 @@ use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
 use VulkanObject;
 
 /// Layer around a command buffer builder that checks whether the commands added to it belong to
@@ -52,13 +53,8 @@ unsafe impl<I> CommandBufferBuilder for DeviceCheckLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 

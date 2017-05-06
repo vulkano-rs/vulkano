@@ -19,6 +19,7 @@ use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use image::ImageAccess;
+use instance::QueueFamily;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -108,13 +109,8 @@ unsafe impl<I> CommandBufferBuilder for SubmitSyncBuilderLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
