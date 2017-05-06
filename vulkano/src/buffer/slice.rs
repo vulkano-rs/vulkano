@@ -31,8 +31,7 @@ use device::Queue;
 ///
 /// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> = return;
 /// let _slice = BufferSlice::from(&buffer);
 /// ```
 ///
@@ -40,8 +39,7 @@ use device::Queue;
 ///
 /// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> = return;
 /// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
 /// ```
 ///

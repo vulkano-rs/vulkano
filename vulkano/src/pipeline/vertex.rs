@@ -42,8 +42,8 @@
 //! use vulkano::buffer::Usage as BufferUsage;
 //! use vulkano::memory::HostVisible;
 //! use vulkano::pipeline::vertex::;
-//! # let device: Arc<Device> = unsafe { std::mem::uninitialized() };
-//! # let queue: Arc<Queue> = unsafe { std::mem::uninitialized() };
+//! # let device: Arc<Device> = return;
+//! # let queue: Arc<Queue> = return;
 //! 
 //! struct Vertex {
 //!     position: [f32; 2]
