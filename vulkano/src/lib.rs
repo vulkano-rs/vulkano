@@ -47,6 +47,11 @@
 //! - For graphical operations, `RenderPass`es and `Framebuffer`s describe on which images the
 //!   implementation must draw upon.
 //!
+//! - Once you have built a `CommandBuffer` that contains a list of commands, submitting it to the
+//!   GPU will return an object that implements the `GpuFuture` trait. `GpuFuture`s allow you to
+//!   chain multiple submissions together and are essential to performing multiple operations on
+//!   multiple different GPU queues. See [the `sync` module](sync/index.html) for more info.
+//!
 
 //#![warn(missing_docs)]        // TODO: activate
 #![allow(dead_code)]            // TODO: remove

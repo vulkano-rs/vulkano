@@ -195,8 +195,7 @@ fn main() {
         let future = future
             .then_execute(queue.clone(), command_buffer)
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence();
-        future.flush().unwrap();
+            .then_signal_fence_and_flush().unwrap();
         submissions.push(Box::new(future) as Box<_>);
 
         for ev in window.window().poll_events() {
