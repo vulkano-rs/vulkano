@@ -46,6 +46,15 @@ pub unsafe trait CommandBuffer: DeviceOwned {
 
     /// Executes this command buffer on a queue.
     ///
+    /// This function returns an object that implements the `GpuFuture` trait. See the
+    /// documentation of the `sync` module for more information.
+    /// The command buffer is not actually executed until you call `flush()` on the object.
+    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
+    /// and call `.then_signal_future()` before doing so.
+    ///
+    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
+    /// > concrete type.
+    ///
     /// > **Note**: This is just a shortcut for `execute_after`.
     ///
     /// # Panic
@@ -60,6 +69,15 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     }
 
     /// Executes the command buffer after an existing future.
+    ///
+    /// This function returns an object that implements the `GpuFuture` trait. See the
+    /// documentation of the `sync` module for more information.
+    /// The command buffer is not actually executed until you call `flush()` on the object.
+    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
+    /// and call `.then_signal_future()` before doing so.
+    ///
+    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
+    /// > concrete type.
     ///
     /// This function requires the `'static` lifetime to be on the command buffer. This is because
     /// this function returns a `CommandBufferExecFuture` whose job is to lock resources and keep

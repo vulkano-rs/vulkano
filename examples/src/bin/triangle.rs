@@ -412,8 +412,7 @@ fn main() {
             // present command at the end of the queue. This means that it will only be presented once
             // the GPU has finished executing the command buffer that draws the triangle.
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence();
-        future.flush().unwrap();
+            .then_signal_fence_and_flush().unwrap();
         submissions.push(Box::new(future) as Box<_>);
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,

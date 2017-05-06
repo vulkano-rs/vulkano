@@ -150,6 +150,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     }
 
     /// Signals a semaphore after this future. Returns another future that represents the signal.
+    ///
+    /// Call this function when you want to execute some operations on a queue and want to see the
+    /// result on another queue.
     #[inline]
     fn then_signal_semaphore(self) -> SemaphoreSignalFuture<Self> where Self: Sized {
         let device = self.device().clone();
@@ -164,7 +167,32 @@ pub unsafe trait GpuFuture: DeviceOwned {
         }
     }
 
+    /// Signals a semaphore after this future and flushes it. Returns another future that
+    /// represents the moment when the semaphore is signalled.
+    ///
+    /// This is a just a shortcut for `then_signal_semaphore()` followed with `flush()`.
+    ///
+    /// When you want to execute some operations A on a queue and some operations B on another
+    /// queue that need to see the results of A, it can be a good idea to submit A as soon as
+    /// possible while you're preparing B.
+    ///
+    /// If you ran A and B on the same queue, you would have to decide between submitting A then
+    /// B, or A and B simultaneously. Both approaches have their trade-offs. But if A and B are
+    /// on two different queues, then you would need two submits anyway and it is always
+    /// advantageous to submit A as soon as possible.
+    #[inline]
+    fn then_signal_semaphore_and_flush(self) -> Result<SemaphoreSignalFuture<Self>, Box<Error>>
+        where Self: Sized
+    {
+        let f = self.then_signal_semaphore();
+        f.flush()?;
+        Ok(f)
+    }
+
     /// Signals a fence after this future. Returns another future that represents the signal.
+    ///
+    /// > **Note**: More often than not you want to immediately flush the future after calling this
+    /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
         let device = self.device().clone();
@@ -176,6 +204,18 @@ pub unsafe trait GpuFuture: DeviceOwned {
             fence: Fence::new(device).unwrap(),
             flushed: Mutex::new(false),
         }
+    }
+
+    /// Signals a fence after this future. Returns another future that represents the signal.
+    ///
+    /// This is a just a shortcut for `then_signal_fence()` followed with `flush()`.
+    #[inline]
+    fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, Box<Error>>
+        where Self: Sized
+    {
+        let f = self.then_signal_fence();
+        f.flush()?;
+        Ok(f)
     }
 
     /// Presents a swapchain image after this future.
