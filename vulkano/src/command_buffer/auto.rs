@@ -33,6 +33,13 @@ use OomError;
 
 type Cb<P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::AbstractStorageLayer<cb::UnsafeCommandBufferBuilder<P>>>>>>>>;
 
+///
+///
+/// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
+/// don't implement the `Send` and `Sync` traits. If you use this pool, then the
+/// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
+/// is built, however, it *does* implement `Send` and `Sync`.
+///
 pub struct AutoCommandBufferBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
     inner: Cb<P>
 }
@@ -44,7 +51,7 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
         let pool = Device::standard_command_pool(&device, queue_family);
 
         let cmd = unsafe {
-            let c = try!(cb::UnsafeCommandBufferBuilder::new(pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
+            let c = try!(cb::UnsafeCommandBufferBuilder::new(&pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
             let c = cb::AbstractStorageLayer::new(c);
             let c = cb::AutoPipelineBarriersLayer::new(c);
             let c = cb::SubmitSyncBuilderLayer::new(c);

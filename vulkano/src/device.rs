@@ -392,12 +392,12 @@ impl Device {
                     return pool;
                 }
 
-                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 *entry.get_mut() = Arc::downgrade(&new_pool);
                 new_pool
             },
             Entry::Vacant(entry) => {
-                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 entry.insert(Arc::downgrade(&new_pool));
                 new_pool
             }
