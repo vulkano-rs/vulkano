@@ -31,7 +31,7 @@ pub fn join<F, S>(first: F, second: S) -> JoinFuture<F, S>
     assert_eq!(first.device().internal_object(), second.device().internal_object());
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
-        assert!(first.queue().unwrap().is_same(second.queue().unwrap()));
+        assert!(first.queue().unwrap().is_same(&second.queue().unwrap()));
     }
 
     JoinFuture {
@@ -131,7 +131,7 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         match (self.first.queue(), self.second.queue()) {
             (Some(q1), Some(q2)) => if q1.is_same(&q2) {
                 Some(q1)

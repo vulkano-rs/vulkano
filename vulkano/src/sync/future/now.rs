@@ -58,7 +58,7 @@ unsafe impl GpuFuture for NowFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         None
     }
 

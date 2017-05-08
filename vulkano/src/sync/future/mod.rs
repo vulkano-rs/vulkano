@@ -9,6 +9,7 @@
 
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Duration;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
@@ -23,7 +24,7 @@ use sync::AccessFlagBits;
 use sync::PipelineStages;
 
 pub use self::now::{now, NowFuture};
-pub use self::fence_signal::FenceSignalFuture;
+pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
 pub use self::join::JoinFuture;
 pub use self::semaphore_signal::SemaphoreSignalFuture;
 
@@ -59,6 +60,10 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// otherwise it would be possible for the user to clone the `Arc` and make the same
     /// submission be submitted multiple times.
     ///
+    /// It is also the responsibility of the implementation to ensure that it works if you call
+    /// `build_submission()` and submits the returned value without calling `flush()` first. In
+    /// other words, `build_submission()` should perform an implicit flush if necessary.
+    ///
     /// Once the caller has submitted the submission and has determined that the GPU has finished
     /// executing it, it should call `signal_finished`. Failure to do so will incur a large runtime
     /// overhead, as the future will have to block to make sure that it is finished.
@@ -84,7 +89,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// If this function returns `None` and `queue_change_allowed` returns `false`, then a panic
     /// is likely to occur if you use this future. This is only a problem if you implement
     /// the `GpuFuture` trait yourself for a type outside of vulkano.
-    fn queue(&self) -> Option<&Arc<Queue>>;
+    fn queue(&self) -> Option<Arc<Queue>>;
 
     /// Returns `true` if elements submitted after this future can be submitted to a different
     /// queue than the other returned by `queue()`.
@@ -184,7 +189,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
-        fence_signal::then_signal_fence(self)
+        fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Block {
+            timeout: Duration::from_millis(600)        // TODO: arbitrary duration
+        })
     }
 
     /// Signals a fence after this future. Returns another future that represents the signal.
@@ -241,7 +248,7 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         (**self).queue()
     }
 
