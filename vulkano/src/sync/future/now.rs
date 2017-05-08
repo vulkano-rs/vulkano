@@ -20,23 +20,20 @@ use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
 
-/// A dummy future that represents "now".
-#[must_use]
-pub struct DummyFuture {
-    device: Arc<Device>,
-}
-
-impl DummyFuture {
-    /// Builds a new dummy future.
-    #[inline]
-    pub fn new(device: Arc<Device>) -> DummyFuture {
-        DummyFuture {
-            device: device,
-        }
+/// Builds a future that represents "now".
+#[inline]
+pub fn now(device: Arc<Device>) -> NowFuture {
+    NowFuture {
+        device: device,
     }
 }
 
-unsafe impl GpuFuture for DummyFuture {
+/// A dummy future that represents "now".
+pub struct NowFuture {
+    device: Arc<Device>,
+}
+
+unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn cleanup_finished(&mut self) {
     }
@@ -80,7 +77,7 @@ unsafe impl GpuFuture for DummyFuture {
     }
 }
 
-unsafe impl DeviceOwned for DummyFuture {
+unsafe impl DeviceOwned for NowFuture {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device

@@ -22,12 +22,12 @@ use swapchain::PresentFuture;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
-pub use self::dummy::DummyFuture;
+pub use self::now::{now, NowFuture};
 pub use self::fence_signal::FenceSignalFuture;
 pub use self::join::JoinFuture;
 pub use self::semaphore_signal::SemaphoreSignalFuture;
 
-mod dummy;
+mod now;
 mod fence_signal;
 mod join;
 mod semaphore_signal;
