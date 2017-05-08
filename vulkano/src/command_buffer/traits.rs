@@ -23,8 +23,9 @@ use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use instance::QueueFamily;
+use sync::now;
 use sync::AccessFlagBits;
-use sync::DummyFuture;
+use sync::NowFuture;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use SafeDeref;
@@ -63,17 +64,17 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
     ///
-    /// > **Note**: This is just a shortcut for `execute_after`.
+    /// > **Note**: This is just a shortcut for `execute_after(vulkano::sync::now(), queue)`.
     ///
     /// # Panic
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<DummyFuture, Self>
+    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<NowFuture, Self>
         where Self: Sized + 'static
     {
         let device = queue.device().clone();
-        self.execute_after(DummyFuture::new(device), queue)
+        self.execute_after(now(device), queue)
     }
 
     /// Executes the command buffer after an existing future.
