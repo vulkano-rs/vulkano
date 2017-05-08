@@ -93,6 +93,7 @@ fn main() {
     // Some little debug infos.
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
+
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
     //
@@ -103,7 +104,8 @@ fn main() {
     //
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
-    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
+    let events_loop = winit::EventsLoop::new();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -425,11 +427,13 @@ fn main() {
 
         // Handling the window events in order to close the program when the user wants to close
         // it.
-        for ev in window.window().poll_events() {
+        let mut done = false;
+        events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::Closed => return,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
                 _ => ()
             }
-        }
+        });
+        if done { return; }
     }
 }

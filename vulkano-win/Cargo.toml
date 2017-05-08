@@ -9,4 +9,4 @@ categories = ["rendering::graphics-api"]
 
 [dependencies]
 vulkano = { version = "0.3.0", path = "../vulkano" }
-winit = "0.5.6"
+winit = "0.6.4"
