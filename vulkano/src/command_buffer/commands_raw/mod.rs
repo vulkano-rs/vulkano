@@ -15,7 +15,7 @@ pub use self::begin_render_pass::CmdBeginRenderPass;
 pub use self::bind_index_buffer::CmdBindIndexBuffer;
 pub use self::bind_descriptor_sets::{CmdBindDescriptorSets, CmdBindDescriptorSetsError};
 pub use self::bind_pipeline::{CmdBindPipeline, CmdBindPipelineSys};
-pub use self::bind_vertex_buffers::CmdBindVertexBuffers;
+pub use self::bind_vertex_buffers::{CmdBindVertexBuffers, CmdBindVertexBuffersHash};
 pub use self::blit_image::{CmdBlitImage, CmdBlitImageError};
 pub use self::clear_attachments::CmdClearAttachments;
 pub use self::copy_buffer::{CmdCopyBuffer, CmdCopyBufferError};

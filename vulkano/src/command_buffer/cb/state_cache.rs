@@ -45,6 +45,8 @@ pub struct StateCacheLayer<I> {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The latest bind vertex buffers command.
+    vertex_buffers: Option<commands_raw::CmdBindVertexBuffersHash>,
 }
 
 impl<I> StateCacheLayer<I> {
@@ -58,6 +60,7 @@ impl<I> StateCacheLayer<I> {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            vertex_buffers: None,
         }
     }
 
@@ -118,6 +121,7 @@ unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCac
             dynamic_state: DynamicState::none(),
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
+            vertex_buffers: self.vertex_buffers,
         })
     }
 }
@@ -137,6 +141,7 @@ unsafe impl<Cb, I, O> AddCommand<commands_raw::CmdExecuteCommands<Cb>> for State
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            vertex_buffers: None,
         })
     }
 }
@@ -170,6 +175,39 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacheLayer<I>
             dynamic_state: self.dynamic_state,
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
+            vertex_buffers: self.vertex_buffers,
+        })
+    }
+}
+
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindVertexBuffers<B>> for StateCacheLayer<I>
+    where I: AddCommand<commands_raw::CmdBindVertexBuffers<B>, Out = O>
+{
+    type Out = StateCacheLayer<O>;
+
+    #[inline]
+    fn add(mut self, mut command: commands_raw::CmdBindVertexBuffers<B>)
+           -> Result<Self::Out, CommandAddError>
+    {
+        match &mut self.vertex_buffers {
+            &mut Some(ref mut curr) => {
+                if *curr != *command.hash() {
+                    let new_hash = command.hash().clone();
+                    command.diff(curr);
+                    *curr = new_hash;
+                }
+            },
+            curr @ &mut None => {
+                *curr = Some(command.hash().clone());
+            }
+        };
+
+        Ok(StateCacheLayer {
+            inner: self.inner.add(command)?,
+            dynamic_state: self.dynamic_state,
+            graphics_pipeline: self.graphics_pipeline,
+            compute_pipeline: self.compute_pipeline,
+            vertex_buffers: self.vertex_buffers,
         })
     }
 }
@@ -200,6 +238,7 @@ macro_rules! pass_through {
                     dynamic_state: self.dynamic_state,
                     graphics_pipeline: self.graphics_pipeline,
                     compute_pipeline: self.compute_pipeline,
+                    vertex_buffers: self.vertex_buffers,
                 })
             }
         }
@@ -209,7 +248,6 @@ macro_rules! pass_through {
 pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
 pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
 pass_through!((B), commands_raw::CmdBindIndexBuffer<B>);
-pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
 pass_through!((S, D), commands_raw::CmdBlitImage<S, D>);
 pass_through!((), commands_raw::CmdClearAttachments);
 pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);
