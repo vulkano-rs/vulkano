@@ -122,7 +122,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         self.previous.queue()
     }
 

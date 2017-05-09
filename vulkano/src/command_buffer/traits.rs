@@ -252,8 +252,8 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
-        Some(&self.queue)
+    fn queue(&self) -> Option<Arc<Queue>> {
+        Some(self.queue.clone())
     }
 
     #[inline]

@@ -28,7 +28,9 @@ use sync::PipelineStages;
 
 /// Builds a new fence signal future.
 #[inline]
-pub fn then_signal_fence<F>(future: F) -> FenceSignalFuture<F> where F: GpuFuture {
+pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
+    where F: GpuFuture
+{
     let device = future.device().clone();
 
     assert!(future.queue().is_some());        // TODO: document
@@ -37,7 +39,20 @@ pub fn then_signal_fence<F>(future: F) -> FenceSignalFuture<F> where F: GpuFutur
     FenceSignalFuture {
         device: device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),
+        behavior: behavior,
     }
+}
+
+/// Describes the behavior of the future if you submit something after it.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum FenceSignalFutureBehavior {
+    /// Continue execution on the same queue.
+    Continue,
+    /// Wait for the fence to be signalled before submitting any further operation.
+    Block {
+        /// How long to block the current thread.
+        timeout: Duration
+    },
 }
 
 /// Represents a fence being signaled after a previous event.
@@ -47,6 +62,7 @@ pub struct FenceSignalFuture<F> where F: GpuFuture {
     state: Mutex<FenceSignalFutureState<F>>,
     // The device of the future.
     device: Arc<Device>,
+    behavior: FenceSignalFutureBehavior,
 }
 
 // This future can be in three different states: pending (ie. newly-created), submitted (ie. the
@@ -215,7 +231,12 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
 
         match *state {
             FenceSignalFutureState::Flushed(_, ref fence) => {
-                try!(fence.wait(Duration::from_secs(600)));     // TODO: arbitrary timeout?
+                match self.behavior {
+                    FenceSignalFutureBehavior::Block { timeout } => {
+                        try!(fence.wait(timeout));
+                    },
+                    FenceSignalFutureBehavior::Continue => (),
+                }
             },
             FenceSignalFutureState::Cleaned | FenceSignalFutureState::Poisonned => (),
             FenceSignalFutureState::Pending(_, _)  => unreachable!(),
@@ -245,13 +266,29 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
 
     #[inline]
     fn queue_change_allowed(&self) -> bool {
-        true
+        match self.behavior {
+            FenceSignalFutureBehavior::Continue => {
+                let state = self.state.lock().unwrap();
+                if state.get_prev().is_some() {
+                    false
+                } else {
+                    true
+                }
+            },
+            FenceSignalFutureBehavior::Block { .. } => {
+                true
+            },
+        }
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
-        // FIXME: reimplement correctly ; either find a solution or change the API to take &mut self
-        None
+    fn queue(&self) -> Option<Arc<Queue>> {
+        let state = self.state.lock().unwrap();
+        if let Some(prev) = state.get_prev() {
+            prev.queue()
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -343,7 +380,7 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>> where F: GpuFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         (**self).queue()
     }
 
