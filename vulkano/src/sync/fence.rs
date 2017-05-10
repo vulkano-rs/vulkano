@@ -100,16 +100,21 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
         }
     }
 
-    /// Waits until the fence is signaled, or at least until the number of nanoseconds of the
-    /// timeout has elapsed.
+    /// Waits until the fence is signaled, or at least until the timeout duration has elapsed.
     ///
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
-    pub fn wait(&self, timeout: Duration) -> Result<(), FenceWaitError> {
+    ///
+    /// If you pass a duration of 0, then the function will return without blocking.
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceWaitError> {
         unsafe {
             if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
 
-            let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
-                                              .saturating_add(timeout.subsec_nanos() as u64);
+            let timeout_ns = if let Some(timeout) = timeout {
+                timeout.as_secs().saturating_mul(1_000_000_000)
+                                 .saturating_add(timeout.subsec_nanos() as u64)
+            } else {
+                u64::max_value()
+            };
 
             let vk = self.device.pointers();
             let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
@@ -133,7 +138,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// # Panic
     ///
     /// Panics if not all fences belong to the same device.
-    pub fn multi_wait<'a, I>(iter: I, timeout: Duration) -> Result<(), FenceWaitError>
+    pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceWaitError>
         where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
     {
         let mut device: Option<&Device> = None;
@@ -153,8 +158,12 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
             }
         }).collect();
 
-        let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
-                                          .saturating_add(timeout.subsec_nanos() as u64);
+        let timeout_ns = if let Some(timeout) = timeout {
+            timeout.as_secs().saturating_mul(1_000_000_000)
+                                .saturating_add(timeout.subsec_nanos() as u64)
+        } else {
+            u64::max_value()
+        };
 
         let r = if let Some(device) = device {
             unsafe {
@@ -319,7 +328,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let fence = Fence::signaled(device.clone()).unwrap();
-        fence.wait(Duration::new(0, 10)).unwrap();
+        fence.wait(Some(Duration::new(0, 10))).unwrap();
     }
 
     #[test]
@@ -340,7 +349,7 @@ mod tests {
         let fence1 = Fence::signaled(device1.clone()).unwrap();
         let fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(), Duration::new(0, 10));
+        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(), Some(Duration::new(0, 10)));
     }
 
     #[test]
