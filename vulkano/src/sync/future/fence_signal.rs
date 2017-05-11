@@ -51,7 +51,7 @@ pub enum FenceSignalFutureBehavior {
     /// Wait for the fence to be signalled before submitting any further operation.
     Block {
         /// How long to block the current thread.
-        timeout: Duration
+        timeout: Option<Duration>
     },
 }
 
@@ -98,7 +98,7 @@ impl<F> FenceSignalFuture<F> where F: GpuFuture {
 
         match *state {
             FenceSignalFutureState::Flushed(_, ref fence) => {
-                match fence.wait(Duration::from_secs(0)) {
+                match fence.wait(Some(Duration::from_secs(0))) {
                     Ok(()) => (),
                     Err(_) => return,
                 }
@@ -331,9 +331,8 @@ impl<F> Drop for FenceSignalFuture<F> where F: GpuFuture {
         match mem::replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
                 // This is a normal situation. Submitting worked.
-                // TODO: arbitrary timeout?
                 // TODO: handle errors?
-                fence.wait(Duration::from_secs(600)).unwrap();
+                fence.wait(None).unwrap();
                 unsafe { previous.signal_finished(); }
             },
             FenceSignalFutureState::Cleaned => {

@@ -97,7 +97,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///     builder.submit(&queue).unwrap();
     ///
     ///     // We must not destroy the fence before it is signaled.
-    ///     fence.wait(Duration::from_secs(5)).unwrap();
+    ///     fence.wait(Some(Duration::from_secs(5))).unwrap();
     /// }
     /// ```
     ///
@@ -324,7 +324,7 @@ mod tests {
             builder.set_fence_signal(&fence);
 
             builder.submit(&queue).unwrap();
-            fence.wait(Duration::from_secs(10)).unwrap();
+            fence.wait(Some(Duration::from_secs(5))).unwrap();
             assert!(fence.ready().unwrap());
         }
     }
