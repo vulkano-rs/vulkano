@@ -79,6 +79,12 @@ pub unsafe trait ImageAccess {
         format.is_stencil() || format.is_depth_stencil()
     }
 
+    /// Returns the number of mipmap levels of this image.
+    #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        self.inner().mipmap_levels()
+    }
+
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
@@ -173,6 +179,26 @@ pub unsafe trait ImageAccess {
     /// verify whether they actually overlap.
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
                     -> u64;
+
+    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
+    #[inline]
+    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
+        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.size())
+    }
+
+    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
+    #[inline]
+    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
+        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+    }
+
+    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
+    #[inline]
+    fn conflict_key_all(&self) -> u64 {
+        self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
+    }
 
     /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
     ///
