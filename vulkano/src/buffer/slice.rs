@@ -68,7 +68,7 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B>
 impl<T: ?Sized, B> BufferSlice<T, B> {
     #[inline]
     pub fn from_typed_buffer(r: B) -> BufferSlice<T, B>
-        where B: TypedBuffer<Content = T>, T: 'static
+        where B: TypedBuffer<Content = T>
     {
         let size = r.size();
 
@@ -82,7 +82,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
 
     #[inline]
     pub fn from_typed_buffer_access(r: B) -> BufferSlice<T, B>
-        where B: TypedBufferAccess<Content = T>, T: 'static
+        where B: TypedBufferAccess<Content = T>
     {
         let size = r.size();
 
@@ -251,7 +251,7 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess, T: 'static {
+unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess,  {
     type Content = T;
 }
 
