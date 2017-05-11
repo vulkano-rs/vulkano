@@ -20,6 +20,7 @@ use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
+use framebuffer::FramebufferAbstract;
 use image::Layout;
 use image::ImageAccess;
 use device::Device;
@@ -45,10 +46,10 @@ pub struct SubmitSyncBuilderLayer<I> {
     resources: FnvHashMap<Key, ResourceEntry>,
 }
 
-// TODO: put this struct somewhere public?
 enum Key {
     Buffer(Box<BufferAccess + Send + Sync>),
     Image(Box<ImageAccess + Send + Sync>),
+    FramebufferAttachment(Box<FramebufferAbstract + Send + Sync>, u32),
 }
 
 impl PartialEq for Key {
@@ -57,8 +58,11 @@ impl PartialEq for Key {
         match (self, other) {
             (&Key::Buffer(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
             (&Key::Buffer(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
+            (&Key::Buffer(ref a), &Key::FramebufferAttachment(ref b, idx)) => a.conflicts_image_all(b.attachments()[idx as usize].parent()),
             (&Key::Image(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
             (&Key::Image(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
+            (&Key::Image(ref a), &Key::FramebufferAttachment(ref b, idx)) => a.conflicts_image_all(b.attachments()[idx as usize].parent()),
+            _ => unimplemented!()
         }
     }
 }
@@ -72,6 +76,10 @@ impl Hash for Key {
         match self {
             &Key::Buffer(ref buf) => buf.conflict_key_all().hash(state),
             &Key::Image(ref img) => img.conflict_key_all().hash(state),
+            &Key::FramebufferAttachment(ref fb, idx) => {
+                let img = fb.attachments()[idx as usize].parent();
+                img.conflict_key_all().hash(state)
+            },
         }
     }
 }
@@ -144,6 +152,36 @@ impl<I> SubmitSyncBuilderLayer<I> {
             },
         }
     }
+
+    // Adds a framebuffer to the list.
+    fn add_framebuffer<F>(&mut self, framebuffer: &F)
+        where F: FramebufferAbstract + Send + Sync + Clone + 'static
+    {
+        for index in 0 .. FramebufferAbstract::attachments(framebuffer).len() {
+            let key = Key::FramebufferAttachment(Box::new(framebuffer.clone()), index as u32);
+            let desc = framebuffer.attachment(index).expect("Wrong implementation of FramebufferAbstract trait");
+            let final_layout = desc.final_layout;
+
+            match self.resources.entry(key) {
+                Entry::Vacant(entry) => {
+                    entry.insert(ResourceEntry {
+                        final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
+                        final_access: AccessFlagBits::all(),        // FIXME:
+                        exclusive: true,            // FIXME:
+                        initial_layout: desc.initial_layout,
+                        final_layout: final_layout,
+                    });
+                },
+
+                Entry::Occupied(mut entry) => {
+                    let entry = entry.get_mut();
+                    // TODO: update stages and access
+                    entry.exclusive = true;         // FIXME:
+                    entry.final_layout = final_layout;
+                },
+            }
+        }
+    }
 }
 
 unsafe impl<I, O, E> CommandBufferBuild for SubmitSyncBuilderLayer<I>
@@ -204,10 +242,26 @@ macro_rules! pass_through {
 }
 
 // FIXME: implement manually
-pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
 pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
 pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
 pass_through!((C), commands_raw::CmdExecuteCommands<C>);
+
+unsafe impl<I, O, Rp, F> AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>, Out = O>,
+          F: FramebufferAbstract + Send + Sync + Clone + 'static
+{
+    type Out = SubmitSyncBuilderLayer<O>;
+
+    #[inline]
+    fn add(mut self, command: commands_raw::CmdBeginRenderPass<Rp, F>) -> Self::Out {
+        self.add_framebuffer(command.framebuffer());
+
+        SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command),
+            resources: self.resources,
+        }
+    }
+}
 
 unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitSyncBuilderLayer<I>
     where I: AddCommand<commands_raw::CmdBindIndexBuffer<B>, Out = O>,
@@ -524,6 +578,19 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                 },
 
                 &Key::Image(ref img) => {
+                    if future.check_image_access(img, entry.initial_layout, entry.exclusive, queue).is_ok() {
+                        unsafe { img.increase_gpu_lock(); }
+                        continue;
+                    }
+
+                    if !img.try_gpu_lock(entry.exclusive, queue) {
+                        panic!()    // FIXME: return Err();
+                    }
+                },
+
+                &Key::FramebufferAttachment(ref fb, idx) => {
+                    let img = fb.attachments()[idx as usize].parent();
+
                     if future.check_image_access(img, entry.initial_layout, entry.exclusive, queue).is_ok() {
                         unsafe { img.increase_gpu_lock(); }
                         continue;

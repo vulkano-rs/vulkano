@@ -109,6 +109,14 @@ impl<F> CmdBeginRenderPass<Arc<RenderPassAbstract + Send + Sync>, F>
     }
 }
 
+impl<Rp, F> CmdBeginRenderPass<Rp, F> {
+    /// Returns the framebuffer of the command.
+    #[inline]
+    pub fn framebuffer(&self) -> &F {
+        &self.framebuffer
+    }
+}
+
 unsafe impl<Rp, F> DeviceOwned for CmdBeginRenderPass<Rp, F>
     where F: DeviceOwned
 {
