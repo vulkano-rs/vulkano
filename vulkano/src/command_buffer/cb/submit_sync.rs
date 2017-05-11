@@ -7,8 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::collections::hash_map::Entry;
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use fnv::FnvHashMap;
 
 use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
@@ -39,8 +42,46 @@ use sync::GpuFuture;
 ///
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
-    buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
-    images: Vec<(Box<ImageAccess + Send + Sync>, Layout, bool)>,
+    resources: FnvHashMap<Key, ResourceEntry>,
+}
+
+// TODO: put this struct somewhere public?
+enum Key {
+    Buffer(Box<BufferAccess + Send + Sync>),
+    Image(Box<ImageAccess + Send + Sync>),
+}
+
+impl PartialEq for Key {
+    #[inline]
+    fn eq(&self, other: &Key) -> bool {
+        match (self, other) {
+            (&Key::Buffer(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
+            (&Key::Buffer(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
+            (&Key::Image(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
+            (&Key::Image(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
+        }
+    }
+}
+
+impl Eq for Key {
+}
+
+impl Hash for Key {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            &Key::Buffer(ref buf) => buf.conflict_key_all().hash(state),
+            &Key::Image(ref img) => img.conflict_key_all().hash(state),
+        }
+    }
+}
+
+struct ResourceEntry {
+    final_stages: PipelineStages,
+    final_access: AccessFlagBits,
+    exclusive: bool,
+    initial_layout: Layout,
+    final_layout: Layout,
 }
 
 impl<I> SubmitSyncBuilderLayer<I> {
@@ -49,8 +90,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
     pub fn new(inner: I) -> SubmitSyncBuilderLayer<I> {
         SubmitSyncBuilderLayer {
             inner: inner,
-            buffers: Vec::new(),
-            images: Vec::new(),
+            resources: FnvHashMap::default(),
         }
     }
 
@@ -58,24 +98,51 @@ impl<I> SubmitSyncBuilderLayer<I> {
     fn add_buffer<B>(&mut self, buffer: &B, exclusive: bool)
         where B: BufferAccess + Send + Sync + Clone + 'static
     {
-        for &mut (ref existing_buf, ref mut existing_exclusive) in self.buffers.iter_mut() {
-            if existing_buf.conflicts_buffer(0, existing_buf.size(), buffer, 0, buffer.size()) {
-                *existing_exclusive = *existing_exclusive || exclusive;
-                return;
-            }
+        // TODO: don't create the key every time ; https://github.com/rust-lang/rfcs/pull/1769
+        let key = Key::Buffer(Box::new(buffer.clone()));
+        match self.resources.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(ResourceEntry {
+                    final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
+                    final_access: AccessFlagBits::all(),        // FIXME:
+                    exclusive: exclusive,
+                    initial_layout: Layout::Undefined,
+                    final_layout: Layout::Undefined,
+                });
+            },
+
+            Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                // TODO: update stages and access
+                entry.exclusive = entry.exclusive || exclusive;
+                entry.final_layout = Layout::Undefined;
+            },
         }
-
-        // FIXME: compare with images as well
-
-        self.buffers.push((Box::new(buffer.clone()), exclusive));
     }
 
     // Adds an image to the list.
     fn add_image<T>(&mut self, image: &T, exclusive: bool)
         where T: ImageAccess + Send + Sync + Clone + 'static
     {
-        // FIXME: actually implement
-        self.images.push((Box::new(image.clone()), image.initial_layout_requirement(), exclusive));
+        let key = Key::Image(Box::new(image.clone()));
+        match self.resources.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(ResourceEntry {
+                    final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
+                    final_access: AccessFlagBits::all(),        // FIXME:
+                    exclusive: exclusive,
+                    initial_layout: image.initial_layout_requirement(),     // FIXME:
+                    final_layout: image.final_layout_requirement(),         // FIXME:
+                });
+            },
+
+            Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                // TODO: update stages and access
+                entry.exclusive = entry.exclusive || exclusive;
+                entry.final_layout = image.final_layout_requirement();         // FIXME:
+            },
+        }
     }
 }
 
@@ -89,8 +156,7 @@ unsafe impl<I, O, E> CommandBufferBuild for SubmitSyncBuilderLayer<I>
     fn build(self) -> Result<Self::Out, E> {
         Ok(SubmitSyncLayer {
             inner: try!(self.inner.build()),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         })
     }
 }
@@ -130,8 +196,7 @@ macro_rules! pass_through {
             fn add(self, command: $cmd) -> Self::Out {
                 SubmitSyncBuilderLayer {
                     inner: AddCommand::add(self.inner, command),
-                    buffers: self.buffers,
-                    images: self.images,
+                    resources: self.resources,
                 }
             }
         }
@@ -156,8 +221,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitS
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -171,8 +235,7 @@ unsafe impl<I, O, P> AddCommand<commands_raw::CmdBindPipeline<P>> for SubmitSync
     fn add(self, command: commands_raw::CmdBindPipeline<P>) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -191,8 +254,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitS
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -206,8 +268,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdClearAttachments> for SubmitSyncBu
     fn add(self, command: commands_raw::CmdClearAttachments) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -226,8 +287,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for Submit
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -246,8 +306,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -266,8 +325,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitS
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -281,8 +339,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDispatchRaw> for SubmitSyncBuilder
     fn add(self, command: commands_raw::CmdDispatchRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -296,8 +353,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawRaw> for SubmitSyncBuilderLaye
     fn add(self, command: commands_raw::CmdDrawRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -311,8 +367,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawIndexedRaw> for SubmitSyncBuil
     fn add(self, command: commands_raw::CmdDrawIndexedRaw) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -326,8 +381,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuild
     fn add(self, command: commands_raw::CmdEndRenderPass) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -344,8 +398,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBu
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -359,8 +412,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdNextSubpass> for SubmitSyncBuilder
     fn add(self, command: commands_raw::CmdNextSubpass) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -374,8 +426,7 @@ unsafe impl<I, O, Pc, Pl> AddCommand<commands_raw::CmdPushConstants<Pc, Pl>> for
     fn add(self, command: commands_raw::CmdPushConstants<Pc, Pl>) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -394,8 +445,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for Subm
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -409,8 +459,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetEvent> for SubmitSyncBuilderLay
     fn add(self, command: commands_raw::CmdSetEvent) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -424,8 +473,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for SubmitSyncBuilderLay
     fn add(self, command: commands_raw::CmdSetState) -> Self::Out {
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -442,8 +490,7 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
 
         SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command),
-            buffers: self.buffers,
-            images: self.images,
+            resources: self.resources,
         }
     }
 }
@@ -451,8 +498,7 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
 /// Layer around a command buffer that handles synchronization between command buffers.
 pub struct SubmitSyncLayer<I> {
     inner: I,
-    buffers: Vec<(Box<BufferAccess + Send + Sync>, bool)>,
-    images: Vec<(Box<ImageAccess + Send + Sync>, Layout, bool)>,
+    resources: FnvHashMap<Key, ResourceEntry>,
 }
 
 unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
@@ -464,29 +510,33 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
-        for &(ref buffer, exclusive) in self.buffers.iter() {
-            if future.check_buffer_access(buffer, exclusive, queue).is_ok() {
-                unsafe { buffer.increase_gpu_lock(); }
-                continue;
-            }
+        for (key, entry) in self.resources.iter() {
+            match key {
+                &Key::Buffer(ref buf) => {
+                    if future.check_buffer_access(&buf, entry.exclusive, queue).is_ok() {
+                        unsafe { buf.increase_gpu_lock(); }
+                        continue;
+                    }
 
-            if !buffer.try_gpu_lock(exclusive, queue) {
-                panic!()    // FIXME: return Err();
+                    if !buf.try_gpu_lock(entry.exclusive, queue) {
+                        panic!()    // FIXME: return Err();
+                    }
+                },
+
+                &Key::Image(ref img) => {
+                    if future.check_image_access(img, entry.initial_layout, entry.exclusive, queue).is_ok() {
+                        unsafe { img.increase_gpu_lock(); }
+                        continue;
+                    }
+
+                    if !img.try_gpu_lock(entry.exclusive, queue) {
+                        panic!()    // FIXME: return Err();
+                    }
+                },
             }
         }
 
-        for &(ref image, layout, exclusive) in self.images.iter() {
-            if future.check_image_access(image, layout, exclusive, queue).is_ok() {
-                unsafe { image.increase_gpu_lock(); }
-                continue;
-            }
-
-            if !image.try_gpu_lock(exclusive, queue) {
-                panic!()    // FIXME: return Err();
-            }
-        }
-
-        // FIXME: pipeline barriers if necessary
+        // FIXME: pipeline barriers if necessary?
 
         Ok(())
     }
