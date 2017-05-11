@@ -52,17 +52,41 @@ enum Key {
     FramebufferAttachment(Box<FramebufferAbstract + Send + Sync>, u32),
 }
 
+impl Key {
+    #[inline]
+    fn conflicts_buffer_all(&self, buf: &BufferAccess) -> bool {
+        match self {
+            &Key::Buffer(ref a) => a.conflicts_buffer_all(buf),
+            &Key::Image(ref a) => a.conflicts_buffer_all(buf),
+            &Key::FramebufferAttachment(ref b, idx) => {
+                let img = b.attachments()[idx as usize].parent();
+                img.conflicts_buffer_all(buf)
+            },
+        }
+    }
+
+    #[inline]
+    fn conflicts_image_all(&self, img: &ImageAccess) -> bool {
+        match self {
+            &Key::Buffer(ref a) => a.conflicts_image_all(img),
+            &Key::Image(ref a) => a.conflicts_image_all(img),
+            &Key::FramebufferAttachment(ref b, idx) => {
+                let b = b.attachments()[idx as usize].parent();
+                b.conflicts_image_all(img)
+            },
+        }
+    }
+}
+
 impl PartialEq for Key {
     #[inline]
     fn eq(&self, other: &Key) -> bool {
-        match (self, other) {
-            (&Key::Buffer(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
-            (&Key::Buffer(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
-            (&Key::Buffer(ref a), &Key::FramebufferAttachment(ref b, idx)) => a.conflicts_image_all(b.attachments()[idx as usize].parent()),
-            (&Key::Image(ref a), &Key::Buffer(ref b)) => a.conflicts_buffer_all(b),
-            (&Key::Image(ref a), &Key::Image(ref b)) => a.conflicts_image_all(b),
-            (&Key::Image(ref a), &Key::FramebufferAttachment(ref b, idx)) => a.conflicts_image_all(b.attachments()[idx as usize].parent()),
-            _ => unimplemented!()
+        match other {
+            &Key::Buffer(ref b) => self.conflicts_buffer_all(b),
+            &Key::Image(ref b) => self.conflicts_image_all(b),
+            &Key::FramebufferAttachment(ref b, idx) => {
+                self.conflicts_image_all(b.attachments()[idx as usize].parent())
+            },
         }
     }
 }
@@ -612,7 +636,24 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        // FIXME: implement
+        // TODO: check the queue family
+
+        // We can't call `.get()` on the HashMap because of the `Borrow` requirement that's
+        // unimplementable on our key type.
+        // TODO:
+
+        for (key, value) in self.resources.iter() {
+            if !key.conflicts_buffer_all(buffer) {
+                continue;
+            }
+
+            if !value.exclusive && exclusive {
+                return Err(());
+            }
+
+            return Ok(Some((value.final_stages, value.final_access)));
+        }
+
         Err(())
     }
 
@@ -620,7 +661,28 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
     {
-        // FIXME: implement
+        // TODO: check the queue family
+
+        // We can't call `.get()` on the HashMap because of the `Borrow` requirement that's
+        // unimplementable on our key type.
+        // TODO:
+
+        for (key, value) in self.resources.iter() {
+            if !key.conflicts_image_all(image) {
+                continue;
+            }
+
+            if value.final_layout != layout {
+                return Err(());
+            }
+
+            if !value.exclusive && exclusive {
+                return Err(());
+            }
+
+            return Ok(Some((value.final_stages, value.final_access)));
+        }
+
         Err(())
     }
 }
