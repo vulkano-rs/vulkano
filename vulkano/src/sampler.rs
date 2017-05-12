@@ -21,19 +21,19 @@
 //!
 //! A simple sampler for most usages:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler::Sampler;
 //!
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let _sampler = Sampler::simple_repeat_linear_no_mipmap(&device);
 //! ```
 //!
 //! More detailed sampler creation:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler;
 //!
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let _sampler = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
 //!                                      sampler::MipmapMode::Nearest,
 //!                                      sampler::SamplerAddressMode::Repeat,

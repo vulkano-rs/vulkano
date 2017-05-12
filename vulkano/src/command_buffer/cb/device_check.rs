@@ -10,10 +10,12 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
 use VulkanObject;
 
 /// Layer around a command buffer builder that checks whether the commands added to it belong to
@@ -51,13 +53,8 @@ unsafe impl<I> CommandBufferBuilder for DeviceCheckLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -81,14 +78,14 @@ macro_rules! pass_through {
             type Out = DeviceCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
                 let inner_device = self.inner.device().internal_object();
                 let cmd_device = command.device().internal_object();
                 assert_eq!(inner_device, cmd_device);
 
-                DeviceCheckLayer {
-                    inner: self.inner.add(command),
-                }
+                Ok(DeviceCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
             }
         }
     );
@@ -100,10 +97,10 @@ macro_rules! pass_through {
             type Out = DeviceCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                DeviceCheckLayer {
-                    inner: self.inner.add(command),
-                }
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(DeviceCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
             }
         }
     );

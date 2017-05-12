@@ -16,6 +16,7 @@ use command_buffer::commands_raw;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -33,6 +34,13 @@ use OomError;
 
 type Cb<P> = cb::DeviceCheckLayer<cb::QueueTyCheckLayer<cb::ContextCheckLayer<cb::StateCacheLayer<cb::SubmitSyncBuilderLayer<cb::AutoPipelineBarriersLayer<cb::AbstractStorageLayer<cb::UnsafeCommandBufferBuilder<P>>>>>>>>;
 
+///
+///
+/// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
+/// don't implement the `Send` and `Sync` traits. If you use this pool, then the
+/// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
+/// is built, however, it *does* implement `Send` and `Sync`.
+///
 pub struct AutoCommandBufferBuilder<P = Arc<StandardCommandPool>> where P: CommandPool {
     inner: Cb<P>
 }
@@ -41,19 +49,16 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
     pub fn new(device: Arc<Device>, queue_family: QueueFamily)
                -> Result<AutoCommandBufferBuilder<Arc<StandardCommandPool>>, OomError>
     {
-        let supports_graphics = queue_family.supports_graphics();
-        let supports_compute = queue_family.supports_compute();
-
         let pool = Device::standard_command_pool(&device, queue_family);
 
         let cmd = unsafe {
-            let c = try!(cb::UnsafeCommandBufferBuilder::new(pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
+            let c = try!(cb::UnsafeCommandBufferBuilder::new(&pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
             let c = cb::AbstractStorageLayer::new(c);
             let c = cb::AutoPipelineBarriersLayer::new(c);
             let c = cb::SubmitSyncBuilderLayer::new(c);
             let c = cb::StateCacheLayer::new(c);
             let c = cb::ContextCheckLayer::new(c, false, true);
-            let c = cb::QueueTyCheckLayer::new(c, supports_graphics, supports_compute);
+            let c = cb::QueueTyCheckLayer::new(c);
             let c = cb::DeviceCheckLayer::new(c);
             c
         };
@@ -124,13 +129,8 @@ unsafe impl<P> CommandBufferBuilder for AutoCommandBufferBuilder<P>
           P: CommandPool
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -143,10 +143,10 @@ macro_rules! pass_through {
             type Out = AutoCommandBufferBuilder<P>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                AutoCommandBufferBuilder {
-                    inner: self.inner.add(command),
-                }
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(AutoCommandBufferBuilder {
+                    inner: self.inner.add(command)?,
+                })
             }
         }
     }
@@ -162,6 +162,7 @@ pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);
 pass_through!((S, D), commands_raw::CmdCopyBufferToImage<S, D>);
 pass_through!((), commands_raw::CmdDrawRaw);
 pass_through!((), commands_raw::CmdDrawIndexedRaw);
+pass_through!((B), commands_raw::CmdDrawIndirectRaw<B>);
 pass_through!((), commands_raw::CmdEndRenderPass);
 pass_through!((C), commands_raw::CmdExecuteCommands<C>);
 pass_through!((B), commands_raw::CmdFillBuffer<B>);

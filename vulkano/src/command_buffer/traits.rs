@@ -23,8 +23,10 @@ use device::DeviceOwned;
 use device::Queue;
 use image::Layout;
 use image::ImageAccess;
+use instance::QueueFamily;
+use sync::now;
 use sync::AccessFlagBits;
-use sync::DummyFuture;
+use sync::NowFuture;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use SafeDeref;
@@ -37,6 +39,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
 
+    /// Returns the queue family of the command buffer.
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.inner().queue_family()
+    }
+
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue.
     ///
@@ -47,20 +55,40 @@ pub unsafe trait CommandBuffer: DeviceOwned {
 
     /// Executes this command buffer on a queue.
     ///
-    /// > **Note**: This is just a shortcut for `execute_after`.
+    /// This function returns an object that implements the `GpuFuture` trait. See the
+    /// documentation of the `sync` module for more information.
+    ///
+    /// The command buffer is not actually executed until you call `flush()` on the object.
+    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
+    /// and call `.then_signal_future()` before doing so.
+    ///
+    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
+    /// > concrete type.
+    ///
+    /// > **Note**: This is just a shortcut for `execute_after(vulkano::sync::now(), queue)`.
     ///
     /// # Panic
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<DummyFuture, Self>
+    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<NowFuture, Self>
         where Self: Sized + 'static
     {
         let device = queue.device().clone();
-        self.execute_after(DummyFuture::new(device), queue)
+        self.execute_after(now(device), queue)
     }
 
     /// Executes the command buffer after an existing future.
+    ///
+    /// This function returns an object that implements the `GpuFuture` trait. See the
+    /// documentation of the `sync` module for more information.
+    ///
+    /// The command buffer is not actually executed until you call `flush()` on the object.
+    /// You are encouraged to chain together as many futures as possible before calling `flush()`,
+    /// and call `.then_signal_future()` before doing so.
+    ///
+    /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
+    /// > concrete type.
     ///
     /// This function requires the `'static` lifetime to be on the command buffer. This is because
     /// this function returns a `CommandBufferExecFuture` whose job is to lock resources and keep
@@ -225,8 +253,8 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
-        Some(&self.queue)
+    fn queue(&self) -> Option<Arc<Queue>> {
+        Some(self.queue.clone())
     }
 
     #[inline]

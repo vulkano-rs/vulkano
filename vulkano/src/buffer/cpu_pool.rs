@@ -26,6 +26,7 @@ use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -385,6 +386,17 @@ unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
     fn access(self) -> Self {
         self
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.size
+    }
+}
+
+unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool, T: 'static
+{
+    type Content = T;
 }
 
 impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {
@@ -447,7 +459,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
+unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool, T: 'static + Copy + Clone
 {
     type Content = T;

@@ -73,6 +73,7 @@ pub use self::traits::BufferAccess;
 pub use self::traits::BufferInner;
 pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
+pub use self::traits::TypedBufferAccess;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
 

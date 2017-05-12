@@ -10,11 +10,13 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use command_buffer::DynamicState;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
 use VulkanObject;
 use vk;
 
@@ -43,6 +45,8 @@ pub struct StateCacheLayer<I> {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The latest bind vertex buffers command.
+    vertex_buffers: Option<commands_raw::CmdBindVertexBuffersHash>,
 }
 
 impl<I> StateCacheLayer<I> {
@@ -56,6 +60,7 @@ impl<I> StateCacheLayer<I> {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            vertex_buffers: None,
         }
     }
 
@@ -79,13 +84,8 @@ unsafe impl<I> CommandBufferBuilder for StateCacheLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -95,7 +95,7 @@ unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCac
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdBindPipeline<Pl>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBindPipeline<Pl>) -> Result<Self::Out, CommandAddError> {
         let raw_pipeline = command.sys().internal_object();
 
         let new_command = {
@@ -116,12 +116,13 @@ unsafe impl<Pl, I, O> AddCommand<commands_raw::CmdBindPipeline<Pl>> for StateCac
             }
         };
 
-        StateCacheLayer {
-            inner: self.inner.add(new_command),
+        Ok(StateCacheLayer {
+            inner: self.inner.add(new_command)?,
             dynamic_state: DynamicState::none(),
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
-        }
+            vertex_buffers: self.vertex_buffers,
+        })
     }
 }
 
@@ -131,16 +132,17 @@ unsafe impl<Cb, I, O> AddCommand<commands_raw::CmdExecuteCommands<Cb>> for State
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdExecuteCommands<Cb>) -> Self::Out {
+    fn add(self, command: commands_raw::CmdExecuteCommands<Cb>) -> Result<Self::Out, CommandAddError> {
         // After a secondary command buffer is added, all states at reset to the "unknown" state.
-        let new_inner = self.inner.add(command);
+        let new_inner = self.inner.add(command)?;
 
-        StateCacheLayer {
+        Ok(StateCacheLayer {
             inner: new_inner,
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
-        }
+            vertex_buffers: None,
+        })
     }
 }
 
@@ -150,7 +152,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacheLayer<I>
     type Out = StateCacheLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdSetState) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdSetState) -> Result<Self::Out, CommandAddError> {
         // We need to synchronize `self.dynamic_state` with the state in `command`.
         // While doing so, we tweak `command` to erase the states that are the same as what's
         // already in `self.dynamic_state`.
@@ -168,12 +170,45 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacheLayer<I>
 
         // TODO: missing implementations
 
-        StateCacheLayer {
-            inner: self.inner.add(commands_raw::CmdSetState::new(command.device().clone(), command_state)),
+        Ok(StateCacheLayer {
+            inner: self.inner.add(commands_raw::CmdSetState::new(command.device().clone(), command_state))?,
             dynamic_state: self.dynamic_state,
             graphics_pipeline: self.graphics_pipeline,
             compute_pipeline: self.compute_pipeline,
-        }
+            vertex_buffers: self.vertex_buffers,
+        })
+    }
+}
+
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindVertexBuffers<B>> for StateCacheLayer<I>
+    where I: AddCommand<commands_raw::CmdBindVertexBuffers<B>, Out = O>
+{
+    type Out = StateCacheLayer<O>;
+
+    #[inline]
+    fn add(mut self, mut command: commands_raw::CmdBindVertexBuffers<B>)
+           -> Result<Self::Out, CommandAddError>
+    {
+        match &mut self.vertex_buffers {
+            &mut Some(ref mut curr) => {
+                if *curr != *command.hash() {
+                    let new_hash = command.hash().clone();
+                    command.diff(curr);
+                    *curr = new_hash;
+                }
+            },
+            curr @ &mut None => {
+                *curr = Some(command.hash().clone());
+            }
+        };
+
+        Ok(StateCacheLayer {
+            inner: self.inner.add(command)?,
+            dynamic_state: self.dynamic_state,
+            graphics_pipeline: self.graphics_pipeline,
+            compute_pipeline: self.compute_pipeline,
+            vertex_buffers: self.vertex_buffers,
+        })
     }
 }
 
@@ -197,13 +232,14 @@ macro_rules! pass_through {
             type Out = StateCacheLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                StateCacheLayer {
-                    inner: self.inner.add(command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(StateCacheLayer {
+                    inner: self.inner.add(command)?,
                     dynamic_state: self.dynamic_state,
                     graphics_pipeline: self.graphics_pipeline,
                     compute_pipeline: self.compute_pipeline,
-                }
+                    vertex_buffers: self.vertex_buffers,
+                })
             }
         }
     }
@@ -212,7 +248,6 @@ macro_rules! pass_through {
 pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
 pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
 pass_through!((B), commands_raw::CmdBindIndexBuffer<B>);
-pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
 pass_through!((S, D), commands_raw::CmdBlitImage<S, D>);
 pass_through!((), commands_raw::CmdClearAttachments);
 pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);

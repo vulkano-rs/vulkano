@@ -33,7 +33,8 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
+    let events_loop = winit::EventsLoop::new();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
 
     let queue = physical.queue_families().find(|q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
@@ -180,24 +181,25 @@ fn main() {
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
                 renderpass.desc().start_clear_values()
-                    .color([0.0, 0.0, 1.0, 1.0]))
+                    .color([0.0, 0.0, 1.0, 1.0])).unwrap()
             .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
-                  set.clone(), ())
-            .end_render_pass()
+                  set.clone(), ()).unwrap()
+            .end_render_pass().unwrap()
             .build().unwrap();
 
         let future = future
             .then_execute(queue.clone(), cb)
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence();
-        future.flush().unwrap();
+            .then_signal_fence_and_flush().unwrap();
         submissions.push(Box::new(future) as Box<_>);
 
-        for ev in window.window().poll_events() {
+        let mut done = false;
+        events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::Closed => return,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
                 _ => ()
             }
-        }
+        });
+        if done { return; }
     }
 }

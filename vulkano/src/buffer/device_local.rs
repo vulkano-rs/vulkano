@@ -28,6 +28,7 @@ use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -171,6 +172,18 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
     fn access(self) -> Self::Access {
         DeviceLocalBufferAccess(self)
     }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+}
+
+unsafe impl<T: ?Sized, A> TypedBuffer for Arc<DeviceLocalBuffer<T, A>>
+    where T: 'static + Send + Sync,
+          A: MemoryPool
+{
+    type Content = T;
 }
 
 unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
@@ -204,7 +217,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 }
 
-unsafe impl<P, T: ?Sized, A> TypedBuffer for DeviceLocalBufferAccess<P>
+unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
           A: MemoryPool

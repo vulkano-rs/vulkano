@@ -44,7 +44,7 @@ use vk;
 /// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
 pub struct RenderPass<D> {
     // The internal Vulkan object.
-    renderpass: vk::RenderPass,
+    render_pass: vk::RenderPass,
 
     // Device this render pass was created from.
     device: Arc<Device>,
@@ -57,7 +57,7 @@ pub struct RenderPass<D> {
 }
 
 impl<D> RenderPass<D> where D: RenderPassDesc {
-    /// Builds a new renderpass.
+    /// Builds a new render pass.
     ///
     /// # Panic
     ///
@@ -96,14 +96,14 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
                 samples: attachment.samples,
                 loadOp: attachment.load as u32,
                 storeOp: attachment.store as u32,
-                stencilLoadOp: attachment.load as u32,       // TODO: allow user to choose
-                stencilStoreOp: attachment.store as u32,      // TODO: allow user to choose
+                stencilLoadOp: attachment.stencil_load as u32,
+                stencilStoreOp: attachment.stencil_store as u32,
                 initialLayout: attachment.initial_layout as u32,
                 finalLayout: attachment.final_layout as u32,
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        // We need to pass pointers to vkAttachmentReference structs when creating the renderpass.
+        // We need to pass pointers to vkAttachmentReference structs when creating the render pass.
         // Therefore we need to allocate them in advance.
         //
         // This block allocates, for each pass, in order, all color attachment references, then all
@@ -250,7 +250,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        let renderpass = unsafe {
+        let render_pass = unsafe {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
                 pNext: ptr::null(),
@@ -273,7 +273,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
 
         Ok(RenderPass {
             device: device.clone(),
-            renderpass: renderpass,
+            render_pass: render_pass,
             desc: description,
             granularity: Mutex::new(None),
         })
@@ -309,18 +309,14 @@ impl<D> RenderPass<D> {
             let vk = self.device.pointers();
             let mut out = mem::uninitialized();
             vk.GetRenderAreaGranularity(self.device.internal_object(),
-                                        self.renderpass, &mut out);
+                                        self.render_pass, &mut out);
 
+            debug_assert_ne!(out.width, 0);
+            debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
             *granularity = Some(gran);
             gran
         }
-    }
-
-    /// Returns the device that was used to create this render pass.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 
     /// Returns the description of the render pass.
@@ -386,7 +382,7 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
 unsafe impl<D> RenderPassAbstract for RenderPass<D> where D: RenderPassDesc {
     #[inline]
     fn inner(&self) -> RenderPassSys {
-        RenderPassSys(self.renderpass, PhantomData)
+        RenderPassSys(self.render_pass, PhantomData)
     }
 }
 
@@ -402,7 +398,7 @@ impl<D> Drop for RenderPass<D> {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
+            vk.DestroyRenderPass(self.device.internal_object(), self.render_pass, ptr::null());
         }
     }
 }
@@ -478,11 +474,17 @@ impl From<Error> for RenderPassCreationError {
     }
 }
 
-// FIXME: restore
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
-    use format::R8G8B8A8Unorm;
+    use format::Format;
+    use framebuffer::RenderPass;
     use framebuffer::RenderPassCreationError;
+
+    #[test]
+    fn empty() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = RenderPass::empty_single_pass(device).unwrap();
+    }
 
     #[test]
     fn too_many_color_atch() {
@@ -495,16 +497,16 @@ mod tests {
         let rp = single_pass_renderpass! {
             device.clone(),
             attachments: {
-                a1: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a2: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a3: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a4: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a5: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a6: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a7: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a8: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a9: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a10: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, }
+                a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a3: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a4: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a5: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a6: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
@@ -517,4 +519,24 @@ mod tests {
             _ => panic!()
         }
     }
-}*/
+
+    #[test]
+    fn non_zero_granularity() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = single_pass_renderpass! {
+            device.clone(),
+            attachments: {
+                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
+            },
+            pass: {
+                color: [a],
+                depth_stencil: {}
+            }
+        }.unwrap();
+
+        let granularity = rp.granularity();
+        assert_ne!(granularity[0], 0);
+        assert_ne!(granularity[1], 0);
+    }
+}

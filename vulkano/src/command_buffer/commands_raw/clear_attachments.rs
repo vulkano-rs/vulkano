@@ -9,6 +9,7 @@
 
 use smallvec::SmallVec;
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -33,7 +34,7 @@ unsafe impl<'a, P> AddCommand<&'a CmdClearAttachments> for UnsafeCommandBufferBu
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdClearAttachments) -> Self::Out {
+    fn add(self, command: &'a CmdClearAttachments) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
@@ -43,6 +44,6 @@ unsafe impl<'a, P> AddCommand<&'a CmdClearAttachments> for UnsafeCommandBufferBu
                                    command.rects.as_ptr());
         }
 
-        self
+        Ok(self)
     }
 }

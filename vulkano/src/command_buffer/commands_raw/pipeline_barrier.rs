@@ -15,6 +15,7 @@ use smallvec::SmallVec;
 
 use buffer::BufferAccess;
 use buffer::BufferInner;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -239,14 +240,14 @@ unsafe impl<'a, P> AddCommand<&'a CmdPipelineBarrier<'a>> for UnsafeCommandBuffe
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdPipelineBarrier<'a>) -> Self::Out {
+    fn add(self, command: &'a CmdPipelineBarrier<'a>) -> Result<Self::Out, CommandAddError> {
         // If barrier is empty, don't do anything.
         if command.src_stage_mask == 0 || command.dst_stage_mask == 0 {
             debug_assert!(command.src_stage_mask == 0 && command.dst_stage_mask == 0);
             debug_assert!(command.memory_barriers.is_empty());
             debug_assert!(command.buffer_barriers.is_empty());
             debug_assert!(command.image_barriers.is_empty());
-            return self;
+            return Ok(self);
         }
 
         unsafe {
@@ -262,6 +263,6 @@ unsafe impl<'a, P> AddCommand<&'a CmdPipelineBarrier<'a>> for UnsafeCommandBuffe
                                   command.image_barriers.as_ptr());
         }
 
-        self
+        Ok(self)
     }
 }

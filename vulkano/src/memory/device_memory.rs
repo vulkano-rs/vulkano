@@ -31,10 +31,10 @@ use vk;
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```
 /// use vulkano::memory::DeviceMemory;
 ///
-/// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let mem_ty = device.physical_device().memory_types().next().unwrap();
 /// 
 /// // Allocates 1kB of memory.
@@ -180,10 +180,10 @@ impl<D> Drop for DeviceMemory<D> where D: SafeDeref<Target = Device> {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```
 /// use vulkano::memory::DeviceMemory;
 ///
-/// # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// // The memory type must be mappable. 
 /// let mem_ty = device.physical_device().memory_types()
 ///                     .filter(|t| t.is_host_visible())

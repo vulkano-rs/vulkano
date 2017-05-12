@@ -17,12 +17,14 @@ use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use framebuffer::FramebufferAbstract;
 use image::Layout;
 use image::ImageAccess;
+use instance::QueueFamily;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -236,13 +238,8 @@ unsafe impl<I> CommandBufferBuilder for SubmitSyncBuilderLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -255,11 +252,11 @@ macro_rules! pass_through {
             type Out = SubmitSyncBuilderLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                SubmitSyncBuilderLayer {
-                    inner: AddCommand::add(self.inner, command),
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(SubmitSyncBuilderLayer {
+                    inner: AddCommand::add(self.inner, command)?,
                     resources: self.resources,
-                }
+                })
             }
         }
     }
@@ -277,13 +274,13 @@ unsafe impl<I, O, Rp, F> AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>> for
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdBeginRenderPass<Rp, F>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBeginRenderPass<Rp, F>) -> Result<Self::Out, CommandAddError> {
         self.add_framebuffer(command.framebuffer());
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -294,13 +291,13 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitS
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdBindIndexBuffer<B>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBindIndexBuffer<B>) -> Result<Self::Out, CommandAddError> {
         self.add_buffer(command.buffer(), false);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -310,11 +307,11 @@ unsafe impl<I, O, P> AddCommand<commands_raw::CmdBindPipeline<P>> for SubmitSync
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdBindPipeline<P>) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdBindPipeline<P>) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -326,14 +323,14 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitS
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdBlitImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdBlitImage<S, D>) -> Result<Self::Out, CommandAddError> {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -343,11 +340,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdClearAttachments> for SubmitSyncBu
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdClearAttachments) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdClearAttachments) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -359,14 +356,14 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for Submit
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdCopyBuffer<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyBuffer<S, D>) -> Result<Self::Out, CommandAddError> {
         self.add_buffer(command.source(), false);
         self.add_buffer(command.destination(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -378,14 +375,14 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdCopyBufferToImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyBufferToImage<S, D>) -> Result<Self::Out, CommandAddError> {
         self.add_buffer(command.source(), false);
         self.add_image(command.destination(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -397,14 +394,14 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitS
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdCopyImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdCopyImage<S, D>) -> Result<Self::Out, CommandAddError> {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -414,11 +411,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDispatchRaw> for SubmitSyncBuilder
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdDispatchRaw) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdDispatchRaw) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -428,11 +425,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawRaw> for SubmitSyncBuilderLaye
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdDrawRaw) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdDrawRaw) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -442,11 +439,28 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawIndexedRaw> for SubmitSyncBuil
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdDrawIndexedRaw) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdDrawIndexedRaw) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
+    }
+}
+
+unsafe impl<I, O, B> AddCommand<commands_raw::CmdDrawIndirectRaw<B>> for SubmitSyncBuilderLayer<I>
+    where I: AddCommand<commands_raw::CmdDrawIndirectRaw<B>, Out = O>,
+          B: BufferAccess + Send + Sync + Clone + 'static
+{
+    type Out = SubmitSyncBuilderLayer<O>;
+
+    #[inline]
+    fn add(mut self, command: commands_raw::CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
+        self.add_buffer(command.buffer(), true);
+
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
+            resources: self.resources,
+        })
     }
 }
 
@@ -456,11 +470,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuild
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdEndRenderPass) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdEndRenderPass) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -471,13 +485,13 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBu
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdFillBuffer<B>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdFillBuffer<B>) -> Result<Self::Out, CommandAddError> {
         self.add_buffer(command.buffer(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -487,11 +501,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdNextSubpass> for SubmitSyncBuilder
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdNextSubpass) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdNextSubpass) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -501,11 +515,11 @@ unsafe impl<I, O, Pc, Pl> AddCommand<commands_raw::CmdPushConstants<Pc, Pl>> for
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdPushConstants<Pc, Pl>) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdPushConstants<Pc, Pl>) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -517,14 +531,14 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for Subm
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdResolveImage<S, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdResolveImage<S, D>) -> Result<Self::Out, CommandAddError> {
         self.add_image(command.source(), false);
         self.add_image(command.destination(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -534,11 +548,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetEvent> for SubmitSyncBuilderLay
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdSetEvent) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdSetEvent) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -548,11 +562,11 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for SubmitSyncBuilderLay
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(self, command: commands_raw::CmdSetState) -> Self::Out {
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+    fn add(self, command: commands_raw::CmdSetState) -> Result<Self::Out, CommandAddError> {
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 
@@ -563,13 +577,13 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
     type Out = SubmitSyncBuilderLayer<O>;
 
     #[inline]
-    fn add(mut self, command: commands_raw::CmdUpdateBuffer<B, D>) -> Self::Out {
+    fn add(mut self, command: commands_raw::CmdUpdateBuffer<B, D>) -> Result<Self::Out, CommandAddError> {
         self.add_buffer(command.buffer(), true);
 
-        SubmitSyncBuilderLayer {
-            inner: AddCommand::add(self.inner, command),
+        Ok(SubmitSyncBuilderLayer {
+            inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
-        }
+        })
     }
 }
 

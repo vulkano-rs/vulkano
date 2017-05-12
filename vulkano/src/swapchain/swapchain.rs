@@ -477,7 +477,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         None
     }
 
@@ -672,13 +672,13 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn queue(&self) -> Option<&Arc<Queue>> {
+    fn queue(&self) -> Option<Arc<Queue>> {
         debug_assert!(match self.previous.queue() {
             None => true,
             Some(q) => q.is_same(&self.queue)
         });
 
-        Some(&self.queue)
+        Some(self.queue.clone())
     }
 
     #[inline]

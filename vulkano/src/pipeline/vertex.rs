@@ -42,8 +42,8 @@
 //! use vulkano::buffer::Usage as BufferUsage;
 //! use vulkano::memory::HostVisible;
 //! use vulkano::pipeline::vertex::;
-//! # let device: Arc<Device> = unsafe { std::mem::uninitialized() };
-//! # let queue: Arc<Queue> = unsafe { std::mem::uninitialized() };
+//! # let device: Arc<Device> = return;
+//! # let queue: Arc<Queue> = return;
 //! 
 //! struct Vertex {
 //!     position: [f32; 2]
@@ -73,7 +73,7 @@ use std::vec::IntoIter as VecIntoIter;
 
 use buffer::BufferAccess;
 use buffer::BufferInner;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use format::Format;
 use pipeline::shader::ShaderInterfaceDef;
 use SafeDeref;
@@ -312,7 +312,7 @@ unsafe impl<V> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for SingleBuff
 }
 
 unsafe impl<'a, B, V> VertexSource<B> for SingleBufferDefinition<V>
-    where B: TypedBuffer<Content = [V]>, V: Vertex
+    where B: TypedBufferAccess<Content = [V]>, V: Vertex
 {
     #[inline]
     fn decode<'l>(&self, source: &'l B) -> (Vec<BufferInner<'l>>, usize, usize) {
@@ -391,8 +391,8 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for TwoBuff
 }
 
 unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for TwoBuffersDefinition<T, U>
-    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
-          U: Vertex, Bu: TypedBuffer<Content = [U]>
+    where T: Vertex, Bt: TypedBufferAccess<Content = [T]>,
+          U: Vertex, Bu: TypedBufferAccess<Content = [U]>
 {
     #[inline]
     fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
@@ -467,13 +467,17 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for OneVert
 {
     #[inline]
     fn decode<'l>(&self, source: &'l Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
-        unimplemented!()        // FIXME: implement
+        // FIXME: safety
+        assert_eq!(source.len(), 2);
+        let len = source[0].size() / mem::size_of::<T>();
+        let inst = source[0].size() / mem::size_of::<U>();
+        (vec![source[0].inner(), source[1].inner()], len, inst)
     }
 }
 
 unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex, Bt: TypedBuffer<Content = [T]>,
-          U: Vertex, Bu: TypedBuffer<Content = [U]>
+    where T: Vertex, Bt: TypedBufferAccess<Content = [T]>,
+          U: Vertex, Bu: TypedBufferAccess<Content = [U]>
 {
     #[inline]
     fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {

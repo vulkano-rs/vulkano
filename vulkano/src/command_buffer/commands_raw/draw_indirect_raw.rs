@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 use buffer::BufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -20,25 +21,30 @@ use vk;
 
 pub struct CmdDrawIndirectRaw<B> {
     buffer: B,
-    offset: vk::DeviceSize,
     draw_count: u32,
     stride: u32,
 }
 
 impl<B> CmdDrawIndirectRaw<B> where B: BufferAccess {
     #[inline]
-    pub unsafe fn new(buffer: B, offset: usize, draw_count: u32) -> CmdDrawIndirectRaw<B> {
-        let real_offset = offset + buffer.inner().offset;
-        assert_eq!(real_offset % 4, 0);
+    pub unsafe fn new(buffer: B, draw_count: u32) -> CmdDrawIndirectRaw<B> {
+        assert_eq!(buffer.inner().offset % 4, 0);
 
         // FIXME: all checks are missing here
 
         CmdDrawIndirectRaw {
             buffer: buffer,
-            offset: real_offset as vk::DeviceSize,
             draw_count: draw_count,
             stride: 16,         // TODO:
         }
+    }
+}
+
+impl<B> CmdDrawIndirectRaw<B> {
+    /// Returns the buffer that contains the indirect command.
+    #[inline]
+    pub fn buffer(&self) -> &B {
+        &self.buffer
     }
 }
 
@@ -58,14 +64,15 @@ unsafe impl<'a, B, P> AddCommand<&'a CmdDrawIndirectRaw<B>> for UnsafeCommandBuf
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdDrawIndirectRaw<B>) -> Self::Out {
+    fn add(self, command: &'a CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
             vk.CmdDrawIndirect(cmd, command.buffer.inner().buffer.internal_object(),
-                               command.offset, command.draw_count, command.stride);
+                               command.buffer.inner().offset as vk::DeviceSize,
+                               command.draw_count, command.stride);
         }
 
-        self
+        Ok(self)
     }
 }

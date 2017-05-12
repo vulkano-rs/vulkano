@@ -330,10 +330,17 @@ pub struct LayoutAttachmentDescription {
     /// Number of samples of the image that is going to be binded.
     pub samples: u32,
 
-    /// What the implementation should do with that attachment at the start of the renderpass.
+    /// What the implementation should do with that attachment at the start of the render pass.
     pub load: LoadOp,
-    /// What the implementation should do with that attachment at the end of the renderpass.
+    /// What the implementation should do with that attachment at the end of the render pass.
     pub store: StoreOp,
+
+    /// Equivalent of `load` for the stencil component of the attachment, if any. Irrelevant if
+    /// there is no stencil component.
+    pub stencil_load: LoadOp,
+    /// Equivalent of `store` for the stencil component of the attachment, if any. Irrelevant if
+    /// there is no stencil component.
+    pub stencil_store: StoreOp,
 
     /// Layout that the image is going to be in at the start of the renderpass.
     ///

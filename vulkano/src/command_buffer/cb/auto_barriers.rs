@@ -10,10 +10,12 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
 use command_buffer::commands_raw;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
 
 pub struct AutoPipelineBarriersLayer<I> {
     inner: I,
@@ -66,13 +68,8 @@ unsafe impl<I> CommandBufferBuilder for AutoPipelineBarriersLayer<I>
     where I: CommandBufferBuilder
 {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -84,10 +81,10 @@ macro_rules! pass_through {
             type Out = AutoPipelineBarriersLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                AutoPipelineBarriersLayer {
-                    inner: AddCommand::add(self.inner, command),
-                }
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(AutoPipelineBarriersLayer {
+                    inner: AddCommand::add(self.inner, command)?,
+                })
             }
         }
     }
@@ -106,6 +103,7 @@ pass_through!((S, D), commands_raw::CmdCopyImage<S, D>);
 pass_through!((), commands_raw::CmdDispatchRaw);
 pass_through!((), commands_raw::CmdDrawRaw);
 pass_through!((), commands_raw::CmdDrawIndexedRaw);
+pass_through!((B), commands_raw::CmdDrawIndirectRaw<B>);
 pass_through!((), commands_raw::CmdEndRenderPass);
 pass_through!((C), commands_raw::CmdExecuteCommands<C>);
 pass_through!((B), commands_raw::CmdFillBuffer<B>);

@@ -19,10 +19,10 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```
 //! # use vulkano::instance::Instance;
 //! # use std::sync::Arc;
-//! # let instance: Arc<Instance> = unsafe { ::std::mem::uninitialized() };
+//! # let instance: Arc<Instance> = return;
 //! use vulkano::instance::debug::DebugCallback;
 //! 
 //! let _callback = DebugCallback::errors_and_warnings(&instance, |msg| {

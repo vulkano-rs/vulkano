@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 use smallvec::SmallVec;
 
-use command_buffer::pool::AllocatedCommandBuffer;
 use instance::QueueFamily;
 
 use device::Device;
@@ -184,7 +183,7 @@ impl UnsafeCommandPool {
     /// The command buffers must have been allocated from this pool. They must not be in use.
     ///
     pub unsafe fn free_command_buffers<I>(&self, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>
+        where I: Iterator<Item = UnsafeCommandPoolAlloc>
     {
         let command_buffers: SmallVec<[_; 4]> = command_buffers.map(|cb| cb.0).collect();
         let vk = self.device.pointers();
@@ -225,6 +224,18 @@ impl Drop for UnsafeCommandPool {
     }
 }
 
+/// Opaque type that represents a command buffer allocated from a pool.
+pub struct UnsafeCommandPoolAlloc(vk::CommandBuffer);
+
+unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
+    type Object = vk::CommandBuffer;
+
+    #[inline]
+    fn internal_object(&self) -> vk::CommandBuffer {
+        self.0
+    }
+}
+
 /// Iterator for newly-allocated command buffers.
 #[derive(Debug)]
 pub struct UnsafeCommandPoolAllocIter {
@@ -232,11 +243,11 @@ pub struct UnsafeCommandPoolAllocIter {
 }
 
 impl Iterator for UnsafeCommandPoolAllocIter {
-    type Item = AllocatedCommandBuffer;
+    type Item = UnsafeCommandPoolAlloc;
 
     #[inline]
-    fn next(&mut self) -> Option<AllocatedCommandBuffer> {
-        self.list.as_mut().and_then(|i| i.next()).map(|cb| AllocatedCommandBuffer(cb))
+    fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
+        self.list.as_mut().and_then(|i| i.next()).map(|cb| UnsafeCommandPoolAlloc(cb))
     }
 
     #[inline]

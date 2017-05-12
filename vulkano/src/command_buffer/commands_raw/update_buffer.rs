@@ -13,8 +13,12 @@ use std::sync::Arc;
 use std::os::raw::c_void;
 use std::ptr;
 
+use buffer::Buffer;
 use buffer::BufferAccess;
+use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use buffer::BufferInner;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -41,9 +45,7 @@ pub struct CmdUpdateBuffer<B, D> {
     data: D,
 }
 
-impl<B, D> CmdUpdateBuffer<B, D>
-    where B: BufferAccess
-{
+impl<B, D> CmdUpdateBuffer<B, D> {
     /// Builds a command that writes data to a buffer.
     ///
     /// If the size of the data and the size of the buffer mismatch, then only the intersection
@@ -51,8 +53,33 @@ impl<B, D> CmdUpdateBuffer<B, D>
     ///
     /// The size of the modification must not exceed 65536 bytes. The offset and size must be
     /// multiples of four.
-    // TODO: type safety
-    pub fn new(buffer: B, data: D) -> Result<CmdUpdateBuffer<B, D>, CmdUpdateBufferError> {
+    #[inline]
+    pub fn new<P>(buffer: P, data: D) -> Result<CmdUpdateBuffer<B, D>, CmdUpdateBufferError>
+        where P: Buffer<Access = B> + TypedBuffer<Content = D>,
+              B: BufferAccess,
+              D: 'static
+    {
+        unsafe {
+            CmdUpdateBuffer::unchecked_type(buffer.access(), data)
+        }
+    }
+
+    /// Same as `new`, except that the parameter is a `BufferAccess` instead of a `Buffer`.
+    #[inline]
+    pub fn from_access(buffer: B, data: D) -> Result<CmdUpdateBuffer<B, D>, CmdUpdateBufferError>
+        where B: BufferAccess + TypedBufferAccess<Content = D>,
+              D: 'static
+    {
+        unsafe {
+            CmdUpdateBuffer::unchecked_type(buffer, data)
+        }
+    }
+
+    /// Same as `from_access`, except that type safety is not enforced.
+    pub unsafe fn unchecked_type(buffer: B, data: D)
+                                 -> Result<CmdUpdateBuffer<B, D>, CmdUpdateBufferError>
+        where B: BufferAccess
+    {
         let size = buffer.size();
 
         let (buffer_handle, offset) = {
@@ -83,9 +110,7 @@ impl<B, D> CmdUpdateBuffer<B, D>
             data: data,
         })
     }
-}
 
-impl<B, D> CmdUpdateBuffer<B, D> {
     /// Returns the buffer that is going to be written.
     #[inline]
     pub fn buffer(&self) -> &B {
@@ -109,7 +134,7 @@ unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommand
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Self::Out {
+    fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let data = if command.data_ptr.is_null() {
                 &command.data as *const D as *const _
@@ -122,7 +147,7 @@ unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommand
             vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size, data);
         }
 
-        self
+        Ok(self)
     }
 }
 

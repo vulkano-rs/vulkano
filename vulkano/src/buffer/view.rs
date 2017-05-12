@@ -17,15 +17,15 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```
 //! # use std::sync::Arc;
 //! use vulkano::buffer::immutable::ImmutableBuffer;
 //! use vulkano::buffer::sys::Usage;
 //! use vulkano::buffer::BufferView;
 //! use vulkano::format;
 //!
-//! # let device: Arc<vulkano::device::Device> = unsafe { std::mem::uninitialized() };
-//! # let queue: Arc<vulkano::device::Queue> = unsafe { std::mem::uninitialized() };
+//! # let device: Arc<vulkano::device::Device> = return;
+//! # let queue: Arc<vulkano::device::Queue> = return;
 //! let usage = Usage {
 //!     storage_texel_buffer: true,
 //!     .. Usage::none()
@@ -33,7 +33,7 @@
 //!
 //! let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
 //!                                              Some(queue.family())).unwrap();
-//! let _view = BufferView::new(&buffer, format::R32Uint).unwrap();
+//! let _view = BufferView::new(buffer, format::R32Uint).unwrap();
 //! ```
 
 use std::marker::PhantomData;
@@ -43,9 +43,11 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use buffer::Buffer;
 use buffer::BufferAccess;
 use buffer::BufferInner;
 use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use format::FormatDesc;
@@ -71,8 +73,20 @@ pub struct BufferView<F, B> where B: BufferAccess {
 impl<F, B> BufferView<F, B> where B: BufferAccess {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
-        where B: TypedBuffer<Content = [F::Pixel]>, F: StrongStorage + 'static
+    pub fn new<P>(buffer: P, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where P: TypedBuffer<Content = [F::Pixel]> + Buffer<Access = B>,
+              B: BufferAccess,
+              F: StrongStorage + 'static
+    {
+        unsafe {
+            BufferView::unchecked(buffer.access(), format)
+        }
+    }
+
+    /// Builds a new buffer view from a `BufferAccess` object.
+    #[inline]
+    pub fn from_access(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+        where B: TypedBufferAccess<Content = [F::Pixel]>, F: StrongStorage + 'static
     {
         unsafe {
             BufferView::unchecked(buffer, format)
@@ -314,7 +328,7 @@ mod tests {
 
         let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
                                                          Some(queue.family())).unwrap();
-        let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.uniform_texel_buffer());
     }
@@ -331,7 +345,7 @@ mod tests {
 
         let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
                                                          Some(queue.family())).unwrap();
-        let view = BufferView::new(&buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.storage_texel_buffer());
     }
@@ -348,7 +362,7 @@ mod tests {
 
         let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
                                                      Some(queue.family())).unwrap();
-        let view = BufferView::new(&buffer, format::R32Uint).unwrap();
+        let view = BufferView::new(buffer, format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());
         assert!(view.storage_texel_buffer_atomic());

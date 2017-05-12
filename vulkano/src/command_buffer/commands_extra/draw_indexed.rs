@@ -8,7 +8,8 @@
 // according to those terms.
 
 use buffer::BufferAccess;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::DynamicState;
 use command_buffer::cb::AddCommand;
 use command_buffer::commands_raw::CmdBindDescriptorSets;
@@ -38,7 +39,7 @@ pub struct CmdDrawIndexed<V, Ib, P, S, Pc>
 impl<V, Ib, I, P, S, Pc> CmdDrawIndexed<V, Ib, P, S, Pc>
     where P: GraphicsPipelineAbstract, 
           S: DescriptorSetsCollection,
-          Ib: BufferAccess + TypedBuffer<Content = [I]>,
+          Ib: BufferAccess + TypedBufferAccess<Content = [I]>,
           I: Index + 'static
 {
     /// See the documentation of the `draw` method.
@@ -88,13 +89,13 @@ unsafe impl<Cb, V, Ib, P, S, Pc, O, O1, O2, O3, O4, O5, O6> AddCommand<CmdDrawIn
 {
     type Out = O;
     #[inline]
-    fn add(self, command: CmdDrawIndexed<V, Ib, P, S, Pc>) -> O {
-        self.add(command.vertex_buffers)
-            .add(command.index_buffer)
-            .add(command.push_constants)
-            .add(command.descriptor_sets)
-            .add(command.set_state)
-            .add(command.bind_pipeline)
-            .add(command.draw_indexed_raw)
+    fn add(self, command: CmdDrawIndexed<V, Ib, P, S, Pc>) -> Result<Self::Out, CommandAddError> {
+        Ok(self.add(command.vertex_buffers)?
+               .add(command.index_buffer)?
+               .add(command.push_constants)?
+               .add(command.descriptor_sets)?
+               .add(command.set_state)?
+               .add(command.bind_pipeline)?
+               .add(command.draw_indexed_raw)?)
     }
 }

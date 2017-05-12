@@ -16,6 +16,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::commands_raw;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
 use device::Device;
@@ -23,6 +24,7 @@ use device::DeviceOwned;
 use device::Queue;
 use image::Layout;
 use image::ImageAccess;
+use instance::QueueFamily;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -98,13 +100,8 @@ unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
 
 unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: CommandBufferBuilder {
     #[inline]
-    fn supports_graphics(&self) -> bool {
-        self.inner.supports_graphics()
-    }
-
-    #[inline]
-    fn supports_compute(&self) -> bool {
-        self.inner.supports_compute()
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
     }
 }
 
@@ -116,15 +113,15 @@ macro_rules! pass_through {
             type Out = AbstractStorageLayer<I>;
 
             #[inline]
-            fn add(mut self, command: $cmd) -> Self::Out {
-                let new_inner = AddCommand::add(self.inner, &command);
+            fn add(mut self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                let new_inner = AddCommand::add(self.inner, &command)?;
                 // TODO: should store a lightweight version of the command
                 self.commands.push(Box::new(command) as Box<_>);
                 
-                AbstractStorageLayer {
+                Ok(AbstractStorageLayer {
                     inner: new_inner,
                     commands: self.commands,
-                }
+                })
             }
         }
     }

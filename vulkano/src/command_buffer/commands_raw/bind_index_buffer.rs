@@ -10,7 +10,8 @@
 use std::sync::Arc;
 
 use buffer::BufferAccess;
-use buffer::TypedBuffer;
+use buffer::TypedBufferAccess;
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -36,7 +37,7 @@ pub struct CmdBindIndexBuffer<B> {
 }
 
 impl<B, I> CmdBindIndexBuffer<B>
-    where B: BufferAccess + TypedBuffer<Content = [I]>,
+    where B: BufferAccess + TypedBufferAccess<Content = [I]>,
           I: Index + 'static
 {
     /// Builds the command.
@@ -89,13 +90,13 @@ unsafe impl<'a, P, B> AddCommand<&'a CmdBindIndexBuffer<B>> for UnsafeCommandBuf
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdBindIndexBuffer<B>) -> Self::Out {
+    fn add(self, command: &'a CmdBindIndexBuffer<B>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
             vk.CmdBindIndexBuffer(cmd, command.raw_buffer, command.offset, command.index_type);
         }
 
-        self
+        Ok(self)
     }
 }

@@ -93,6 +93,7 @@ fn main() {
     // Some little debug infos.
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
+
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
     //
@@ -103,7 +104,8 @@ fn main() {
     //
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
-    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
+    let events_loop = winit::EventsLoop::new();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -384,17 +386,20 @@ fn main() {
             // only the attachments that use `load: Clear` appear in the list.
             .begin_render_pass(framebuffers[image_num].clone(), false,
                                render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
+            .unwrap()
 
             // We are now inside the first subpass of the render pass. We add a draw command.
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
             .draw(pipeline.clone(), DynamicState::none(), vertex_buffer.clone(), (), ())
+            .unwrap()
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
             // subpasses we could have called `next_inline` (or `next_secondary`) to jump to the
             // next subpass.
             .end_render_pass()
+            .unwrap()
 
             // Finish building the command buffer by calling `build`.
             .build().unwrap();
@@ -409,8 +414,7 @@ fn main() {
             // present command at the end of the queue. This means that it will only be presented once
             // the GPU has finished executing the command buffer that draws the triangle.
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence();
-        future.flush().unwrap();
+            .then_signal_fence_and_flush().unwrap();
         submissions.push(Box::new(future) as Box<_>);
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
@@ -423,11 +427,13 @@ fn main() {
 
         // Handling the window events in order to close the program when the user wants to close
         // it.
-        for ev in window.window().poll_events() {
+        let mut done = false;
+        events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::Closed => return,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
                 _ => ()
             }
-        }
+        });
+        if done { return; }
     }
 }

@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use command_buffer::CommandAddError;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
@@ -43,6 +44,12 @@ impl<Cb> CmdExecuteCommands<Cb> {
             command_buffer: command_buffer,
         }*/
     }
+
+    /// Returns the command buffer to be executed.
+    #[inline]
+    pub fn command_buffer(&self) -> &Cb {
+        &self.command_buffer
+    }
 }
 
 unsafe impl<Cb> DeviceOwned for CmdExecuteCommands<Cb>
@@ -60,13 +67,13 @@ unsafe impl<'a, P, Cb> AddCommand<&'a CmdExecuteCommands<Cb>> for UnsafeCommandB
     type Out = UnsafeCommandBufferBuilder<P>;
 
     #[inline]
-    fn add(self, command: &'a CmdExecuteCommands<Cb>) -> Self::Out {
+    fn add(self, command: &'a CmdExecuteCommands<Cb>) -> Result<Self::Out, CommandAddError> {
         unsafe {
             let vk = self.device().pointers();
             let cmd = self.internal_object();
             vk.CmdExecuteCommands(cmd, command.raw_list.len() as u32, command.raw_list.as_ptr());
         }
 
-        self
+        Ok(self)
     }
 }

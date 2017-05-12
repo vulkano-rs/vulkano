@@ -192,6 +192,8 @@ macro_rules! ordered_passes_renderpass {
                             samples: desc.$atch_name.1,
                             load: $crate::framebuffer::LoadOp::$load,
                             store: $crate::framebuffer::StoreOp::$store,
+                            stencil_load: $crate::framebuffer::LoadOp::$load,
+                            stencil_store: $crate::framebuffer::StoreOp::$store,
                             initial_layout: initial_layout,
                             final_layout: final_layout,
                         });
