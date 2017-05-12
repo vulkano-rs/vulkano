@@ -31,6 +31,7 @@ use framebuffer::Subpass;
 use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::GpuFuture;
@@ -310,16 +311,16 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 }
 

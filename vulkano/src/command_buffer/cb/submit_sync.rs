@@ -28,6 +28,8 @@ use instance::QueueFamily;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use sync::AccessCheckError;
+use sync::AccessError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::GpuFuture;
@@ -648,7 +650,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         // TODO: check the queue family
 
@@ -662,18 +664,18 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
             }
 
             if !value.exclusive && exclusive {
-                return Err(());
+                return Err(AccessCheckError::Denied(AccessError::ExclusiveDenied));
             }
 
             return Ok(Some((value.final_stages, value.final_access)));
         }
 
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         // TODO: check the queue family
 
@@ -687,17 +689,20 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
             }
 
             if value.final_layout != layout {
-                return Err(());
+                return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
+                    allowed: value.final_layout,
+                    requested: layout,
+                }));
             }
 
             if !value.exclusive && exclusive {
-                return Err(());
+                return Err(AccessCheckError::Denied(AccessError::ExclusiveDenied));
             }
 
             return Ok(Some((value.final_stages, value.final_access)));
         }
 
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 }
 

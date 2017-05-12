@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -22,7 +21,9 @@ use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use image::Layout;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -61,7 +62,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Flushing the signaling part, since it must always be submitted before the waiting part.
         try!(self.flush());
 
@@ -70,7 +71,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         unsafe {
             let mut wait_submitted = self.wait_submitted.lock().unwrap();
 
@@ -129,14 +130,14 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.previous.check_buffer_access(buffer, exclusive, queue).map(|_| None)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.previous.check_image_access(image, layout, exclusive, queue).map(|_| None)
     }

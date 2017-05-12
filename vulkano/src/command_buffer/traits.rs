@@ -25,7 +25,9 @@ use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use sync::now;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::NowFuture;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -121,10 +123,10 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     }
 
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     // FIXME: lots of other methods
 }
@@ -155,14 +157,14 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
@@ -190,7 +192,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
         self.previous.cleanup_finished();
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(match try!(self.previous.build_submission()) {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitCommandBufferBuilder::new();
@@ -218,7 +220,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         unsafe {
             let mut submitted = self.submitted.lock().unwrap();
             if *submitted {
@@ -259,21 +261,27 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         match self.command_buffer.check_buffer_access(buffer, exclusive, queue) {
             Ok(v) => Ok(v),
-            Err(()) => self.previous.check_buffer_access(buffer, exclusive, queue),
+            Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
+            Err(AccessCheckError::Unknown) => {
+                self.previous.check_buffer_access(buffer, exclusive, queue)
+            },
         }
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         match self.command_buffer.check_image_access(image, layout, exclusive, queue) {
             Ok(v) => Ok(v),
-            Err(()) => self.previous.check_image_access(image, layout, exclusive, queue),
+            Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
+            Err(AccessCheckError::Unknown) => {
+                self.previous.check_image_access(image, layout, exclusive, queue)
+            },
         }
     }
 }

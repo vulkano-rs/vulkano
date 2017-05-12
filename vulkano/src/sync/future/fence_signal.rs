@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -22,7 +21,9 @@ use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use image::Layout;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::Fence;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -114,7 +115,7 @@ impl<F> FenceSignalFuture<F> where F: GpuFuture {
 
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
     fn flush_impl(&self, state: &mut MutexGuard<FenceSignalFutureState<F>>)
-                  -> Result<(), Box<Error>>
+                  -> Result<(), FlushError>
     {
         unsafe {
             // In this function we temporarily replace the current state with `Poisonned` at the
@@ -226,7 +227,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let mut state = self.state.lock().unwrap();
         try!(self.flush_impl(&mut state));
 
@@ -248,7 +249,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         let mut state = self.state.lock().unwrap();
         self.flush_impl(&mut state)
     }
@@ -294,23 +295,23 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()> {
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
             previous.check_buffer_access(buffer, exclusive, queue)
         } else {
-            Err(())
+            Err(AccessCheckError::Unknown)
         }
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()> {
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
             previous.check_image_access(image, layout, exclusive, queue)
         } else {
-            Err(())
+            Err(AccessCheckError::Unknown)
         }
     }
 }
@@ -359,14 +360,14 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>> where F: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Note that this is sound because we always return `SubmitAnyBuilder::Empty`. See the
         // documentation of `build_submission`.
         (**self).build_submission()
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         (**self).flush()
     }
 
@@ -387,14 +388,14 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>> where F: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)
     }

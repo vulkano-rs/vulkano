@@ -7,7 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,6 +16,8 @@ use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecFuture;
 use command_buffer::submit::SubmitAnyBuilder;
+use command_buffer::submit::SubmitPresentError;
+use command_buffer::submit::SubmitCommandBufferError;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
@@ -22,7 +25,9 @@ use image::Layout;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
+use sync::FenceWaitError;
 use sync::PipelineStages;
+use OomError;
 
 pub use self::now::{now, NowFuture};
 pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
@@ -68,16 +73,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Once the caller has submitted the submission and has determined that the GPU has finished
     /// executing it, it should call `signal_finished`. Failure to do so will incur a large runtime
     /// overhead, as the future will have to block to make sure that it is finished.
-    // TODO: better error type
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>>;
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError>;
 
     /// Flushes the future and submits to the GPU the actions that will permit this future to
     /// occur.
     ///
     /// The implementation must remember that it was flushed. If the function is called multiple
     /// times, only the first time must result in a flush.
-    // TODO: better error type
-    fn flush(&self) -> Result<(), Box<Error>>;
+    fn flush(&self) -> Result<(), FlushError>;
 
     /// Sets the future to its "complete" state, meaning that it can safely be destroyed.
     ///
@@ -105,7 +108,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
     /// > "don't know". Therefore returning `Err` is never unsafe.
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
@@ -119,7 +122,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool,
-                          queue: &Queue) -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+                          queue: &Queue) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
@@ -176,7 +179,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// on two different queues, then you would need two submits anyway and it is always
     /// advantageous to submit A as soon as possible.
     #[inline]
-    fn then_signal_semaphore_and_flush(self) -> Result<SemaphoreSignalFuture<Self>, Box<Error>>
+    fn then_signal_semaphore_and_flush(self) -> Result<SemaphoreSignalFuture<Self>, FlushError>
         where Self: Sized
     {
         let f = self.then_signal_semaphore();
@@ -199,7 +202,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// This is a just a shortcut for `then_signal_fence()` followed with `flush()`.
     #[inline]
-    fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, Box<Error>>
+    fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, FlushError>
         where Self: Sized
     {
         let f = self.then_signal_fence();
@@ -229,12 +232,12 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         (**self).build_submission()
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         (**self).flush()
     }
 
@@ -255,15 +258,189 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)
+    }
+}
+
+/// Access to a resource was denied.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AccessError {
+    /// Exclusive access is denied.
+    ExclusiveDenied,
+
+    UnexpectedImageLayout {
+        allowed: Layout,
+        requested: Layout,
+    },
+
+    /// Trying to use an image without transitionning it from the "undefined" or "preinitialized"
+    /// layouts first.
+    ImageNotInitialized {
+        /// The layout that was requested for the image.
+        requested: Layout,
+    },
+}
+
+impl error::Error for AccessError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            AccessError::ExclusiveDenied => {
+                "only shared access is allowed for this resource"
+            },
+            AccessError::UnexpectedImageLayout { .. } => {
+                unimplemented!()        // TODO: find a description
+            },
+            AccessError::ImageNotInitialized { .. } => {
+                "trying to use an image without transitionning it from the undefined or \
+                 preinitialized layouts first"
+            },
+        }
+    }
+}
+
+impl fmt::Display for AccessError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+/// Error that can happen when checking whether we have access to a resource.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AccessCheckError {
+    /// Access to the resource has been denied.
+    Denied(AccessError),
+    /// The resource is unknown, therefore we cannot possibly answer whether we have access or not.
+    Unknown,
+}
+
+impl error::Error for AccessCheckError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            AccessCheckError::Denied(_) => {
+                "access to the resource has been denied"
+            },
+            AccessCheckError::Unknown => {
+                "the resource is unknown"
+            },
+        }
+    }
+}
+
+impl fmt::Display for AccessCheckError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<AccessError> for AccessCheckError {
+    #[inline]
+    fn from(err: AccessError) -> AccessCheckError {
+        AccessCheckError::Denied(err)
+    }
+}
+
+/// Error that can happen when creating a graphics pipeline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FlushError {
+    /// Access to a resource has been denied.
+    AccessError(AccessError),
+
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The connection to the device has been lost.
+    DeviceLost,
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    /// The surface has changed in a way that makes the swapchain unusable. You must query the
+    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
+    OutOfDate,
+
+    /// The flush operation needed to block, but the timeout has elapsed.
+    Timeout,
+}
+
+impl error::Error for FlushError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            FlushError::AccessError(_) => "access to a resource has been denied",
+            FlushError::OomError(_) => "not enough memory",
+            FlushError::DeviceLost => "the connection to the device has been lost",
+            FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            FlushError::OutOfDate => "the swapchain needs to be recreated",
+            FlushError::Timeout => "the flush operation needed to block, but the timeout has elapsed",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            FlushError::AccessError(ref err) => Some(err),
+            FlushError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for FlushError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<AccessError> for FlushError {
+    #[inline]
+    fn from(err: AccessError) -> FlushError {
+        FlushError::AccessError(err)
+    }
+}
+
+impl From<SubmitPresentError> for FlushError {
+    #[inline]
+    fn from(err: SubmitPresentError) -> FlushError {
+        match err {
+            SubmitPresentError::OomError(err) => FlushError::OomError(err),
+            SubmitPresentError::DeviceLost => FlushError::DeviceLost,
+            SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
+            SubmitPresentError::OutOfDate => FlushError::OutOfDate,
+        }
+    }
+}
+
+impl From<SubmitCommandBufferError> for FlushError {
+    #[inline]
+    fn from(err: SubmitCommandBufferError) -> FlushError {
+        match err {
+            SubmitCommandBufferError::OomError(err) => FlushError::OomError(err),
+            SubmitCommandBufferError::DeviceLost => FlushError::DeviceLost,
+        }
+    }
+}
+
+impl From<FenceWaitError> for FlushError {
+    #[inline]
+    fn from(err: FenceWaitError) -> FlushError {
+        match err {
+            FenceWaitError::OomError(err) => FlushError::OomError(err),
+            FenceWaitError::Timeout => FlushError::Timeout,
+            FenceWaitError::DeviceLostError => FlushError::DeviceLost,
+        }
     }
 }

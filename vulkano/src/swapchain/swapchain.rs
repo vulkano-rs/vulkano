@@ -39,7 +39,10 @@ use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
 use swapchain::SurfaceSwapchainLock;
+use sync::AccessCheckError;
+use sync::AccessError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -455,14 +458,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let mut sem = SubmitSemaphoresWaitBuilder::new();
         sem.add_wait_semaphore(&self.semaphore);
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         Ok(())
     }
 
@@ -483,32 +486,39 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         if let Some(sc_img) = self.image.upgrade() {
             if sc_img.inner().internal_object() != image.inner().internal_object() {
-                return Err(());
+                return Err(AccessCheckError::Unknown);
             }
 
             if self.undefined_layout && layout != Layout::Undefined {
-                return Err(());
+                return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
+                    requested: layout
+                }));
             }
 
             if layout != Layout::Undefined && layout != Layout::PresentSrc {
-                return Err(());
+                return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
+                    allowed: Layout::PresentSrc,
+                    requested: layout,
+                }));
             }
 
             Ok(None)
 
         } else {
-            Err(())
+            // The swapchain image no longer exists, therefore the `image` parameter received by
+            // this function cannot possibly be the swapchain image.
+            Err(AccessCheckError::Unknown)
         }
     }
 }
@@ -622,7 +632,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let queue = self.previous.queue().map(|q| q.clone());
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
@@ -656,7 +666,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         unimplemented!()
     }
 
@@ -683,14 +693,14 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
     }
