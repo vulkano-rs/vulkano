@@ -32,7 +32,7 @@ use device::DeviceOwned;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
 /// descriptor sets and push constants available to your shaders 
-pub struct PipelineLayout<L = Box<PipelineLayoutDescNames + Send + Sync>> {
+pub struct PipelineLayout<L> {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
     layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
