@@ -208,6 +208,15 @@ unsafe impl<F, B> DeviceOwned for BufferView<F, B>
     }
 }
 
+impl<F, B> fmt::Debug for BufferView<F, B> where B: BufferAccess + fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("BufferView")
+            .field("raw", &self.view)
+            .field("buffer", &self.buffer)
+            .finish()
+    }
+}
+
 impl<F, B> Drop for BufferView<F, B> where B: BufferAccess {
     #[inline]
     fn drop(&mut self) {

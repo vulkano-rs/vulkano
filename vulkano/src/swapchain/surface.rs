@@ -35,7 +35,6 @@ use vk;
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
-#[derive(Debug)]
 pub struct Surface {
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
@@ -484,6 +483,13 @@ unsafe impl VulkanObject for Surface {
     #[inline]
     fn internal_object(&self) -> vk::SurfaceKHR {
         self.surface
+    }
+}
+
+impl fmt::Debug for Surface {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan surface {:?}>", self.surface)
     }
 }
 

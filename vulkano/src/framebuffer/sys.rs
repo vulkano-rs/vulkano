@@ -393,6 +393,16 @@ unsafe impl<D> DeviceOwned for RenderPass<D> {
     }
 }
 
+impl<D> fmt::Debug for RenderPass<D> where D: fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("RenderPass")
+            .field("raw", &self.render_pass)
+            .field("device", &self.device)
+            .field("desc", &self.desc)
+            .finish()
+    }
+}
+
 impl<D> Drop for RenderPass<D> {
     #[inline]
     fn drop(&mut self) {

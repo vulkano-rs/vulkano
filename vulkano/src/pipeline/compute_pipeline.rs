@@ -114,6 +114,13 @@ impl ComputePipeline<()> {
     }
 }
 
+impl<Pl> fmt::Debug for ComputePipeline<Pl> {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan compute pipeline {:?}>", self.inner.pipeline)
+    }
+}
+
 impl<Pl> ComputePipeline<Pl> {
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]

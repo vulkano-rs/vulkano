@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -106,6 +107,15 @@ unsafe impl DeviceOwned for UnsafeDescriptorSetLayout {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+impl fmt::Debug for UnsafeDescriptorSetLayout {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("UnsafeDescriptorSetLayout")
+            .field("raw", &self.layout)
+            .field("device", &self.device)
+            .finish()
     }
 }
 

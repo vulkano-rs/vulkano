@@ -433,6 +433,15 @@ unsafe impl DeviceOwned for UnsafeDescriptorPool {
     }
 }
 
+impl fmt::Debug for UnsafeDescriptorPool {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("UnsafeDescriptorPool")
+            .field("raw", &self.pool)
+            .field("device", &self.device)
+            .finish()
+    }
+}
+
 impl Drop for UnsafeDescriptorPool {
     #[inline]
     fn drop(&mut self) {
@@ -484,6 +493,7 @@ impl fmt::Display for DescriptorPoolAllocError {
 }
 
 /// Iterator to the descriptor sets allocated from an unsafe descriptor pool.
+#[derive(Debug)]
 pub struct UnsafeDescriptorPoolAllocIter {
     sets: VecIntoIter<vk::DescriptorSet>,
 }
@@ -705,6 +715,12 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
     #[inline]
     fn internal_object(&self) -> vk::DescriptorSet {
         self.set
+    }
+}
+
+impl fmt::Debug for UnsafeDescriptorSet {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan descriptor set {:?}>", self.set)
     }
 }
 
