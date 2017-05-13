@@ -192,7 +192,7 @@ impl<T: ?Sized> CpuBufferPool<T> {
     }
 }
 
-impl<T, A> CpuBufferPool<T, A> where A: MemoryPool, T: 'static {
+impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
     /// Sets the capacity to `capacity`, or does nothing if the capacity is already higher.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
@@ -394,7 +394,7 @@ unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool, T: 'static
+    where A: MemoryPool
 {
     type Content = T;
 }
@@ -460,7 +460,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool, T: 'static + Copy + Clone
+    where A: MemoryPool
 {
     type Content = T;
 }

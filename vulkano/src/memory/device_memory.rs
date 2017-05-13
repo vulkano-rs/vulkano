@@ -230,7 +230,7 @@ impl<D> MappedDeviceMemory<D> where D: SafeDeref<Target = Device> {
     ///
     #[inline]
     pub unsafe fn read_write<T: ?Sized>(&self, range: Range<usize>) -> CpuAccess<T, D>
-        where T: Content + 'static
+        where T: Content
     {
         let vk = self.memory.device().pointers();
         let pointer = T::ref_from_ptr((self.pointer as usize + range.start) as *mut _,

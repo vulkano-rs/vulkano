@@ -50,8 +50,7 @@ pub unsafe trait Buffer {
     /// Returns `None` if out of range.
     #[inline]
     fn slice<T>(self, range: Range<usize>) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>,
-              T: 'static
+        where Self: Sized + TypedBuffer<Content = [T]>
     {
         BufferSlice::slice(self.into_buffer_slice(), range)
     }
@@ -74,8 +73,7 @@ pub unsafe trait Buffer {
     /// Returns `None` if out of range.
     #[inline]
     fn index<T>(self, index: usize) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>,
-              T: 'static
+        where Self: Sized + TypedBuffer<Content = [T]>
     {
         self.slice(index .. (index + 1))
     }
@@ -84,7 +82,7 @@ pub unsafe trait Buffer {
 /// Extension trait for `Buffer`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBuffer: Buffer {
     /// The type of the content of the buffer.
-    type Content: ?Sized + 'static;
+    type Content: ?Sized;
 }
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
@@ -128,8 +126,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBufferAccess<Content = [T]>,
-              T: 'static
+        where Self: Sized + TypedBufferAccess<Content = [T]>
     {
         BufferSlice::slice(self.as_buffer_slice(), range)
     }
@@ -152,8 +149,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBufferAccess<Content = [T]>,
-              T: 'static
+        where Self: Sized + TypedBufferAccess<Content = [T]>
     {
         self.slice(index .. (index + 1))
     }
@@ -286,7 +282,7 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
-    type Content: ?Sized + 'static;
+    type Content: ?Sized;
 }
 
 unsafe impl<T> TypedBufferAccess for T where T: SafeDeref, T::Target: TypedBufferAccess {
