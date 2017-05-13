@@ -21,6 +21,7 @@ use VulkanObject;
 use VulkanPointers;
 use vk;
 
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
@@ -174,13 +175,42 @@ unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D> where D: PipelineLay
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        &self.desc
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layouts.get(index)
+    }
+}
+
+unsafe impl<D> PipelineLayoutDesc for PipelineLayout<D> where D: PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        self.desc.num_sets()
     }
 
     #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layouts.get(index)
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.desc.num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.desc.descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        self.desc.num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        self.desc.push_constants_range(num)
+    }
+}
+
+unsafe impl<D> PipelineLayoutDescNames for PipelineLayout<D> where D: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        self.desc.descriptor_by_name(name)
     }
 }
 

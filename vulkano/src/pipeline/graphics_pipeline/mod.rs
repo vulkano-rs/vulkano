@@ -21,11 +21,13 @@ use buffer::BufferInner;
 use device::Device;
 use device::DeviceOwned;
 use descriptor::PipelineLayoutAbstract;
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSys;
@@ -404,18 +406,18 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
                                                    params.vertex_shader.layout())?;
-        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
                                                    params.fragment_shader.layout())?;
         if let Some(ref geometry_shader) = params.geometry_shader {
-            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
                                                        geometry_shader.layout())?;
         }
         if let Some(ref tess) = params.tessellation {
-            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
                                                        tess.tessellation_control_shader.layout())?;
-            PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
                                                        tess.tessellation_evaluation_shader.layout())?;
         }
 
@@ -1076,17 +1078,46 @@ unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
-        self.layout().sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        self.layout().desc()
+        self.layout.sys()
     }
 
     #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout().descriptor_set_layout(index)
+        self.layout.descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Mv, L, Rp> PipelineLayoutDesc for GraphicsPipeline<Mv, L, Rp> where L: PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        self.layout.num_sets()
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.layout.num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.layout.descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        self.layout.num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        self.layout.push_constants_range(num)
+    }
+}
+
+unsafe impl<Mv, L, Rp> PipelineLayoutDescNames for GraphicsPipeline<Mv, L, Rp> where L: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        self.layout.descriptor_by_name(name)
     }
 }
 
