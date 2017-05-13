@@ -803,7 +803,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                 continue;
             }
 
-            if value.final_layout != layout {
+            if layout != Layout::Undefined && value.final_layout != layout {
                 return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
                     allowed: value.final_layout,
                     requested: layout,
