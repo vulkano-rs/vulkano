@@ -191,6 +191,16 @@ unsafe impl<D> DeviceOwned for PipelineLayout<D> {
     }
 }
 
+impl<D> fmt::Debug for PipelineLayout<D> where D: fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("PipelineLayout")
+            .field("raw", &self.layout)
+            .field("device", &self.device)
+            .field("desc", &self.desc)
+            .finish()
+    }
+}
+
 impl<L> Drop for PipelineLayout<L> {
     #[inline]
     fn drop(&mut self) {

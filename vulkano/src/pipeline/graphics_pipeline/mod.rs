@@ -1097,6 +1097,13 @@ unsafe impl<Mv, L, Rp> DeviceOwned for GraphicsPipeline<Mv, L, Rp> {
     }
 }
 
+impl<Mv, L, Rp> fmt::Debug for GraphicsPipeline<Mv, L, Rp> {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
+    }
+}
+
 unsafe impl<Mv, L, Rp> RenderPassAbstract for GraphicsPipeline<Mv, L, Rp>
     where Rp: RenderPassAbstract
 {

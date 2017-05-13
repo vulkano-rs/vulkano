@@ -51,7 +51,6 @@ use vk;
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitionned.
 ///
-#[derive(Debug)]
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -680,6 +679,13 @@ unsafe impl VulkanObject for UnsafeImage {
     }
 }
 
+impl fmt::Debug for UnsafeImage {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image {:?}>", self.image)
+    }
+}
+
 impl Drop for UnsafeImage {
     #[inline]
     fn drop(&mut self) {
@@ -793,7 +799,6 @@ pub struct LinearLayout {
     pub depth_pitch: usize,
 }
 
-#[derive(Debug)]
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
@@ -947,6 +952,13 @@ unsafe impl VulkanObject for UnsafeImageView {
     #[inline]
     fn internal_object(&self) -> vk::ImageView {
         self.view
+    }
+}
+
+impl fmt::Debug for UnsafeImageView {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image view {:?}>", self.view)
     }
 }
 

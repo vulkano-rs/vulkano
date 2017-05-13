@@ -409,6 +409,13 @@ unsafe impl VulkanObject for Swapchain {
     }
 }
 
+impl fmt::Debug for Swapchain {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan swapchain {:?}>", self.swapchain)
+    }
+}
+
 impl Drop for Swapchain {
     #[inline]
     fn drop(&mut self) {

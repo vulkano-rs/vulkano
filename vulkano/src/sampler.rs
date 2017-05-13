@@ -421,6 +421,13 @@ unsafe impl VulkanObject for Sampler {
     }
 }
 
+impl fmt::Debug for Sampler {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan sampler {:?}>", self.sampler)
+    }
+}
+
 impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {

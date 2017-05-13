@@ -408,7 +408,7 @@ impl Device {
 impl fmt::Debug for Device {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan device>")
+        write!(fmt, "<Vulkan device {:?}>", self.device)
     }
 }
 
