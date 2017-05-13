@@ -77,6 +77,7 @@
 pub use self::auto::AutoCommandBufferBuilder;
 pub use self::builder::CommandAddError;
 pub use self::builder::CommandBufferBuilder;
+pub use self::builder::CommandBufferBuilderError;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferBuild;
 pub use self::traits::CommandBufferExecFuture;
