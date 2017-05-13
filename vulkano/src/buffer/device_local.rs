@@ -164,7 +164,7 @@ pub struct DeviceLocalBufferAccess<P>(P);
 
 unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
     where T: 'static + Send + Sync,
-          A: MemoryPool
+          A: MemoryPool + 'static
 {
     type Access = DeviceLocalBufferAccess<Arc<DeviceLocalBuffer<T, A>>>;
 
@@ -181,7 +181,7 @@ unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
 
 unsafe impl<T: ?Sized, A> TypedBuffer for Arc<DeviceLocalBuffer<T, A>>
     where T: 'static + Send + Sync,
-          A: MemoryPool
+          A: MemoryPool + 'static
 {
     type Content = T;
 }
@@ -189,7 +189,7 @@ unsafe impl<T: ?Sized, A> TypedBuffer for Arc<DeviceLocalBuffer<T, A>>
 unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
-          A: MemoryPool
+          A: MemoryPool + 'static
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -220,7 +220,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
 unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
-          A: MemoryPool
+          A: MemoryPool + 'static
 {
     type Content = T;
 }
@@ -228,7 +228,7 @@ unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>
 unsafe impl<P, T: ?Sized, A> DeviceOwned for DeviceLocalBufferAccess<P>
     where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
           T: 'static + Send + Sync,
-          A: MemoryPool
+          A: MemoryPool + 'static
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
