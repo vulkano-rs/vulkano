@@ -174,7 +174,8 @@ impl<I> SubmitSyncBuilderLayer<I> {
     }
 
     // Adds a buffer to the list.
-    fn add_buffer<B>(&mut self, buffer: &B, exclusive: bool)
+    fn add_buffer<B>(&mut self, buffer: &B, exclusive: bool, stages: PipelineStages,
+                     access: AccessFlagBits)
         where B: BufferAccess + Send + Sync + Clone + 'static
     {
         // TODO: don't create the key every time ; https://github.com/rust-lang/rfcs/pull/1769
@@ -182,8 +183,8 @@ impl<I> SubmitSyncBuilderLayer<I> {
         match self.resources.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(ResourceEntry {
-                    final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
-                    final_access: AccessFlagBits::all(),        // FIXME:
+                    final_stages: stages,
+                    final_access: access,
                     exclusive: exclusive,
                     initial_layout: Layout::Undefined,
                     final_layout: Layout::Undefined,
@@ -192,6 +193,9 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
             Entry::Occupied(mut entry) => {
                 let entry = entry.get_mut();
+                // TODO: remove some stages and accesses when there's an "overflow"?
+                entry.final_stages = entry.final_stages | stages;
+                entry.final_access = entry.final_access | access;
                 // TODO: update stages and access
                 entry.exclusive = entry.exclusive || exclusive;
                 entry.final_layout = Layout::Undefined;
@@ -230,6 +234,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
                 let entry = entry.get_mut();
                 // TODO: update stages and access
                 entry.exclusive = entry.exclusive || exclusive;
+                // TODO: exclusive if transition required?
                 entry.final_layout = image.final_layout_requirement();         // FIXME:
             },
         }
@@ -371,7 +376,9 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitS
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdBindIndexBuffer<B>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.buffer(), false);
+        self.add_buffer(command.buffer(), false,
+                        PipelineStages { vertex_input: true, .. PipelineStages::none() },
+                        AccessFlagBits { index_read: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -440,8 +447,12 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for Submit
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdCopyBuffer<S, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.source(), false);
-        self.add_buffer(command.destination(), true);
+        self.add_buffer(command.source(), false,
+                        PipelineStages { transfer: true, .. PipelineStages::none() },
+                        AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() });
+        self.add_buffer(command.destination(), true,
+                        PipelineStages { transfer: true, .. PipelineStages::none() },
+                        AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -460,7 +471,9 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdCopyBufferToImage<S, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.source(), false);
+        self.add_buffer(command.source(), false,
+                        PipelineStages { transfer: true, .. PipelineStages::none() },
+                        AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() });
         self.add_image(command.destination(), true);
 
         Ok(SubmitSyncBuilderLayer {
@@ -544,7 +557,9 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdDrawIndirectRaw<B>> for SubmitS
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.buffer(), true);
+        self.add_buffer(command.buffer(), true,
+                        PipelineStages { draw_indirect: true, .. PipelineStages::none() },
+                        AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -577,7 +592,9 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBu
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdFillBuffer<B>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.buffer(), true);
+        self.add_buffer(command.buffer(), true,
+                        PipelineStages { transfer: true, .. PipelineStages::none() },
+                        AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -675,7 +692,9 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdUpdateBuffer<B, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.buffer(), true);
+        self.add_buffer(command.buffer(), true,
+                        PipelineStages { transfer: true, .. PipelineStages::none() },
+                        AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
