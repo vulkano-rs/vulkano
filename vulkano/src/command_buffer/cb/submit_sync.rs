@@ -48,6 +48,48 @@ use sync::GpuFuture;
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
     resources: FnvHashMap<Key, ResourceEntry>,
+    behavior: SubmitSyncBuilderLayerBehavior,
+}
+
+/// How the layer behaves when it comes to image layouts.
+#[derive(Debug, Copy, Clone)]
+pub enum SubmitSyncBuilderLayerBehavior {
+    /// When an image is added for the first time to the builder, the layer will suppose that the
+    /// image is already in the layout that is required by this operation. When submitting the
+    /// command buffer, the layer will then check whether it is truly the case.
+    ///
+    /// For example if you create a command buffer with an image copy operation with the
+    /// TRANSFER_DEST layout, then when submitting the layer will make sure that the image is
+    /// in the TRANSFER_DEST layout.
+    Explicit,
+
+    /// The layer will call the `ImageAccess::initial_layout_requirement()` and
+    /// `ImageAccess::final_layout_requirement()` methods, and assume that images respectively
+    /// enter and leave the builder in these two layouts.
+    ///
+    /// This supposes that an inner layer (that the submit sync layer is not aware of)
+    /// automatically performs the required transition if necessary.
+    ///
+    /// For example if you create a command buffer with an image copy operation with the
+    /// TRANSFER_DEST layout, then the submit sync layer will suppose that an inner layer
+    /// automatically performs a transition from the layout returned by
+    /// `initial_layout_requirement()` to the TRANSFER_DEST layout. When submitting the layer will
+    /// make sure that the image is in the layout returned by `initial_layout_requirement()`.
+    ///
+    /// There is only one exception: if the layout of the first usage of the image is `Undefined`
+    /// or `Preinitialized`, then the layer will not use the hint. This can only happen when
+    /// entering a render pass, as it is the only command for which these layouts are legal (except
+    /// for pipeline barriers which are not supported by this layer).
+    ///
+    /// > **Note**: The exception above is not an optimization. If the initial layout hint of an
+    /// > image is a layout other than `Preinitialized`, and this image is used for the first time
+    /// > as `Preinitialized`, then we have a problem. But since is forbidden to perform a
+    /// > transition *to* the `Preinitialized` layout (and it wouldn't make any sense to do so),
+    /// > then there is no way to resolve this conflict in an inner layer. That's why we must
+    /// > assume that the image is in the `Preinitialized` layout in the first place. When it
+    /// > comes to `Undefined`, however, this is purely an optimization as it is possible to
+    /// > "transition" to `Undefined` by not doing anything.
+    UseLayoutHint,
 }
 
 enum Key {
@@ -123,10 +165,11 @@ struct ResourceEntry {
 impl<I> SubmitSyncBuilderLayer<I> {
     /// Builds a new layer that wraps around an existing builder.
     #[inline]
-    pub fn new(inner: I) -> SubmitSyncBuilderLayer<I> {
+    pub fn new(inner: I, behavior: SubmitSyncBuilderLayerBehavior) -> SubmitSyncBuilderLayer<I> {
         SubmitSyncBuilderLayer {
             inner: inner,
             resources: FnvHashMap::default(),
+            behavior: behavior,
         }
     }
 
@@ -161,14 +204,25 @@ impl<I> SubmitSyncBuilderLayer<I> {
         where T: ImageAccess + Send + Sync + Clone + 'static
     {
         let key = Key::Image(Box::new(image.clone()));
+
+        let initial_layout = match self.behavior {
+            SubmitSyncBuilderLayerBehavior::Explicit => unimplemented!(),       // FIXME:
+            SubmitSyncBuilderLayerBehavior::UseLayoutHint => image.initial_layout_requirement(),
+        };
+
+        let final_layout = match self.behavior {
+            SubmitSyncBuilderLayerBehavior::Explicit => unimplemented!(),       // FIXME:
+            SubmitSyncBuilderLayerBehavior::UseLayoutHint => image.final_layout_requirement(),
+        };
+
         match self.resources.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(ResourceEntry {
                     final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
                     final_access: AccessFlagBits::all(),        // FIXME:
                     exclusive: exclusive,
-                    initial_layout: image.initial_layout_requirement(),     // FIXME:
-                    final_layout: image.final_layout_requirement(),         // FIXME:
+                    initial_layout: initial_layout,
+                    final_layout: final_layout,
                 });
             },
 
@@ -185,10 +239,31 @@ impl<I> SubmitSyncBuilderLayer<I> {
     fn add_framebuffer<F>(&mut self, framebuffer: &F)
         where F: FramebufferAbstract + Send + Sync + Clone + 'static
     {
+        // TODO: slow
         for index in 0 .. FramebufferAbstract::attachments(framebuffer).len() {
             let key = Key::FramebufferAttachment(Box::new(framebuffer.clone()), index as u32);
             let desc = framebuffer.attachment(index).expect("Wrong implementation of FramebufferAbstract trait");
-            let final_layout = desc.final_layout;
+            let image = FramebufferAbstract::attachments(framebuffer)[index];
+
+            let initial_layout = match self.behavior {
+                SubmitSyncBuilderLayerBehavior::Explicit => desc.initial_layout,
+                SubmitSyncBuilderLayerBehavior::UseLayoutHint => {
+                    match desc.initial_layout {
+                        Layout::Undefined | Layout::Preinitialized => desc.initial_layout,
+                        _ => image.parent().initial_layout_requirement(),
+                    }
+                },
+            };
+
+            let final_layout = match self.behavior {
+                SubmitSyncBuilderLayerBehavior::Explicit => desc.final_layout,
+                SubmitSyncBuilderLayerBehavior::UseLayoutHint => {
+                    match desc.final_layout {
+                        Layout::Undefined | Layout::Preinitialized => desc.final_layout,
+                        _ => image.parent().final_layout_requirement(),
+                    }
+                },
+            };
 
             match self.resources.entry(key) {
                 Entry::Vacant(entry) => {
@@ -196,7 +271,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
                         final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
                         final_access: AccessFlagBits::all(),        // FIXME:
                         exclusive: true,            // FIXME:
-                        initial_layout: desc.initial_layout,
+                        initial_layout: initial_layout,
                         final_layout: final_layout,
                     });
                 },
@@ -258,6 +333,7 @@ macro_rules! pass_through {
                 Ok(SubmitSyncBuilderLayer {
                     inner: AddCommand::add(self.inner, command)?,
                     resources: self.resources,
+                    behavior: self.behavior,
                 })
             }
         }
@@ -282,6 +358,7 @@ unsafe impl<I, O, Rp, F> AddCommand<commands_raw::CmdBeginRenderPass<Rp, F>> for
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -299,6 +376,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindIndexBuffer<B>> for SubmitS
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -313,6 +391,7 @@ unsafe impl<I, O, P> AddCommand<commands_raw::CmdBindPipeline<P>> for SubmitSync
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -332,6 +411,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitS
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -346,6 +426,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdClearAttachments> for SubmitSyncBu
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -365,6 +446,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBuffer<S, D>> for Submit
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -384,6 +466,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -403,6 +486,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitS
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -417,6 +501,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDispatchRaw> for SubmitSyncBuilder
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -431,6 +516,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawRaw> for SubmitSyncBuilderLaye
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -445,6 +531,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdDrawIndexedRaw> for SubmitSyncBuil
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -462,6 +549,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdDrawIndirectRaw<B>> for SubmitS
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -476,6 +564,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdEndRenderPass> for SubmitSyncBuild
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -493,6 +582,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdFillBuffer<B>> for SubmitSyncBu
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -507,6 +597,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdNextSubpass> for SubmitSyncBuilder
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -521,6 +612,7 @@ unsafe impl<I, O, Pc, Pl> AddCommand<commands_raw::CmdPushConstants<Pc, Pl>> for
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -540,6 +632,7 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for Subm
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -554,6 +647,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetEvent> for SubmitSyncBuilderLay
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -568,6 +662,7 @@ unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for SubmitSyncBuilderLay
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
@@ -585,6 +680,7 @@ unsafe impl<I, O, B, D> AddCommand<commands_raw::CmdUpdateBuffer<B, D>> for Subm
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
             resources: self.resources,
+            behavior: self.behavior,
         })
     }
 }
