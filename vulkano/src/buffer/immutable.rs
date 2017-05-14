@@ -500,6 +500,142 @@ impl From<CommandBufferBuilderError<CmdCopyBufferError>> for ImmutableBufferFrom
 
 #[cfg(test)]
 mod tests {
+    use std::iter;
+    use buffer::cpu_access::CpuAccessibleBuffer;
+    use buffer::immutable::ImmutableBuffer;
+    use buffer::sys::Usage;
+    use command_buffer::AutoCommandBufferBuilder;
+    use command_buffer::CommandBuffer;
+    use command_buffer::CommandBufferBuilder;
+    use sync::GpuFuture;
+
+    #[test]
+    fn from_data_working() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, _) = ImmutableBuffer::from_data(12u32, &Usage::all(),
+                                                     iter::once(queue.family()),
+                                                     queue.clone()).unwrap();
+
+        let dest = CpuAccessibleBuffer::from_data(&device, &Usage::all(),
+                                                  iter::once(queue.family()), 0).unwrap();
+
+        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(buffer, dest.clone()).unwrap()
+            .build().unwrap()
+            .execute(queue.clone())
+            .then_signal_fence_and_flush().unwrap();
+
+        let dest_content = dest.read().unwrap();
+        assert_eq!(*dest_content, 12);
+    }
+
+    #[test]
+    fn from_iter_working() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, _) = ImmutableBuffer::from_iter((0 .. 512u32).map(|n| n * 2), &Usage::all(),
+                                                     iter::once(queue.family()),
+                                                     queue.clone()).unwrap();
+
+        let dest = CpuAccessibleBuffer::from_iter(&device, &Usage::all(),
+                                                  iter::once(queue.family()),
+                                                  (0 .. 512).map(|_| 0u32)).unwrap();
+
+        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(buffer, dest.clone()).unwrap()
+            .build().unwrap()
+            .execute(queue.clone())
+            .then_signal_fence_and_flush().unwrap();
+
+        let dest_content = dest.read().unwrap();
+        for (n, &v) in dest_content.iter().enumerate() {
+            assert_eq!(n * 2, v as usize);
+        }
+    }
+
+    #[test]
+    #[should_panic]       // TODO: check Result error instead of panicking
+    fn writing_forbidden() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, _) = ImmutableBuffer::from_data(12u32, &Usage::all(),
+                                                     iter::once(queue.family()),
+                                                     queue.clone()).unwrap();
+
+        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .fill_buffer(buffer, 50).unwrap()
+            .build().unwrap()
+            .execute(queue.clone())
+            .then_signal_fence_and_flush().unwrap();
+    }
+
+    #[test]
+    #[should_panic]       // TODO: check Result error instead of panicking
+    fn read_uninitialized_forbidden() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, _) = unsafe {
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), &Usage::all(),
+                                                  iter::once(queue.family())).unwrap()
+        };
+
+        let src = CpuAccessibleBuffer::from_data(&device, &Usage::all(),
+                                                 iter::once(queue.family()), 0).unwrap();
+
+        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(src, buffer).unwrap()
+            .build().unwrap()
+            .execute(queue.clone())
+            .then_signal_fence_and_flush().unwrap();
+    }
+
+    #[test]
+    fn init_then_read_same_cb() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, init) = unsafe {
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), &Usage::all(),
+                                                  iter::once(queue.family())).unwrap()
+        };
+
+        let src = CpuAccessibleBuffer::from_data(&device, &Usage::all(),
+                                                 iter::once(queue.family()), 0).unwrap();
+
+        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(src.clone(), init).unwrap()
+            .copy_buffer(buffer, src.clone()).unwrap()
+            .build().unwrap()
+            .execute(queue.clone())
+            .then_signal_fence_and_flush().unwrap();
+    }
+
+    #[test]
+    #[ignore]       // TODO: doesn't work because the submit sync layer isn't properly implemented
+    fn init_then_read_same_future() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let (buffer, init) = unsafe {
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), &Usage::all(),
+                                                  iter::once(queue.family())).unwrap()
+        };
+
+        let src = CpuAccessibleBuffer::from_data(&device, &Usage::all(),
+                                                 iter::once(queue.family()), 0).unwrap();
+
+        let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(src.clone(), init).unwrap()
+            .build().unwrap();
+
+        let cb2 = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .copy_buffer(buffer, src.clone()).unwrap()
+            .build().unwrap();
+
+        let _ = cb1.execute(queue.clone())
+            .then_execute(queue.clone(), cb2)
+            .then_signal_fence_and_flush().unwrap();
+    }
+
     // TODO: write tons of tests that try to exploit loopholes
     // this isn't possible yet because checks aren't correctly implemented yet
 }
