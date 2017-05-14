@@ -5,6 +5,7 @@ use std::error;
 use std::fmt;
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
@@ -55,6 +56,37 @@ pub struct Window {
 impl Window {
     #[inline]
     pub fn window(&self) -> &winit::Window {
+        &self.window
+    }
+
+    #[inline]
+    pub fn surface(&self) -> &Arc<Surface> {
+        &self.surface
+    }
+}
+
+
+pub trait IntoVkWindowRef {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError>;
+}
+impl IntoVkWindowRef for Arc<Mutex<winit::Window>> {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError> {
+        let surface = try!(unsafe { winit_to_surface(instance, &self.lock().unwrap()) });
+        Ok(WindowRef {
+            window: self,
+            surface: surface,
+        })
+    }
+}
+
+pub struct WindowRef {
+    window: Arc<Mutex<winit::Window>>,
+    surface: Arc<Surface>
+}
+
+impl WindowRef {
+    #[inline]
+    pub fn window(&self) -> &Arc<Mutex<winit::Window>> {
         &self.window
     }
 
