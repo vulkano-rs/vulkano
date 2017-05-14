@@ -14,12 +14,15 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::PipelineLayoutAbstract;
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
@@ -180,13 +183,42 @@ unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: Pipelin
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        self.layout().desc()
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layout().descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl> where Pl: PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        self.pipeline_layout.num_sets()
     }
 
     #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout().descriptor_set_layout(index)
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.pipeline_layout.num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.pipeline_layout.descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        self.pipeline_layout.num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        self.pipeline_layout.push_constants_range(num)
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl> where Pl: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        self.pipeline_layout.descriptor_by_name(name)
     }
 }
 
