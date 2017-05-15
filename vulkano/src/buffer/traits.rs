@@ -22,6 +22,7 @@ use VulkanObject;
 /// Trait for objects that represent either a buffer or a slice of a buffer.
 ///
 /// See also `TypedBuffer`.
+// TODO: require `DeviceOwned`
 pub unsafe trait Buffer {
     /// Object that represents a GPU access to the buffer.
     type Access: BufferAccess;
