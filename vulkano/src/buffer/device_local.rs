@@ -17,7 +17,6 @@ use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
 use buffer::sys::BufferCreationError;
@@ -206,19 +205,22 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
-        let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        // FIXME: not implemented correctly
+        /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
             true
         } else {
             self.0.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             false
-        }
+        }*/
+        true
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);
+        // FIXME: not implemented correctly
+        /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);*/
     }
 }
 
