@@ -272,6 +272,7 @@ impl Swapchain {
     // TODO: has to make sure vkQueuePresent is called, because calling acquire_next_image many
     // times in a row is an error
     // TODO: swapchain must not have been replaced by being passed as the VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
+    // TODO: change timeout to `Option<Duration>`.
     pub fn acquire_next_image(&self, timeout: Duration) -> Result<(usize, SwapchainAcquireFuture), AcquireError> {
         unsafe {
             let stale = self.stale.lock().unwrap();
@@ -413,6 +414,13 @@ unsafe impl VulkanObject for Swapchain {
     #[inline]
     fn internal_object(&self) -> vk::SwapchainKHR {
         self.swapchain
+    }
+}
+
+impl fmt::Debug for Swapchain {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan swapchain {:?}>", self.swapchain)
     }
 }
 

@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
-use std::time::Duration;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
@@ -197,7 +196,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
         fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Block {
-            timeout: Duration::from_millis(600)        // TODO: arbitrary duration
+            timeout: None
         })
     }
 

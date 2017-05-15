@@ -31,8 +31,9 @@
 //!     .. Usage::none()
 //! };
 //!
-//! let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
-//!                                              Some(queue.family())).unwrap();
+//! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), &usage,
+//!                                                             Some(queue.family()),
+//!                                                             queue.clone()).unwrap();
 //! let _view = BufferView::new(buffer, format::R32Uint).unwrap();
 //! ```
 
@@ -208,6 +209,15 @@ unsafe impl<F, B> DeviceOwned for BufferView<F, B>
     }
 }
 
+impl<F, B> fmt::Debug for BufferView<F, B> where B: BufferAccess + fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("BufferView")
+            .field("raw", &self.view)
+            .field("buffer", &self.buffer)
+            .finish()
+    }
+}
+
 impl<F, B> Drop for BufferView<F, B> where B: BufferAccess {
     #[inline]
     fn drop(&mut self) {
@@ -326,8 +336,8 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
-                                                         Some(queue.family())).unwrap();
+        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
+                                                                  Some(queue.family()), queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.uniform_texel_buffer());
@@ -343,8 +353,9 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &usage,
-                                                         Some(queue.family())).unwrap();
+        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
+                                                                  Some(queue.family()),
+                                                                  queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.storage_texel_buffer());
@@ -360,8 +371,9 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[u32]>::array(&device, 128, &usage,
-                                                     Some(queue.family())).unwrap();
+        let (buffer, _) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), &usage,
+                                                              Some(queue.family()),
+                                                              queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());
@@ -373,8 +385,10 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let buffer = ImmutableBuffer::<[[u8; 4]]>::array(&device, 128, &Usage::none(),
-                                                         Some(queue.family())).unwrap();
+        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]),
+                                                                  &Usage::none(),
+                                                                  Some(queue.family()),
+                                                                  queue.clone()).unwrap();
 
         match BufferView::new(buffer, format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
@@ -392,8 +406,9 @@ mod tests {
             .. Usage::none()
         };
 
-        let buffer = ImmutableBuffer::<[[f64; 4]]>::array(&device, 128, &usage,
-                                                          Some(queue.family())).unwrap();
+        let (buffer, _) = ImmutableBuffer::<[[f64; 4]]>::from_iter((0..128).map(|_| [0.0; 4]),
+                                                                   &usage, Some(queue.family()),
+                                                                   queue.clone()).unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?
         match BufferView::new(buffer, format::R64G64B64A64Sfloat) {

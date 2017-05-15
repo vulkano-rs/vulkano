@@ -119,6 +119,7 @@ use vk;
 /// };
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct Framebuffer<Rp, A> {
     device: Arc<Device>,
     render_pass: Rp,

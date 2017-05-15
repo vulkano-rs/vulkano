@@ -88,7 +88,7 @@ impl StdHostVisibleMemoryTypePool {
 
             // Try append at the end.
             let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
-            if last_end + size <= dev_mem.memory().size() {
+            if last_end + size <= (**dev_mem).as_ref().size() {
                 entries.push(last_end .. last_end + size);
                 return Ok(StdHostVisibleMemoryTypePoolAlloc {
                     pool: me.clone(),
@@ -103,7 +103,7 @@ impl StdHostVisibleMemoryTypePool {
         let new_block = {
             const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024;      // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block = try!(DeviceMemory::alloc_and_map(&me.device, me.memory_type(), to_alloc));
+            let new_block = try!(DeviceMemory::alloc_and_map(me.device.clone(), me.memory_type(), to_alloc));
             Arc::new(new_block)
         };
 

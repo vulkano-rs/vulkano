@@ -122,7 +122,7 @@ unsafe impl MemoryPoolAlloc for StdMemoryPoolAlloc {
     fn memory(&self) -> &DeviceMemory {
         match self.inner {
             StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.memory(),
-            StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.memory().memory(),
+            StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.memory().as_ref(),
         }
     }
 

@@ -311,7 +311,7 @@ impl Instance {
 impl fmt::Debug for Instance {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan instance>")
+        write!(fmt, "<Vulkan instance {:?}>", self.instance)
     }
 }
 

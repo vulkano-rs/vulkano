@@ -45,7 +45,6 @@ use VulkanPointers;
 use vk;
 
 /// Data storage in a GPU-accessible location.
-#[derive(Debug)]
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
     device: Arc<Device>,
@@ -255,6 +254,13 @@ unsafe impl DeviceOwned for UnsafeBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+impl fmt::Debug for UnsafeBuffer {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan buffer {:?}>", self.buffer)
     }
 }
 
