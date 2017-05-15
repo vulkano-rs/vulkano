@@ -44,6 +44,7 @@ use sync::GpuFuture;
 ///
 /// - Automatically generate pipeline barriers between command buffers if necessary to handle
 ///   the transition between command buffers.
+/// TODO: ^ this is not the case yet
 ///
 pub struct SubmitSyncBuilderLayer<I> {
     inner: I,
