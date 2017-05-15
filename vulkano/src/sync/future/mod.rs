@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
+use command_buffer::CommandBufferExecError;
 use command_buffer::CommandBufferExecFuture;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitPresentError;
@@ -140,7 +141,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > `CommandBuffer` trait.
     #[inline]
     fn then_execute<Cb>(self, queue: Arc<Queue>, command_buffer: Cb)
-                        -> CommandBufferExecFuture<Self, Cb>
+                        -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
         where Self: Sized, Cb: CommandBuffer + 'static
     {
         command_buffer.execute_after(self, queue)
@@ -151,7 +152,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
     #[inline]
-    fn then_execute_same_queue<Cb>(self, command_buffer: Cb) -> CommandBufferExecFuture<Self, Cb>
+    fn then_execute_same_queue<Cb>(self, command_buffer: Cb)
+                            -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
         where Self: Sized, Cb: CommandBuffer + 'static
     {
         let queue = self.queue().unwrap().clone();

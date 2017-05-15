@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::any::Any;
-use std::error::Error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -19,6 +18,7 @@ use command_buffer::commands_raw;
 use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -56,7 +56,7 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         self.inner.submit_check(future, queue)
     }
 

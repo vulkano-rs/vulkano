@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -19,6 +18,7 @@ use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use device::Device;
@@ -96,7 +96,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBufferBuilder<P>
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         self.inner.submit_check(future, queue)
     }
 

@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -15,6 +14,7 @@ use std::sync::atomic::AtomicBool;
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolBuilderAlloc;
@@ -304,7 +304,7 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     }
 
     #[inline]
-    fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), Box<Error>> {
+    fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), CommandBufferExecError> {
         // Not our job to check.
         Ok(())
     }

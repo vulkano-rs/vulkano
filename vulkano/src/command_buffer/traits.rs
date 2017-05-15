@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::error;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -25,6 +26,7 @@ use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use sync::now;
+use sync::AccessError;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::FlushError;
@@ -50,10 +52,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue.
     ///
+    /// Calling this function means that at some point you will submit the command buffer to the
+    /// GPU.
+    ///
     /// **You should not call this function directly**, otherwise any further attempt to submit
     /// will return a runtime error.
-    // TODO: better error
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>>;
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
 
     /// Executes this command buffer on a queue.
     ///
@@ -62,7 +66,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so.
+    /// and call `.then_signal_future()` before doing so. Note however that once you called
+    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -73,7 +78,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<NowFuture, Self>
+    fn execute(self, queue: Arc<Queue>)
+               -> Result<CommandBufferExecFuture<NowFuture, Self>, CommandBufferExecError>
         where Self: Sized + 'static
     {
         let device = queue.device().clone();
@@ -87,7 +93,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so.
+    /// and call `.then_signal_future()` before doing so. Note however that once you called
+    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -102,24 +109,25 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute_after<F>(self, future: F, queue: Arc<Queue>) -> CommandBufferExecFuture<F, Self>
+    fn execute_after<F>(self, future: F, queue: Arc<Queue>)
+                        -> Result<CommandBufferExecFuture<F, Self>, CommandBufferExecError>
         where Self: Sized + 'static, F: GpuFuture
     {
         assert_eq!(self.device().internal_object(), future.device().internal_object());
 
-        self.submit_check(&future, &queue).expect("Forbidden");     // TODO: error
+        self.submit_check(&future, &queue)?;
 
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap().is_same(&queue));
         }
 
-        CommandBufferExecFuture {
+        Ok(CommandBufferExecFuture {
             previous: future,
             command_buffer: self,
             queue: queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
-        }
+        })
     }
 
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
@@ -151,7 +159,7 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         (**self).submit_check(future, queue)
     }
 
@@ -306,5 +314,44 @@ impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb> where F: GpuFuture, Cb: Comm
                 self.previous.signal_finished();
             }
         }
+    }
+}
+
+/// Error that can happen when attempting to execute a command buffer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CommandBufferExecError {
+    /// Access to a resource has been denied.
+    AccessError(AccessError),
+
+    // TODO: missing entries (eg. wrong queue family, secondary command buffer)
+}
+
+impl error::Error for CommandBufferExecError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CommandBufferExecError::AccessError(_) => "access to a resource has been denied",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CommandBufferExecError::AccessError(ref err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for CommandBufferExecError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<AccessError> for CommandBufferExecError {
+    #[inline]
+    fn from(err: AccessError) -> CommandBufferExecError {
+        CommandBufferExecError::AccessError(err)
     }
 }

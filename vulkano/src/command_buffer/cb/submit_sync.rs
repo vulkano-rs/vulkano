@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::collections::hash_map::Entry;
-use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use fnv::FnvHashMap;
@@ -20,6 +19,7 @@ use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use command_buffer::commands_raw;
 use framebuffer::FramebufferAbstract;
 use image::Layout;
@@ -734,7 +734,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
         self.inner.inner()
     }
 
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
+    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         for (key, entry) in self.resources.iter() {
             match key {
                 &Key::Buffer(ref buf) => {
