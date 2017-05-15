@@ -346,6 +346,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.inner.key()
+    }
+
+    #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
         if exclusive_access {
             return false;
@@ -385,6 +390,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn inner(&self) -> BufferInner {
         self.buffer.inner()
+    }
+
+    #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.buffer.inner.key()
     }
 
     #[inline]
