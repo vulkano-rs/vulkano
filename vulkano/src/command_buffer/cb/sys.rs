@@ -304,7 +304,7 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     }
 
     #[inline]
-    fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), CommandBufferExecError> {
+    fn prepare_submit(&self, _: &GpuFuture, _: &Queue) -> Result<(), CommandBufferExecError> {
         // Not our job to check.
         Ok(())
     }

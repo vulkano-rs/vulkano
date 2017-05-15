@@ -53,11 +53,14 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// the given queue.
     ///
     /// Calling this function means that at some point you will submit the command buffer to the
-    /// GPU.
+    /// GPU. Once the function has returned `Ok`, the resources used by the command buffer will
+    /// likely be in a locked state until the command buffer is destroyed.
     ///
     /// **You should not call this function directly**, otherwise any further attempt to submit
     /// will return a runtime error.
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
+    // TODO: what about command buffers that are submitted multiple times?
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
+                      -> Result<(), CommandBufferExecError>;
 
     /// Executes this command buffer on a queue.
     ///
@@ -115,7 +118,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     {
         assert_eq!(self.device().internal_object(), future.device().internal_object());
 
-        self.submit_check(&future, &queue)?;
+        self.prepare_submit(&future, &queue)?;
 
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap().is_same(&queue));
@@ -159,8 +162,8 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
-        (**self).submit_check(future, queue)
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        (**self).prepare_submit(future, queue)
     }
 
     #[inline]

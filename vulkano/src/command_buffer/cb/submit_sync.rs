@@ -735,7 +735,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
         self.inner.inner()
     }
 
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         for (key, entry) in self.resources.iter() {
             match key {
                 &Key::Buffer(ref buf) => {
