@@ -196,7 +196,6 @@ impl<I> SubmitSyncBuilderLayer<I> {
                 // TODO: remove some stages and accesses when there's an "overflow"?
                 entry.final_stages = entry.final_stages | stages;
                 entry.final_access = entry.final_access | access;
-                // TODO: update stages and access
                 entry.exclusive = entry.exclusive || exclusive;
                 entry.final_layout = Layout::Undefined;
             },
@@ -204,7 +203,8 @@ impl<I> SubmitSyncBuilderLayer<I> {
     }
 
     // Adds an image to the list.
-    fn add_image<T>(&mut self, image: &T, exclusive: bool)
+    fn add_image<T>(&mut self, image: &T, exclusive: bool, stages: PipelineStages,
+                    access: AccessFlagBits)
         where T: ImageAccess + Send + Sync + Clone + 'static
     {
         let key = Key::Image(Box::new(image.clone()));
@@ -222,8 +222,8 @@ impl<I> SubmitSyncBuilderLayer<I> {
         match self.resources.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(ResourceEntry {
-                    final_stages: PipelineStages { all_commands: true, ..PipelineStages::none() },     // FIXME:
-                    final_access: AccessFlagBits::all(),        // FIXME:
+                    final_stages: stages,
+                    final_access: access,
                     exclusive: exclusive,
                     initial_layout: initial_layout,
                     final_layout: final_layout,
@@ -232,10 +232,12 @@ impl<I> SubmitSyncBuilderLayer<I> {
 
             Entry::Occupied(mut entry) => {
                 let entry = entry.get_mut();
-                // TODO: update stages and access
+                // TODO: exclusive accss if transition required?
                 entry.exclusive = entry.exclusive || exclusive;
-                // TODO: exclusive if transition required?
-                entry.final_layout = image.final_layout_requirement();         // FIXME:
+                // TODO: remove some stages and accesses when there's an "overflow"?
+                entry.final_stages = entry.final_stages | stages;
+                entry.final_access = entry.final_access | access;
+                entry.final_layout = final_layout;
             },
         }
     }
@@ -412,8 +414,12 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdBlitImage<S, D>> for SubmitS
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdBlitImage<S, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_image(command.source(), false);
-        self.add_image(command.destination(), true);
+        self.add_image(command.source(), false,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() });
+        self.add_image(command.destination(), true,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -474,7 +480,9 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyBufferToImage<S, D>> for
         self.add_buffer(command.source(), false,
                         PipelineStages { transfer: true, .. PipelineStages::none() },
                         AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() });
-        self.add_image(command.destination(), true);
+        self.add_image(command.destination(), true,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -493,8 +501,12 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdCopyImage<S, D>> for SubmitS
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdCopyImage<S, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_image(command.source(), false);
-        self.add_image(command.destination(), true);
+        self.add_image(command.source(), false,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() });
+        self.add_image(command.destination(), true,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
@@ -643,8 +655,12 @@ unsafe impl<I, O, S, D> AddCommand<commands_raw::CmdResolveImage<S, D>> for Subm
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdResolveImage<S, D>) -> Result<Self::Out, CommandAddError> {
-        self.add_image(command.source(), false);
-        self.add_image(command.destination(), true);
+        self.add_image(command.source(), false,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
+        self.add_image(command.destination(), true,
+                       PipelineStages { transfer: true, .. PipelineStages::none() },
+                       AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() });
 
         Ok(SubmitSyncBuilderLayer {
             inner: AddCommand::add(self.inner, command)?,
