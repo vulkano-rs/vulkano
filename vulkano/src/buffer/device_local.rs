@@ -200,6 +200,11 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 
     #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.0.inner.key()
+    }
+
+    #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
         let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
