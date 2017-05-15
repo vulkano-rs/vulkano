@@ -28,6 +28,7 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
+use image::ImageViewAccess;
 
 use Error;
 use OomError;
@@ -236,7 +237,8 @@ impl<Rp, A> Framebuffer<Rp, A> {
 }
 
 unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
-    where Rp: RenderPassAbstract
+    where Rp: RenderPassAbstract,
+          A: AttachmentsList
 {
     #[inline]
     fn inner(&self) -> FramebufferSys {
@@ -246,6 +248,11 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         self.dimensions
+    }
+
+    #[inline]
+    fn attachments(&self) -> Vec<&ImageViewAccess> {
+        self.resources.as_image_view_accesses()
     }
 }
 

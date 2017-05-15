@@ -188,7 +188,7 @@ fn main() {
             .build().unwrap();
 
         let future = future
-            .then_execute(queue.clone(), cb)
+            .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
         submissions.push(Box::new(future) as Box<_>);

@@ -99,7 +99,12 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> Layout {
+        Layout::PresentSrc
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
         Layout::PresentSrc
     }
 

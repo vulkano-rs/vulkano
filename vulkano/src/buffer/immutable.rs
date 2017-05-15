@@ -131,7 +131,11 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             },
         };
 
-        let future = cb.build()?.execute(queue);
+        let future = match cb.build()?.execute(queue) {
+            Ok(f) => f,
+            Err(_) => unreachable!()
+        };
+
         Ok((buf, future))
     }
 
@@ -346,6 +350,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.inner.key()
+    }
+
+    #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
         if exclusive_access {
             return false;
@@ -385,6 +394,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn inner(&self) -> BufferInner {
         self.buffer.inner()
+    }
+
+    #[inline]
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.buffer.inner.key()
     }
 
     #[inline]
@@ -523,7 +537,7 @@ mod tests {
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .copy_buffer(buffer, dest.clone()).unwrap()
             .build().unwrap()
-            .execute(queue.clone())
+            .execute(queue.clone()).unwrap()
             .then_signal_fence_and_flush().unwrap();
 
         let dest_content = dest.read().unwrap();
@@ -545,7 +559,7 @@ mod tests {
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .copy_buffer(buffer, dest.clone()).unwrap()
             .build().unwrap()
-            .execute(queue.clone())
+            .execute(queue.clone()).unwrap()
             .then_signal_fence_and_flush().unwrap();
 
         let dest_content = dest.read().unwrap();
@@ -566,7 +580,7 @@ mod tests {
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .fill_buffer(buffer, 50).unwrap()
             .build().unwrap()
-            .execute(queue.clone())
+            .execute(queue.clone()).unwrap()
             .then_signal_fence_and_flush().unwrap();
     }
 
@@ -586,7 +600,7 @@ mod tests {
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .copy_buffer(src, buffer).unwrap()
             .build().unwrap()
-            .execute(queue.clone())
+            .execute(queue.clone()).unwrap()
             .then_signal_fence_and_flush().unwrap();
     }
 
@@ -606,7 +620,7 @@ mod tests {
             .copy_buffer(src.clone(), init).unwrap()
             .copy_buffer(buffer, src.clone()).unwrap()
             .build().unwrap()
-            .execute(queue.clone())
+            .execute(queue.clone()).unwrap()
             .then_signal_fence_and_flush().unwrap();
     }
 
@@ -631,8 +645,8 @@ mod tests {
             .copy_buffer(buffer, src.clone()).unwrap()
             .build().unwrap();
 
-        let _ = cb1.execute(queue.clone())
-            .then_execute(queue.clone(), cb2)
+        let _ = cb1.execute(queue.clone()).unwrap()
+            .then_execute(queue.clone(), cb2).unwrap()
             .then_signal_fence_and_flush().unwrap();
     }
 

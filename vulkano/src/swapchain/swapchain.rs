@@ -29,6 +29,7 @@ use format::Format;
 use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
+use image::Layout;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
@@ -38,7 +39,10 @@ use swapchain::PresentMode;
 use swapchain::Surface;
 use swapchain::SurfaceTransform;
 use swapchain::SurfaceSwapchainLock;
+use sync::AccessCheckError;
+use sync::AccessError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
 use sync::Semaphore;
@@ -80,7 +84,7 @@ pub struct Swapchain {
     clipped: bool,
 
     // TODO: meh for Mutex
-    images: Mutex<Vec<Weak<SwapchainImage>>>,
+    images: Mutex<Vec<(Weak<SwapchainImage>, bool)>>,
 }
 
 impl Swapchain {
@@ -253,7 +257,7 @@ impl Swapchain {
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
 
-        *swapchain.images.lock().unwrap() = images.iter().map(|i| Arc::downgrade(i)).collect();
+        *swapchain.images.lock().unwrap() = images.iter().map(|i| (Arc::downgrade(i), true)).collect();
         Ok((swapchain, images))
     }
 
@@ -297,11 +301,15 @@ impl Swapchain {
                 s => panic!("unexpected success value: {:?}", s)
             };
 
+            let mut images = self.images.lock().unwrap();
+            let undefined_layout = mem::replace(&mut images.get_mut(id).unwrap().1, false);
+
             Ok((id, SwapchainAcquireFuture {
                 semaphore: semaphore,
                 id: id,
-                image: self.images.lock().unwrap().get(id).unwrap().clone(),
+                image: images.get(id).unwrap().0.clone(),
                 finished: AtomicBool::new(false),
+                undefined_layout: undefined_layout,
             }))
         }
     }
@@ -320,11 +328,11 @@ impl Swapchain {
     {
         assert!(index < me.num_images as usize);
 
-        let swapchain_image = me.images.lock().unwrap().get(index).unwrap().upgrade().unwrap();       // TODO: return error instead
+        let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
         // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
         // function on the image instead. But since we know that this method on `SwapchainImage`
         // always returns false anyway (by design), we don't need to do it.
-        assert!(before.check_image_access(&swapchain_image, true, &queue).is_ok());         // TODO: return error instead
+        assert!(before.check_image_access(&swapchain_image, Layout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
 
         PresentFuture {
             previous: before,
@@ -434,6 +442,8 @@ pub struct SwapchainAcquireFuture {
     id: usize,
     image: Weak<SwapchainImage>,
     finished: AtomicBool,
+    // If true, then the acquired image is still in the undefined layout and must be transitionned.
+    undefined_layout: bool,
 }
 
 impl SwapchainAcquireFuture {
@@ -456,14 +466,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let mut sem = SubmitSemaphoresWaitBuilder::new();
         sem.add_wait_semaphore(&self.semaphore);
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         Ok(())
     }
 
@@ -484,23 +494,39 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         if let Some(sc_img) = self.image.upgrade() {
-            if sc_img.inner().internal_object() == image.inner().internal_object() {
-                Ok(None)
-            } else {
-                Err(())
+            if sc_img.inner().internal_object() != image.inner().internal_object() {
+                return Err(AccessCheckError::Unknown);
             }
+
+            if self.undefined_layout && layout != Layout::Undefined {
+                return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
+                    requested: layout
+                }));
+            }
+
+            if layout != Layout::Undefined && layout != Layout::PresentSrc {
+                return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
+                    allowed: Layout::PresentSrc,
+                    requested: layout,
+                }));
+            }
+
+            Ok(None)
+
         } else {
-            Err(())
+            // The swapchain image no longer exists, therefore the `image` parameter received by
+            // this function cannot possibly be the swapchain image.
+            Err(AccessCheckError::Unknown)
         }
     }
 }
@@ -614,7 +640,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let queue = self.previous.queue().map(|q| q.clone());
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
@@ -648,7 +674,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         unimplemented!()
     }
 
@@ -675,14 +701,14 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
     }

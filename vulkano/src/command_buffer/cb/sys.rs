@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -15,6 +14,7 @@ use std::sync::atomic::AtomicBool;
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolBuilderAlloc;
@@ -28,8 +28,10 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
+use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::GpuFuture;
@@ -302,23 +304,23 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     }
 
     #[inline]
-    fn submit_check(&self, _: &GpuFuture, _: &Queue) -> Result<(), Box<Error>> {
+    fn prepare_submit(&self, _: &GpuFuture, _: &Queue) -> Result<(), CommandBufferExecError> {
         // Not our job to check.
         Ok(())
     }
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 }
 

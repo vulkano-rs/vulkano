@@ -335,6 +335,17 @@ macro_rules! ordered_passes_renderpass {
                 })*
 
                 $(if $atch_name == num {
+                    // If the clear OP is Clear or DontCare, default to the Undefined layout.
+                    if initial_layout == Some(Layout::DepthStencilAttachmentOptimal) ||
+                        initial_layout == Some(Layout::ColorAttachmentOptimal)
+                    {
+                        if $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::Clear ||
+                            $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::DontCare
+                        {
+                            initial_layout = Some(Layout::Undefined);
+                        }
+                    }
+
                     $(initial_layout = Some($init_layout);)*
                     $(final_layout = Some($final_layout);)*
                 })*
