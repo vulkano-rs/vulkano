@@ -736,6 +736,8 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        // TODO: if at any point we return an error, we can't recover
+
         for (key, entry) in self.resources.iter() {
             match key {
                 &Key::Buffer(ref buf) => {
