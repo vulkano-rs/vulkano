@@ -739,37 +739,59 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
         for (key, entry) in self.resources.iter() {
             match key {
                 &Key::Buffer(ref buf) => {
-                    if future.check_buffer_access(&buf, entry.exclusive, queue).is_ok() {
-                        unsafe { buf.increase_gpu_lock(); }
-                        continue;
-                    }
+                    let err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
+                        Ok(_) => {
+                            unsafe { buf.increase_gpu_lock(); }
+                            continue;
+                        },
+                        Err(err) => err
+                    };
 
                     if !buf.try_gpu_lock(entry.exclusive, queue) {
-                        panic!()    // FIXME: return Err();
+                        match err {
+                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
+                            AccessCheckError::Denied(err) => return Err(err.into()),
+                        }
                     }
                 },
 
                 &Key::Image(ref img) => {
-                    if future.check_image_access(img, entry.initial_layout, entry.exclusive, queue).is_ok() {
-                        unsafe { img.increase_gpu_lock(); }
-                        continue;
-                    }
+                    let err = match future.check_image_access(img, entry.initial_layout,
+                                                              entry.exclusive, queue)
+                    {
+                        Ok(_) => {
+                            unsafe { img.increase_gpu_lock(); }
+                            continue;
+                        },
+                        Err(err) => err
+                    };
 
                     if !img.try_gpu_lock(entry.exclusive, queue) {
-                        panic!()    // FIXME: return Err();
+                        match err {
+                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
+                            AccessCheckError::Denied(err) => return Err(err.into()),
+                        }
                     }
                 },
 
                 &Key::FramebufferAttachment(ref fb, idx) => {
                     let img = fb.attachments()[idx as usize].parent();
 
-                    if future.check_image_access(img, entry.initial_layout, entry.exclusive, queue).is_ok() {
-                        unsafe { img.increase_gpu_lock(); }
-                        continue;
-                    }
+                    let err = match future.check_image_access(img, entry.initial_layout,
+                                                              entry.exclusive, queue)
+                    {
+                        Ok(_) => {
+                            unsafe { img.increase_gpu_lock(); }
+                            continue;
+                        },
+                        Err(err) => err
+                    };
 
                     if !img.try_gpu_lock(entry.exclusive, queue) {
-                        panic!()    // FIXME: return Err();
+                        match err {
+                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
+                            AccessCheckError::Denied(err) => return Err(err.into()),
+                        }
                     }
                 },
             }
