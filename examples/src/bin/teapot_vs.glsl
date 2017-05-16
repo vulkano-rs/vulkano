@@ -10,7 +10,7 @@
 #version 450
 
 #extension GL_ARB_separate_shader_objects : enable
-#extension GL_ARB_shading_language_420pack : enable
+#extension GL_ARB_shading_language_450pack : enable
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;

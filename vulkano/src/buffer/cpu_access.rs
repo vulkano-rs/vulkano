@@ -20,33 +20,25 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
-use std::sync::Weak;
-use std::time::Duration;
+use std::sync::TryLockError;
 use smallvec::SmallVec;
 
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::sys::Usage;
-use buffer::traits::AccessRange;
+use buffer::traits::BufferAccess;
+use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
-use buffer::traits::CommandBufferState;
-use buffer::traits::CommandListState;
-use buffer::traits::GpuAccessResult;
-use buffer::traits::SubmitInfos;
-use buffer::traits::TrackedBuffer;
 use buffer::traits::TypedBuffer;
-use buffer::traits::PipelineBarrierRequest;
-use buffer::traits::PipelineMemoryBarrierRequest;
-use command_buffer::Submission;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
+use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
@@ -55,9 +47,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
-use sync::FenceWaitError;
 use sync::Sharing;
-use sync::Fence;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -72,21 +62,15 @@ pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: Memor
     // The memory held by the buffer.
     memory: A::Alloc,
 
+    // Access pattern of the buffer. Can be read-locked for a shared CPU access, or write-locked
+    // for either a write CPU access or a GPU access.
+    access: RwLock<()>,
+
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    // Latest submission that uses this buffer.
-    // Also used to block any attempt to submit this buffer while it is accessed by the CPU.
-    latest_submission: RwLock<LatestSubmission>,
-
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
-}
-
-#[derive(Debug)]
-struct LatestSubmission {
-    read_submissions: Mutex<Vec<Weak<Submission>>>,
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
 }
 
 impl<T> CpuAccessibleBuffer<T> {
@@ -118,7 +102,7 @@ impl<T> CpuAccessibleBuffer<T> {
             // TODO: check whether that's true ^
 
             {
-                let mut mapping = uninitialized.write(Duration::new(0, 0)).unwrap();
+                let mut mapping = uninitialized.write().unwrap();
                 ptr::write::<T>(&mut *mapping, data)
             }
 
@@ -155,7 +139,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
             // TODO: check whether that's true ^
 
             {
-                let mut mapping = uninitialized.write(Duration::new(0, 0)).unwrap();
+                let mut mapping = uninitialized.write().unwrap();
 
                 for (i, o) in data.zip(mapping.iter_mut()) {
                     ptr::write(o, i);
@@ -233,11 +217,8 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
             memory: mem,
+            access: RwLock::new(()),
             queue_families: queue_families,
-            latest_submission: RwLock::new(LatestSubmission {
-                read_submissions: Mutex::new(vec![]),
-                write_submission: None,
-            }),
             marker: PhantomData,
         }))
     }
@@ -269,22 +250,16 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it will block until you unlock it.
-    // TODO: remove timeout parameter since CPU-side locking can't use it
     #[inline]
-    pub fn read(&self, timeout: Duration) -> Result<ReadLock<T>, FenceWaitError> {
-        let submission = self.latest_submission.read().unwrap();
-
-        // TODO: should that set the write_submission to None?
-        if let Some(submission) = submission.write_submission.clone().and_then(|s| s.upgrade()) {
-            try!(submission.wait(timeout));
-        }
+    pub fn read(&self) -> Result<ReadLock<T>, TryLockError<RwLockReadGuard<()>>> {
+        let lock = try!(self.access.try_read());
 
         let offset = self.memory.offset();
         let range = offset .. offset + self.inner.size();
 
         Ok(ReadLock {
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
-            lock: submission,
+            lock: lock,
         })
     }
 
@@ -296,131 +271,82 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it will block until you unlock it.
-    // TODO: remove timeout parameter since CPU-side locking can't use it
     #[inline]
-    pub fn write(&self, timeout: Duration) -> Result<WriteLock<T>, FenceWaitError> {
-        let mut submission = self.latest_submission.write().unwrap();
-
-        {
-            let mut read_submissions = submission.read_submissions.get_mut().unwrap();
-            for submission in read_submissions.drain(..) {
-                if let Some(submission) = submission.upgrade() {
-                    try!(submission.wait(timeout));
-                }
-            }
-        }
-
-        if let Some(submission) = submission.write_submission.take().and_then(|s| s.upgrade()) {
-            try!(submission.wait(timeout));
-        }
+    pub fn write(&self) -> Result<WriteLock<T>, TryLockError<RwLockWriteGuard<()>>> {
+        let lock = try!(self.access.try_write());
 
         let offset = self.memory.offset();
         let range = offset .. offset + self.inner.size();
 
         Ok(WriteLock {
             inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
-            lock: submission,
+            lock: lock,
         })
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for CpuAccessibleBuffer<T, A>
+// FIXME: wrong
+unsafe impl<T: ?Sized, A> Buffer for Arc<CpuAccessibleBuffer<T, A>>
     where T: 'static + Send + Sync, A: MemoryPool
 {
+    type Access = Self;
+
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        &self.inner
-    }
-    
-    #[inline]
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
-        vec![0]
+    fn access(self) -> Self {
+        self
     }
 
     #[inline]
-    fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
-    }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
-        Some(true)
-    }
-
-    #[inline]
-    fn host_accesses(&self, _: usize) -> bool {
-        true
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
-                   queue_id, self.queue_families);
-        }
-
-        let is_written = {
-            let mut written = false;
-            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
-            written
-        };
-
-        let dependencies = if is_written {
-            let mut submissions = self.latest_submission.write().unwrap();
-
-            let write_dep = mem::replace(&mut submissions.write_submission,
-                                         Some(Arc::downgrade(submission)));
-
-            let mut read_submissions = submissions.read_submissions.get_mut().unwrap();
-            let read_submissions = mem::replace(&mut *read_submissions, Vec::new());
-            read_submissions.into_iter()
-                            .chain(write_dep.into_iter())
-                            .filter_map(|s| s.upgrade())
-                            .collect::<Vec<_>>()
-
-        } else {
-            let submissions = self.latest_submission.read().unwrap();
-
-            let mut read_submissions = submissions.read_submissions.lock().unwrap();
-            read_submissions.push(Arc::downgrade(submission));
-
-            submissions.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
-        };
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-        }
+    fn size(&self) -> usize {
+        self.inner.size()
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuAccessibleBuffer<T, A>
+unsafe impl<T: ?Sized, A> TypedBuffer for Arc<CpuAccessibleBuffer<T, A>>
     where T: 'static + Send + Sync, A: MemoryPool
 {
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, A> TrackedBuffer for CpuAccessibleBuffer<T, A>
+unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
-    type CommandListState = CpuAccessibleBufferClState;
-    type FinishedState = CpuAccessibleBufferFinished;
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        BufferInner {
+            buffer: &self.inner,
+            offset: 0,
+        }
+    }
 
     #[inline]
-    fn initial_state(&self) -> Self::CommandListState {
-        // We don't know when the user is going to write to the buffer, so we just assume that it's
-        // all the time.
-        CpuAccessibleBufferClState {
-            size: self.size(),
-            stages: PipelineStages { host: true, .. PipelineStages::none() },
-            access: AccessFlagBits { host_write: true, .. AccessFlagBits::none() },
-            first_stages: None,
-            write: true,
-            earliest_previous_transition: 0,
-            needs_flush_at_the_end: false,
-        }
+    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+        self.inner.key()
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        true       // FIXME:
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        // FIXME:
+    }
+}
+
+unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync, A: MemoryPool
+{
+    type Content = T;
+}
+
+unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
     }
 }
 
@@ -434,139 +360,9 @@ pub struct CpuAccessibleBufferClState {
     needs_flush_at_the_end: bool,
 }
 
-impl CommandListState for CpuAccessibleBufferClState {
-    type FinishedState = CpuAccessibleBufferFinished;
-
-    fn transition(self, num_command: usize, _: &UnsafeBuffer, _: usize, _: usize, write: bool,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-    {
-        debug_assert!(!stage.host);
-        debug_assert!(!access.host_read);
-        debug_assert!(!access.host_write);
-
-        if write {
-            // Write after read or write after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: true,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: true,
-            };
-
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: if self.write {
-                    Some(PipelineMemoryBarrierRequest {
-                        offset: 0,
-                        size: self.size,
-                        source_access: self.access,
-                        destination_access: access,
-                    })
-                } else {
-                    None
-                },
-            };
-
-            (new_state, Some(barrier))
-
-        } else if self.write {
-            // Read after write.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: stage,
-                access: access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: num_command,
-                needs_flush_at_the_end: self.needs_flush_at_the_end,
-            };
-
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: stage,
-                by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: self.size,
-                    source_access: self.access,
-                    destination_access: access,
-                }),
-            };
-
-            (new_state, Some(barrier))
-
-        } else {
-            // Read after read.
-            let new_state = CpuAccessibleBufferClState {
-                size: self.size,
-                stages: self.stages | stage,
-                access: self.access | access,
-                first_stages: Some(self.first_stages.clone().unwrap_or(stage)),
-                write: false,
-                earliest_previous_transition: self.earliest_previous_transition,
-                needs_flush_at_the_end: self.needs_flush_at_the_end,
-            };
-
-            (new_state, None)
-        }
-    }
-
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>) {
-        let barrier = if self.needs_flush_at_the_end {
-            let barrier = PipelineBarrierRequest {
-                after_command_num: self.earliest_previous_transition,
-                source_stage: self.stages,
-                destination_stages: PipelineStages { host: true, .. PipelineStages::none() },
-                by_region: true,
-                memory_barrier: Some(PipelineMemoryBarrierRequest {
-                    offset: 0,
-                    size: self.size,
-                    source_access: self.access,
-                    destination_access: AccessFlagBits { host_read: true,
-                                                         .. AccessFlagBits::none() },
-                }),
-            };
-
-            Some(barrier)
-        } else {
-            None
-        };
-
-        let finished = CpuAccessibleBufferFinished {
-            first_stages: self.first_stages.unwrap_or(PipelineStages::none()),
-            write: self.needs_flush_at_the_end,
-        };
-
-        (finished, barrier)
-    }
-}
-
 pub struct CpuAccessibleBufferFinished {
     first_stages: PipelineStages,
     write: bool,
-}
-
-impl CommandBufferState for CpuAccessibleBufferFinished {
-    fn on_submit<B, F>(&self, buffer: &B, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where B: Buffer, F: FnOnce() -> Arc<Fence>
-    {
-        // FIXME: implement correctly
-
-        SubmitInfos {
-            pre_semaphore: None,
-            post_semaphore: None,
-            pre_barrier: None,
-            post_barrier: None,
-        }
-    }
 }
 
 /// Object that can be used to read or write the content of a `CpuAccessBuffer`.
@@ -575,7 +371,7 @@ impl CommandBufferState for CpuAccessibleBufferFinished {
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 pub struct ReadLock<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: RwLockReadGuard<'a, LatestSubmission>,
+    lock: RwLockReadGuard<'a, ()>,
 }
 
 impl<'a, T: ?Sized + 'a> ReadLock<'a, T> {
@@ -606,7 +402,7 @@ impl<'a, T: ?Sized + 'a> Deref for ReadLock<'a, T> {
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 pub struct WriteLock<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: RwLockWriteGuard<'a, LatestSubmission>,
+    lock: RwLockWriteGuard<'a, ()>,
 }
 
 impl<'a, T: ?Sized + 'a> WriteLock<'a, T> {

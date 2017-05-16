@@ -7,41 +7,82 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::any::Any;
-use std::ops::Range;
-use std::sync::Arc;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::Receiver;
-
-use buffer::Buffer;
-use command_buffer::Submission;
+use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
+use format::PossibleFloatFormatDesc;
+use format::PossibleUintFormatDesc;
+use format::PossibleSintFormatDesc;
+use format::PossibleDepthFormatDesc;
+use format::PossibleStencilFormatDesc;
+use format::PossibleDepthStencilFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
-use sync::Fence;
-use sync::Semaphore;
 
+use SafeDeref;
 use VulkanObject;
 
 /// Trait for types that represent images.
-pub unsafe trait Image: 'static + Send + Sync {
+pub unsafe trait Image {
+    /// Object that represents a GPU access to the image.
+    type Access: ImageAccess;
+
+    /// Builds an object that represents a GPU access to the image.
+    fn access(self) -> Self::Access;
+
+    /// Returns the format of this image.
+    fn format(&self) -> Format;
+
+    /// Returns the number of samples of this image.
+    fn samples(&self) -> u32;
+
+    /// Returns the dimensions of the image.
+    fn dimensions(&self) -> ImageDimensions;
+}
+
+/// Trait for types that represent the way a GPU can access an image.
+pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;
-
-    //fn align(&self, subresource_range: ) -> ;
 
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
         self.inner().format()
+    }
+
+    /// Returns true if the image is a color image.
+    #[inline]
+    fn has_color(&self) -> bool {
+        let format = self.format();
+        format.is_float() || format.is_uint() || format.is_sint()
+    }
+
+    /// Returns true if the image has a depth component. In other words, if it is a depth or a
+    /// depth-stencil format. 
+    #[inline]
+    fn has_depth(&self) -> bool {
+        let format = self.format();
+        format.is_depth() || format.is_depth_stencil()
+    }
+
+    /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
+    /// depth-stencil format. 
+    #[inline]
+    fn has_stencil(&self) -> bool {
+        let format = self.format();
+        format.is_stencil() || format.is_depth_stencil()
+    }
+
+    /// Returns the number of mipmap levels of this image.
+    #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        self.inner().mipmap_levels()
     }
 
     /// Returns the number of samples of this image.
@@ -56,63 +97,6 @@ pub unsafe trait Image: 'static + Send + Sync {
         self.inner().dimensions()
     }
 
-    /// Given a range, returns the list of blocks which each range is contained in.
-    ///
-    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
-    /// mipmap and array layer.
-    /// Calling this function multiple times with the same parameter must always return the same
-    /// value.
-    /// The return value must not be empty.
-    fn blocks(&self, mipmap_levels: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)>;
-
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32>;
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32>;
-
-    /// Called when a command buffer that uses this image is being built. Given a block, this
-    /// function should return the layout that the block will have when the command buffer is
-    /// submitted.
-    ///
-    /// The `first_required_layout` is provided as a hint and corresponds to the first layout
-    /// that the image will be used for. If this function returns a value different from
-    /// `first_required_layout`, then a layout transition will be performed by the command buffer.
-    ///
-    /// The two additional elements are:
-    ///
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
-    ///
-    fn initial_layout(&self, block: (u32, u32), first_required_layout: Layout) -> (Layout, bool, bool);
-
-    /// Called when a command buffer that uses this image is being built. Given a block, this
-    /// function should return the layout that the block must have when the command buffer is
-    /// end.
-    ///
-    /// The `last_required_layout` is provided as a hint and corresponds to the last layout
-    /// that the image will be in at the end of the command buffer. If this function returns a
-    /// value different from `last_required_layout`, then a layout transition will be performed
-    /// by the command buffer.
-    ///
-    /// The two additional elements are:
-    ///
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   the host (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT).
-    /// - Whether a pipeline barrier should be added in order to address a read or write from
-    ///   memory (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT).
-    ///
-    fn final_layout(&self, block: (u32, u32), last_required_layout: Layout) -> (Layout, bool, bool);
-
-    /// Returns whether accessing a subresource of that image should signal a fence.
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool>;
-
-    ///
-    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
-    ///                should store the `Submission` in the form of a `Weak<Submission>` and not
-    ///                of an `Arc<Submission>` to avoid cyclic references.
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult;
-
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     fn supports_blit_source(&self) -> bool {
@@ -124,150 +108,227 @@ pub unsafe trait Image: 'static + Send + Sync {
     fn supports_blit_destination(&self) -> bool {
         self.inner().supports_blit_destination()
     }
-}
 
-/// Extension trait for `Image`. Types that implement this can be used in a `StdCommandBuffer`.
-///
-/// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
-/// represented by the `CommandListState` associated type of this trait. You can make multiple
-/// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedImage: Image {
-    /// State of the image in a list of commands.
-    ///
-    /// The `Any` bound is here for stupid reasons, sorry.
-    // TODO: remove Any bound
-    type CommandListState: Any + CommandListState<FinishedState = Self::FinishedState>;
-    /// State of the buffer in a finished list of commands.
-    type FinishedState: CommandBufferState;
+    /// Returns the layout that the image has when it is first used in a primary command buffer.
+    fn initial_layout_requirement(&self) -> Layout;
 
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other buffer. Otherwise a panic will occur.
+    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    fn final_layout_requirement(&self) -> Layout;
+
+    /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
+    /// layout requirement is either `Undefined` or `Preinitialized`.
     #[inline]
-    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
+    unsafe fn forced_undefined_initial_layout(self, preinitialized: bool)
+                                              -> ImageAccessFromUndefinedLayout<Self>
+        where Self: Sized
+    {
+        ImageAccessFromUndefinedLayout {
+            image: self,
+            preinitialized: preinitialized,
+        }
+    }
+
+    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
+    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
+    /// access to `other` (as defined by `other_offset` and `other_size`).
+    ///
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
+                        self_num_mipmaps: u32, other: &BufferAccess, other_offset: usize,
+                        other_size: usize) -> bool
+    {
+        // TODO: should we really provide a default implementation?
         false
     }
 
-    /// Returns true if TODO.
+    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
+    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
+    /// access to `other` (as defined by `other_first_layer`, `other_num_layers`,
+    /// `other_first_mipmap` and `other_num_mipmaps`).
     ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other image. Otherwise a panic will occur.
-    #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        self.inner().internal_object() == other.inner().internal_object()
+    /// If this function returns `false`, this means that we are allowed to access the offset/size
+    /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
+                       self_num_mipmaps: u32, other: &ImageAccess,
+                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
+                       other_num_mipmaps: u32) -> bool
+    {
+        // TODO: should we really provide a default implementation?
+
+        // TODO: debug asserts to check for ranges
+
+        if self.inner().internal_object() != other.inner().internal_object() {
+            return false;
+        }
+
+        true
     }
 
-    /// Returns the state of the image when it has not yet been used.
-    fn initial_state(&self) -> Self::CommandListState;
-}
-
-/// Trait for objects that represent the state of a slice of the image in a list of commands.
-pub trait CommandListState {
-    type FinishedState: CommandBufferState;
-
-    /// Returns a new state that corresponds to the moment after a slice of the image has been
-    /// used in the pipeline. The parameters indicate in which way it has been used.
+    /// Returns a key that uniquely identifies the range given by
+    /// first_layer/num_layers/first_mipmap/num_mipmaps.
     ///
-    /// If the transition should result in a pipeline barrier, then it must be returned by this
-    /// function.
-    fn transition(self, num_command: usize, image: &UnsafeImage, first_mipmap: u32,
-                  num_mipmaps: u32, first_layer: u32, num_layers: u32, write: bool, layout: Layout,
-                  stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-        where Self: Sized;
-
-    /// Function called when the command buffer builder is turned into a real command buffer.
+    /// Two ranges that potentially overlap in memory should return the same key.
     ///
-    /// This function can return an additional pipeline barrier that will be applied at the end
-    /// of the command buffer.
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    /// The key is shared amongst all buffers and images, which means that you can make several
+    /// different image objects share the same memory, or make some image objects share memory
+    /// with buffers, as long as they return the same key.
+    ///
+    /// Since it is possible to accidentally return the same key for memory ranges that don't
+    /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
+    /// verify whether they actually overlap.
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64;
+
+    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
+    #[inline]
+    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
+        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.size())
+    }
+
+    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
+    #[inline]
+    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
+        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+    }
+
+    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
+    #[inline]
+    fn conflict_key_all(&self) -> u64 {
+        self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
+    }
+
+    /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
+    ///
+    /// This function implementation should remember that it has been called and return `false` if
+    /// it gets called a second time.
+    ///
+    /// The only way to know that the GPU has stopped accessing a queue is when the image object
+    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
+    /// to a lock) in order to represent a GPU access.
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+
+    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
+    /// simply increases the lock by one.
+    ///
+    /// Must only be called after `try_gpu_lock()` succeeded.
+    unsafe fn increase_gpu_lock(&self);
 }
 
-/// Requests that a pipeline barrier is created.
-pub struct PipelineBarrierRequest {
-    /// The number of the command after which the barrier should be placed. Must usually match
-    /// the number that was passed to the previous call to `transition`, or 0 if the image hasn't
-    /// been used yet.
-    pub after_command_num: usize,
+unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        (**self).inner()
+    }
 
-    /// The source pipeline stages of the transition.
-    pub source_stage: PipelineStages,
+    #[inline]
+    fn initial_layout_requirement(&self) -> Layout {
+        (**self).initial_layout_requirement()
+    }
 
-    /// The destination pipeline stages of the transition.
-    pub destination_stages: PipelineStages,
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
+        (**self).final_layout_requirement()
+    }
 
-    /// If true, the pipeliner barrier is by region.
-    pub by_region: bool,
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
+    {
+        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    }
 
-    /// An optional memory barrier. See the docs of `PipelineMemoryBarrierRequest`.
-    pub memory_barrier: Option<PipelineMemoryBarrierRequest>,
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        (**self).try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        (**self).increase_gpu_lock()
+    }
 }
 
-/// Requests that a memory barrier is created as part of the pipeline barrier.
-///
-/// By default, a pipeline barrier only guarantees that the source operations are executed before
-/// the destination operations, but it doesn't make memory writes made by source operations visible
-/// to the destination operations. In order to make so, you have to add a memory barrier.
-///
-/// The memory barrier always concerns the image that is currently being processed. You can't add
-/// a memory barrier that concerns another resource.
-pub struct PipelineMemoryBarrierRequest {
-    pub first_mipmap: u32,
-    pub num_mipmaps: u32,
-    pub first_layer: u32,
-    pub num_layers: u32,
-
-    pub old_layout: Layout,
-    pub new_layout: Layout,
-
-    /// Source accesses.
-    pub source_access: AccessFlagBits,
-    /// Destination accesses.
-    pub destination_access: AccessFlagBits,
+/// Wraps around an object that implements `ImageAccess` and modifies the initial layout
+/// requirement to be either `Undefined` or `Preinitialized`.
+#[derive(Debug, Copy, Clone)]
+pub struct ImageAccessFromUndefinedLayout<I> {
+    image: I,
+    preinitialized: bool,
 }
 
-/// Trait for objects that represent the state of the image in a command buffer.
-pub trait CommandBufferState {
-    /// Called right before the command buffer is submitted.
-    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<I, F>(&self, image: &I, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where I: Image, F: FnOnce() -> Arc<Fence>;
-}
+unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        self.image.inner()
+    }
 
-pub struct SubmitInfos {
-    pub pre_semaphore: Option<(Receiver<Arc<Semaphore>>, PipelineStages)>,
-    pub post_semaphore: Option<Sender<Arc<Semaphore>>>,
-    pub pre_barrier: Option<PipelineBarrierRequest>,
-    pub post_barrier: Option<PipelineBarrierRequest>,
+    #[inline]
+    fn initial_layout_requirement(&self) -> Layout {
+        if self.preinitialized {
+            Layout::Preinitialized
+        } else {
+            Layout::Undefined
+        }
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
+        self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
+    {
+        self.image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        self.image.try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        self.image.increase_gpu_lock()
+    }
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
 /// given image.
 // TODO: isn't that for image views instead?
-pub unsafe trait ImageClearValue<T>: Image {
+pub unsafe trait ImageClearValue<T>: ImageAccess {
     fn decode(&self, T) -> Option<ClearValue>;
 }
 
-pub unsafe trait ImageContent<P>: Image {
+pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
 }
 
 /// Trait for types that represent image views.
-pub unsafe trait ImageView: 'static + Send + Sync {
-    fn parent(&self) -> &Image;
+pub unsafe trait ImageView {
+    /// Object that represents a GPU access to the image view.
+    type Access: ImageViewAccess;
 
-    fn parent_arc(&Arc<Self>) -> Arc<Image> where Self: Sized;
+    /// Builds an object that represents a GPU access to the image view.
+    fn access(self) -> Self::Access;
+}
+
+/// Trait for types that represent the GPU can access an image view.
+pub unsafe trait ImageViewAccess {
+    fn parent(&self) -> &ImageAccess;
 
     /// Returns the dimensions of the image view.
     fn dimensions(&self) -> Dimensions;
 
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
-
-    /// Returns the blocks of the parent image this image view overlaps.
-    fn blocks(&self) -> Vec<(u32, u32)>;
 
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
@@ -305,28 +366,50 @@ pub unsafe trait ImageView: 'static + Send + Sync {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-pub unsafe trait AttachmentImageView: ImageView {
+unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAccess {
+    #[inline]
+    fn parent(&self) -> &ImageAccess {
+        (**self).parent()
+    }
+
+    #[inline]
+    fn inner(&self) -> &UnsafeImageView {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> Dimensions {
+        (**self).dimensions()
+    }
+
+    #[inline]
+    fn descriptor_set_storage_image_layout(&self) -> Layout {
+        (**self).descriptor_set_storage_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
+        (**self).descriptor_set_combined_image_sampler_layout()
+    }
+    #[inline]
+    fn descriptor_set_sampled_image_layout(&self) -> Layout {
+        (**self).descriptor_set_sampled_image_layout()
+    }
+    #[inline]
+    fn descriptor_set_input_attachment_layout(&self) -> Layout {
+        (**self).descriptor_set_input_attachment_layout()
+    }
+
+    #[inline]
+    fn identity_swizzle(&self) -> bool {
+        (**self).identity_swizzle()
+    }
+
+    #[inline]
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        (**self).can_be_sampled(sampler)
+    }
+}
+
+pub unsafe trait AttachmentImageView: ImageViewAccess {
     fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
-}
-
-#[derive(Debug, Clone)]
-pub struct AccessRange {
-    pub block: (u32, u32),
-    pub write: bool,
-    pub initial_layout: Layout,
-    pub final_layout: Layout,
-}
-
-pub struct GpuAccessResult {
-    pub dependencies: Vec<Arc<Submission>>,
-    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
-    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
-    pub before_transitions: Vec<Transition>,
-    pub after_transitions: Vec<Transition>,
-}
-
-pub struct Transition {
-    pub block: (u32, u32),
-    pub from: Layout,
-    pub to: Layout,
 }

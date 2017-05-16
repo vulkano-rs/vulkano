@@ -8,231 +8,214 @@
 // according to those terms.
 
 use std::iter;
-use std::iter::Empty as EmptyIter;
-use std::option::IntoIter as OptionIntoIter;
-use std::sync::Arc;
-use std::vec::IntoIter as VecIntoIter;
-
-use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
-use command_buffer::submit::SubmitInfo;
-use command_buffer::sys::PipelineBarrierBuilder;
+use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
-use device::Queue;
-use image::traits::TrackedImage;
-use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
+use descriptor::descriptor_set::UnsafeDescriptorSet;
+use image::ImageAccess;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
-    /// An iterator that produces the list of descriptor set objects contained in this collection.
-    type ListIter: ExactSizeIterator<Item = Arc<DescriptorSet>>;
-
-    /// An iterator that produces the description of the list of sets.
-    type SetsIter: ExactSizeIterator<Item = Self::DescIter>;
-
-    /// An iterator that produces the description of a set.
-    type DescIter: ExactSizeIterator<Item = DescriptorDesc>;
-
-    /// Returns the list of descriptor set objects of this collection.
-    fn list(&self) -> Self::ListIter;
-
-    /// Produces a description of the sets, as if it was a layout.
-    fn description(&self) -> Self::SetsIter;
-}
-
-/// Extension trait for a descriptor sets collection so that it can be used with the standard
-/// commands list interface.
-pub unsafe trait TrackedDescriptorSetsCollection: DescriptorSetsCollection {
-    /// State of the resources inside the collection.
-    type State: TrackedDescriptorSetsCollectionState<Finished = Self::Finished>;
-    /// Finished state of the resources inside the collection.
-    type Finished: TrackedDescriptorSetsCollectionFinished;
-
-    /// Extracts the states relevant to the buffers and images contained in the descriptor sets.
-    /// Then transitions them to the right state and returns a pipeline barrier to insert as part
-    /// of the transition. The `usize` is the location of the barrier.
-    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates;
-}
-
-/// State of the resources inside the collection.
-pub unsafe trait TrackedDescriptorSetsCollectionState: ResourcesStates {
-    /// Finished state of the resources inside the collection.
-    type Finished: TrackedDescriptorSetsCollectionFinished;
-
-    /// Turns the object into a `TrackedDescriptorSetsCollectionFinished`. All the buffers and
-    /// images whose state hasn't been extracted must be have `finished()` called on them as well.
+    /// Returns the number of sets in the collection. Includes possibly empty sets.
     ///
-    /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
-}
+    /// In other words, this should be equal to the highest set number plus one.
+    fn num_sets(&self) -> usize;
 
-/// Finished state of the resources inside the collection.
-pub unsafe trait TrackedDescriptorSetsCollectionFinished {
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
+    /// Returns the descriptor set with the given id. Returns `None` if the set is empty.
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet>;
 
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
+    /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
+    ///
+    /// Returns `None` if the set is out of range.
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize>;
 
-    // TODO: write docs
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
-        where F: FnMut() -> Arc<Fence>;
+    /// Returns the descriptor for the given binding of the given set.
+    ///
+    /// Returns `None` if out of range.
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
+
+    /// Returns the list of buffers used by this descriptor set. Includes buffer views.
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
+
+    /// Returns the list of images used by this descriptor set. Includes image views.
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl DescriptorSetsCollection for () {
-    type ListIter = EmptyIter<Arc<DescriptorSet>>;
-    type SetsIter = EmptyIter<EmptyIter<DescriptorDesc>>;
-    type DescIter = EmptyIter<DescriptorDesc>;
-
     #[inline]
-    fn list(&self) -> Self::ListIter {
-        iter::empty()
+    fn num_sets(&self) -> usize {
+        0
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        iter::empty()
-    }
-}
-
-unsafe impl TrackedDescriptorSetsCollection for () {
-    type State = EmptyState;
-    type Finished = EmptyState;
-
-    #[inline]
-    unsafe fn extract_states_and_transition<S>(&self, list: &mut S)
-        -> (Self::State, usize, PipelineBarrierBuilder)
-        where S: ResourcesStates
-    {
-        (EmptyState, 0, PipelineBarrierBuilder::new())
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyState;
-
-unsafe impl TrackedDescriptorSetsCollectionState for EmptyState {
-    type Finished = EmptyState;
-
-    #[inline]
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder) {
-        (EmptyState, PipelineBarrierBuilder::new())
-    }
-}
-
-unsafe impl ResourcesStates for EmptyState {
-    #[inline]
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer
-    {
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
         None
     }
 
     #[inline]
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage
-    {
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
         None
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        None
+    }
+
+    #[inline]
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
+        Box::new(iter::empty())
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
+        Box::new(iter::empty())
     }
 }
 
-unsafe impl TrackedDescriptorSetsCollectionFinished for EmptyState {
-    type SemaphoresWaitIterator = EmptyIter<(Arc<Semaphore>, PipelineStages)>;
-    type SemaphoresSignalIterator = EmptyIter<Arc<Semaphore>>;
+unsafe impl<T> DescriptorSetsCollection for T
+    where T: DescriptorSet
+{
+    #[inline]
+    fn num_sets(&self) -> usize {
+        1
+    }
 
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
-        where F: FnMut() -> Arc<Fence>
-    {
-        SubmitInfo {
-            semaphores_wait: iter::empty(),
-            semaphores_signal: iter::empty(),
-            pre_pipeline_barrier: PipelineBarrierBuilder::new(),
-            post_pipeline_barrier: PipelineBarrierBuilder::new(),
+    #[inline]
+    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
+        match set {
+            0 => Some(self.inner()),
+            _ => None
         }
     }
-}
-
-unsafe impl<'a, T> DescriptorSetsCollection for Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc
-{
-    type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
-    type SetsIter = OptionIntoIter<Self::DescIter>;
-    type DescIter = <T as DescriptorSetDesc>::Iter;
 
     #[inline]
-    fn list(&self) -> Self::ListIter {
-        Some(self.clone() as Arc<_>).into_iter()
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        match set {
+            0 => Some(self.num_bindings()),
+            _ => None
+        }
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        Some(self.desc()).into_iter()
-    }
-}
-
-unsafe impl<'a, T> DescriptorSetsCollection for &'a Arc<T>
-    where T: DescriptorSet + DescriptorSetDesc
-{
-    type ListIter = OptionIntoIter<Arc<DescriptorSet>>;
-    type SetsIter = OptionIntoIter<Self::DescIter>;
-    type DescIter = <T as DescriptorSetDesc>::Iter;
-
-    #[inline]
-    fn list(&self) -> Self::ListIter {
-        Some((*self).clone() as Arc<_>).into_iter()
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        match set {
+            0 => self.descriptor(binding),
+            _ => None
+        }
     }
 
     #[inline]
-    fn description(&self) -> Self::SetsIter {
-        Some(self.desc()).into_iter()
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
+        DescriptorSet::buffers_list(self)
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
+        DescriptorSet::images_list(self)
     }
 }
 
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)*) => (
-        unsafe impl<'a, $first$(, $others)*> DescriptorSetsCollection for
-                                                        (&'a Arc<$first>, $(&'a Arc<$others>),*)
-            where $first: DescriptorSet + DescriptorSetDesc + 'static
-                  $(, $others: DescriptorSet + DescriptorSetDesc + 'static)*
+        unsafe impl<$first$(, $others)*> DescriptorSetsCollection for ($first, $($others),*)
+            where $first: DescriptorSet + DescriptorSetDesc
+                  $(, $others: DescriptorSet + DescriptorSetDesc)*
         {
-            type ListIter = VecIntoIter<Arc<DescriptorSet>>;
-            type SetsIter = VecIntoIter<Self::DescIter>;
-            type DescIter = VecIntoIter<DescriptorDesc>;
-
             #[inline]
-            fn list(&self) -> Self::ListIter {
+            fn num_sets(&self) -> usize {
                 #![allow(non_snake_case)]
-                let ($first, $($others),*) = *self;
-
-                let list = vec![
-                    $first.clone() as Arc<_>,
-                    $($others.clone() as Arc<_>),*
-                ];
-
-                list.into_iter()
+                1 $( + {let $others=0;1})*
             }
 
             #[inline]
-            fn description(&self) -> Self::SetsIter {
+            fn descriptor_set(&self, mut set: usize) -> Option<&UnsafeDescriptorSet> {
                 #![allow(non_snake_case)]
-                let ($first, $($others),*) = *self;
+                #![allow(unused_mut)]       // For the `set` parameter.
 
-                let mut list = Vec::new();
-                list.push($first.desc().collect::<Vec<_>>().into_iter());
-                $(list.push($others.desc().collect::<Vec<_>>().into_iter());)*
-                list.into_iter()
+                if set == 0 {
+                    return Some(self.0.inner());
+                }
+
+                let &(_, $(ref $others,)*) = self;
+
+                $(
+                    set -= 1;
+                    if set == 0 {
+                        return Some($others.inner());
+                    }
+                )*
+
+                None
+            }
+
+            #[inline]
+            fn num_bindings_in_set(&self, mut set: usize) -> Option<usize> {
+                #![allow(non_snake_case)]
+                #![allow(unused_mut)]       // For the `set` parameter.
+
+                if set == 0 {
+                    return Some(self.0.num_bindings());
+                }
+
+                let &(_, $(ref $others,)*) = self;
+
+                $(
+                    set -= 1;
+                    if set == 0 {
+                        return Some($others.num_bindings());
+                    }
+                )*
+
+                None
+            }
+
+            #[inline]
+            fn descriptor(&self, mut set: usize, binding: usize) -> Option<DescriptorDesc> {
+                #![allow(non_snake_case)]
+                #![allow(unused_mut)]       // For the `set` parameter.
+
+                if set == 0 {
+                    return self.0.descriptor(binding);
+                }
+
+                let &(_, $(ref $others,)*) = self;
+
+                $(
+                    set -= 1;
+                    if set == 0 {
+                        return $others.descriptor(binding);
+                    }
+                )*
+
+                None
+            }
+
+            #[inline]
+            fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
+                #![allow(non_snake_case)]
+
+                let &(ref first, $(ref $others,)*) = self;
+                let mut output = Vec::new();
+                output.extend(first.buffers_list());
+                $(
+                    output.extend($others.buffers_list());
+                )*
+                Box::new(output.into_iter())
+            }
+
+            #[inline]
+            fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
+                #![allow(non_snake_case)]
+
+                let &(ref first, $(ref $others,)*) = self;
+                let mut output = Vec::new();
+                output.extend(first.images_list());
+                $(
+                    output.extend($others.images_list());
+                )*
+                Box::new(output.into_iter())
             }
         }
 

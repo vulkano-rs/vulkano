@@ -19,8 +19,8 @@ macro_rules! features {
         ///
         /// # Example
         ///
-        /// ```no_run
-        /// # let physical_device: vulkano::instance::PhysicalDevice = unsafe { ::std::mem::uninitialized() };
+        /// ```
+        /// # let physical_device: vulkano::instance::PhysicalDevice = return;
         /// let minimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     .. vulkano::instance::Features::none()
@@ -54,6 +54,18 @@ macro_rules! features {
                 Features {
                     $(
                         $name: false,
+                    )+
+                }
+            }
+
+            /// Builds a `Features` object with all values to true.
+            ///
+            /// > **Note**: This function is used for testing purposes, and is probably useless in
+            /// > a real code.
+            pub fn all() -> Features {
+                Features {
+                    $(
+                        $name: true,
                     )+
                 }
             }

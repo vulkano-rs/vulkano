@@ -10,29 +10,39 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
+use std::error;
+use std::fmt;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 use smallvec::SmallVec;
 
-use command_buffer::pool::AllocatedCommandBuffer;
 use instance::QueueFamily;
 
 use device::Device;
+use device::DeviceOwned;
 use OomError;
 use VulkanObject;
 use VulkanPointers;
+use Error;
 use check_errors;
 use vk;
 
 /// Low-level implementation of a command pool.
+///
+/// A command pool is always tied to a specific queue family. Command buffers allocated from a pool
+/// can only be executed on the corresponding queue familiy.
+///
+/// This struct doesn't implement the `Sync` trait because Vulkan command pools are not thread
+/// safe. In other words, you can only use a pool from one thread at a time.
+#[derive(Debug)]
 pub struct UnsafeCommandPool {
     pool: vk::CommandPool,
     device: Arc<Device>,
+
+    // Index of the associated queue family in the physical device.
     queue_family_index: u32,
 
-    // We don't want `UnsafeCommandPool` to implement Sync, since the Vulkan command pool isn't
-    // thread safe.
-    //
+    // We don't want `UnsafeCommandPool` to implement Sync.
     // This marker unimplements both Send and Sync, but we reimplement Send manually right under.
     dummy_avoid_sync: PhantomData<*const u8>,
 }
@@ -53,11 +63,12 @@ impl UnsafeCommandPool {
     ///
     /// - Panics if the queue family doesn't belong to the same physical device as `device`.
     ///
-    pub fn new(device: &Arc<Device>, queue_family: QueueFamily, transient: bool,
+    pub fn new(device: Arc<Device>, queue_family: QueueFamily, transient: bool,
                reset_cb: bool) -> Result<UnsafeCommandPool, OomError>
     {
         assert_eq!(device.physical_device().internal_object(),
-                   queue_family.physical_device().internal_object());
+                   queue_family.physical_device().internal_object(),
+                   "Device doesn't match physical device when creating a command pool");
 
         let vk = device.pointers();
 
@@ -92,11 +103,13 @@ impl UnsafeCommandPool {
 
     /// Resets the pool, which resets all the command buffers that were allocated from it.
     ///
+    /// If `release_resources` is true, it is a hint to the implementation that it should free all
+    /// the memory internally allocated for this pool.
+    ///
     /// # Safety
     ///
     /// The command buffers allocated from this pool jump to the initial state.
     ///
-    #[inline]
     pub unsafe fn reset(&self, release_resources: bool) -> Result<(), OomError> {
         let flags = if release_resources { vk::COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT }
                     else { 0 };
@@ -104,6 +117,27 @@ impl UnsafeCommandPool {
         let vk = self.device.pointers();
         try!(check_errors(vk.ResetCommandPool(self.device.internal_object(), self.pool, flags)));
         Ok(())
+    }
+
+    /// Trims a command pool, which recycles unused internal memory from the command pool back to
+    /// the system.
+    ///
+    /// Command buffers allocated from the pool are not affected by trimming.
+    ///
+    /// This function is supported only if the `VK_KHR_maintenance1` extension was enabled at
+    /// device creation. Otherwise an error is returned.
+    /// Since this operation is purely an optimization it is legitimate to call this function and
+    /// simply ignore any possible error.
+    pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
+        unsafe {
+            if !self.device.loaded_extensions().khr_maintenance1 {
+                return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
+            }
+
+            let vk = self.device.pointers();
+            vk.TrimCommandPoolKHR(self.device.internal_object(), self.pool, 0 /* reserved */);
+            Ok(())
+        }
     }
 
     /// Allocates `count` command buffers.
@@ -114,7 +148,9 @@ impl UnsafeCommandPool {
                                  -> Result<UnsafeCommandPoolAllocIter, OomError>
     {
         if count == 0 {
-            return Ok(UnsafeCommandPoolAllocIter(None));
+            return Ok(UnsafeCommandPoolAllocIter {
+                list: None
+            });
         }
 
         let infos = vk::CommandBufferAllocateInfo {
@@ -134,7 +170,9 @@ impl UnsafeCommandPool {
 
             out.set_len(count);
 
-            Ok(UnsafeCommandPoolAllocIter(Some(out.into_iter())))
+            Ok(UnsafeCommandPoolAllocIter {
+                list: Some(out.into_iter())
+            })
         }
     }
 
@@ -142,10 +180,10 @@ impl UnsafeCommandPool {
     ///
     /// # Safety
     ///
-    /// The command buffers must have been allocated from this pool.
+    /// The command buffers must have been allocated from this pool. They must not be in use.
     ///
     pub unsafe fn free_command_buffers<I>(&self, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>
+        where I: Iterator<Item = UnsafeCommandPoolAlloc>
     {
         let command_buffers: SmallVec<[_; 4]> = command_buffers.map(|cb| cb.0).collect();
         let vk = self.device.pointers();
@@ -153,16 +191,17 @@ impl UnsafeCommandPool {
                               command_buffers.len() as u32, command_buffers.as_ptr())
     }
 
-    /// Returns the device this command pool was created with.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Returns the queue family on which command buffers of this pool can be executed.
     #[inline]
     pub fn queue_family(&self) -> QueueFamily {
         self.device.physical_device().queue_family_by_id(self.queue_family_index).unwrap()
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeCommandPool {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
@@ -185,21 +224,116 @@ impl Drop for UnsafeCommandPool {
     }
 }
 
-/// Iterator for newly-allocated command buffers.
-pub struct UnsafeCommandPoolAllocIter(Option<VecIntoIter<vk::CommandBuffer>>);
+/// Opaque type that represents a command buffer allocated from a pool.
+pub struct UnsafeCommandPoolAlloc(vk::CommandBuffer);
 
-impl Iterator for UnsafeCommandPoolAllocIter {
-    type Item = AllocatedCommandBuffer;
+unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
+    type Object = vk::CommandBuffer;
 
     #[inline]
-    fn next(&mut self) -> Option<AllocatedCommandBuffer> {
-        self.0.as_mut().and_then(|i| i.next()).map(|cb| AllocatedCommandBuffer(cb))
+    fn internal_object(&self) -> vk::CommandBuffer {
+        self.0
+    }
+}
+
+/// Iterator for newly-allocated command buffers.
+#[derive(Debug)]
+pub struct UnsafeCommandPoolAllocIter {
+    list: Option<VecIntoIter<vk::CommandBuffer>>
+}
+
+impl Iterator for UnsafeCommandPoolAllocIter {
+    type Item = UnsafeCommandPoolAlloc;
+
+    #[inline]
+    fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
+        self.list.as_mut().and_then(|i| i.next()).map(|cb| UnsafeCommandPoolAlloc(cb))
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.as_ref().map(|i| i.size_hint()).unwrap_or((0, Some(0)))
+        self.list.as_ref().map(|i| i.size_hint()).unwrap_or((0, Some(0)))
     }
 }
 
 impl ExactSizeIterator for UnsafeCommandPoolAllocIter {}
+
+/// Error that can happen when trimming command pools.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CommandPoolTrimError {
+    /// The `KHR_maintenance1` extension was not enabled.
+    Maintenance1ExtensionNotEnabled,
+}
+
+impl error::Error for CommandPoolTrimError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CommandPoolTrimError::Maintenance1ExtensionNotEnabled => "the `KHR_maintenance1` \
+                                                                      extension was not enabled",
+        }
+    }
+}
+
+impl fmt::Display for CommandPoolTrimError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for CommandPoolTrimError {
+    #[inline]
+    fn from(err: Error) -> CommandPoolTrimError {
+        panic!("unexpected error: {:?}", err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use command_buffer::pool::UnsafeCommandPool;
+    use command_buffer::pool::CommandPoolTrimError;
+
+    #[test]
+    fn basic_create() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let _ = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
+    }
+
+    #[test]
+    fn queue_family_getter() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let pool = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
+        assert_eq!(pool.queue_family().id(), queue.family().id());
+    }
+
+    #[test]
+    #[should_panic(expected = "Device doesn't match physical device when creating a command pool")]
+    fn panic_if_not_match_family() {
+        let (device, _) = gfx_dev_and_queue!();
+        let (_, queue) = gfx_dev_and_queue!();
+        let _ = UnsafeCommandPool::new(device, queue.family(), false, false);
+    }
+
+    #[test]
+    fn check_maintenance_when_trim() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let pool = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
+
+        match pool.trim() {
+            Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => (),
+            _ => panic!()
+        }
+    }
+
+    // TODO: test that trim works if VK_KHR_maintenance1 if enabled ; the test macro doesn't
+    //       support enabling extensions yet
+
+    #[test]
+    fn basic_alloc() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let pool = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
+        let iter = pool.alloc_command_buffers(false, 12).unwrap();
+        assert_eq!(iter.count(), 12);
+    }
+}

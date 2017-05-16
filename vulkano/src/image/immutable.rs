@@ -7,29 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-use std::iter::Empty;
-use std::ops::Range;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
+use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
+use image::ImageDimensions;
+use image::MipmapsCount;
 use image::sys::ImageCreationError;
 use image::sys::Layout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
-use image::traits::AccessRange;
-use image::traits::GpuAccessResult;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageContent;
+use image::traits::ImageViewAccess;
+use image::traits::Image;
 use image::traits::ImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
@@ -48,20 +44,24 @@ pub struct ImmutableImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     dimensions: Dimensions,
     memory: A::Alloc,
     format: F,
-    per_layer: SmallVec<[PerLayer; 1]>,
-}
-
-#[derive(Debug)]
-struct PerLayer {
-    latest_write_submission: Mutex<Option<Weak<Submission>>>,        // TODO: can use `Weak::new()` once it's stabilized
-    started_reading: AtomicBool,
 }
 
 impl<F> ImmutableImage<F> {
     /// Builds a new immutable image.
+    // TODO: one mipmap is probably not a great default
+    #[inline]
     pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        ImmutableImage::with_mipmaps(device, dimensions, format, MipmapsCount::One, queue_families)
+    }
+
+    /// Builds a new immutable image with the given number of mipmaps.
+    pub fn with_mipmaps<'a, I, M>(device: &Arc<Device>, dimensions: Dimensions, format: F,
+                                  mipmaps: M, queue_families: I)
+                                  -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+        where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>, M: Into<MipmapsCount>
     {
         let usage = Usage {
             transfer_source: true,  // for blits
@@ -81,7 +81,7 @@ impl<F> ImmutableImage<F> {
             };
 
             try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
-                                  1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+                                  1, mipmaps, sharing, false, false))
         };
 
         let mem_ty = {
@@ -109,16 +109,6 @@ impl<F> ImmutableImage<F> {
             memory: mem,
             dimensions: dimensions,
             format: format,
-            per_layer: {
-                let mut v = SmallVec::new();
-                for _ in 0 .. dimensions.array_layers_with_cube() {
-                    v.push(PerLayer {
-                        latest_write_submission: Mutex::new(None),
-                        started_reading: AtomicBool::new(false),
-                    });
-                }
-                v
-            },
         }))
     }
 }
@@ -129,83 +119,82 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     pub fn dimensions(&self) -> Dimensions {
         self.dimensions
     }
+
+    /// Returns the number of mipmap levels of the image.
+    #[inline]
+    pub fn mipmap_levels(&self) -> u32 {
+        self.image.mipmap_levels()
+    }
 }
 
-unsafe impl<F, A> Image for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+// FIXME: wrong
+unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Access = Self;
+
+    #[inline]
+    fn access(self) -> Self {
+        self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> ImageView for Arc<ImmutableImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Access = Self;
+
+    #[inline]
+    fn access(self) -> Self {
+        self
+    }
+}
+
+unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
     #[inline]
-    fn blocks(&self, _: Range<u32>, array_layers: Range<u32>) -> Vec<(u32, u32)> {
-        array_layers.map(|l| (0, l)).collect()
+    fn initial_layout_requirement(&self) -> Layout {
+        Layout::ShaderReadOnlyOptimal       // TODO: ?
     }
 
     #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+    fn final_layout_requirement(&self) -> Layout {
+        Layout::ShaderReadOnlyOptimal       // TODO: ?
     }
 
     #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        block.1 .. (block.1 + 1)
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+        self.image.key()
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), first_usage: Layout) -> (Layout, bool, bool) {
-        let l = if first_usage == Layout::TransferDstOptimal {
-            Layout::Undefined
-        } else {
-            Layout::ShaderReadOnlyOptimal
-        };
-
-        (l, false, false)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        true        // FIXME:
     }
 
     #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::ShaderReadOnlyOptimal, false, false)
-    }
-
-    #[inline]
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, access: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        // FIXME: check queue family
-
-        let mut dependencies = Vec::with_capacity(access.size_hint().1.unwrap_or(0));
-
-        while let Some(access) = access.next() {
-            let per_layer = &self.per_layer[access.block.1 as usize];
-
-            if access.write {
-                assert!(per_layer.started_reading.load(Ordering::Acquire) == false);
-            }
-
-            let mut latest_submission = per_layer.latest_write_submission.lock().unwrap();
-            let dependency = if access.write {
-                mem::replace(&mut *latest_submission, Some(Arc::downgrade(submission)))
-            } else {
-                latest_submission.clone()
-            };
-
-            if let Some(dep) = dependency.and_then(|d| d.upgrade()) {
-                dependencies.push(dep);
-            }
-        }
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-            before_transitions: vec![],
-            after_transitions: vec![],
-        }
+    unsafe fn increase_gpu_lock(&self) {
+        // FIXME:
     }
 }
 
@@ -218,27 +207,17 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
     }
 }
 
-unsafe impl<F: 'static, A> ImageView for ImmutableImage<F, A>
+unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
-    }
-
-    #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
     }
 
     #[inline]
     fn dimensions(&self) -> Dimensions {
         self.dimensions
-    }
-
-    #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
     }
 
     #[inline]

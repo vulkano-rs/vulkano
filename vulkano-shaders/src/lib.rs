@@ -65,9 +65,6 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     // now parsing the document
     let doc = try!(parse::parse_spirv(&data));
 
-    // TODO: remove
-    println!("{:#?}", doc);
-
     let mut output = String::new();
     output.push_str(r#"
         #[allow(unused_imports)]
@@ -83,6 +80,8 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         use vulkano::descriptor::descriptor::DescriptorDescTy;
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorBufferContentDesc;
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDesc;
         #[allow(unused_imports)]
@@ -102,7 +101,9 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::UnsafePipelineLayout;
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescNames;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     "#);
 
     {

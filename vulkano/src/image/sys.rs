@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Low-level implementation of images and images views.
-//! 
+//!
 //! This module contains low-level wrappers around the Vulkan image and image view types. All
 //! other image or image view types of this library, and all custom image or image view types
 //! that you create must wrap around the types in this module.
@@ -51,7 +51,6 @@ use vk;
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitionned.
 ///
-#[derive(Debug)]
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -138,6 +137,14 @@ impl UnsafeImage {
             }
             if usage.input_attachment && (features & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0) {
                 return Err(ImageCreationError::UnsupportedUsage);
+            }
+            if device.loaded_extensions().khr_maintenance1 {
+                if usage.transfer_source && (features & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
+                if usage.transfer_dest && (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
             }
 
             features
@@ -514,6 +521,12 @@ impl UnsafeImage {
         self.samples
     }
 
+    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.image
+    }
+
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.
     ///
     /// This function is only valid for images with a color format. See the other similar functions
@@ -522,7 +535,7 @@ impl UnsafeImage {
     /// The layout is invariant for each image. However it is not cached, as this would waste
     /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
     /// somewhere in order to avoid calling this semi-expensive function at every single memory
-    /// access. 
+    /// access.
     ///
     /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
     /// you can easily calculate the position of any layer.
@@ -609,6 +622,52 @@ impl UnsafeImage {
     pub fn supports_blit_destination(&self) -> bool {
         (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
     }
+
+    /// Returns true if the image can be sampled with a linear filtering.
+    #[inline]
+    pub fn supports_linear_filtering(&self) -> bool {
+        (self.format_features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_src(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_dest(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_sampled(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_storage(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_color_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transient_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_input_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    }
 }
 
 unsafe impl VulkanObject for UnsafeImage {
@@ -617,6 +676,13 @@ unsafe impl VulkanObject for UnsafeImage {
     #[inline]
     fn internal_object(&self) -> vk::Image {
         self.image
+    }
+}
+
+impl fmt::Debug for UnsafeImage {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image {:?}>", self.image)
     }
 }
 
@@ -733,7 +799,6 @@ pub struct LinearLayout {
     pub depth_pitch: usize,
 }
 
-#[derive(Debug)]
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
@@ -812,7 +877,7 @@ impl UnsafeImageView {
             format: image.format,
         })
     }
-    
+
     /// Creates a new view from an image.
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
@@ -887,6 +952,13 @@ unsafe impl VulkanObject for UnsafeImageView {
     #[inline]
     fn internal_object(&self) -> vk::ImageView {
         self.view
+    }
+}
+
+impl fmt::Debug for UnsafeImageView {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image view {:?}>", self.view)
     }
 }
 

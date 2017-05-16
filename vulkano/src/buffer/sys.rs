@@ -32,6 +32,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use device::Device;
+use device::DeviceOwned;
 use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
@@ -44,7 +45,6 @@ use VulkanPointers;
 use vk;
 
 /// Data storage in a GPU-accessible location.
-#[derive(Debug)]
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
     device: Arc<Device>,
@@ -183,12 +183,6 @@ impl UnsafeBuffer {
         Ok(())
     }
 
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Returns the size of the buffer in bytes.
     #[inline]
     pub fn size(&self) -> usize {
@@ -239,6 +233,12 @@ impl UnsafeBuffer {
     pub fn usage_indirect_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
+
+    /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.buffer
+    }
 }
 
 unsafe impl VulkanObject for UnsafeBuffer {
@@ -247,6 +247,20 @@ unsafe impl VulkanObject for UnsafeBuffer {
     #[inline]
     fn internal_object(&self) -> vk::Buffer {
         self.buffer
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeBuffer {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl fmt::Debug for UnsafeBuffer {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan buffer {:?}>", self.buffer)
     }
 }
 
@@ -525,6 +539,7 @@ mod tests {
     use super::Usage;
 
     use device::Device;
+    use device::DeviceOwned;
     use sync::Sharing;
 
     #[test]
@@ -541,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse residency without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse residency without enabling sparse binding as well")]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: true, sparse_aliased: false };
@@ -552,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse aliasing without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse binding as well")]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: false, sparse_aliased: true };

@@ -14,8 +14,8 @@
 use std::ffi::CString;
 use format::Format;
 use framebuffer::Subpass;
-use descriptor::pipeline_layout::EmptyPipeline;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
 use pipeline::GraphicsPipeline;
 use pipeline::GraphicsPipelineParams;
 use pipeline::GraphicsPipelineCreationError;
@@ -58,8 +58,7 @@ fn create() {
         },
         depth_stencil: DepthStencil::disabled(),
         blend: Blend::pass_through(),
-        layout: &EmptyPipeline::new(&device).unwrap(),
-        render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+        render_pass: Subpass::from(simple_rp::CustomRenderPass::new(&device, &{
             simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
         }).unwrap(), 0).unwrap(),
     }).unwrap();
@@ -97,8 +96,7 @@ fn bad_primitive_restart() {
         },
         depth_stencil: DepthStencil::disabled(),
         blend: Blend::pass_through(),
-        layout: &EmptyPipeline::new(&device).unwrap(),
-        render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+        render_pass: Subpass::from(simple_rp::CustomRenderPass::new(&device, &{
             simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
         }).unwrap(), 0).unwrap(),
     });
@@ -138,8 +136,7 @@ fn multi_viewport_feature() {
         },
         depth_stencil: DepthStencil::disabled(),
         blend: Blend::pass_through(),
-        layout: &EmptyPipeline::new(&device).unwrap(),
-        render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+        render_pass: Subpass::from(simple_rp::CustomRenderPass::new(&device, &{
             simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
         }).unwrap(), 0).unwrap(),
     });
@@ -179,8 +176,7 @@ fn max_viewports() {
         },
         depth_stencil: DepthStencil::disabled(),
         blend: Blend::pass_through(),
-        layout: &EmptyPipeline::new(&device).unwrap(),
-        render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+        render_pass: Subpass::from(simple_rp::CustomRenderPass::new(&device, &{
             simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
         }).unwrap(), 0).unwrap(),
     });
@@ -220,8 +216,7 @@ fn no_depth_attachment() {
         },
         depth_stencil: DepthStencil::simple_depth_test(),
         blend: Blend::pass_through(),
-        layout: &EmptyPipeline::new(&device).unwrap(),
-        render_pass: Subpass::from(&simple_rp::CustomRenderPass::new(&device, &{
+        render_pass: Subpass::from(simple_rp::CustomRenderPass::new(&device, &{
             simple_rp::Formats { color: (Format::R8G8B8A8Unorm, 1) }
         }).unwrap(), 0).unwrap(),
     });

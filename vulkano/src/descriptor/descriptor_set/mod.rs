@@ -7,111 +7,110 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
+//! Descriptor sets creation and management
+//! 
+//! This module is dedicated to managing descriptor sets. There are three concepts in Vulkan
+//! related to descriptor sets:
+//! 
+//! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
+//!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
+//!   instance of this object. This is represented with the `UnsafeDescriptorSetLayout` type in
+//!   vulkano.
+//! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
+//!   be used to allocate and free individual descriptor sets. This is represented with the
+//!   `UnsafeDescriptorPool` type in vulkano.
+//! - A `DescriptorSet` contains the bindings to resources and is allocated from a pool. This is
+//!   represented with the `UnsafeDescriptorSet` type in vulkano.
+//! 
+//! In addition to this, vulkano defines the following:
+//! 
+//! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
+//!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
+//!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
+//! - The `StdDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
+//! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
+//!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
+//!   them.
+//! - The `SimpleDescriptorSet` type is a default implementation of the `DescriptorSet` trait.
+//! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
+//!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use buffer::traits::TrackedBuffer;
-use command_buffer::std::ResourcesStates;
-use command_buffer::submit::SubmitInfo;
-use command_buffer::sys::PipelineBarrierBuilder;
+use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use device::Queue;
-use image::traits::TrackedImage;
-use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
+use image::ImageAccess;
+use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::pool::DescriptorPool;
-pub use self::sys::UnsafeDescriptorSet;
+pub use self::std_pool::StdDescriptorPool;
+pub use self::std_pool::StdDescriptorPoolAlloc;
+pub use self::simple::*;
+pub use self::sys::DescriptorPool;
+pub use self::sys::DescriptorPoolAlloc;
+pub use self::sys::DescriptorPoolAllocError;
 pub use self::sys::DescriptorWrite;
+pub use self::sys::DescriptorsCount;
+pub use self::sys::UnsafeDescriptorPool;
+pub use self::sys::UnsafeDescriptorPoolAllocIter;
+pub use self::sys::UnsafeDescriptorSet;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
 
-mod pool;
+mod simple;
+mod std_pool;
 mod sys;
 mod unsafe_layout;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-// TODO: remove Send + Sync + 'static
-pub unsafe trait DescriptorSet: 'static + Send + Sync {
+pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
+
+    /// Returns the list of buffers used by this descriptor set. Includes buffer views.
+    // TODO: meh for boxing
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
+
+    /// Returns the list of images used by this descriptor set. Includes image views.
+    // TODO: meh for boxing
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
+}
+
+unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet {
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
+        (**self).buffers_list()
+    }
+
+    #[inline]
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
+        (**self).images_list()
+    }
 }
 
 /// Trait for objects that describe the layout of the descriptors of a set.
 pub unsafe trait DescriptorSetDesc {
-    /// Iterator that describes individual descriptors.
-    type Iter: ExactSizeIterator<Item = DescriptorDesc>;
+    /// Returns the number of binding slots in the set.
+    fn num_bindings(&self) -> usize;
 
-    /// Describes the layout of the descriptors of the pipeline.
-    fn desc(&self) -> Self::Iter;
+    /// Returns a description of a descriptor, or `None` if out of range.
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
 }
 
-// TODO: re-read docs
-/// Extension trait for descriptor sets so that it can be used with the standard commands list
-/// interface.
-pub unsafe trait TrackedDescriptorSet: DescriptorSet {
-    type State: TrackedDescriptorSetState<Finished = Self::Finished>;
-    type Finished: TrackedDescriptorSetFinished;
+unsafe impl<T> DescriptorSetDesc for T where T: SafeDeref, T::Target: DescriptorSetDesc {
+    #[inline]
+    fn num_bindings(&self) -> usize {
+        (**self).num_bindings()
+    }
 
-    /// Extracts the states relevant to the buffers and images contained in the descriptor set.
-    /// Then transitions them to the right state.
-    unsafe fn extract_states_and_transition<L>(&self, list: &mut L)
-                                               -> (Self::State, usize, PipelineBarrierBuilder)
-        where L: ResourcesStates;
-}
-
-// TODO: re-read docs
-pub unsafe trait TrackedDescriptorSetState: ResourcesStates {
-    type Finished: TrackedDescriptorSetFinished;
-
-    /// Extracts the state of a buffer of the descriptor set, or `None` if the buffer isn't in
-    /// the descriptor set.
-    ///
-    /// Whether the buffer passed as parameter is the same as the one in the descriptor set must be
-    /// determined with the `is_same` method of `TrackedBuffer`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that buffer has already been previously extracted.
-    ///
-    unsafe fn extract_buffer_state<B>(&mut self, buffer: &B) -> Option<B::CommandListState>
-        where B: TrackedBuffer;
-
-    /// Returns the state of an image, or `None` if the image isn't in the descriptor set.
-    ///
-    /// See the description of `extract_buffer_state`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the state of that image has already been previously extracted.
-    ///
-    unsafe fn extract_image_state<I>(&mut self, image: &I) -> Option<I::CommandListState>
-        where I: TrackedImage;
-
-    /// Turns the object into a `TrackedDescriptorSetFinished`. All the buffers and images whose
-    /// state hasn't been extracted must be have `finished()` called on them as well.
-    ///
-    /// The function returns a pipeline barrier to append at the end of the command buffer.
-    unsafe fn finish(self) -> (Self::Finished, PipelineBarrierBuilder);
-}
-
-// TODO: re-read docs
-pub unsafe trait TrackedDescriptorSetFinished {
-    /// Iterator that returns the list of semaphores to wait upon before the command buffer is
-    /// submitted.
-    type SemaphoresWaitIterator: Iterator<Item = (Arc<Semaphore>, PipelineStages)>;
-
-    /// Iterator that returns the list of semaphores to signal after the command buffer has
-    /// finished execution.
-    type SemaphoresSignalIterator: Iterator<Item = Arc<Semaphore>>;
-
-    // TODO: write docs
-    unsafe fn on_submit<F>(&self, queue: &Arc<Queue>, fence: F)
-                           -> SubmitInfo<Self::SemaphoresWaitIterator,
-                                         Self::SemaphoresSignalIterator>
-        where F: FnMut() -> Arc<Fence>;
+    #[inline]
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+        (**self).descriptor(binding)
+    }
 }

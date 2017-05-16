@@ -18,9 +18,9 @@
 //! A physical device is composed of one or more **memory heaps**. A memory heap is a pool of
 //! memory that can be allocated.
 //!
-//! ```no_run
+//! ```
 //! // Enumerating memory heaps.
-//! # let physical_device: vulkano::instance::PhysicalDevice = unsafe { std::mem::uninitialized() };
+//! # let physical_device: vulkano::instance::PhysicalDevice = return;
 //! for heap in physical_device.memory_heaps() {
 //!     println!("Heap #{:?} has a capacity of {:?} bytes", heap.id(), heap.size());
 //! }
@@ -35,9 +35,9 @@
 //! memory type has a much quicker access time from the GPU than a non-device-local type. Note
 //! that non-device-local memory types are still accessible by the device, they are just slower.
 //!
-//! ```no_run
+//! ```
 //! // Enumerating memory types.
-//! # let physical_device: vulkano::instance::PhysicalDevice = unsafe { std::mem::uninitialized() };
+//! # let physical_device: vulkano::instance::PhysicalDevice = return;
 //! for ty in physical_device.memory_types() {
 //!     println!("Memory type belongs to heap #{:?}", ty.heap().id());
 //!     println!("Host-accessible: {:?}", ty.is_host_visible());
@@ -64,14 +64,14 @@
 //!
 //! Here is an example:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::memory::DeviceMemory;
 //! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { std::mem::uninitialized() };
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! // Taking the first memory type for the sake of this example.
 //! let ty = device.physical_device().memory_types().next().unwrap();
 //! 
-//! let alloc = DeviceMemory::alloc(&device, &ty, 1024).expect("Failed to allocate memory");
+//! let alloc = DeviceMemory::alloc(device.clone(), ty, 1024).expect("Failed to allocate memory");
 //! 
 //! // The memory is automatically free'd when `alloc` is destroyed.
 //! ```

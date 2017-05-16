@@ -13,7 +13,7 @@ What does vulkano do?
 
 - Provides a low-levelish API around Vulkan. It doesn't hide what it does, but provides some
   comfort types.
-- Plans to prevents all invalid API usages, even the most obscure ones. The purpose of vulkano
+- Plans to prevent all invalid API usages, even the most obscure ones. The purpose of vulkano
   is not to draw a teapot, but to cover all possible usages of Vulkan and detect all the
   possible problems. Invalid API usage is prevented thanks to both compile-time checks and
   runtime checks.
@@ -25,6 +25,11 @@ What does vulkano do?
   the documentation for hours for every single operation.
 
 **Warning: this library breaks every five minutes for the moment.**
+
+Note that vulkano does **not** require you to install the official Vulkan SDK. This is not
+something specific to vulkano (you don't need to SDK to write program that use Vulkan, even
+without vulkano), but many people are unaware of that and install the SDK thinking that it is
+required.
 
 ## [Documentation](https://docs.rs/vulkano)
 
@@ -53,9 +58,8 @@ This crate uses the Cargo workspaces feature that is available only in nightly, 
 is to make several crates share the same `target/` directory. It is normal to get an error if you
 try to run `cargo build` at the root of the directory.
 
-In order to run tests, go to the `vulkano` subdirectory and run `cargo test`. On nVidia GPUs, you
-will have to set the `RUST_TEST_THREADS` environment variable to `1` because of
-[a bug](https://devtalk.nvidia.com/default/topic/938723/creating-destroying-several-vkdevices-concurrently-sometimes-crashes-or-deadlocks/). 
+In order to run tests, go to the `vulkano` subdirectory and run `cargo test`. Make sure your
+Vulkan driver is up to date before doing so.
 
 ## License
 

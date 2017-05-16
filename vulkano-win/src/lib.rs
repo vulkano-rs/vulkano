@@ -10,7 +10,7 @@ use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
-use winit::WindowBuilder;
+use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
 pub fn required_extensions() -> InstanceExtensions {
@@ -34,12 +34,12 @@ pub fn required_extensions() -> InstanceExtensions {
 }
 
 pub trait VkSurfaceBuild {
-    fn build_vk_surface(self, instance: &Arc<Instance>) -> Result<Window, CreationError>;
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: &Arc<Instance>) -> Result<Window, CreationError>;
 }
 
 impl VkSurfaceBuild for WindowBuilder {
-    fn build_vk_surface(self, instance: &Arc<Instance>) -> Result<Window, CreationError> {
-        let window = try!(self.build());
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: &Arc<Instance>) -> Result<Window, CreationError> {
+        let window = try!(self.build(events_loop));
         let surface = try!(unsafe { winit_to_surface(instance, &window) });
 
         Ok(Window {

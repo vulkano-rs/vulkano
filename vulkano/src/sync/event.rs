@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use device::DeviceOwned;
 use OomError;
 use Success;
 use VulkanObject;
@@ -127,6 +128,13 @@ impl Event {
     #[inline]
     pub fn reset(&mut self) {
         self.reset_raw().unwrap();
+    }
+}
+
+unsafe impl DeviceOwned for Event {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

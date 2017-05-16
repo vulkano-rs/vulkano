@@ -24,7 +24,7 @@ mod non_host_visible;
 mod pool;
 
 /// Pool of GPU-visible memory that can be allocated from.
-pub unsafe trait MemoryPool: 'static + Send + Sync {
+pub unsafe trait MemoryPool {
     /// Object that represents a single allocation. Its destructor should free the chunk.
     type Alloc: MemoryPoolAlloc;
 
@@ -48,7 +48,7 @@ pub unsafe trait MemoryPool: 'static + Send + Sync {
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.
-pub unsafe trait MemoryPoolAlloc: 'static + Send + Sync {
+pub unsafe trait MemoryPoolAlloc {
     /// Returns the memory object from which this is allocated. Returns `None` if the memory is
     /// not mapped.
     fn mapped_memory(&self) -> Option<&MappedDeviceMemory>;

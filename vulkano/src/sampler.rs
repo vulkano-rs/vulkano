@@ -21,19 +21,19 @@
 //!
 //! A simple sampler for most usages:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler::Sampler;
-//! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let _sampler = Sampler::simple_repeat_linear_no_mipmap(&device);
 //! ```
 //!
 //! More detailed sampler creation:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler;
-//! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let _sampler = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
 //!                                      sampler::MipmapMode::Nearest,
 //!                                      sampler::SamplerAddressMode::Repeat,
@@ -86,8 +86,6 @@ pub struct Sampler {
     usable_with_int_formats: bool,
     usable_with_swizzling: bool,
 }
-
-// TODO: what's the story with VK_KHR_mirror_clamp_to_edge? Is it an extension or is it core?
 
 impl Sampler {
     /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
@@ -217,6 +215,15 @@ impl Sampler {
                     requested: mip_lod_bias,
                     maximum: limit,
                 });
+            }
+        }
+
+        // Check MirrorClampToEdge extension support
+        if [address_u, address_v, address_w]
+            .iter()
+            .any(|&mode| mode == SamplerAddressMode::MirrorClampToEdge) {
+            if !device.loaded_extensions().khr_sampler_mirror_clamp_to_edge {
+                return Err(SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled);
             }
         }
 
@@ -414,6 +421,13 @@ unsafe impl VulkanObject for Sampler {
     }
 }
 
+impl fmt::Debug for Sampler {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan sampler {:?}>", self.sampler)
+    }
+}
+
 impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {
@@ -594,6 +608,10 @@ pub enum SamplerCreationError {
         /// The maximum supported value.
         maximum: f32
     },
+
+    /// Using `MirrorClampToEdge` requires enabling the `VK_KHR_sampler_mirror_clamp_to_edge`
+    /// extension when creating the device.
+    SamplerMirrorClampToEdgeExtensionNotEnabled,
 }
 
 impl error::Error for SamplerCreationError {
@@ -606,6 +624,8 @@ impl error::Error for SamplerCreationError {
                                                                          feature is not enabled",
             SamplerCreationError::AnisotropyLimitExceeded { .. } => "anisotropy limit exceeded",
             SamplerCreationError::MipLodBiasLimitExceeded { .. } => "mip lod bias limit exceeded",
+            SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled =>
+                "the device extension `VK_KHR_sampler_mirror_clamp_to_edge` is not enabled",
         }
     }
 
@@ -787,6 +807,23 @@ mod tests {
 
         match r {
             Err(sampler::SamplerCreationError::MipLodBiasLimitExceeded { .. }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn sampler_mirror_clamp_to_edge_extension() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge, 1.0, 1.0,
+                                      0.0, 2.0);
+
+        match r {
+            Err(sampler::SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled) => (),
             _ => panic!()
         }
     }
