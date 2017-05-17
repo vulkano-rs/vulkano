@@ -69,6 +69,7 @@ impl Window {
 pub trait IntoVkWindowRef {
     fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError>;
 }
+
 impl IntoVkWindowRef for Arc<Mutex<winit::Window>> {
     fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError> {
         let surface = try!(unsafe { winit_to_surface(instance, &self.lock().unwrap()) });
