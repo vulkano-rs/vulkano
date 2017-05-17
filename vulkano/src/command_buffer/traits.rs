@@ -8,6 +8,7 @@
 // according to those terms.
 
 use std::error;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -21,10 +22,14 @@ use command_buffer::submit::SubmitCommandBufferBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use sync::now;
+use sync::AccessError;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::NowFuture;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -47,10 +52,15 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue.
     ///
+    /// Calling this function means that at some point you will submit the command buffer to the
+    /// GPU. Once the function has returned `Ok`, the resources used by the command buffer will
+    /// likely be in a locked state until the command buffer is destroyed.
+    ///
     /// **You should not call this function directly**, otherwise any further attempt to submit
     /// will return a runtime error.
-    // TODO: better error
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>>;
+    // TODO: what about command buffers that are submitted multiple times?
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
+                      -> Result<(), CommandBufferExecError>;
 
     /// Executes this command buffer on a queue.
     ///
@@ -59,7 +69,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so.
+    /// and call `.then_signal_future()` before doing so. Note however that once you called
+    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -70,7 +81,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute(self, queue: Arc<Queue>) -> CommandBufferExecFuture<NowFuture, Self>
+    fn execute(self, queue: Arc<Queue>)
+               -> Result<CommandBufferExecFuture<NowFuture, Self>, CommandBufferExecError>
         where Self: Sized + 'static
     {
         let device = queue.device().clone();
@@ -84,7 +96,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// The command buffer is not actually executed until you call `flush()` on the object.
     /// You are encouraged to chain together as many futures as possible before calling `flush()`,
-    /// and call `.then_signal_future()` before doing so.
+    /// and call `.then_signal_future()` before doing so. Note however that once you called
+    /// `execute()` there is no way to cancel the execution, even if you didn't flush yet.
     ///
     /// > **Note**: In the future this function may return `-> impl GpuFuture` instead of a
     /// > concrete type.
@@ -99,31 +112,32 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// Panics if the device of the command buffer is not the same as the device of the future.
     #[inline]
-    fn execute_after<F>(self, future: F, queue: Arc<Queue>) -> CommandBufferExecFuture<F, Self>
+    fn execute_after<F>(self, future: F, queue: Arc<Queue>)
+                        -> Result<CommandBufferExecFuture<F, Self>, CommandBufferExecError>
         where Self: Sized + 'static, F: GpuFuture
     {
         assert_eq!(self.device().internal_object(), future.device().internal_object());
 
-        self.submit_check(&future, &queue).expect("Forbidden");     // TODO: error
+        self.prepare_submit(&future, &queue)?;
 
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap().is_same(&queue));
         }
 
-        CommandBufferExecFuture {
+        Ok(CommandBufferExecFuture {
             previous: future,
             command_buffer: self,
             queue: queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
-        }
+        })
     }
 
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>;
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     // FIXME: lots of other methods
 }
@@ -148,22 +162,22 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
-        (**self).submit_check(future, queue)
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        (**self).prepare_submit(future, queue)
     }
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        (**self).check_image_access(image, exclusive, queue)
+        (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
 
@@ -189,7 +203,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
         self.previous.cleanup_finished();
     }
 
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<error::Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(match try!(self.previous.build_submission()) {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitCommandBufferBuilder::new();
@@ -217,7 +231,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<error::Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         unsafe {
             let mut submitted = self.submitted.lock().unwrap();
             if *submitted {
@@ -258,21 +272,27 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         match self.command_buffer.check_buffer_access(buffer, exclusive, queue) {
             Ok(v) => Ok(v),
-            Err(()) => self.previous.check_buffer_access(buffer, exclusive, queue),
+            Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
+            Err(AccessCheckError::Unknown) => {
+                self.previous.check_buffer_access(buffer, exclusive, queue)
+            },
         }
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        match self.command_buffer.check_image_access(image, exclusive, queue) {
+        match self.command_buffer.check_image_access(image, layout, exclusive, queue) {
             Ok(v) => Ok(v),
-            Err(()) => self.previous.check_image_access(image, exclusive, queue),
+            Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
+            Err(AccessCheckError::Unknown) => {
+                self.previous.check_image_access(image, layout, exclusive, queue)
+            },
         }
     }
 }
@@ -297,5 +317,44 @@ impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb> where F: GpuFuture, Cb: Comm
                 self.previous.signal_finished();
             }
         }
+    }
+}
+
+/// Error that can happen when attempting to execute a command buffer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CommandBufferExecError {
+    /// Access to a resource has been denied.
+    AccessError(AccessError),
+
+    // TODO: missing entries (eg. wrong queue family, secondary command buffer)
+}
+
+impl error::Error for CommandBufferExecError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CommandBufferExecError::AccessError(_) => "access to a resource has been denied",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CommandBufferExecError::AccessError(ref err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for CommandBufferExecError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<AccessError> for CommandBufferExecError {
+    #[inline]
+    fn from(err: AccessError) -> CommandBufferExecError {
+        CommandBufferExecError::AccessError(err)
     }
 }

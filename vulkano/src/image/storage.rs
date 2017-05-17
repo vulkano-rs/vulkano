@@ -190,7 +190,12 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + S
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> Layout {
+        Layout::General
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
         Layout::General
     }
 

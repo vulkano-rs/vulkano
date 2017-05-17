@@ -155,9 +155,9 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutAbstract {
     /// - Panics if the set id is out of range.
     ///
     pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
-        assert!(layout.desc().num_sets() > set_id);
+        assert!(layout.num_sets() > set_id);
 
-        let cap = layout.desc().num_bindings_in_set(set_id).unwrap_or(0);
+        let cap = layout.num_bindings_in_set(set_id).unwrap_or(0);
 
         SimpleDescriptorSetBuilder {
             layout: layout,
@@ -210,9 +210,9 @@ unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
     {
         let buffer = self.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
@@ -260,9 +260,9 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
     {
         let image_view = self.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
@@ -308,9 +308,9 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
     {
         let image_view = self.0.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
@@ -349,9 +349,9 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert_eq!(desc.array_count as usize, self.len());     // not implemented
 

@@ -79,6 +79,12 @@ pub unsafe trait ImageAccess {
         format.is_stencil() || format.is_depth_stencil()
     }
 
+    /// Returns the number of mipmap levels of this image.
+    #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        self.inner().mipmap_levels()
+    }
+
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
@@ -103,9 +109,24 @@ pub unsafe trait ImageAccess {
         self.inner().supports_blit_destination()
     }
 
-    /// Returns the layout that the image has when it is first used in a primary command buffer,
-    /// and the layout it must be returned to before the end of the command buffer.
-    fn default_layout(&self) -> Layout;
+    /// Returns the layout that the image has when it is first used in a primary command buffer.
+    fn initial_layout_requirement(&self) -> Layout;
+
+    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    fn final_layout_requirement(&self) -> Layout;
+
+    /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
+    /// layout requirement is either `Undefined` or `Preinitialized`.
+    #[inline]
+    unsafe fn forced_undefined_initial_layout(self, preinitialized: bool)
+                                              -> ImageAccessFromUndefinedLayout<Self>
+        where Self: Sized
+    {
+        ImageAccessFromUndefinedLayout {
+            image: self,
+            preinitialized: preinitialized,
+        }
+    }
 
     /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
     /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
@@ -159,6 +180,26 @@ pub unsafe trait ImageAccess {
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
                     -> u64;
 
+    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
+    #[inline]
+    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
+        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.size())
+    }
+
+    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
+    #[inline]
+    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
+        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+    }
+
+    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
+    #[inline]
+    fn conflict_key_all(&self) -> u64 {
+        self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
+    }
+
     /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
     ///
     /// This function implementation should remember that it has been called and return `false` if
@@ -183,8 +224,13 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
-        (**self).default_layout()
+    fn initial_layout_requirement(&self) -> Layout {
+        (**self).initial_layout_requirement()
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
+        (**self).final_layout_requirement()
     }
 
     #[inline]
@@ -202,6 +248,54 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+}
+
+/// Wraps around an object that implements `ImageAccess` and modifies the initial layout
+/// requirement to be either `Undefined` or `Preinitialized`.
+#[derive(Debug, Copy, Clone)]
+pub struct ImageAccessFromUndefinedLayout<I> {
+    image: I,
+    preinitialized: bool,
+}
+
+unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        self.image.inner()
+    }
+
+    #[inline]
+    fn initial_layout_requirement(&self) -> Layout {
+        if self.preinitialized {
+            Layout::Preinitialized
+        } else {
+            Layout::Undefined
+        }
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
+        self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
+    {
+        self.image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+        self.image.try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        self.image.increase_gpu_lock()
     }
 }
 

@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -16,7 +15,10 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
+use image::Layout;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
 
@@ -64,7 +66,7 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         // Since each future remembers whether it has been flushed, there's no safety issue here
         // if we call this function multiple times.
         try!(self.first.flush());
@@ -73,7 +75,7 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         let first = try!(self.first.build_submission());
         let second = try!(self.second.build_submission());
 
@@ -150,7 +152,7 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         let first = self.first.check_buffer_access(buffer, exclusive, queue);
         let second = self.second.check_buffer_access(buffer, exclusive, queue);
@@ -158,8 +160,10 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
                                                                          exclusive access to the \
                                                                          same resource");
         match (first, second) {
-            (Ok(v), Err(_)) | (Err(_), Ok(v)) => Ok(v),
-            (Err(()), Err(())) => Err(()),
+            (v, Err(AccessCheckError::Unknown)) => v,
+            (Err(AccessCheckError::Unknown), v) => v,
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => Err(AccessCheckError::Denied(e1)),        // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_))) | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!("Contradictory information between two futures"),
             (Ok(None), Ok(None)) => Ok(None),
             (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
             (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {
@@ -169,17 +173,19 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B> where A: GpuFuture, B: GpuFutur
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        let first = self.first.check_image_access(image, exclusive, queue);
-        let second = self.second.check_image_access(image, exclusive, queue);
+        let first = self.first.check_image_access(image, layout, exclusive, queue);
+        let second = self.second.check_image_access(image, layout, exclusive, queue);
         debug_assert!(!exclusive || !(first.is_ok() && second.is_ok()), "Two futures gave \
                                                                          exclusive access to the \
                                                                          same resource");
         match (first, second) {
-            (Ok(v), Err(_)) | (Err(_), Ok(v)) => Ok(v),
-            (Err(()), Err(())) => Err(()),
+            (v, Err(AccessCheckError::Unknown)) => v,
+            (Err(AccessCheckError::Unknown), v) => v,
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => Err(AccessCheckError::Denied(e1)),        // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_))) | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!("Contradictory information between two futures"),
             (Ok(None), Ok(None)) => Ok(None),
             (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
             (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {

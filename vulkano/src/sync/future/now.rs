@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error::Error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -16,7 +15,10 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
+use image::Layout;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
+use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
 
@@ -39,12 +41,12 @@ unsafe impl GpuFuture for NowFuture {
     }
 
     #[inline]
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, Box<Error>> {
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(SubmitAnyBuilder::Empty)
     }
 
     #[inline]
-    fn flush(&self) -> Result<(), Box<Error>> {
+    fn flush(&self) -> Result<(), FlushError> {
         Ok(())
     }
 
@@ -64,16 +66,16 @@ unsafe impl GpuFuture for NowFuture {
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        Err(())
+        Err(AccessCheckError::Unknown)
     }
 }
 

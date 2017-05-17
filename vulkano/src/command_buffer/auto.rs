@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -19,13 +18,16 @@ use command_buffer::cb::UnsafeCommandBuffer;
 use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::StandardCommandPool;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 use sync::GpuFuture;
@@ -54,7 +56,7 @@ impl AutoCommandBufferBuilder<Arc<StandardCommandPool>> {
             let c = try!(cb::UnsafeCommandBufferBuilder::new(&pool, cb::Kind::primary(), cb::Flags::SimultaneousUse /* TODO: */));
             let c = cb::AbstractStorageLayer::new(c);
             let c = cb::AutoPipelineBarriersLayer::new(c);
-            let c = cb::SubmitSyncBuilderLayer::new(c);
+            let c = cb::SubmitSyncBuilderLayer::new(c, cb::SubmitSyncBuilderLayerBehavior::UseLayoutHint);
             let c = cb::StateCacheLayer::new(c);
             let c = cb::ContextCheckLayer::new(c, false, true);
             let c = cb::QueueTyCheckLayer::new(c);
@@ -94,22 +96,22 @@ unsafe impl<P> CommandBuffer for AutoCommandBufferBuilder<P>
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<error::Error>> {
-        self.inner.submit_check(future, queue)
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        self.inner.prepare_submit(future, queue)
     }
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        self.inner.check_image_access(image, exclusive, queue)
+        self.inner.check_image_access(image, layout, exclusive, queue)
     }
 }
 

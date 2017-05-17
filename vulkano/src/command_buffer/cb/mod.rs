@@ -78,6 +78,7 @@ pub use self::device_check::DeviceCheckLayer;
 pub use self::queue_ty_check::QueueTyCheckLayer;
 pub use self::state_cache::StateCacheLayer;
 pub use self::submit_sync::SubmitSyncBuilderLayer;
+pub use self::submit_sync::SubmitSyncBuilderLayerBehavior;
 pub use self::submit_sync::SubmitSyncLayer;
 pub use self::sys::Kind;
 pub use self::sys::Flags;

@@ -405,7 +405,7 @@ fn main() {
             .build().unwrap();
 
         let future = future
-            .then_execute(queue.clone(), command_buffer)
+            .then_execute(queue.clone(), command_buffer).unwrap()
 
             // The color output is now expected to contain our triangle. But in order to show it on
             // the screen, we have to *present* the image by calling `present`.

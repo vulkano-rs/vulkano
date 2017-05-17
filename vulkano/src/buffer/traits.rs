@@ -22,6 +22,7 @@ use VulkanObject;
 /// Trait for objects that represent either a buffer or a slice of a buffer.
 ///
 /// See also `TypedBuffer`.
+// TODO: require `DeviceOwned`
 pub unsafe trait Buffer {
     /// Object that represents a GPU access to the buffer.
     type Access: BufferAccess;
@@ -216,6 +217,26 @@ pub unsafe trait BufferAccess: DeviceOwned {
         // FIXME: remove implementation
         unimplemented!()
     }
+
+    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
+    #[inline]
+    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
+        self.conflicts_buffer(0, self.size(), other, 0, other.size())
+    }
+
+    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
+    #[inline]
+    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
+        self.conflicts_image(0, self.size(), other, 0, other.dimensions().array_layers(), 0,
+                             other.mipmap_levels())
+    }
+
+    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
+    #[inline]
+    fn conflict_key_all(&self) -> u64 {
+        self.conflict_key(0, self.size())
+    }
+
 
     /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
     ///

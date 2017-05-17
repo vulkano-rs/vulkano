@@ -173,7 +173,12 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send +
     }
 
     #[inline]
-    fn default_layout(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> Layout {
+        Layout::ShaderReadOnlyOptimal       // TODO: ?
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Layout {
         Layout::ShaderReadOnlyOptimal       // TODO: ?
     }
 

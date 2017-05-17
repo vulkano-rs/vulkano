@@ -8,7 +8,6 @@
 // according to those terms.
 
 use std::any::Any;
-use std::error::Error;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -19,11 +18,14 @@ use command_buffer::commands_raw;
 use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::Layout;
 use image::ImageAccess;
 use instance::QueueFamily;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -54,22 +56,22 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
-        self.inner.submit_check(future, queue)
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        self.inner.prepare_submit(future, queue)
     }
 
     #[inline]
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        self.inner.check_image_access(image, exclusive, queue)
+        self.inner.check_image_access(image, layout, exclusive, queue)
     }
 }
 

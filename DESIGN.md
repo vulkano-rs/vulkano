@@ -223,10 +223,10 @@ passes that the user is encouraged to specify when an attachment is expected to 
 `PresentSrc` layout.
 
 The only problematic area concerns the first usage of an image, where it must be transitioned from
-the `Undefined` layout. This is done by automatically building and inserting a command buffer that
-performs the transition whenever you use an image for the first time. This behavior is requested by
-the `Image` trait implementation, and therefore as usual you can choose not to use it. Vulkano is
-designed to be easy to use by default, but you can choose to customize everything.
+the `Undefined` or `Preinitialized` layout. This is done by making the user pass a command buffer
+builder in the constructor of images, and the constructor adds a transition command to it. The
+image implementation is responsible for making sure that the transition command has been submitted
+before any further command that uses the image.
 
 # Inter-queue synchronization
 

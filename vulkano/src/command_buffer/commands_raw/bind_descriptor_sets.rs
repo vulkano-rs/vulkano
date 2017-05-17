@@ -57,7 +57,7 @@ impl<S, P> CmdBindDescriptorSets<S, P>
     pub fn new(graphics: bool, pipeline_layout: P, sets: S)
                -> Result<CmdBindDescriptorSets<S, P>, CmdBindDescriptorSetsError> 
     {
-        if !PipelineLayoutSetsCompatible::is_compatible(pipeline_layout.desc(), &sets) {
+        if !PipelineLayoutSetsCompatible::is_compatible(&pipeline_layout, &sets) {
             return Err(CmdBindDescriptorSetsError::IncompatibleSets);
         }
 
