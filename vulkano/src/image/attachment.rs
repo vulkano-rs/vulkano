@@ -36,7 +36,7 @@ use image::traits::ImageView;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
-use memory::pool::StdMemoryPool;
+use memory::pool::StdMemoryPoolAlloc;
 use sync::Sharing;
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
@@ -69,7 +69,7 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct AttachmentImage<F, A = StdMemoryPoolAlloc> {
     // Inner implementation.
     image: UnsafeImage,
 
@@ -77,7 +77,7 @@ pub struct AttachmentImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     view: UnsafeImageView,
 
     // Memory used to back the image.
-    memory: A::Alloc,
+    memory: A,
 
     // Format.
     format: F,
@@ -185,7 +185,7 @@ impl<F> AttachmentImage<F> {
     }
 }
 
-impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
+impl<F, A> AttachmentImage<F, A> {
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
@@ -195,13 +195,13 @@ impl<F, A> AttachmentImage<F, A> where A: MemoryPool {
 }
 
 /// GPU access to an attachment image.
-pub struct AttachmentImageAccess<F, A> where A: MemoryPool {
+pub struct AttachmentImageAccess<F, A> {
     img: Arc<AttachmentImage<F, A>>,
     // True if `try_gpu_lock` was already called on it.
     already_locked: AtomicBool,
 }
 
-impl<F, A> Clone for AttachmentImageAccess<F, A> where A: MemoryPool {
+impl<F, A> Clone for AttachmentImageAccess<F, A> {
     #[inline]
     fn clone(&self) -> AttachmentImageAccess<F, A> {
         AttachmentImageAccess {
@@ -212,8 +212,7 @@ impl<F, A> Clone for AttachmentImageAccess<F, A> where A: MemoryPool {
 }
 
 unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
-    where F: 'static + Send + Sync,
-          A: MemoryPool
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
@@ -252,9 +251,7 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     }
 }
 
-impl<F, A> Drop for AttachmentImageAccess<F, A>
-    where A: MemoryPool
-{
+impl<F, A> Drop for AttachmentImageAccess<F, A> {
     fn drop(&mut self) {
         if self.already_locked.load(Ordering::SeqCst) {
             let prev_val = self.img.gpu_lock.fetch_sub(1, Ordering::SeqCst);
@@ -264,8 +261,7 @@ impl<F, A> Drop for AttachmentImageAccess<F, A>
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImageAccess<F, A>
-    where F: FormatDesc + 'static + Send + Sync,
-          A: MemoryPool
+    where F: FormatDesc + 'static + Send + Sync
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
@@ -274,8 +270,7 @@ unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImageAccess<F, A>
 }
 
 unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
-    where F: 'static + Send + Sync,
-          A: MemoryPool
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -284,7 +279,7 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
 }
 
 unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync
 {
     type Access = AttachmentImageAccess<F, A>;
 
@@ -313,7 +308,7 @@ unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
 }
 
 unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync
 {
     type Access = AttachmentImageAccess<F, A>;
 
@@ -327,7 +322,7 @@ unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
 }
 
 unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
-    where F: 'static + Send + Sync, A: MemoryPool
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn parent(&self) -> &ImageAccess {
