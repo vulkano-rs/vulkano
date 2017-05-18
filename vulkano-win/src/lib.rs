@@ -48,46 +48,38 @@ impl VkSurfaceBuild for WindowBuilder {
     }
 }
 
-pub struct Window {
-    window: winit::Window,
-    surface: Arc<Surface>,
+pub trait IntoVkWindow<W> {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<W>, CreationError>;
 }
 
-impl Window {
-    #[inline]
-    pub fn window(&self) -> &winit::Window {
-        &self.window
-    }
-
-    #[inline]
-    pub fn surface(&self) -> &Arc<Surface> {
-        &self.surface
-    }
-}
-
-
-pub trait IntoVkWindowRef {
-    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError>;
-}
-
-impl IntoVkWindowRef for Arc<Mutex<winit::Window>> {
-    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<WindowRef, CreationError> {
-        let surface = try!(unsafe { winit_to_surface(instance, &self.lock().unwrap()) });
-        Ok(WindowRef {
+impl IntoVkWindow<winit::Window> for winit::Window {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<winit::Window>, CreationError> {
+        let surface = try!(unsafe { winit_to_surface(instance, &self) });
+        Ok(Window {
             window: self,
             surface: surface,
         })
     }
 }
 
-pub struct WindowRef {
-    window: Arc<Mutex<winit::Window>>,
-    surface: Arc<Surface>
+impl IntoVkWindow<Arc<Mutex<winit::Window>>> for Arc<Mutex<winit::Window>> {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<Arc<Mutex<winit::Window>>>, CreationError> {
+        let surface = try!(unsafe { winit_to_surface(instance, &self.lock().unwrap()) });
+        Ok(Window {
+            window: self,
+            surface: surface,
+        })
+    }
 }
 
-impl WindowRef {
+pub struct Window<W = winit::Window> {
+    window: W,
+    surface: Arc<Surface>,
+}
+
+impl <W> Window <W> {
     #[inline]
-    pub fn window(&self) -> &Arc<Mutex<winit::Window>> {
+    pub fn window(&self) -> &W {
         &self.window
     }
 
@@ -96,6 +88,8 @@ impl WindowRef {
         &self.surface
     }
 }
+
+
 
 /// Error that can happen when creating a window.
 #[derive(Debug)]
