@@ -570,7 +570,7 @@ unsafe impl<I, O, B> AddCommand<commands_raw::CmdDrawIndirectRaw<B>> for SubmitS
 
     #[inline]
     fn add(mut self, command: commands_raw::CmdDrawIndirectRaw<B>) -> Result<Self::Out, CommandAddError> {
-        self.add_buffer(command.buffer(), true,
+        self.add_buffer(command.buffer(), false,
                         PipelineStages { draw_indirect: true, .. PipelineStages::none() },
                         AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() });
 
