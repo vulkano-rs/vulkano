@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::ops::BitOr;
 use vk;
 
 /// Describes how a buffer is going to be used. This is **not** an optimization.
@@ -155,6 +156,25 @@ impl BufferUsage {
             indirect_buffer: true,
             transfer_dest: true,
             .. BufferUsage::none()
+        }
+    }
+}
+
+impl BitOr for BufferUsage {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self {
+        BufferUsage {
+            transfer_source: self.transfer_source || rhs.transfer_source,
+            transfer_dest: self.transfer_dest || rhs.transfer_dest,
+            uniform_texel_buffer: self.uniform_texel_buffer || rhs.uniform_texel_buffer,
+            storage_texel_buffer: self.storage_texel_buffer || rhs.storage_texel_buffer,
+            uniform_buffer: self.uniform_buffer || rhs.uniform_buffer,
+            storage_buffer: self.storage_buffer || rhs.storage_buffer,
+            index_buffer: self.index_buffer || rhs.index_buffer,
+            vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
+            indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
         }
     }
 }
