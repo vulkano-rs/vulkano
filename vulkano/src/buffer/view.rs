@@ -31,7 +31,7 @@
 //!     .. BufferUsage::none()
 //! };
 //!
-//! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), &usage,
+//! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             Some(queue.family()),
 //!                                                             queue.clone()).unwrap();
 //! let _view = BufferView::new(buffer, format::R32Uint).unwrap();
@@ -336,7 +336,7 @@ mod tests {
             .. BufferUsage::none()
         };
 
-        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
+        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage,
                                                                   Some(queue.family()), queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
 
@@ -353,7 +353,7 @@ mod tests {
             .. BufferUsage::none()
         };
 
-        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
+        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage,
                                                                   Some(queue.family()),
                                                                   queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
@@ -371,7 +371,7 @@ mod tests {
             .. BufferUsage::none()
         };
 
-        let (buffer, _) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), &usage,
+        let (buffer, _) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage,
                                                               Some(queue.family()),
                                                               queue.clone()).unwrap();
         let view = BufferView::new(buffer, format::R32Uint).unwrap();
@@ -386,7 +386,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]),
-                                                                  &BufferUsage::none(),
+                                                                  BufferUsage::none(),
                                                                   Some(queue.family()),
                                                                   queue.clone()).unwrap();
 
@@ -407,7 +407,7 @@ mod tests {
         };
 
         let (buffer, _) = ImmutableBuffer::<[[f64; 4]]>::from_iter((0..128).map(|_| [0.0; 4]),
-                                                                   &usage, Some(queue.family()),
+                                                                   usage, Some(queue.family()),
                                                                    queue.clone()).unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?

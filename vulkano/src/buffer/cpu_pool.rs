@@ -131,7 +131,7 @@ pub struct CpuBufferPoolSubbuffer<T: ?Sized, A> where A: MemoryPool {
 
 impl<T> CpuBufferPool<T> {
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: &BufferUsage, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -146,13 +146,13 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, &BufferUsage::transfer_source(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_source(), iter::empty())
     }
 }
 
 impl<T> CpuBufferPool<[T]> {
     #[inline]
-    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: &BufferUsage, queue_families: I)
+    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                       -> CpuBufferPool<[T]>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -164,7 +164,7 @@ impl<T> CpuBufferPool<[T]> {
 
 impl<T: ?Sized> CpuBufferPool<T> {
     pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize,
-                             usage: &BufferUsage, queue_families: I) -> CpuBufferPool<T>
+                             usage: BufferUsage, queue_families: I) -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families.into_iter().map(|f| f.id())
@@ -265,7 +265,7 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
                     None => return Err(OomError::OutOfDeviceMemory),
                 };
 
-                match UnsafeBuffer::new(&self.device, total_size, &self.usage, sharing, SparseLevel::none()) {
+                match UnsafeBuffer::new(&self.device, total_size, self.usage, sharing, SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::OomError(err)) => return Err(err),
                     Err(_) => unreachable!()        // We don't use sparse binding, therefore the other

@@ -181,7 +181,7 @@ impl BitOr for BufferUsage {
 
 /// Turns a `BufferUsage` into raw bits.
 #[inline]
-pub fn usage_to_bits(usage: &BufferUsage) -> vk::BufferUsageFlagBits {
+pub fn usage_to_bits(usage: BufferUsage) -> vk::BufferUsageFlagBits {
     let mut result = 0;
     if usage.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
     if usage.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
