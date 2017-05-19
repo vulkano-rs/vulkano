@@ -18,7 +18,7 @@ use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPassCreationError;
-use image::Layout as ImageLayout;
+use image::ImageLayout as ImageLayout;
 use image::ImageViewAccess;
 use sync::AccessFlagBits;
 use sync::PipelineStages;

@@ -18,7 +18,7 @@ use image::Dimensions;
 use image::ImageDimensions;
 use image::MipmapsCount;
 use image::sys::ImageCreationError;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
@@ -173,13 +173,13 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send +
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal       // TODO: ?
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal       // TODO: ?
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal       // TODO: ?
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal       // TODO: ?
     }
 
     #[inline]
@@ -226,23 +226,23 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]

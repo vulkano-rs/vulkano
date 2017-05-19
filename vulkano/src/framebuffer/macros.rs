@@ -76,7 +76,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
-            use $crate::image::Layout;
+            use $crate::image::ImageLayout;
             use $crate::image::ImageViewAccess;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
@@ -233,19 +233,19 @@ macro_rules! ordered_passes_renderpass {
                     if id == cur_pass_num {
                         let mut depth = None;
                         $(
-                            depth = Some(($depth_atch, Layout::DepthStencilAttachmentOptimal));
+                            depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
                         )*
 
                         return Some(LayoutPassDescription {
                             color_attachments: vec![
                                 $(
-                                    ($color_atch, Layout::ColorAttachmentOptimal)
+                                    ($color_atch, ImageLayout::ColorAttachmentOptimal)
                                 ),*
                             ],
                             depth_stencil: depth,
                             input_attachments: vec![
                                 $(
-                                    ($input_atch, Layout::ShaderReadOnlyOptimal)
+                                    ($input_atch, ImageLayout::ShaderReadOnlyOptimal)
                                 ),*
                             ],
                             resolve_attachments: vec![],
@@ -291,7 +291,7 @@ macro_rules! ordered_passes_renderpass {
             /// Returns the initial and final layout of an attachment, given its num.
             ///
             /// The value always correspond to the first and last usages of an attachment.
-            fn attachment_layouts(num: usize) -> (Layout, Layout) {
+            fn attachment_layouts(num: usize) -> (ImageLayout, ImageLayout) {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
                 #![allow(unused_variables)]
@@ -309,40 +309,40 @@ macro_rules! ordered_passes_renderpass {
                     $(
                         if $depth_atch == num {
                             if initial_layout.is_none() {
-                                initial_layout = Some(Layout::DepthStencilAttachmentOptimal);
+                                initial_layout = Some(ImageLayout::DepthStencilAttachmentOptimal);
                             }
-                            final_layout = Some(Layout::DepthStencilAttachmentOptimal);
+                            final_layout = Some(ImageLayout::DepthStencilAttachmentOptimal);
                         }
                     )*
 
                     $(
                         if $color_atch == num {
                             if initial_layout.is_none() {
-                                initial_layout = Some(Layout::ColorAttachmentOptimal);
+                                initial_layout = Some(ImageLayout::ColorAttachmentOptimal);
                             }
-                            final_layout = Some(Layout::ColorAttachmentOptimal);
+                            final_layout = Some(ImageLayout::ColorAttachmentOptimal);
                         }
                     )*
 
                     $(
                         if $input_atch == num {
                             if initial_layout.is_none() {
-                                initial_layout = Some(Layout::ShaderReadOnlyOptimal);
+                                initial_layout = Some(ImageLayout::ShaderReadOnlyOptimal);
                             }
-                            final_layout = Some(Layout::ShaderReadOnlyOptimal);
+                            final_layout = Some(ImageLayout::ShaderReadOnlyOptimal);
                         }
                     )*
                 })*
 
                 $(if $atch_name == num {
                     // If the clear OP is Clear or DontCare, default to the Undefined layout.
-                    if initial_layout == Some(Layout::DepthStencilAttachmentOptimal) ||
-                        initial_layout == Some(Layout::ColorAttachmentOptimal)
+                    if initial_layout == Some(ImageLayout::DepthStencilAttachmentOptimal) ||
+                        initial_layout == Some(ImageLayout::ColorAttachmentOptimal)
                     {
                         if $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::Clear ||
                             $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::DontCare
                         {
-                            initial_layout = Some(Layout::Undefined);
+                            initial_layout = Some(ImageLayout::Undefined);
                         }
                     }
 

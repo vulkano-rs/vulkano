@@ -22,7 +22,7 @@ use format::Format;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::sys::ImageCreationError;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
@@ -190,13 +190,13 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + S
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
-        Layout::General
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
-        Layout::General
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
@@ -259,23 +259,23 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]

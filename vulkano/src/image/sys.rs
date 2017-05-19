@@ -1086,21 +1086,6 @@ impl Usage {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
-pub enum Layout {
-    Undefined = vk::IMAGE_LAYOUT_UNDEFINED,
-    General = vk::IMAGE_LAYOUT_GENERAL,
-    ColorAttachmentOptimal = vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    DepthStencilAttachmentOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    DepthStencilReadOnlyOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    ShaderReadOnlyOptimal = vk::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    TransferSrcOptimal = vk::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    TransferDstOptimal = vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    Preinitialized = vk::IMAGE_LAYOUT_PREINITIALIZED,
-    PresentSrc = vk::IMAGE_LAYOUT_PRESENT_SRC_KHR,
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter::Empty;

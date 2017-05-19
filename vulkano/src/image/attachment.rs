@@ -23,7 +23,7 @@ use image::Dimensions;
 use image::ImageDimensions;
 use image::ViewType;
 use image::sys::ImageCreationError;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::sys::Usage;
@@ -84,7 +84,7 @@ pub struct AttachmentImage<F, A = StdMemoryPoolAlloc> {
 
     // Layout to use when the image is used as a framebuffer attachment.
     // Must be either "depth-stencil optimal" or "color optimal".
-    attachment_layout: Layout,
+    attachment_layout: ImageLayout,
 
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
@@ -178,8 +178,8 @@ impl<F> AttachmentImage<F> {
             view: view,
             memory: mem,
             format: format,
-            attachment_layout: if is_depth { Layout::DepthStencilAttachmentOptimal }
-                               else { Layout::ColorAttachmentOptimal },
+            attachment_layout: if is_depth { ImageLayout::DepthStencilAttachmentOptimal }
+                               else { ImageLayout::ColorAttachmentOptimal },
             gpu_lock: AtomicUsize::new(0),
         }))
     }
@@ -220,12 +220,12 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> ImageLayout {
         self.img.attachment_layout
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
+    fn final_layout_requirement(&self) -> ImageLayout {
         self.img.attachment_layout
     }
 
@@ -341,23 +341,23 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
