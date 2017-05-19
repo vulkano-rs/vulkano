@@ -39,7 +39,7 @@
 //! # use vulkano::device::Device;
 //! # use vulkano::device::Queue;
 //! use vulkano::buffer::BufferAccess;
-//! use vulkano::buffer::Usage as BufferUsage;
+//! use vulkano::buffer::BufferUsage;
 //! use vulkano::memory::HostVisible;
 //! use vulkano::pipeline::vertex::;
 //! # let device: Arc<Device> = return;

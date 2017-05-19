@@ -20,15 +20,15 @@
 //! ```
 //! # use std::sync::Arc;
 //! use vulkano::buffer::immutable::ImmutableBuffer;
-//! use vulkano::buffer::sys::Usage;
+//! use vulkano::buffer::BufferUsage;
 //! use vulkano::buffer::BufferView;
 //! use vulkano::format;
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
-//! let usage = Usage {
+//! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
-//!     .. Usage::none()
+//!     .. BufferUsage::none()
 //! };
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), &usage,
@@ -321,7 +321,7 @@ impl From<Error> for BufferViewCreationError {
 #[cfg(test)]
 mod tests {
     use buffer::BufferView;
-    use buffer::sys::Usage;
+    use buffer::BufferUsage;
     use buffer::view::BufferViewCreationError;
     use buffer::immutable::ImmutableBuffer;
     use format;
@@ -331,9 +331,9 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = BufferUsage {
             uniform_texel_buffer: true,
-            .. Usage::none()
+            .. BufferUsage::none()
         };
 
         let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
@@ -348,9 +348,9 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = BufferUsage {
             storage_texel_buffer: true,
-            .. Usage::none()
+            .. BufferUsage::none()
         };
 
         let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), &usage,
@@ -366,9 +366,9 @@ mod tests {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = BufferUsage {
             storage_texel_buffer: true,
-            .. Usage::none()
+            .. BufferUsage::none()
         };
 
         let (buffer, _) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), &usage,
@@ -386,7 +386,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]),
-                                                                  &Usage::none(),
+                                                                  &BufferUsage::none(),
                                                                   Some(queue.family()),
                                                                   queue.clone()).unwrap();
 
@@ -400,10 +400,10 @@ mod tests {
     fn unsupported_format() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = BufferUsage {
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
-            .. Usage::none()
+            .. BufferUsage::none()
         };
 
         let (buffer, _) = ImmutableBuffer::<[[f64; 4]]>::from_iter((0..128).map(|_| [0.0; 4]),
