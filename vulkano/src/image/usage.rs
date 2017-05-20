@@ -93,6 +93,7 @@ impl ImageUsage {
         }
     }
 
+    // TODO: these functions shouldn't be public-hidden
     #[doc(hidden)]
     #[inline]
     pub fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
@@ -108,6 +109,7 @@ impl ImageUsage {
         result
     }
 
+    // TODO: these functions shouldn't be public-hidden
     #[inline]
     #[doc(hidden)]
     pub fn from_bits(val: u32) -> ImageUsage {
