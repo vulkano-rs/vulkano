@@ -80,7 +80,7 @@ impl<F> ImmutableImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
+            try!(UnsafeImage::new(device, usage, format.format(), dimensions.to_image_dimensions(),
                                   1, mipmaps, sharing, false, false))
         };
 

@@ -79,7 +79,7 @@ impl UnsafeImage {
     /// - Panics if the number of samples is 0.
     ///
     #[inline]
-    pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &ImageUsage, format: Format,
+    pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: ImageUsage, format: Format,
                                  dimensions: ImageDimensions, num_samples: u32, mipmaps: Mi,
                                  sharing: Sharing<I>, linear_tiling: bool,
                                  preinitialized_layout: bool)
@@ -96,7 +96,7 @@ impl UnsafeImage {
     }
 
     // Non-templated version to avoid inlining and improve compile times.
-    unsafe fn new_impl(device: &Arc<Device>, usage: &ImageUsage, format: Format,
+    unsafe fn new_impl(device: &Arc<Device>, usage: ImageUsage, format: Format,
                        dimensions: ImageDimensions, num_samples: u32, mipmaps: MipmapsCount,
                        (sh_mode, sh_indices): (vk::SharingMode, SmallVec<[u32; 8]>),
                        linear_tiling: bool, preinitialized_layout: bool)
@@ -996,7 +996,7 @@ mod tests {
         };
 
         let (_img, _) = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1014,7 +1014,7 @@ mod tests {
         };
 
         let (_img, _) = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1031,7 +1031,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 0, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1053,7 +1053,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 5, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1075,7 +1075,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 0,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1098,7 +1098,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1123,7 +1123,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 2, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1146,7 +1146,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::ASTC_5x4UnormBlock,
+            UnsafeImage::new(&device, usage, Format::ASTC_5x4UnormBlock,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1170,7 +1170,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1192,7 +1192,7 @@ mod tests {
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(&device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 64, array_layers: 1,
                                                       cubemap_compatible: true }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)

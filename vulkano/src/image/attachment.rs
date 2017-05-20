@@ -150,7 +150,7 @@ impl<F> AttachmentImage<F> {
         };
 
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device, &usage, format.format(),
+            try!(UnsafeImage::new(device, usage, format.format(),
                                   ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
