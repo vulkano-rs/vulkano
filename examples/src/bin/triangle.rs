@@ -184,7 +184,7 @@ fn main() {
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(&device, &window.surface(), caps.min_image_count, format, dimensions, 1,
-                       &caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
+                       caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
                        present, true, None).expect("failed to create swapchain")
     };
 

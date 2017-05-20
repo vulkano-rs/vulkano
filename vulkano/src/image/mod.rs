@@ -52,11 +52,11 @@ pub use self::layout::ImageLayout;
 pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
-pub use self::sys::Usage;
 pub use self::traits::ImageAccess;
 pub use self::traits::ImageViewAccess;
 pub use self::traits::Image;
 pub use self::traits::ImageView;
+pub use self::usage::ImageUsage;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private
@@ -65,6 +65,7 @@ mod storage;
 pub mod swapchain;      // TODO: make private
 pub mod sys;
 pub mod traits;
+mod usage;
 
 /// Specifies how many mipmaps must be allocated.
 ///

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use format::Format;
-use image::Usage as ImageUsage;
+use image::ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;

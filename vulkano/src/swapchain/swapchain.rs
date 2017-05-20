@@ -30,8 +30,8 @@ use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
 use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
-use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
@@ -112,7 +112,7 @@ impl Swapchain {
     // TODO: add `ColorSpace` parameter
     #[inline]
     pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
-                     dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
+                     dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
                      -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
@@ -128,7 +128,7 @@ impl Swapchain {
                                    -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         Swapchain::new_inner(&self.device, &self.surface, self.num_images, self.format,
-                             self.color_space, dimensions, self.layers, &self.usage,
+                             self.color_space, dimensions, self.layers, self.usage,
                              self.sharing.clone(), self.transform, self.alpha, self.mode,
                              self.clipped, Some(self))
     }
@@ -136,7 +136,7 @@ impl Swapchain {
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
     fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
-                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: &ImageUsage,
+                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
