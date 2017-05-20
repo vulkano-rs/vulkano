@@ -69,7 +69,7 @@ fn main() {
     impl_vertex!(Vertex, position);
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
-                               ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+                               ::from_iter(&device, vulkano::buffer::BufferUsage::all(),
                                        Some(queue.family()), [
                                            Vertex { position: [-0.5, -0.5 ] },
                                            Vertex { position: [-0.5,  0.5 ] },
@@ -112,7 +112,7 @@ fn main() {
 
         // TODO: staging buffer instead
         vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-            ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+            ::from_iter(&device, vulkano::buffer::BufferUsage::all(),
                         Some(queue.family()), image_data_chunks)
                         .expect("failed to create buffer")
     };

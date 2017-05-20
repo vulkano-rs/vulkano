@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::sys::Usage;
+use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
@@ -63,7 +63,7 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryP
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+    pub fn new<'a, I>(device: &Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -76,7 +76,7 @@ impl<T> DeviceLocalBuffer<T> {
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
+    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -93,7 +93,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
+    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
                              -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -107,7 +107,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device, size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
                 Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
