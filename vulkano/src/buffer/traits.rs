@@ -15,6 +15,7 @@ use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use memory::Content;
+use sync::AccessError;
 
 use SafeDeref;
 use VulkanObject;
@@ -246,8 +247,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// The only way to know that the GPU has stopped accessing a queue is when the buffer object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
-    // TODO: return Result?
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -290,7 +290,7 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, queue)
     }
 

@@ -741,7 +741,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
         for (key, entry) in self.resources.iter() {
             match key {
                 &Key::Buffer(ref buf) => {
-                    let err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
+                    let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
                         Ok(_) => {
                             unsafe { buf.increase_gpu_lock(); }
                             continue;
@@ -749,17 +749,16 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                         Err(err) => err
                     };
 
-                    if !buf.try_gpu_lock(entry.exclusive, queue) {
-                        match err {
-                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
-                            AccessCheckError::Denied(err) => return Err(err.into()),
-                        }
+                    match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
+                        (Ok(_), _) => (),
+                        (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
+                        (_, AccessCheckError::Denied(err)) => return Err(err.into()),
                     }
                 },
 
                 &Key::Image(ref img) => {
-                    let err = match future.check_image_access(img, entry.initial_layout,
-                                                              entry.exclusive, queue)
+                    let prev_err = match future.check_image_access(img, entry.initial_layout,
+                                                                   entry.exclusive, queue)
                     {
                         Ok(_) => {
                             unsafe { img.increase_gpu_lock(); }
@@ -768,19 +767,18 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                         Err(err) => err
                     };
 
-                    if !img.try_gpu_lock(entry.exclusive, queue) {
-                        match err {
-                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
-                            AccessCheckError::Denied(err) => return Err(err.into()),
-                        }
+                    match (img.try_gpu_lock(entry.exclusive, queue), prev_err) {
+                        (Ok(_), _) => (),
+                        (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
+                        (_, AccessCheckError::Denied(err)) => return Err(err.into()),
                     }
                 },
 
                 &Key::FramebufferAttachment(ref fb, idx) => {
                     let img = fb.attachments()[idx as usize].parent();
 
-                    let err = match future.check_image_access(img, entry.initial_layout,
-                                                              entry.exclusive, queue)
+                    let prev_err = match future.check_image_access(img, entry.initial_layout,
+                                                                   entry.exclusive, queue)
                     {
                         Ok(_) => {
                             unsafe { img.increase_gpu_lock(); }
@@ -789,11 +787,10 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                         Err(err) => err
                     };
 
-                    if !img.try_gpu_lock(entry.exclusive, queue) {
-                        match err {
-                            AccessCheckError::Unknown => panic!(),      // TODO: use the err returned by try_gpu_lock
-                            AccessCheckError::Denied(err) => return Err(err.into()),
-                        }
+                    match (img.try_gpu_lock(entry.exclusive, queue), prev_err) {
+                        (Ok(_), _) => (),
+                        (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
+                        (_, AccessCheckError::Denied(err)) => return Err(err.into()),
                     }
                 },
             }

@@ -37,6 +37,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
+use sync::AccessError;
 use sync::Sharing;
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
@@ -235,9 +236,9 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // FIXME: uncomment when it's working
-        true
+        Ok(())
         /*if self.already_locked.swap(true, Ordering::SeqCst) == true {
             return false;
         }

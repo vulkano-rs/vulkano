@@ -54,6 +54,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
+use sync::AccessError;
 use sync::NowFuture;
 use sync::Sharing;
 
@@ -355,16 +356,16 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         if exclusive_access {
-            return false;
+            return Err(AccessError::ExclusiveDenied);
         }
 
         if !self.initialized.load(Ordering::Relaxed) {
-            return false;
+            return Err(AccessError::BufferNotInitialized);
         }
 
-        true
+        Ok(())
     }
 
     #[inline]
@@ -402,8 +403,12 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        !self.used.compare_and_swap(false, true, Ordering::Relaxed)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        if !self.used.compare_and_swap(false, true, Ordering::Relaxed) {
+            Ok(())
+        } else {
+            Err(AccessError::AlreadyInUse)
+        }
     }
 
     #[inline]

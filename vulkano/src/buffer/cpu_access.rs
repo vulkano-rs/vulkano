@@ -47,6 +47,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -325,8 +326,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        true       // FIXME:
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        Ok(())       // FIXME:
     }
 
     #[inline]
