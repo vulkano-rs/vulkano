@@ -29,7 +29,7 @@ use format::Format;
 use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
-use image::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
@@ -332,7 +332,7 @@ impl Swapchain {
         // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
         // function on the image instead. But since we know that this method on `SwapchainImage`
         // always returns false anyway (by design), we don't need to do it.
-        assert!(before.check_image_access(&swapchain_image, Layout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
+        assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
 
         PresentFuture {
             previous: before,
@@ -500,7 +500,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         if let Some(sc_img) = self.image.upgrade() {
@@ -508,15 +508,15 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
                 return Err(AccessCheckError::Unknown);
             }
 
-            if self.undefined_layout && layout != Layout::Undefined {
+            if self.undefined_layout && layout != ImageLayout::Undefined {
                 return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
                     requested: layout
                 }));
             }
 
-            if layout != Layout::Undefined && layout != Layout::PresentSrc {
+            if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
                 return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
-                    allowed: Layout::PresentSrc,
+                    allowed: ImageLayout::PresentSrc,
                     requested: layout,
                 }));
             }
@@ -707,7 +707,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         unimplemented!()        // TODO: VK specs don't say whether it is legal to do that

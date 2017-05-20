@@ -27,7 +27,7 @@ use device::Device;
 use device::DeviceOwned;
 use image::ImageAccess;
 use image::ImageView;
-use image::sys::Layout;
+use image::ImageLayout;
 use sampler::Sampler;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -290,7 +290,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
                 num_mipmaps: 1,         // FIXME:
                 first_layer: 0,         // FIXME:
                 num_layers: 1,          // FIXME:
-                layout: Layout::General,            // FIXME:
+                layout: ImageLayout::General,            // FIXME:
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             })
@@ -332,7 +332,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
                 num_mipmaps: 1,         // FIXME:
                 first_layer: 0,         // FIXME:
                 num_layers: 1,          // FIXME:
-                layout: Layout::General,            // FIXME:
+                layout: ImageLayout::General,            // FIXME:
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             })
@@ -375,7 +375,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)
                 num_mipmaps: 1,         // FIXME:
                 first_layer: 0,         // FIXME:
                 num_layers: 1,          // FIXME:
-                layout: Layout::General,            // FIXME:
+                layout: ImageLayout::General,            // FIXME:
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             });
@@ -475,7 +475,7 @@ pub struct SimpleDescriptorSetImg<I> {
     num_mipmaps: u32,
     first_layer: u32,
     num_layers: u32,
-    layout: Layout,
+    layout: ImageLayout,
     stage: PipelineStages,
     access: AccessFlagBits,
 }

@@ -20,7 +20,7 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
-use image::Layout;
+use image::ImageLayout;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::FlushError;
@@ -305,7 +305,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
@@ -393,7 +393,7 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)

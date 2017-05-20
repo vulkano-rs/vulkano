@@ -21,7 +21,7 @@ use command_buffer::submit::SubmitCommandBufferError;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
-use image::Layout;
+use image::ImageLayout;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
@@ -124,7 +124,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool,
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
@@ -268,7 +268,7 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)
@@ -282,15 +282,15 @@ pub enum AccessError {
     ExclusiveDenied,
 
     UnexpectedImageLayout {
-        allowed: Layout,
-        requested: Layout,
+        allowed: ImageLayout,
+        requested: ImageLayout,
     },
 
     /// Trying to use an image without transitionning it from the "undefined" or "preinitialized"
     /// layouts first.
     ImageNotInitialized {
         /// The layout that was requested for the image.
-        requested: Layout,
+        requested: ImageLayout,
     },
 }
 

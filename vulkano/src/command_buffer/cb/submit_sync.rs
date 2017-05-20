@@ -22,7 +22,7 @@ use command_buffer::CommandBufferBuilder;
 use command_buffer::CommandBufferExecError;
 use command_buffer::commands_raw;
 use framebuffer::FramebufferAbstract;
-use image::Layout;
+use image::ImageLayout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use device::Device;
@@ -159,8 +159,8 @@ struct ResourceEntry {
     final_stages: PipelineStages,
     final_access: AccessFlagBits,
     exclusive: bool,
-    initial_layout: Layout,
-    final_layout: Layout,
+    initial_layout: ImageLayout,
+    final_layout: ImageLayout,
 }
 
 impl<I> SubmitSyncBuilderLayer<I> {
@@ -187,8 +187,8 @@ impl<I> SubmitSyncBuilderLayer<I> {
                     final_stages: stages,
                     final_access: access,
                     exclusive: exclusive,
-                    initial_layout: Layout::Undefined,
-                    final_layout: Layout::Undefined,
+                    initial_layout: ImageLayout::Undefined,
+                    final_layout: ImageLayout::Undefined,
                 });
             },
 
@@ -198,7 +198,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
                 entry.final_stages = entry.final_stages | stages;
                 entry.final_access = entry.final_access | access;
                 entry.exclusive = entry.exclusive || exclusive;
-                entry.final_layout = Layout::Undefined;
+                entry.final_layout = ImageLayout::Undefined;
             },
         }
     }
@@ -257,7 +257,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
                 SubmitSyncBuilderLayerBehavior::Explicit => desc.initial_layout,
                 SubmitSyncBuilderLayerBehavior::UseLayoutHint => {
                     match desc.initial_layout {
-                        Layout::Undefined | Layout::Preinitialized => desc.initial_layout,
+                        ImageLayout::Undefined | ImageLayout::Preinitialized => desc.initial_layout,
                         _ => image.parent().initial_layout_requirement(),
                     }
                 },
@@ -267,7 +267,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
                 SubmitSyncBuilderLayerBehavior::Explicit => desc.final_layout,
                 SubmitSyncBuilderLayerBehavior::UseLayoutHint => {
                     match desc.final_layout {
-                        Layout::Undefined | Layout::Preinitialized => desc.final_layout,
+                        ImageLayout::Undefined | ImageLayout::Preinitialized => desc.final_layout,
                         _ => image.parent().final_layout_requirement(),
                     }
                 },
@@ -830,7 +830,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         // TODO: check the queue family
@@ -844,7 +844,7 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                 continue;
             }
 
-            if layout != Layout::Undefined && value.final_layout != layout {
+            if layout != ImageLayout::Undefined && value.final_layout != layout {
                 return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
                     allowed: value.final_layout,
                     requested: layout,
