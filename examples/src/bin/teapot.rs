@@ -63,7 +63,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count, format, dimensions, 1,
-                                           &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
+                                           usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
     };

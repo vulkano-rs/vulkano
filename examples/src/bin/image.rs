@@ -58,7 +58,7 @@ fn main() {
 
         vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
-                                           &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
+                                           usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
     };
