@@ -26,6 +26,7 @@ use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
+use sync::AccessError;
 
 use OomError;
 
@@ -114,9 +115,9 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
-        false
+        Err(AccessError::SwapchainImageAcquireOnly)
     }
 
     #[inline]

@@ -35,6 +35,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 use OomError;
@@ -436,15 +437,15 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         let in_use = &self.buffer.subbuffers[self.subbuffer_index].num_gpu_accesses;
         if in_use.compare_and_swap(0, 1, Ordering::SeqCst) != 0 {
-            return false;
+            return Err(AccessError::AlreadyInUse);
         }
 
         let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
         debug_assert!(!was_locked);
-        true
+        Ok(())
     }
 
     #[inline]

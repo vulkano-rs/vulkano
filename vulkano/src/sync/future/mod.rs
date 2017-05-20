@@ -281,6 +281,9 @@ pub enum AccessError {
     /// Exclusive access is denied.
     ExclusiveDenied,
 
+    /// The resource is already in use, and there is no tracking of concurrent usages.
+    AlreadyInUse,
+
     UnexpectedImageLayout {
         allowed: ImageLayout,
         requested: ImageLayout,
@@ -292,6 +295,12 @@ pub enum AccessError {
         /// The layout that was requested for the image.
         requested: ImageLayout,
     },
+
+    /// Trying to use a buffer that still contains garbage data.
+    BufferNotInitialized,
+
+    /// Trying to use a swapchain image without depending on a corresponding acquire image future.
+    SwapchainImageAcquireOnly,
 }
 
 impl error::Error for AccessError {
@@ -301,12 +310,22 @@ impl error::Error for AccessError {
             AccessError::ExclusiveDenied => {
                 "only shared access is allowed for this resource"
             },
+            AccessError::AlreadyInUse => {
+                "the resource is already in use, and there is no tracking of concurrent usages"
+            },
             AccessError::UnexpectedImageLayout { .. } => {
                 unimplemented!()        // TODO: find a description
             },
             AccessError::ImageNotInitialized { .. } => {
                 "trying to use an image without transitionning it from the undefined or \
                  preinitialized layouts first"
+            },
+            AccessError::BufferNotInitialized => {
+                "trying to use a buffer that still contains garbage data"
+            },
+            AccessError::SwapchainImageAcquireOnly => {
+                "trying to use a swapchain image without depending on a corresponding acquire \
+                 image future"
             },
         }
     }

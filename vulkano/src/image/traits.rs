@@ -23,6 +23,7 @@ use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+use sync::AccessError;
 
 use SafeDeref;
 use VulkanObject;
@@ -208,7 +209,7 @@ pub unsafe trait ImageAccess {
     /// The only way to know that the GPU has stopped accessing a queue is when the image object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -241,7 +242,7 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, queue)
     }
 
@@ -289,7 +290,7 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         self.image.try_gpu_lock(exclusive_access, queue)
     }
 

@@ -32,6 +32,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
@@ -188,8 +189,8 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send +
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        true        // FIXME:
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        Ok(())        // FIXME:
     }
 
     #[inline]

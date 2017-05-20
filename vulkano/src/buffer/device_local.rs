@@ -36,6 +36,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 use OomError;
@@ -204,7 +205,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // FIXME: not implemented correctly
         /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
@@ -213,7 +214,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
             self.0.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             false
         }*/
-        true
+        Ok(())
     }
 
     #[inline]

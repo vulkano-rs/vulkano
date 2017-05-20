@@ -37,6 +37,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -205,13 +206,13 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + S
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
-            true
+            Ok(())
         } else {
             self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            false
+            Err(AccessError::AlreadyInUse)
         }
     }
 
