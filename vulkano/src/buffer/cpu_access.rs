@@ -158,19 +158,21 @@ impl<T> CpuAccessibleBuffer<[T]> {
                       -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families)
-        }
+        CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families)
     }
 
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub unsafe fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage,
+    pub fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage,
                                              queue_families: I)
                                              -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
+        let size = len * mem::size_of::<T>();
+
+        unsafe {
+            CpuAccessibleBuffer::raw(device, size, usage, queue_families)
+        }
     }
 }
 
