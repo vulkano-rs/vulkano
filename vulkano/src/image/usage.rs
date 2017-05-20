@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::ops::BitOr;
 use vk;
 
 /// Describes how an image is going to be used. This is **not** an optimization.
@@ -119,6 +120,24 @@ impl ImageUsage {
             depth_stencil_attachment: (val & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0,
             transient_attachment: (val & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0,
             input_attachment: (val & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0,
+        }
+    }
+}
+
+impl BitOr for ImageUsage {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self {
+        ImageUsage {
+            transfer_source: self.transfer_source || rhs.transfer_source,
+            transfer_dest: self.transfer_dest || rhs.transfer_dest,
+            sampled: self.sampled || rhs.sampled,
+            storage: self.storage || rhs.storage,
+            color_attachment: self.color_attachment || rhs.color_attachment,
+            depth_stencil_attachment: self.depth_stencil_attachment || rhs.depth_stencil_attachment,
+            transient_attachment: self.transient_attachment || rhs.transient_attachment,
+            input_attachment: self.input_attachment || rhs.input_attachment,
         }
     }
 }
