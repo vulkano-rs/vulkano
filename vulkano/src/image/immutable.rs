@@ -19,9 +19,9 @@ use image::ImageDimensions;
 use image::MipmapsCount;
 use image::sys::ImageCreationError;
 use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
@@ -63,11 +63,11 @@ impl<F> ImmutableImage<F> {
                                   -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>, M: Into<MipmapsCount>
     {
-        let usage = Usage {
+        let usage = ImageUsage {
             transfer_source: true,  // for blits
             transfer_dest: true,
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let queue_families = queue_families.into_iter().map(|f| f.id())

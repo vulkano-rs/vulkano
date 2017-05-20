@@ -23,9 +23,9 @@ use image::Dimensions;
 use image::ImageDimensions;
 use image::sys::ImageCreationError;
 use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
@@ -80,7 +80,7 @@ impl<F> StorageImage<F> {
             _ => false
         };
 
-        let usage = Usage {
+        let usage = ImageUsage {
             transfer_source: true,
             transfer_dest: true,
             sampled: true,

@@ -24,9 +24,9 @@ use image::ImageDimensions;
 use image::ViewType;
 use image::sys::ImageCreationError;
 use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
@@ -100,12 +100,12 @@ impl<F> AttachmentImage<F> {
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        AttachmentImage::new_impl(device, dimensions, format, Usage::none())
+        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none())
     }
 
     /// Same as `new`, but lets you specify additional usages.
     #[inline]
-    pub fn with_usage(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: Usage)
+    pub fn with_usage(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: ImageUsage)
                       -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -121,15 +121,15 @@ impl<F> AttachmentImage<F> {
                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        let base_usage = Usage {
+        let base_usage = ImageUsage {
             transient_attachment: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage)
     }
 
-    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: Usage)
+    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage)
                 -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -143,7 +143,7 @@ impl<F> AttachmentImage<F> {
             _ => false
         };
 
-        let usage = Usage {
+        let usage = ImageUsage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             .. base_usage
