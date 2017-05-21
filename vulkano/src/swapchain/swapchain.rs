@@ -339,6 +339,7 @@ impl Swapchain {
             queue: queue,
             swapchain: me,
             image_id: index as u32,
+            image: swapchain_image,
             flushed: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         }
@@ -630,6 +631,7 @@ pub struct PresentFuture<P> where P: GpuFuture {
     previous: P,
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
+    image: Arc<SwapchainImage>,
     image_id: u32,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
@@ -727,6 +729,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
+        debug_assert!(!buffer.conflicts_image_all(&self.image));
         self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
@@ -734,9 +737,15 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        // FIXME: must return `Err(SwapchainImageAcquireOnly)` for the swapchain image that is
-        //        being presented
-        self.previous.check_image_access(image, layout, exclusive, queue)
+        if self.image.conflicts_image_all(&image) {
+            // This future presents the swapchain image, which "unlocks" it. Therefore any attempt 
+            // to use this swapchain image afterwards shouldn't get granted automatic access.
+            // Instead any attempt to access the image afterwards should get an authorization from
+            // a later swapchain acquire future. Hence why we return `Unknown` here.
+            Err(AccessCheckError::Unknown)
+        } else {
+            self.previous.check_image_access(image, layout, exclusive, queue)
+        }
     }
 }
 
