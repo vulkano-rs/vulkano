@@ -238,6 +238,8 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // FIXME: uncomment when it's working
+        //        the problem is in the submit sync layer which locks framebuffer attachments and
+        //        keeps them locked even after destruction
         Ok(())
         /*if self.already_locked.swap(true, Ordering::SeqCst) == true {
             return false;
@@ -249,6 +251,8 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         // FIXME: uncomment when it's working
+        //        the problem is in the submit sync layer which locks framebuffer attachments and
+        //        keeps them locked even after destruction
         /*debug_assert!(self.already_locked.load(Ordering::SeqCst));
         let val = self.img.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);*/

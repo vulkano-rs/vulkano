@@ -787,6 +787,8 @@ unsafe impl<I> CommandBuffer for SubmitSyncLayer<I> where I: CommandBuffer {
                         Err(err) => err
                     };
 
+                    // FIXME: this is bad because dropping the submit sync layer doesn't drop the
+                    //        attachments of the framebuffer, meaning that they will stay locked
                     match (img.try_gpu_lock(entry.exclusive, queue), prev_err) {
                         (Ok(_), _) => (),
                         (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
