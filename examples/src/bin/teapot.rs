@@ -161,12 +161,10 @@ fn main() {
     }).collect::<Vec<_>>();
 
 
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        previous_frame.cleanup_finished();
 
         {
             // aquiring write lock for the uniform buffer
@@ -179,7 +177,7 @@ fn main() {
             buffer_content.world = cgmath::Matrix4::from(rotation).into();
         }
 
-        let (image_num, future) = swapchain.acquire_next_image(std::time::Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = swapchain.acquire_next_image(std::time::Duration::new(1, 0)).unwrap();
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
@@ -193,11 +191,11 @@ fn main() {
             .end_render_pass().unwrap()
             .build().unwrap();
         
-        let future = future
+        let future = previous_frame.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+        previous_frame = Box::new(future) as Box<_>;
 
         let mut done = false;
         events_loop.poll_events(|ev| {

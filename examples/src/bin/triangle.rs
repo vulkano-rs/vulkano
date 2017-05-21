@@ -55,6 +55,7 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
@@ -348,15 +349,15 @@ fn main() {
     // they are in use by the GPU.
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
-    // that, we store them in a `Vec` and clean them from time to time.
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    // that, we store the submission of the previous frame here.
+    let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        // Clearing the old submissions by keeping alive only the ones which probably aren't
-        // finished.
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        // It is important to call this function from time to time, otherwise resources will keep
+        // accumulating and you will eventually reach an out of memory error.
+        // Calling this function polls various fences in order to determine what the GPU has
+        // already processed, and frees the resources that are no longer needed.
+        previous_frame_end.cleanup_finished();
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
@@ -365,7 +366,7 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
-        let (image_num, future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -404,7 +405,7 @@ fn main() {
             // Finish building the command buffer by calling `build`.
             .build().unwrap();
 
-        let future = future
+        let future = previous_frame_end.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
 
             // The color output is now expected to contain our triangle. But in order to show it on
@@ -415,7 +416,7 @@ fn main() {
             // the GPU has finished executing the command buffer that draws the triangle.
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+        previous_frame_end = Box::new(future) as Box<_>;
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
         // `command_buffer::submit`, or `present` will block for some time. This happens when the
