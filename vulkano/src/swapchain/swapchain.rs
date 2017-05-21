@@ -339,6 +339,7 @@ impl Swapchain {
             queue: queue,
             swapchain: me,
             image_id: index as u32,
+            flushed: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         }
     }
@@ -630,6 +631,11 @@ pub struct PresentFuture<P> where P: GpuFuture {
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
     image_id: u32,
+    // True if `flush()` has been called on the future, which means that the present command has
+    // been submitted.
+    flushed: AtomicBool,
+    // True if `signal_finished()` has been called on the future, which means that the future has
+    // been submitted and has already been processed by the GPU.
     finished: AtomicBool,
 }
 
@@ -641,6 +647,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+        if self.flushed.load(Ordering::SeqCst) {
+            return Ok(SubmitAnyBuilder::Empty);
+        }
+
         let queue = self.previous.queue().map(|q| q.clone());
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
@@ -675,11 +685,25 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
-        unimplemented!()
+        unsafe {
+            // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
+
+            match self.build_submission()? {
+                SubmitAnyBuilder::Empty => {}
+                SubmitAnyBuilder::QueuePresent(present) => {
+                    present.submit(&self.queue)?;
+                }
+                _ => unreachable!()
+            }
+
+            self.flushed.store(true, Ordering::SeqCst);
+            Ok(())
+        }
     }
 
     #[inline]
     unsafe fn signal_finished(&self) {
+        self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
