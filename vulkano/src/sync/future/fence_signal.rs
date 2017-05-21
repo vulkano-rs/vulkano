@@ -99,11 +99,24 @@ impl<F> FenceSignalFuture<F> where F: GpuFuture {
         let mut state = self.state.lock().unwrap();
 
         match *state {
-            FenceSignalFutureState::Flushed(_, ref fence) => {
+            FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
                 match fence.wait(Some(Duration::from_secs(0))) {
-                    Ok(()) => (),
-                    Err(_) => return,
+                    Ok(()) => unsafe {
+                        prev.signal_finished()
+                    },
+                    Err(_) => {
+                        prev.cleanup_finished();
+                        return
+                    },
                 }
+            },
+            FenceSignalFutureState::Pending(ref mut prev, _) => {
+                prev.cleanup_finished();
+                return;
+            },
+            FenceSignalFutureState::PartiallyFlushed(ref mut prev, _) => {
+                prev.cleanup_finished();
+                return;
             },
             _ => return,
         };
