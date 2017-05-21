@@ -703,14 +703,16 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        // FIXME: must return `Err(SwapchainImageAcquireOnly)` for the swapchain image that is
+        //        being presented
+        self.previous.check_image_access(image, layout, exclusive, queue)
     }
 }
 
