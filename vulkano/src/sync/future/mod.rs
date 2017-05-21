@@ -58,7 +58,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// It is the responsibility of the caller to ensure that the submission is going to be
     /// submitted only once. However keep in mind that this function can perfectly be called
-    /// multiple times (as long as the returned object is only submitted once).
+    /// multiple times (as long as the returned object is only submitted once). 
+    /// Also note that calling `flush()` on the future  may change the value returned by
+    /// `build_submission()`.
     ///
     /// It is however the responsibility of the implementation to not return the same submission
     /// from multiple different future objects. For example if you implement `GpuFuture` on
@@ -197,9 +199,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
-        fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Block {
-            timeout: None
-        })
+        fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Continue)
     }
 
     /// Signals a fence after this future. Returns another future that represents the signal.
