@@ -10,3 +10,6 @@ categories = ["rendering::graphics-api"]
 [dependencies]
 vulkano = { version = "0.3.0", path = "../vulkano" }
 winit = "0.6.4"
+metal-rs = "0.3"
+cocoa = "0.8.1"
+objc = ""
