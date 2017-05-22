@@ -339,6 +339,8 @@ impl Swapchain {
             queue: queue,
             swapchain: me,
             image_id: index as u32,
+            image: swapchain_image,
+            flushed: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         }
     }
@@ -629,7 +631,13 @@ pub struct PresentFuture<P> where P: GpuFuture {
     previous: P,
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
+    image: Arc<SwapchainImage>,
     image_id: u32,
+    // True if `flush()` has been called on the future, which means that the present command has
+    // been submitted.
+    flushed: AtomicBool,
+    // True if `signal_finished()` has been called on the future, which means that the future has
+    // been submitted and has already been processed by the GPU.
     finished: AtomicBool,
 }
 
@@ -641,6 +649,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+        if self.flushed.load(Ordering::SeqCst) {
+            return Ok(SubmitAnyBuilder::Empty);
+        }
+
         let queue = self.previous.queue().map(|q| q.clone());
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
@@ -675,11 +687,25 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
-        unimplemented!()
+        unsafe {
+            // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
+
+            match self.build_submission()? {
+                SubmitAnyBuilder::Empty => {}
+                SubmitAnyBuilder::QueuePresent(present) => {
+                    present.submit(&self.queue)?;
+                }
+                _ => unreachable!()
+            }
+
+            self.flushed.store(true, Ordering::SeqCst);
+            Ok(())
+        }
     }
 
     #[inline]
     unsafe fn signal_finished(&self) {
+        self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
@@ -703,14 +729,23 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        debug_assert!(!buffer.conflicts_image_all(&self.image));
+        self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        if self.image.conflicts_image_all(&image) {
+            // This future presents the swapchain image, which "unlocks" it. Therefore any attempt 
+            // to use this swapchain image afterwards shouldn't get granted automatic access.
+            // Instead any attempt to access the image afterwards should get an authorization from
+            // a later swapchain acquire future. Hence why we return `Unknown` here.
+            Err(AccessCheckError::Unknown)
+        } else {
+            self.previous.check_image_access(image, layout, exclusive, queue)
+        }
     }
 }
 

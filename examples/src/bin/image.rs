@@ -164,12 +164,10 @@ fn main() {
         vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
     }).collect::<Vec<_>>();
 
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        previous_frame_end.cleanup_finished();
 
         let (image_num, future) = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
 
@@ -187,11 +185,11 @@ fn main() {
             .end_render_pass().unwrap()
             .build().unwrap();
 
-        let future = future
+        let future = previous_frame_end.join(future)
             .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+        previous_frame_end = Box::new(future) as Box<_>;
 
         let mut done = false;
         events_loop.poll_events(|ev| {
