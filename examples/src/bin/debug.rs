@@ -100,7 +100,7 @@ fn main() {
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
-    ImmutableImage::new(&device, dimensions, pixel_format, Some(queue.family())).unwrap();
+    ImmutableImage::new(device.clone(), dimensions, pixel_format, Some(queue.family())).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
 }

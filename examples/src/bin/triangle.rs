@@ -184,7 +184,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(&device, &window.surface(), caps.min_image_count, format, dimensions, 1,
+        Swapchain::new(device.clone(), &window.surface(), caps.min_image_count, format, dimensions, 1,
                        caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
                        present, true, None).expect("failed to create swapchain")
     };
@@ -195,7 +195,7 @@ fn main() {
         struct Vertex { position: [f32; 2] }
         impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(&device, BufferUsage::all(), Some(queue.family()), [
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), Some(queue.family()), [
             Vertex { position: [-0.5, -0.25] },
             Vertex { position: [0.0, 0.5] },
             Vertex { position: [0.25, -0.1] }
@@ -260,7 +260,7 @@ fn main() {
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = Arc::new(GraphicsPipeline::new(&device, GraphicsPipelineParams {
+    let pipeline = Arc::new(GraphicsPipeline::new(device.clone(), GraphicsPipelineParams {
         // We need to indicate the layout of the vertices.
         // The type `SingleBufferDefinition` actually contains a template parameter corresponding
         // to the type of each vertex. But in this code it is automatically inferred.

@@ -38,7 +38,7 @@ pub struct StdMemoryPool {
 impl StdMemoryPool {
     /// Creates a new pool.
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<StdMemoryPool> {
+    pub fn new(device: Arc<Device>) -> Arc<StdMemoryPool> {
         let cap = device.physical_device().memory_types().len();
         let hasher = BuildHasherDefault::<FnvHasher>::default();
 
@@ -76,14 +76,14 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
             Entry::Vacant(entry) => {
                 match memory_type.is_host_visible() {
                     true => {
-                        let pool = StdHostVisibleMemoryTypePool::new(&self.device, memory_type);
+                        let pool = StdHostVisibleMemoryTypePool::new(self.device.clone(), memory_type);
                         entry.insert(Pool::HostVisible(pool.clone()));
                         let alloc = try!(StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                         Ok(StdMemoryPoolAlloc { inner: inner, pool: self.clone() })
                     },
                     false => {
-                        let pool = StdNonHostVisibleMemoryTypePool::new(&self.device, memory_type);
+                        let pool = StdNonHostVisibleMemoryTypePool::new(self.device.clone(), memory_type);
                         entry.insert(Pool::NonHostVisible(pool.clone()));
                         let alloc = try!(StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment));
                         let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);

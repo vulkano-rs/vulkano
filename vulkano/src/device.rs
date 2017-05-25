@@ -350,7 +350,7 @@ impl Device {
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StdMemoryPool::new(me);
+        let new_pool = StdMemoryPool::new(me.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }

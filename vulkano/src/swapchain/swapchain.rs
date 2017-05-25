@@ -111,7 +111,7 @@ impl Swapchain {
     // TODO: remove `old_swapchain` parameter and add another function `with_old_swapchain`.
     // TODO: add `ColorSpace` parameter
     #[inline]
-    pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
+    pub fn new<F, S>(device: Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
                      dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
@@ -127,7 +127,7 @@ impl Swapchain {
     pub fn recreate_with_dimension(&self, dimensions: [u32; 2])
                                    -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
-        Swapchain::new_inner(&self.device, &self.surface, self.num_images, self.format,
+        Swapchain::new_inner(self.device.clone(), &self.surface, self.num_images, self.format,
                              self.color_space, dimensions, self.layers, self.usage,
                              self.sharing.clone(), self.transform, self.alpha, self.mode,
                              self.clipped, Some(self))
@@ -135,7 +135,7 @@ impl Swapchain {
 
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
-    fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
+    fn new_inner(device: Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
                  color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
@@ -252,7 +252,7 @@ impl Swapchain {
         };
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
-            let unsafe_image = UnsafeImage::from_raw(device, image, usage.to_usage_bits(), format,
+            let unsafe_image = UnsafeImage::from_raw(device.clone(), image, usage.to_usage_bits(), format,
                                                      ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false }, 1, 1);
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();

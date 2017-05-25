@@ -68,7 +68,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
-    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
                  I: IntoIterator<Item = QueueFamily<'a>>
@@ -102,7 +102,7 @@ impl<F> StorageImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, usage, format.format(), dimensions.to_image_dimensions(),
+            try!(UnsafeImage::new(device.clone(), usage, format.format(), dimensions.to_image_dimensions(),
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -115,7 +115,7 @@ impl<F> StorageImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _img = StorageImage::new(&device, Dimensions::Dim2d { width: 32, height: 32 },
+        let _img = StorageImage::new(device, Dimensions::Dim2d { width: 32, height: 32 },
                                      Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
     }
 }

@@ -36,7 +36,7 @@ impl StdHostVisibleMemoryTypePool {
     /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, memory_type: MemoryType)
+    pub fn new(device: Arc<Device>, memory_type: MemoryType)
                -> Arc<StdHostVisibleMemoryTypePool>
     {
         assert_eq!(&**device.physical_device().instance() as *const Instance,

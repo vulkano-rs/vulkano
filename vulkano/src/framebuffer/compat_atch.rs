@@ -184,7 +184,7 @@ mod tests {
             }
         ).unwrap();
 
-        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
         ensure_image_view_compatible(&rp, 0, &img.access()).unwrap();
     }
@@ -208,7 +208,7 @@ mod tests {
             }
         ).unwrap();
 
-        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
         match ensure_image_view_compatible(&rp, 0, &img.access()) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
@@ -223,7 +223,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = EmptySinglePassRenderPassDesc;
-        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
         let _ = ensure_image_view_compatible(&rp, 0, &img.access());
     }

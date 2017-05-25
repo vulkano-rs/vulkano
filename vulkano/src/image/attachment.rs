@@ -97,7 +97,7 @@ impl<F> AttachmentImage<F> {
     /// Returns an error if the dimensions are too large or if the backend doesn't support this
     /// format as a framebuffer attachment.
     #[inline]
-    pub fn new(device: &Arc<Device>, dimensions: [u32; 2], format: F)
+    pub fn new(device: Arc<Device>, dimensions: [u32; 2], format: F)
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -106,7 +106,7 @@ impl<F> AttachmentImage<F> {
 
     /// Same as `new`, but lets you specify additional usages.
     #[inline]
-    pub fn with_usage(device: &Arc<Device>, dimensions: [u32; 2], format: F, usage: ImageUsage)
+    pub fn with_usage(device: Arc<Device>, dimensions: [u32; 2], format: F, usage: ImageUsage)
                       -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -118,7 +118,7 @@ impl<F> AttachmentImage<F> {
     /// A transient image is special because its content is undefined outside of a render pass.
     /// This means that the implementation has the possibility to not allocate any memory for it.
     #[inline]
-    pub fn transient(device: &Arc<Device>, dimensions: [u32; 2], format: F)
+    pub fn transient(device: Arc<Device>, dimensions: [u32; 2], format: F)
                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -130,7 +130,7 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, base_usage)
     }
 
-    fn new_impl(device: &Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage)
+    fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage)
                 -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
@@ -151,7 +151,7 @@ impl<F> AttachmentImage<F> {
         };
 
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device, usage, format.format(),
+            try!(UnsafeImage::new(device.clone(), usage, format.format(),
                                   ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
@@ -165,7 +165,7 @@ impl<F> AttachmentImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
@@ -382,18 +382,18 @@ mod tests {
     #[test]
     fn create_regular() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let _img = AttachmentImage::new(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
     }
 
     #[test]
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::transient(&device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let _img = AttachmentImage::transient(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
     }
 
     #[test]
     fn d16_unorm_always_supported() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(&device, [32, 32], Format::D16Unorm).unwrap();
+        let _img = AttachmentImage::new(device, [32, 32], Format::D16Unorm).unwrap();
     }
 }

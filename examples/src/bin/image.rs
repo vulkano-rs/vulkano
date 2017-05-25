@@ -56,7 +56,7 @@ fn main() {
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
 
-        vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), &window.surface(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
@@ -69,7 +69,7 @@ fn main() {
     impl_vertex!(Vertex, position);
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
-                               ::from_iter(&device, vulkano::buffer::BufferUsage::all(),
+                               ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
                                        Some(queue.family()), [
                                            Vertex { position: [-0.5, -0.5 ] },
                                            Vertex { position: [-0.5,  0.5 ] },
@@ -99,7 +99,7 @@ fn main() {
         ).unwrap()
     );
 
-    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
+    let texture = vulkano::image::immutable::ImmutableImage::new(device.clone(), vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
                                                                  vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
 
@@ -112,20 +112,20 @@ fn main() {
 
         // TODO: staging buffer instead
         vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-            ::from_iter(&device, vulkano::buffer::BufferUsage::all(),
+            ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
                         Some(queue.family()), image_data_chunks)
                         .expect("failed to create buffer")
     };
 
 
-    let sampler = vulkano::sampler::Sampler::new(&device, vulkano::sampler::Filter::Linear,
+    let sampler = vulkano::sampler::Sampler::new(device.clone(), vulkano::sampler::Filter::Linear,
                                                  vulkano::sampler::Filter::Linear, vulkano::sampler::MipmapMode::Nearest,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(device.clone(), vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly {

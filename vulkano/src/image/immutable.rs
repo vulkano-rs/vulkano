@@ -51,7 +51,7 @@ impl<F> ImmutableImage<F> {
     /// Builds a new immutable image.
     // TODO: one mipmap is probably not a great default
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -59,7 +59,7 @@ impl<F> ImmutableImage<F> {
     }
 
     /// Builds a new immutable image with the given number of mipmaps.
-    pub fn with_mipmaps<'a, I, M>(device: &Arc<Device>, dimensions: Dimensions, format: F,
+    pub fn with_mipmaps<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
                                   mipmaps: M, queue_families: I)
                                   -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
         where F: FormatDesc, I: IntoIterator<Item = QueueFamily<'a>>, M: Into<MipmapsCount>
@@ -81,7 +81,7 @@ impl<F> ImmutableImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, usage, format.format(), dimensions.to_image_dimensions(),
+            try!(UnsafeImage::new(device.clone(), usage, format.format(), dimensions.to_image_dimensions(),
                                   1, mipmaps, sharing, false, false))
         };
 
@@ -94,7 +94,7 @@ impl<F> ImmutableImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
