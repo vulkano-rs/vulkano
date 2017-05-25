@@ -58,6 +58,35 @@ pub enum FenceSignalFutureBehavior {
 }
 
 /// Represents a fence being signaled after a previous event.
+///
+/// Contrary to most other future types, it is possible to block the current thread until the event
+/// happens. This is done by calling the `wait()` function.
+///
+/// Also note that the `GpuFuture` trait is implemented on `Arc<FenceSignalFuture<_>>`.
+/// This means that you can put this future in an `Arc` and keep a copy of it somewhere in order
+/// to know when the execution reached that point.
+///
+/// ```
+/// use std::sync::Arc;
+/// use vulkano::sync::GpuFuture;
+///
+/// # let future: Box<GpuFuture> = return;
+/// // Assuming you have a chain of operations, like this:
+/// // let future = ...
+/// //      .then_execute(foo)
+/// //      .then_execute(bar)
+///
+/// // You can signal a fence at this point of the chain, and put the future in an `Arc`.
+/// let fence_signal = Arc::new(future.then_signal_fence());
+///
+/// // And then continue the chain:
+/// // fence_signal.clone()
+/// //      .then_execute(baz)
+/// //      .then_execute(qux)
+///
+/// // Later you can wait until you reach the point of `fence_signal`:
+/// fence_signal.wait(None).unwrap();
+/// ```
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct FenceSignalFuture<F> where F: GpuFuture {
     // Current state. See the docs of `FenceSignalFutureState`.
@@ -89,6 +118,32 @@ enum FenceSignalFutureState<F> {
 
     // A function panicked while the state was being modified. Should never happen.
     Poisonned,
+}
+
+impl<F> FenceSignalFuture<F> where F: GpuFuture {
+    /// Blocks the current thread until the fence is signaled by the GPU. Performs a flush if
+    /// necessary.
+    ///
+    /// If `timeout` is `None`, then the wait is infinite. Otherwise the thread will unblock after
+    /// the specified timeout has elapsed and an error will be returned.
+    ///
+    /// If the wait is successful, this function also cleans any resource locked by previous
+    /// submissions.
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FlushError> {
+        let mut state = self.state.lock().unwrap();
+
+        self.flush_impl(&mut state)?;
+
+        match mem::replace(&mut *state, FenceSignalFutureState::Cleaned) {
+            FenceSignalFutureState::Flushed(previous, fence) => {
+                fence.wait(timeout)?;
+                unsafe { previous.signal_finished(); }
+                Ok(())
+            },
+            FenceSignalFutureState::Cleaned => Ok(()),
+            _ => unreachable!()
+        }
+    }
 }
 
 impl<F> FenceSignalFuture<F> where F: GpuFuture {
