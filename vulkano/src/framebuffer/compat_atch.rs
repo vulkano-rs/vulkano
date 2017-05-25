@@ -158,8 +158,8 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use format::Format;
+    use framebuffer::EmptySinglePassRenderPassDesc;
     use image::AttachmentImage;
     use image::ImageView;
     use super::ensure_image_view_compatible;
@@ -169,7 +169,7 @@ mod tests {
     fn basic_ok() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(single_pass_renderpass!(device.clone(),
+        let rp = single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -182,7 +182,7 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap();
 
         let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
@@ -193,7 +193,7 @@ mod tests {
     fn format_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(single_pass_renderpass!(device.clone(),
+        let rp = single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -206,7 +206,7 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap();
 
         let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
@@ -215,6 +215,17 @@ mod tests {
                 expected: Format::R16G16Sfloat, obtained: Format::R8G8B8A8Unorm }) => (),
             e => panic!("{:?}", e)
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "Attachment num out of range")]
+    fn attachment_out_of_range() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = EmptySinglePassRenderPassDesc;
+        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        
+        let _ = ensure_image_view_compatible(&rp, 0, &img.access());
     }
 
     // TODO: more tests
