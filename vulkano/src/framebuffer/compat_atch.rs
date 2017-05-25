@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! This module contains the `ensure_image_view_compatible` function, which verifies whether
+//! an image view can be used as a render pass attachment.
+
 use std::error;
 use std::fmt;
 use format::Format;
@@ -153,4 +156,66 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
     }
 }
 
-// TODO: add tests
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use format::Format;
+    use image::AttachmentImage;
+    use image::ImageView;
+    use super::ensure_image_view_compatible;
+    use super::IncompatibleRenderPassAttachmentError;
+
+    #[test]
+    fn basic_ok() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = Arc::new(single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        ).unwrap());
+
+        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        
+        ensure_image_view_compatible(&rp, 0, &img.access()).unwrap();
+    }
+
+    #[test]
+    fn format_mismatch() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = Arc::new(single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: Format::R16G16Sfloat,
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        ).unwrap());
+
+        let img = AttachmentImage::new(&device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        
+        match ensure_image_view_compatible(&rp, 0, &img.access()) {
+            Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
+                expected: Format::R16G16Sfloat, obtained: Format::R8G8B8A8Unorm }) => (),
+            e => panic!("{:?}", e)
+        }
+    }
+
+    // TODO: more tests
+}
