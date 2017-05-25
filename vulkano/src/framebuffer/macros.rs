@@ -76,6 +76,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
+            use $crate::framebuffer::ensure_image_view_compatible;
             use $crate::image::ImageLayout;
             use $crate::image::ImageViewAccess;
             use $crate::sync::AccessFlagBits;
@@ -102,7 +103,9 @@ macro_rules! ordered_passes_renderpass {
             pub mod atch {
                 use $crate::framebuffer::AttachmentsList;
                 use $crate::framebuffer::FramebufferCreationError;
+                use $crate::framebuffer::RenderPassDesc;
                 use $crate::framebuffer::RenderPassDescAttachmentsList;
+                use $crate::framebuffer::ensure_image_view_compatible;
                 use $crate::image::traits::ImageViewAccess;
                 use super::CustomRenderPassDesc;
                 pub struct AttachmentsStart;
@@ -160,8 +163,23 @@ macro_rules! ordered_passes_renderpass {
 
             unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for CustomRenderPassDesc {
                 fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-                    // FIXME: correct safety checks
-                    assert_eq!(list.len(), self.num_attachments());
+                    if list.len() != self.num_attachments() {
+                        return Err(FramebufferCreationError::AttachmentsCountMismatch {
+                            expected: self.num_attachments(),
+                            obtained: list.len(),
+                        });
+                    }
+
+                    for n in 0 .. self.num_attachments() {
+                        match ensure_image_view_compatible(self, n, &*list[n]) {
+                            Ok(()) => (),
+                            Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment {
+                                attachment_num: n,
+                                error: err,
+                            })
+                        }
+                    }
+
                     Ok(Box::new(list) as Box<_>)
                 }
             }
@@ -372,7 +390,7 @@ macro_rules! ordered_passes_renderpass {
             type List = ();
 
             fn check_attachments_list(&self, attachments: AttachmentsStart) -> Result<(), FramebufferCreationError> {
-                Ok(())        // FIXME:
+                Ok(())
             }
         }
     };
@@ -390,9 +408,16 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        impl<$first_param> $next<$first_param> {
-            fn check_attachments_list(self) -> Result<($first_param,), FramebufferCreationError> {
-                Ok((self.current,))     // FIXME: check attachment
+        impl<$first_param> $next<$first_param> where $first_param: ImageViewAccess {
+            fn check_attachments_list(self, rp: &CustomRenderPassDesc, n: usize) -> Result<($first_param,), FramebufferCreationError> {
+                debug_assert_eq!(n, 0);
+                match ensure_image_view_compatible(rp, 0, &self.current) {
+                    Ok(()) => Ok((self.current,)),
+                    Err(err) => Err(FramebufferCreationError::IncompatibleAttachment {
+                        attachment_num: 0,
+                        error: err,
+                    })
+                }
             }
         }
 
@@ -403,17 +428,8 @@ macro_rules! ordered_passes_renderpass {
         unsafe impl<$($prev_params),*> RenderPassDescAttachmentsList<$prev<$($prev_params),*>> for CustomRenderPassDesc
             where $($prev_params: ImageViewAccess + Send + Sync + 'static),*
         {
-            //type List = ($($prev_params,)*);
-
             fn check_attachments_list(&self, attachments: $prev<$($prev_params,)*>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-                Ok(Box::new(try!(attachments.check_attachments_list())))
-                
-                // FIXME:
-                /*$({
-                    if !l.$atch_name.identity_swizzle() {
-                        return Err(FramebufferCreationError::AttachmentNotIdentitySwizzled);
-                    }
-                })**/
+                Ok(Box::new(try!(attachments.check_attachments_list(self, self.num_attachments() - 1))))
             }
         }
     };
@@ -433,11 +449,20 @@ macro_rules! ordered_passes_renderpass {
             }
         }
 
-        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param> {
-            fn check_attachments_list(self) -> Result<($($prev_params,)* $first_param), FramebufferCreationError> {
-                let ($($prev_params,)*) = try!(self.prev.check_attachments_list());
-                // FIXME: check attachment
-                Ok(($($prev_params,)* self.current))
+        impl<$($prev_params,)* $first_param> $next<$($prev_params,)* $first_param>
+            where $($prev_params: ImageViewAccess,)*
+                  $first_param: ImageViewAccess
+        {
+            fn check_attachments_list(self, rp: &CustomRenderPassDesc, n: usize) -> Result<($($prev_params,)* $first_param), FramebufferCreationError> {
+                let ($($prev_params,)*) = try!(self.prev.check_attachments_list(rp, n - 1));
+
+                match ensure_image_view_compatible(rp, n, &self.current) {
+                    Ok(()) => Ok(($($prev_params,)* self.current)),
+                    Err(err) => Err(FramebufferCreationError::IncompatibleAttachment {
+                        attachment_num: n,
+                        error: err,
+                    })
+                }
             }
         }
 
