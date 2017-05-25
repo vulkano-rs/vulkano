@@ -91,6 +91,8 @@
 //!
 
 pub use self::attachments_list::AttachmentsList;
+pub use self::compat_atch::ensure_image_view_compatible;
+pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::desc::LayoutAttachmentDescription;
 pub use self::desc::LayoutPassDescription;
 pub use self::desc::LayoutPassDependencyDescription;
@@ -118,6 +120,7 @@ pub use self::traits::Subpass;
 #[macro_use]
 mod macros;
 mod attachments_list;
+mod compat_atch;
 mod desc;
 mod empty;
 mod framebuffer;

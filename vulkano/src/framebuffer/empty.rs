@@ -145,11 +145,16 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
 unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>)
+                              -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>
+    {
         if list.is_empty() {
             Ok(Box::new(()) as Box<_>)
         } else {
-            panic!()        // FIXME: return error instead
+            Err(FramebufferCreationError::AttachmentsCountMismatch {
+                expected: 0,
+                obtained: list.len(),
+            })
         }
     }
 }
