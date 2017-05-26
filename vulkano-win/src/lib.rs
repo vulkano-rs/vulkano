@@ -1,8 +1,11 @@
 extern crate vulkano;
 extern crate winit;
 
+#[cfg(target_os = "macos")]
 extern crate objc;
+#[cfg(target_os = "macos")]
 extern crate cocoa;
+#[cfg(target_os = "macos")]
 extern crate metal_rs as metal;
 
 use std::error;
@@ -17,11 +20,13 @@ use vulkano::swapchain::SurfaceCreationError;
 use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
+#[cfg(target_os = "macos")]
 use objc::runtime::{YES};
-
+#[cfg(target_os = "macos")]
 use cocoa::base::id as cocoa_id;
+#[cfg(target_os = "macos")]
 use cocoa::appkit::{NSWindow, NSView};
-
+#[cfg(target_os = "macos")]
 use metal::*;
 
 use std::mem;
