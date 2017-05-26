@@ -379,15 +379,22 @@ impl Surface {
         }
     }
 
+    #[deprecated = "Renamed to `capabilities`"]
+    #[inline]
+    pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> {
+        Ok(self.capabilities(*device).unwrap())
+    }
+
     /// Retreives the capabilities of a surface when used by a certain device.
     ///
     /// # Panic
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     ///
-    pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> { // TODO: wrong error type
+    pub fn capabilities(&self, device: PhysicalDevice) -> Result<Capabilities, CapabilitiesError> {
         unsafe {
-            assert_eq!(&*self.instance as *const _, &**device.instance() as *const _);
+            assert_eq!(&*self.instance as *const _, &**device.instance() as *const _,
+                       "Instance mismatch in Surface::capabilities");
 
             let vk = self.instance.pointers();
 
@@ -455,7 +462,7 @@ impl Surface {
                 max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
                 max_image_array_layers: caps.maxImageArrayLayers,
                 supported_transforms: capabilities::surface_transforms_from_bits(caps.supportedTransforms),
-                current_transform: capabilities::surface_transforms_from_bits(caps.supportedTransforms).iter().next().unwrap(),        // TODO:
+                current_transform: capabilities::surface_transforms_from_bits(caps.currentTransform).iter().next().unwrap(),        // TODO:
                 supported_composite_alpha: capabilities::supported_composite_alpha_from_bits(caps.supportedCompositeAlpha),
                 supported_usage_flags: {
                     let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
@@ -556,6 +563,61 @@ impl From<Error> for SurfaceCreationError {
         match err {
             err @ Error::OutOfHostMemory => SurfaceCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => SurfaceCreationError::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+/// Error that can happen when retreiving a surface's capabilities.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum CapabilitiesError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+}
+
+impl error::Error for CapabilitiesError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            CapabilitiesError::OomError(_) => "not enough memory",
+            CapabilitiesError::SurfaceLost => "the surface is no longer valid",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CapabilitiesError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for CapabilitiesError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<OomError> for CapabilitiesError {
+    #[inline]
+    fn from(err: OomError) -> CapabilitiesError {
+        CapabilitiesError::OomError(err)
+    }
+}
+
+impl From<Error> for CapabilitiesError {
+    #[inline]
+    fn from(err: Error) -> CapabilitiesError {
+        match err {
+            err @ Error::OutOfHostMemory => CapabilitiesError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => CapabilitiesError::OomError(OomError::from(err)),
+            Error::SurfaceLost => CapabilitiesError::SurfaceLost,
             _ => panic!("unexpected error: {:?}", err)
         }
     }
