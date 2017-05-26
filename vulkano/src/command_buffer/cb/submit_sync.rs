@@ -250,7 +250,7 @@ impl<I> SubmitSyncBuilderLayer<I> {
         // TODO: slow
         for index in 0 .. FramebufferAbstract::attachments(framebuffer).len() {
             let key = Key::FramebufferAttachment(Box::new(framebuffer.clone()), index as u32);
-            let desc = framebuffer.attachment(index).expect("Wrong implementation of FramebufferAbstract trait");
+            let desc = framebuffer.attachment_desc(index).expect("Wrong implementation of FramebufferAbstract trait");
             let image = FramebufferAbstract::attachments(framebuffer)[index];
 
             let initial_layout = match self.behavior {

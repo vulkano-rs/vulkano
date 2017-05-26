@@ -1153,8 +1153,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.render_pass.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment_desc(num)
     }
 
     #[inline]
@@ -1163,8 +1163,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.render_pass.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass_desc(num)
     }
 
     #[inline]
@@ -1173,8 +1173,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.render_pass.dependency(num)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency_desc(num)
     }
 }
 
