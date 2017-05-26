@@ -311,10 +311,8 @@ impl Device {
     /// while this function is waiting.
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
-        unsafe {
-            try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
-            Ok(())
-        }
+        try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
+        Ok(())
     }
 
     /// Returns the instance used to create this device.
