@@ -3,8 +3,12 @@ rust:
     - nightly
     - stable
 
+os:
+  - linux
+  - osx
+
 install:
-  - export CXX="g++-4.8"
+  - if [[ "$TRAVIS_OS_NAME" != "osx" ]]; then export CXX="g++-4.8"; fi
 
 addons:
   apt:
