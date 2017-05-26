@@ -105,7 +105,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_hwnd<T, U>(instance: &Arc<Instance>, hinstance: *const T, hwnd: *const U)
+    pub unsafe fn from_hwnd<T, U>(instance: Arc<Instance>, hinstance: *const T, hwnd: *const U)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -144,7 +144,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xcb<C>(instance: &Arc<Instance>, connection: *const C, window: u32)
+    pub unsafe fn from_xcb<C>(instance: Arc<Instance>, connection: *const C, window: u32)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -183,7 +183,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xlib<D>(instance: &Arc<Instance>, display: *const D, window: c_ulong)
+    pub unsafe fn from_xlib<D>(instance: Arc<Instance>, display: *const D, window: c_ulong)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -222,7 +222,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_wayland<D, S>(instance: &Arc<Instance>, display: *const D, surface: *const S)
+    pub unsafe fn from_wayland<D, S>(instance: Arc<Instance>, display: *const D, surface: *const S)
                                      -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -262,7 +262,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_mir<C, S>(instance: &Arc<Instance>, connection: *const C, surface: *const S)
+    pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C, surface: *const S)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -299,7 +299,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
-    pub unsafe fn from_anativewindow<T>(instance: &Arc<Instance>, window: *const T)
+    pub unsafe fn from_anativewindow<T>(instance: Arc<Instance>, window: *const T)
                                         -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -335,7 +335,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
-    pub unsafe fn from_vi_surface<T>(instance: &Arc<Instance>, window: *const T)
+    pub unsafe fn from_vi_surface<T>(instance: Arc<Instance>, window: *const T)
                                         -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_hwnd(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_hwnd(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -650,7 +650,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -668,7 +668,7 @@ mod tests {
     #[test]
     fn khr_mir_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_mir(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -677,7 +677,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_anativewindow(&instance, ptr::null::<u8>()) } {
+        match unsafe { Surface::from_anativewindow(instance, ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }

@@ -106,7 +106,7 @@ fn main() {
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //

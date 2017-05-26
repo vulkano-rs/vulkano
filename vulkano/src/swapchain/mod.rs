@@ -72,10 +72,10 @@
 //! };
 //!
 //! # fn build_window() -> *const u32 { ptr::null() }
-//! let window = build_window();
+//! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(&instance, hinstance, window).unwrap()
+//!     Surface::from_hwnd(instance.clone(), hinstance, window).unwrap()
 //! };
 //! ```
 //! 
