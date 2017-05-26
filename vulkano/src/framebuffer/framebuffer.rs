@@ -268,8 +268,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.render_pass.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment_desc(num)
     }
 
     #[inline]
@@ -278,8 +278,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
     
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.render_pass.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass_desc(num)
     }
 
     #[inline]
@@ -288,8 +288,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.render_pass.dependency(num)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency_desc(num)
     }
 }
 

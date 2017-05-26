@@ -49,7 +49,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
         None
     }
 
@@ -59,7 +59,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
         if num == 0 {
             Some(LayoutPassDescription {
                 color_attachments: vec![],
@@ -79,7 +79,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         None
     }
 

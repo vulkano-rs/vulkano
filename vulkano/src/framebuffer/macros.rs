@@ -129,7 +129,7 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn attachment(&self, id: usize) -> Option<LayoutAttachmentDescription> {
+                fn attachment_desc(&self, id: usize) -> Option<LayoutAttachmentDescription> {
                     attachment(self, id)
                 }
 
@@ -139,7 +139,7 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn subpass(&self, id: usize) -> Option<LayoutPassDescription> {
+                fn subpass_desc(&self, id: usize) -> Option<LayoutPassDescription> {
                     subpass(id)
                 }
 
@@ -149,7 +149,7 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn dependency(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
+                fn dependency_desc(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
                     dependency(id)
                 }
             }

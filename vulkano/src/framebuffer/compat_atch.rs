@@ -29,7 +29,7 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
     where Rp: ?Sized + RenderPassDesc,
           I: ?Sized + ImageViewAccess
 {
-    let attachment_desc = render_pass.attachment(attachment_num)
+    let attachment_desc = render_pass.attachment_desc(attachment_num)
                                      .expect("Attachment num out of range");
 
     if image.format() != attachment_desc.format {
@@ -51,8 +51,8 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
     }
 
     for subpass_num in 0 .. render_pass.num_subpasses() {
-        let subpass = render_pass.subpass(subpass_num).expect("Subpass num out of range ; \
-                                                               wrong RenderPassDesc trait impl");
+        let subpass = render_pass.subpass_desc(subpass_num).expect("Subpass num out of range ; \
+                                                                    wrong RenderPassDesc trait impl");
 
         if subpass.color_attachments.iter().any(|&(n, _)| n == attachment_num) {
             debug_assert!(image.parent().has_color());  // Was normally checked by the render pass.
