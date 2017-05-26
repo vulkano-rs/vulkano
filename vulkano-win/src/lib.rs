@@ -1,6 +1,13 @@
 extern crate vulkano;
 extern crate winit;
 
+#[cfg(target_os = "macos")]
+extern crate objc;
+#[cfg(target_os = "macos")]
+extern crate cocoa;
+#[cfg(target_os = "macos")]
+extern crate metal_rs as metal;
+
 use std::error;
 use std::fmt;
 use std::ptr;
@@ -12,6 +19,17 @@ use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
 use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
+
+#[cfg(target_os = "macos")]
+use objc::runtime::{YES};
+#[cfg(target_os = "macos")]
+use cocoa::base::id as cocoa_id;
+#[cfg(target_os = "macos")]
+use cocoa::appkit::{NSWindow, NSView};
+#[cfg(target_os = "macos")]
+use metal::*;
+
+use std::mem;
 
 pub fn required_extensions() -> InstanceExtensions {
     let ideal = InstanceExtensions {
@@ -160,5 +178,20 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError>
 {
     use winit::os::macos::WindowExt;
+
+    unsafe {
+        let wnd: cocoa_id = mem::transmute(win.get_nswindow());
+        
+        let layer = CAMetalLayer::new();
+
+        layer.set_edge_antialiasing_mask(0);
+        layer.set_presents_with_transaction(false);
+        layer.remove_all_animations();
+
+        let view = wnd.contentView();
+        view.setWantsLayer(YES);
+        view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory        
+    }
+    
     Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
