@@ -124,7 +124,7 @@
 //! Once you created a swapchain and retreived all the images that belong to it (see previous
 //! section), you can draw on it. This is done in three steps:
 //!
-//!  - Call `Swapchain::acquire_next_image`. This function will return the index of the image
+//!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
 //!    (within the list returned by `Swapchain::new`) that is available to draw, plus a future
 //!    representing the moment when the GPU will gain access to that image.
 //!  - Draw on that image just like you would draw to any other image (see the documentation of
@@ -136,9 +136,9 @@
 //!
 //! TODO: add example here
 //! loop {
-//!     let index = swapchain.acquire_next_image(Duration::from_millis(500)).unwrap();
+//!     let index = swapchain::acquire_next_image(Duration::from_millis(500)).unwrap();
 //!     draw(images[index]);
-//!     swapchain.present(queue, index).unwrap();
+//!     swapchain::present(queue, index).unwrap();
 //! }
 //!
 //! ## Recreating a swapchain
@@ -156,6 +156,7 @@
 //!
 //! ```
 //! # use std::time::Duration;
+//! use vulkano::swapchain;
 //! use vulkano::swapchain::AcquireError;
 //! use vulkano::sync::GpuFuture;
 //!
@@ -172,7 +173,7 @@
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let (index, acq_future) = match swapchain.acquire_next_image(Duration::from_millis(500)) {
+//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), Duration::from_millis(500)) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)
@@ -209,6 +210,8 @@ pub use self::swapchain::AcquireError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::acquire_next_image;
+pub use self::swapchain::present;
 
 mod capabilities;
 pub mod display;

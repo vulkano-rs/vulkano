@@ -56,7 +56,7 @@ fn main() {
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
 
-        vulkano::swapchain::Swapchain::new(device.clone(), &window.surface(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
@@ -88,7 +88,7 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: images[0].format(),
+                    format: swapchain.format(),
                     samples: 1,
                 }
             },
@@ -169,7 +169,7 @@ fn main() {
     loop {
         previous_frame_end.cleanup_finished();
 
-        let (image_num, future) = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
+        let (image_num, future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), Duration::new(10, 0)).unwrap();
 
         let cb = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()

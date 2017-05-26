@@ -62,7 +62,7 @@ fn main() {
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(device.clone(), &window.surface(), caps.min_image_count, format, dimensions, 1,
+        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
@@ -107,7 +107,7 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: images[0].format(),
+                    format: swapchain.format(),
                     samples: 1,
                 },
                 depth: {
@@ -177,7 +177,7 @@ fn main() {
             buffer_content.world = cgmath::Matrix4::from(rotation).into();
         }
 
-        let (image_num, acquire_future) = swapchain.acquire_next_image(std::time::Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), std::time::Duration::new(1, 0)).unwrap();
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .begin_render_pass(

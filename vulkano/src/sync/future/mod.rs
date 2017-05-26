@@ -22,6 +22,7 @@ use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use image::ImageLayout;
+use swapchain;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
@@ -225,7 +226,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
                               image_index: usize) -> PresentFuture<Self>
         where Self: Sized
     {
-        Swapchain::present(swapchain, self, queue, image_index)
+        swapchain::present(swapchain, self, queue, image_index)
     }
 }
 
