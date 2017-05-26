@@ -99,7 +99,7 @@ pub unsafe trait PipelineLayoutDesc {
     ///
     /// > **Note**: This is just a shortcut for `PipelineLayout::new`.
     #[inline]
-    fn build(self, device: &Arc<Device>)
+    fn build(self, device: Arc<Device>)
              -> Result<PipelineLayout<Self>, PipelineLayoutCreationError>
         where Self: Sized
     {

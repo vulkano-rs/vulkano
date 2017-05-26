@@ -99,7 +99,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         where I: IntoIterator<Item = QueueFamily<'a>>,
               T: 'static + Send + Sync + Sized,
     {
-        let source = CpuAccessibleBuffer::from_data(queue.device(), BufferUsage::transfer_source(),
+        let source = CpuAccessibleBuffer::from_data(queue.device().clone(), BufferUsage::transfer_source(),
                                                     iter::once(queue.family()), data)?;
         ImmutableBuffer::from_buffer(source, usage, queue_families, queue)
     }
@@ -198,7 +198,7 @@ impl<T> ImmutableBuffer<[T]> {
               D: ExactSizeIterator<Item = T>,
               T: 'static + Send + Sync + Sized,
     {
-        let source = CpuAccessibleBuffer::from_iter(queue.device(), BufferUsage::transfer_source(),
+        let source = CpuAccessibleBuffer::from_iter(queue.device().clone(), BufferUsage::transfer_source(),
                                                     iter::once(queue.family()), data)?;
         ImmutableBuffer::from_buffer(source, usage, queue_families, queue)
     }
@@ -267,7 +267,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(&device, size, usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
                 Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
@@ -536,7 +536,7 @@ mod tests {
                                                      iter::once(queue.family()),
                                                      queue.clone()).unwrap();
 
-        let dest = CpuAccessibleBuffer::from_data(&device, BufferUsage::all(),
+        let dest = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(),
                                                   iter::once(queue.family()), 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
@@ -557,7 +557,7 @@ mod tests {
                                                      iter::once(queue.family()),
                                                      queue.clone()).unwrap();
 
-        let dest = CpuAccessibleBuffer::from_iter(&device, BufferUsage::all(),
+        let dest = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
                                                   iter::once(queue.family()),
                                                   (0 .. 512).map(|_| 0u32)).unwrap();
 
@@ -599,7 +599,7 @@ mod tests {
                                                   iter::once(queue.family())).unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(&device, BufferUsage::all(),
+        let src = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(),
                                                  iter::once(queue.family()), 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
@@ -618,7 +618,7 @@ mod tests {
                                                   iter::once(queue.family())).unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(&device, BufferUsage::all(),
+        let src = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(),
                                                  iter::once(queue.family()), 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
@@ -639,7 +639,7 @@ mod tests {
                                                   iter::once(queue.family())).unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(&device, BufferUsage::all(),
+        let src = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(),
                                                  iter::once(queue.family()), 0).unwrap();
 
         let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()

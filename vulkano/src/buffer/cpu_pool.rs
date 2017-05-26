@@ -266,7 +266,7 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
                     None => return Err(OomError::OutOfDeviceMemory),
                 };
 
-                match UnsafeBuffer::new(&self.device, total_size, self.usage, sharing, SparseLevel::none()) {
+                match UnsafeBuffer::new(self.device.clone(), total_size, self.usage, sharing, SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::OomError(err)) => return Err(err),
                     Err(_) => unreachable!()        // We don't use sparse binding, therefore the other

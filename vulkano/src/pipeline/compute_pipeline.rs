@@ -56,7 +56,7 @@ struct Inner {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
+    pub fn new<Css, Csl>(device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
                          specialization: &Css) 
                          -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
@@ -64,7 +64,7 @@ impl ComputePipeline<()> {
     {
         let vk = device.pointers();
 
-        let pipeline_layout = shader.layout().clone().build(device).unwrap();     // TODO: error
+        let pipeline_layout = shader.layout().clone().build(device.clone()).unwrap();     // TODO: error
 
         PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(), shader.layout())?;
 
