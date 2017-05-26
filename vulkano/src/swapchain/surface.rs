@@ -366,6 +366,7 @@ impl Surface {
     }
 
     /// Returns true if the given queue family can draw on this surface.
+    // FIXME: vulkano doesn't check this for the moment!
     pub fn is_supported(&self, queue: QueueFamily) -> Result<bool, CapabilitiesError> {
         unsafe {
             let vk = self.instance.pointers();
