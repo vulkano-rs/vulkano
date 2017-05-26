@@ -36,7 +36,7 @@ fn main() {
     let events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
 
-    let queue = physical.queue_families().find(|q| q.supports_graphics() &&
+    let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
@@ -50,7 +50,7 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (swapchain, images) = {
-        let caps = window.surface().get_capabilities(&physical).expect("failed to get surface capabilities");
+        let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes.iter().next().unwrap();

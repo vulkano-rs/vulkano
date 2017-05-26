@@ -118,7 +118,7 @@ fn main() {
     // queue to handle data transfers in parallel. In this example we only use one queue.
     //
     // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue = physical.queue_families().find(|q| {
+    let queue = physical.queue_families().find(|&q| {
         // We take the first queue that supports drawing to our window.
         q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
@@ -163,7 +163,7 @@ fn main() {
     let (swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = window.surface().get_capabilities(&physical)
+        let caps = window.surface().capabilities(physical)
                          .expect("failed to get surface capabilities");
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.

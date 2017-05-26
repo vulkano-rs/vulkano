@@ -366,7 +366,7 @@ impl Surface {
     }
 
     /// Returns true if the given queue family can draw on this surface.
-    pub fn is_supported(&self, queue: &QueueFamily) -> Result<bool, OomError> {
+    pub fn is_supported(&self, queue: QueueFamily) -> Result<bool, CapabilitiesError> {
         unsafe {
             let vk = self.instance.pointers();
 
