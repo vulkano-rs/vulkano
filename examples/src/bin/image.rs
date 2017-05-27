@@ -56,9 +56,9 @@ fn main() {
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
 
-        vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), &window.surface(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
-                                           &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
+                                           usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
     };
@@ -69,7 +69,7 @@ fn main() {
     impl_vertex!(Vertex, position);
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
-                               ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+                               ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
                                        Some(queue.family()), [
                                            Vertex { position: [-0.5, -0.5 ] },
                                            Vertex { position: [-0.5,  0.5 ] },
@@ -99,7 +99,7 @@ fn main() {
         ).unwrap()
     );
 
-    let texture = vulkano::image::immutable::ImmutableImage::new(&device, vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
+    let texture = vulkano::image::immutable::ImmutableImage::new(device.clone(), vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
                                                                  vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
 
@@ -112,20 +112,20 @@ fn main() {
 
         // TODO: staging buffer instead
         vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-            ::from_iter(&device, &vulkano::buffer::BufferUsage::all(),
+            ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
                         Some(queue.family()), image_data_chunks)
                         .expect("failed to create buffer")
     };
 
 
-    let sampler = vulkano::sampler::Sampler::new(&device, vulkano::sampler::Filter::Linear,
+    let sampler = vulkano::sampler::Sampler::new(device.clone(), vulkano::sampler::Filter::Linear,
                                                  vulkano::sampler::Filter::Linear, vulkano::sampler::MipmapMode::Nearest,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(device.clone(), vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly {
@@ -164,12 +164,10 @@ fn main() {
         vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
     }).collect::<Vec<_>>();
 
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        previous_frame_end.cleanup_finished();
 
         let (image_num, future) = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
 
@@ -187,11 +185,11 @@ fn main() {
             .end_render_pass().unwrap()
             .build().unwrap();
 
-        let future = future
+        let future = previous_frame_end.join(future)
             .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+        previous_frame_end = Box::new(future) as Box<_>;
 
         let mut done = false;
         events_loop.poll_events(|ev| {

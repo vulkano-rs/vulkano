@@ -22,7 +22,7 @@ use command_buffer::CommandBufferExecError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use image::Layout;
+use image::ImageLayout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use sync::AccessCheckError;
@@ -68,7 +68,7 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.inner.check_image_access(image, layout, exclusive, queue)

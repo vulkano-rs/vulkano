@@ -20,6 +20,7 @@ use buffer::traits::Buffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use sync::AccessError;
 
 /// A subpart of a buffer.
 ///
@@ -241,7 +242,7 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         self.resource.try_gpu_lock(exclusive_access, queue)
     }
 

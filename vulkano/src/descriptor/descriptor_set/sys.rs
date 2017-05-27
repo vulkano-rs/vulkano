@@ -547,7 +547,7 @@ impl UnsafeDescriptorSet {
     ///   command buffer contains a pointer/reference to a descriptor set, it is illegal to write
     ///   to it.
     ///
-    pub unsafe fn write<I>(&mut self, device: &Arc<Device>, writes: I)
+    pub unsafe fn write<I>(&mut self, device: &Device, writes: I)
         where I: Iterator<Item = DescriptorWrite>
     {
         let vk = device.pointers();

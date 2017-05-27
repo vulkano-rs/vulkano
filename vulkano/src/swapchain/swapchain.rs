@@ -29,9 +29,9 @@ use format::Format;
 use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
-use image::Layout;
+use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
-use image::sys::Usage as ImageUsage;
 use image::swapchain::SwapchainImage;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
@@ -111,8 +111,8 @@ impl Swapchain {
     // TODO: remove `old_swapchain` parameter and add another function `with_old_swapchain`.
     // TODO: add `ColorSpace` parameter
     #[inline]
-    pub fn new<F, S>(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
-                     dimensions: [u32; 2], layers: u32, usage: &ImageUsage, sharing: S,
+    pub fn new<F, S>(device: Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: F,
+                     dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
                      -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
@@ -127,16 +127,16 @@ impl Swapchain {
     pub fn recreate_with_dimension(&self, dimensions: [u32; 2])
                                    -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
-        Swapchain::new_inner(&self.device, &self.surface, self.num_images, self.format,
-                             self.color_space, dimensions, self.layers, &self.usage,
+        Swapchain::new_inner(self.device.clone(), &self.surface, self.num_images, self.format,
+                             self.color_space, dimensions, self.layers, self.usage,
                              self.sharing.clone(), self.transform, self.alpha, self.mode,
                              self.clipped, Some(self))
     }
 
     // TODO: images layouts should always be set to "PRESENT", since we have no way to switch the
     //       layout at present time
-    fn new_inner(device: &Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
-                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: &ImageUsage,
+    fn new_inner(device: Arc<Device>, surface: &Arc<Surface>, num_images: u32, format: Format,
+                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
@@ -252,7 +252,7 @@ impl Swapchain {
         };
 
         let images = images.into_iter().enumerate().map(|(id, image)| unsafe {
-            let unsafe_image = UnsafeImage::from_raw(device, image, usage.to_usage_bits(), format,
+            let unsafe_image = UnsafeImage::from_raw(device.clone(), image, usage.to_usage_bits(), format,
                                                      ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false }, 1, 1);
             SwapchainImage::from_raw(unsafe_image, format, &swapchain, id as u32).unwrap()     // TODO: propagate error
         }).collect::<Vec<_>>();
@@ -332,13 +332,15 @@ impl Swapchain {
         // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
         // function on the image instead. But since we know that this method on `SwapchainImage`
         // always returns false anyway (by design), we don't need to do it.
-        assert!(before.check_image_access(&swapchain_image, Layout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
+        assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead
 
         PresentFuture {
             previous: before,
             queue: queue,
             swapchain: me,
             image_id: index as u32,
+            image: swapchain_image,
+            flushed: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         }
     }
@@ -500,7 +502,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         if let Some(sc_img) = self.image.upgrade() {
@@ -508,15 +510,15 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
                 return Err(AccessCheckError::Unknown);
             }
 
-            if self.undefined_layout && layout != Layout::Undefined {
+            if self.undefined_layout && layout != ImageLayout::Undefined {
                 return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
                     requested: layout
                 }));
             }
 
-            if layout != Layout::Undefined && layout != Layout::PresentSrc {
+            if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
                 return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
-                    allowed: Layout::PresentSrc,
+                    allowed: ImageLayout::PresentSrc,
                     requested: layout,
                 }));
             }
@@ -629,7 +631,13 @@ pub struct PresentFuture<P> where P: GpuFuture {
     previous: P,
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
+    image: Arc<SwapchainImage>,
     image_id: u32,
+    // True if `flush()` has been called on the future, which means that the present command has
+    // been submitted.
+    flushed: AtomicBool,
+    // True if `signal_finished()` has been called on the future, which means that the future has
+    // been submitted and has already been processed by the GPU.
     finished: AtomicBool,
 }
 
@@ -641,6 +649,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+        if self.flushed.load(Ordering::SeqCst) {
+            return Ok(SubmitAnyBuilder::Empty);
+        }
+
         let queue = self.previous.queue().map(|q| q.clone());
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
@@ -675,11 +687,25 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
 
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
-        unimplemented!()
+        unsafe {
+            // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
+
+            match self.build_submission()? {
+                SubmitAnyBuilder::Empty => {}
+                SubmitAnyBuilder::QueuePresent(present) => {
+                    present.submit(&self.queue)?;
+                }
+                _ => unreachable!()
+            }
+
+            self.flushed.store(true, Ordering::SeqCst);
+            Ok(())
+        }
     }
 
     #[inline]
     unsafe fn signal_finished(&self) {
+        self.flushed.store(true, Ordering::SeqCst);
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
@@ -703,14 +729,23 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        debug_assert!(!buffer.conflicts_image_all(&self.image));
+        self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        unimplemented!()        // TODO: VK specs don't say whether it is legal to do that
+        if self.image.conflicts_image_all(&image) {
+            // This future presents the swapchain image, which "unlocks" it. Therefore any attempt 
+            // to use this swapchain image afterwards shouldn't get granted automatic access.
+            // Instead any attempt to access the image afterwards should get an authorization from
+            // a later swapchain acquire future. Hence why we return `Unknown` here.
+            Err(AccessCheckError::Unknown)
+        } else {
+            self.previous.check_image_access(image, layout, exclusive, queue)
+        }
     }
 }
 

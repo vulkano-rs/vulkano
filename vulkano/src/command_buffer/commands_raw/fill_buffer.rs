@@ -144,7 +144,7 @@ mod tests {
     fn basic() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let buffer = CpuAccessibleBuffer::from_data(&device, &BufferUsage::transfer_dest(),
+        let buffer = CpuAccessibleBuffer::from_data(&device, BufferUsage::transfer_dest(),
                                                     Some(queue.family()), 0u32).unwrap();
 
         let _ = PrimaryCbBuilder::new(&device, queue.family())

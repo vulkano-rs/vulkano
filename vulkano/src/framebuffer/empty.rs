@@ -49,7 +49,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
         None
     }
 
@@ -59,7 +59,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
         if num == 0 {
             Some(LayoutPassDescription {
                 color_attachments: vec![],
@@ -79,7 +79,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         None
     }
 
@@ -145,11 +145,16 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
 unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
+    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>)
+                              -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>
+    {
         if list.is_empty() {
             Ok(Box::new(()) as Box<_>)
         } else {
-            panic!()        // FIXME: return error instead
+            Err(FramebufferCreationError::AttachmentsCountMismatch {
+                expected: 0,
+                obtained: list.len(),
+            })
         }
     }
 }

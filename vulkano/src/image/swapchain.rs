@@ -22,10 +22,11 @@ use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use image::traits::Image;
 use image::traits::ImageView;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
+use sync::AccessError;
 
 use OomError;
 
@@ -99,13 +100,13 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
-        Layout::PresentSrc
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::PresentSrc
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
-        Layout::PresentSrc
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::PresentSrc
     }
 
     #[inline]
@@ -114,9 +115,9 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
-        false
+        Err(AccessError::SwapchainImageAcquireOnly)
     }
 
     #[inline]
@@ -157,23 +158,23 @@ unsafe impl ImageViewAccess for SwapchainImage {
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::ShaderReadOnlyOptimal
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]

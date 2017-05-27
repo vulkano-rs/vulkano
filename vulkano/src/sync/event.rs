@@ -37,9 +37,7 @@ pub struct Event {
 impl Event {
     /// See the docs of new().
     #[inline]
-    pub fn raw(device: &Arc<Device>) -> Result<Event, OomError> {
-        let vk = device.pointers();
-
+    pub fn raw(device: Arc<Device>) -> Result<Event, OomError> {
         let event = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
@@ -49,13 +47,14 @@ impl Event {
             };
 
             let mut output = mem::uninitialized();
+            let vk = device.pointers();
             try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
                                              ptr::null(), &mut output)));
             output
         };
 
         Ok(Event {
-            device: device.clone(),
+            device: device,
             event: event,
         })
     }
@@ -67,7 +66,7 @@ impl Event {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<Event> {
+    pub fn new(device: Arc<Device>) -> Arc<Event> {
         Arc::new(Event::raw(device).unwrap())
     }
 
@@ -165,14 +164,14 @@ mod tests {
     #[test]
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(&device);
+        let event = Event::new(device);
         assert!(!event.signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let mut event = Event::new(&device);
+        let mut event = Event::new(device);
         assert!(!event.signaled().unwrap());
 
         Arc::get_mut(&mut event).unwrap().set();
@@ -183,7 +182,7 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut event = Event::new(&device);
+        let mut event = Event::new(device);
         Arc::get_mut(&mut event).unwrap().set();
         assert!(event.signaled().unwrap());
 

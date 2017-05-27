@@ -203,7 +203,7 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
     where A: RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match RenderPassDesc::subpasses(self).skip(subpass as usize).next() {
+        let pass_descr = match RenderPassDesc::subpass_descs(self).skip(subpass as usize).next() {
             Some(s) => s,
             None => return false,
         };
@@ -215,7 +215,7 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
                     None => return false,
                 };
 
-                let attachment_desc = (&self).attachments().skip(attachment_id).next().unwrap();
+                let attachment_desc = (&self).attachment_descs().skip(attachment_id).next().unwrap();
 
                 // FIXME: compare formats depending on the number of components and data type
                 /*if attachment_desc.format != element.format {

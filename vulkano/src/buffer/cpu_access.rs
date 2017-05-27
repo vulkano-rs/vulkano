@@ -31,7 +31,7 @@ use smallvec::SmallVec;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::sys::Usage;
+use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
@@ -47,6 +47,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -77,7 +78,7 @@ impl<T> CpuAccessibleBuffer<T> {
     /// Deprecated. Use `from_data` instead.
     #[deprecated]
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -87,7 +88,7 @@ impl<T> CpuAccessibleBuffer<T> {
     }
 
     /// Builds a new buffer with some data in it. Only allowed for sized data.
-    pub fn from_data<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I, data: T)
+    pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
                             -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
               T: Content + 'static,
@@ -112,7 +113,7 @@ impl<T> CpuAccessibleBuffer<T> {
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
-    pub unsafe fn uninitialized<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+    pub unsafe fn uninitialized<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                                        -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -123,7 +124,7 @@ impl<T> CpuAccessibleBuffer<T> {
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
-    pub fn from_iter<'a, I, Q>(device: &Arc<Device>, usage: &Usage, queue_families: Q, data: I)
+    pub fn from_iter<'a, I, Q>(device: Arc<Device>, usage: BufferUsage, queue_families: Q, data: I)
                                -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static,
@@ -154,7 +155,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
     // TODO: remove
     #[inline]
     #[deprecated]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
+    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -165,7 +166,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
 
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub unsafe fn uninitialized_array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage,
+    pub unsafe fn uninitialized_array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage,
                                              queue_families: I)
                                              -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
@@ -181,7 +182,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
                              -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -195,7 +196,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
                 Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
@@ -208,7 +209,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                            .filter(|t| t.is_host_visible())
                            .next().unwrap();    // Vk specs guarantee that this can't fail
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
@@ -325,8 +326,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
-        true       // FIXME:
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        Ok(())       // FIXME:
     }
 
     #[inline]

@@ -20,6 +20,7 @@ use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferAbstract;
+use framebuffer::IncompatibleRenderPassAttachmentError;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
@@ -143,6 +144,10 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
         // For more safety, we do some additional `debug_assert`s below.
         let attachments = try!(render_pass.check_attachments_list(attachments));
 
+        // TODO: add a debug assertion that checks whether the attachments are compatible
+        //       with the RP ; this should be checked by the RenderPassDescAttachmentsList trait
+        //       impl, but we can double-check in debug mode
+
         // Checking the dimensions against the limits.
         {
             let limits = render_pass.device().physical_device().limits();
@@ -263,8 +268,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.render_pass.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment_desc(num)
     }
 
     #[inline]
@@ -273,8 +278,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
     
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.render_pass.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass_desc(num)
     }
 
     #[inline]
@@ -283,8 +288,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.render_pass.dependency(num)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency_desc(num)
     }
 }
 
@@ -344,17 +349,28 @@ unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
 }
 
 /// Error that can happen when creating a framebuffer object.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
 pub enum FramebufferCreationError {
     /// Out of memory.
     OomError(OomError),
     /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
-    /// One of the attachments has a component swizzle that is different from identity.
-    AttachmentNotIdentitySwizzled,
     /// One of the attachments is too small compared to the requested framebuffer dimensions.
     AttachmentTooSmall,
+    /// The number of attachments doesn't match the number expected by the render pass.
+    AttachmentsCountMismatch {
+        /// Expected number of attachments.
+        expected: usize,
+        /// Number of attachments that were given.
+        obtained: usize,
+    },
+    /// One of the images cannot be used as the requested attachment.
+    IncompatibleAttachment {
+        /// Zero-based id of the attachment.
+        attachment_num: usize,
+        /// The problem.
+        error: IncompatibleRenderPassAttachmentError,
+    },
 }
 
 impl From<OomError> for FramebufferCreationError {
@@ -371,12 +387,15 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::OomError(_) => "no memory available",
             FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
                                                              are too large",
-            FramebufferCreationError::AttachmentNotIdentitySwizzled => {
-                "one of the attachments has a component swizzle that is different from identity"
-            },
             FramebufferCreationError::AttachmentTooSmall => {
                 "one of the attachments is too small compared to the requested framebuffer \
                  dimensions"
+            },
+            FramebufferCreationError::AttachmentsCountMismatch { .. } => {
+                "the number of attachments doesn't match the number expected by the render pass"
+            },
+            FramebufferCreationError::IncompatibleAttachment { .. } => {
+                "one of the images cannot be used as the requested attachment"
             },
         }
     }
@@ -385,6 +404,7 @@ impl error::Error for FramebufferCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             FramebufferCreationError::OomError(ref err) => Some(err),
+            FramebufferCreationError::IncompatibleAttachment { ref error, .. } => Some(error),
             _ => None,
         }
     }

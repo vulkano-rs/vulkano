@@ -299,29 +299,20 @@ impl Device {
         Ok((device, output_queues))
     }
 
-    /// See the docs of wait().
-    // FIXME: must synchronize all queuees
-    #[inline]
-    pub fn wait_raw(&self) -> Result<(), OomError> {
-        unsafe {
-            try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
-            Ok(())
-        }
-    }
-
     /// Waits until all work on this device has finished. You should never need to call
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
-    /// This is the Vulkan equivalent of `glFinish`.
+    /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
     ///
-    /// # Panic
+    /// # Safety
     ///
-    /// - Panics if the device or host ran out of memory.
+    /// This function is not thread-safe. You must not submit anything to any of the queue
+    /// of the device (either explicitely or implicitely, for example with a future's destructor)
+    /// while this function is waiting.
     ///
-    // FIXME: must synchronize all queuees
-    #[inline]
-    pub fn wait(&self) {
-        self.wait_raw().unwrap();
+    pub unsafe fn wait(&self) -> Result<(), OomError> {
+        try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
+        Ok(())
     }
 
     /// Returns the instance used to create this device.
@@ -357,7 +348,7 @@ impl Device {
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StdMemoryPool::new(me);
+        let new_pool = StdMemoryPool::new(me.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }
