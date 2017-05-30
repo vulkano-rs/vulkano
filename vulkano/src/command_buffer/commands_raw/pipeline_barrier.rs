@@ -102,8 +102,8 @@ impl<'a> CmdPipelineBarrier<'a> {
             self.dependency_flags = 0;
         }
 
-        self.src_stage_mask |= source.into();
-        self.dst_stage_mask |= dest.into();
+        self.src_stage_mask |= Into::<vk::PipelineStageFlags>::into(source);
+        self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(dest);
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
