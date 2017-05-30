@@ -68,9 +68,12 @@ impl DeviceMemory {
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
 
-        if size > memory_type.heap().size() {
+        // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
+        // More generally, whether or not this check is useful is questionnable.
+        // TODO: ^
+        /*if size > memory_type.heap().size() {
             return Err(OomError::OutOfDeviceMemory);
-        }
+        }*/
 
         let memory = unsafe {
             let vk = device.pointers();
