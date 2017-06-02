@@ -157,11 +157,8 @@ fn main() {
     }));
 
     let framebuffers = images.iter().map(|image| {
-        let attachments = renderpass.desc().start_attachments()
-            .color(image.clone());
-        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-
-        vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
+        Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
+            .add(image.clone()).unwrap().build().unwrap())
     }).collect::<Vec<_>>();
 
     let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
@@ -178,8 +175,7 @@ fn main() {
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
-                renderpass.desc().start_clear_values()
-                    .color([0.0, 0.0, 1.0, 1.0])).unwrap()
+                vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

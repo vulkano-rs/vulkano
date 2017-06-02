@@ -29,6 +29,7 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
+use image::ImageView;
 use image::ImageViewAccess;
 
 use Error;
@@ -122,6 +123,7 @@ use vk;
 /// ```
 #[derive(Debug)]
 pub struct Framebuffer<Rp, A> {
+    // TODO: is this field really needed?
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,
@@ -129,28 +131,121 @@ pub struct Framebuffer<Rp, A> {
     resources: A,
 }
 
-impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
-    /// Builds a new framebuffer.
+impl<Rp> Framebuffer<Rp, ()> {
+    /// Starts building a framebuffer.
+    pub fn start(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
+        FramebufferBuilder {
+            render_pass: render_pass,
+            dimensions: FramebufferBuilderDimensions::AutoIdentical,
+            attachments: (),
+        }
+    }
+}
+
+/// Prototype of a framebuffer.
+pub struct FramebufferBuilder<Rp, A> {
+    render_pass: Rp,
+    dimensions: FramebufferBuilderDimensions,
+    attachments: A,
+}
+
+enum FramebufferBuilderDimensions {
+    AutoIdentical,
+    AutoSmaller,
+    Specific([u32; 3]),
+}
+
+impl<Rp, A> FramebufferBuilder<Rp, A>
+    where Rp: RenderPassAbstract,
+          A: AttachmentsList,
+{
+    /// Appends an attachment to the prototype of the framebuffer.
     ///
-    /// The `attachments` parameter depends on which render pass implementation is used.
-    // TODO: allow ImageView
-    pub fn new<Ia>(render_pass: Rp, dimensions: [u32; 3], attachments: Ia)
-                   -> Result<Arc<Framebuffer<Rp, Box<AttachmentsList + Send + Sync>>>, FramebufferCreationError>
-        where Rp: RenderPassAbstract + RenderPassDescAttachmentsList<Ia>
+    /// Attachments must be added in the same order as the one defined in the render pass.
+    pub fn add<T>(self, attachment: T)
+                  -> Result<FramebufferBuilder<Rp, (A, T::Access)>, FramebufferCreationError>
+        where T: ImageView
     {
-        let device = render_pass.device().clone();
+        let access = attachment.access();
+
+        // TODO: check number of attachments
+
+        let dimensions = match self.dimensions {
+            FramebufferBuilderDimensions::AutoIdentical => {
+                let dims = access.dimensions();
+                debug_assert_eq!(dims.depth(), 1);
+                let dims = [dims.width(), dims.height(), dims.array_layers()];
+                FramebufferBuilderDimensions::Specific(dims)
+            },
+            FramebufferBuilderDimensions::AutoSmaller => {
+                FramebufferBuilderDimensions::AutoSmaller
+            },
+            FramebufferBuilderDimensions::Specific(current) => {
+                let dims = access.dimensions();
+                if dims.width() != current[0] || dims.height() != current[1] ||
+                   dims.array_layers() != current[2]
+                {
+                    return Err(FramebufferCreationError::AttachmentTooSmall);  // TODO: more precise?
+                }
+
+                FramebufferBuilderDimensions::Specific([
+                    dims.width(),
+                    dims.height(),
+                    dims.array_layers()
+                ])
+            }
+        };
+
+        Ok(FramebufferBuilder {
+            render_pass: self.render_pass,
+            dimensions: dimensions,
+            attachments: (self.attachments, access),
+        })
+    }
+
+    /// Turns this builder into a `FramebufferBuilder<Rp, Box<AttachmentsList>>`.
+    ///
+    /// This allows you to store the builder in situations where you don't know in advance the
+    /// number of attachments.
+    ///
+    /// > **Note**: This is a very rare corner case and you shouldn't have to use this function
+    /// > in most situations.
+    #[inline]
+    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<AttachmentsList>>
+        where A: 'static
+    {
+        FramebufferBuilder {
+            render_pass: self.render_pass,
+            dimensions: self.dimensions,
+            attachments: Box::new(self.attachments) as Box<_>,
+        }
+    }
+
+    /// Builds the framebuffer.
+    pub fn build(self) -> Result<Framebuffer<Rp, A>, FramebufferCreationError> {
+        let device = self.render_pass.device().clone();
 
         // This function call is supposed to check whether the attachments are valid.
         // For more safety, we do some additional `debug_assert`s below.
-        let attachments = try!(render_pass.check_attachments_list(attachments));
+        // FIXME: check attachments when they are added to the builder instead of at the end
+        let attachments = self.attachments;
+        //let attachments = try!(self.render_pass.check_attachments_list(self.attachments));
 
         // TODO: add a debug assertion that checks whether the attachments are compatible
         //       with the RP ; this should be checked by the RenderPassDescAttachmentsList trait
         //       impl, but we can double-check in debug mode
+        //       also check the number of attachments
+
+        // Compute the dimensions.
+        let dimensions = match self.dimensions {
+            FramebufferBuilderDimensions::AutoIdentical => panic!(),        // TODO: what if 0 attachment?
+            FramebufferBuilderDimensions::AutoSmaller => attachments.intersection_dimensions().unwrap(),        // TODO: what if 0 attachment?
+            FramebufferBuilderDimensions::Specific(dims) => dims,
+        };
 
         // Checking the dimensions against the limits.
         {
-            let limits = render_pass.device().physical_device().limits();
+            let limits = device.physical_device().limits();
             let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
                           limits.max_framebuffer_layers()];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
@@ -160,26 +255,17 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
             }
         }
 
-        // Checking the dimensions against the attachments.
-        if let Some(dims_constraints) = attachments.intersection_dimensions() {
-            if dims_constraints[0] < dimensions[0] || dims_constraints[1] < dimensions[1] ||
-               dims_constraints[2] < dimensions[2]
-            {
-                return Err(FramebufferCreationError::AttachmentTooSmall);
-            }
-        }
-
         let ids: SmallVec<[vk::ImageView; 8]> =
             attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
 
         let framebuffer = unsafe {
-            let vk = render_pass.device().pointers();
+            let vk = device.pointers();
 
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,   // reserved
-                renderPass: render_pass.inner().internal_object(),
+                renderPass: self.render_pass.inner().internal_object(),
                 attachmentCount: ids.len() as u32,
                 pAttachments: ids.as_ptr(),
                 width: dimensions[0],
@@ -193,13 +279,13 @@ impl<Rp> Framebuffer<Rp, Box<AttachmentsList + Send + Sync>> {
             output
         };
 
-        Ok(Arc::new(Framebuffer {
+        Ok(Framebuffer {
             device: device,
-            render_pass: render_pass,
+            render_pass: self.render_pass,
             framebuffer: framebuffer,
             dimensions: dimensions,
             resources: attachments,
-        }))
+        })
     }
 }
 
