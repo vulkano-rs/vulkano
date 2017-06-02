@@ -105,69 +105,40 @@ unsafe impl AttachmentsList for Vec<Arc<ImageViewAccess + Send + Sync>> {
     }
 }
 
-macro_rules! impl_into_atch_list {
-    ($first:ident $(, $rest:ident)*) => (
-        unsafe impl<$first $(, $rest)*> AttachmentsList for ($first, $($rest),*)
-            where $first: ImageViewAccess,
-                  $($rest: ImageViewAccess,)*
-        {
-            #[inline]
-            #[allow(non_snake_case)]
-            fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
-                let &(ref $first, $(ref $rest,)*) = self;
-                
-                vec![
-                    &$first.inner(),
-                    $(
-                        &$rest.inner(),
-                    )*
-                ]
-            }
+unsafe impl<A, B> AttachmentsList for (A, B)
+    where A: AttachmentsList, B: ImageViewAccess
+{
+    #[inline]
+    fn raw_image_view_handles(&self) -> Vec<&UnsafeImageView> {
+        let mut list = self.0.raw_image_view_handles();
+        list.push(self.1.inner());
+        list
+    }
 
-            #[inline]
-            #[allow(non_snake_case)]
-            fn intersection_dimensions(&self) -> Option<[u32; 3]> {
-                let &(ref $first, $(ref $rest,)*) = self;
+    #[inline]
+    fn intersection_dimensions(&self) -> Option<[u32; 3]> {
+        let dims = {
+            let d = self.1.dimensions();
+            debug_assert_eq!(d.depth(), 1);
+            [d.width(), d.height(), d.array_layers()]
+        };
 
-                let dims = {
-                    let d = $first.dimensions();
-                    debug_assert_eq!(d.depth(), 1);
-                    [d.width(), d.height(), d.array_layers()]
-                };
+        let dims = match self.0.intersection_dimensions() {
+            Some(d) => [
+                cmp::min(d[0], dims[0]),
+                cmp::min(d[1], dims[1]),
+                cmp::min(d[2], dims[2])
+            ],
+            None => dims,
+        };
 
-                $(
-                    let dims = {
-                        let d = $rest.dimensions();
-                        debug_assert_eq!(d.depth(), 1);
-                        [
-                            cmp::min(d.width(), dims[0]),
-                            cmp::min(d.height(), dims[1]),
-                            cmp::min(d.array_layers(), dims[2])
-                        ]
-                    };
-                )*
+        Some(dims)
+    }
 
-                Some(dims)
-            }
-
-            #[inline]
-            #[allow(non_snake_case)]
-            fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
-                let &(ref $first, $(ref $rest,)*) = self;
-                
-                vec![
-                    &*$first,
-                    $(
-                        &*$rest,
-                    )*
-                ]
-            }
-        }
-
-        impl_into_atch_list!($($rest),*);
-    );
-    
-    () => ();
+    #[inline]
+    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
+        let mut list = self.0.as_image_view_accesses();
+        list.push(&self.1);
+        list
+    }
 }
-
-impl_into_atch_list!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

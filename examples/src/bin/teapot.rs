@@ -69,7 +69,7 @@ fn main() {
     };
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), images[0].dimensions(), vulkano::format::D16Unorm).unwrap().access();
+    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                 ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
@@ -113,7 +113,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: vulkano::image::ImageAccess::format(&depth_buffer),
+                    format: vulkano::format::Format::D16Unorm,
                     samples: 1,
                 }
             },
@@ -153,11 +153,10 @@ fn main() {
     }));
 
     let framebuffers = images.iter().map(|image| {
-        let attachments = renderpass.desc().start_attachments()
-            .color(image.clone()).depth(depth_buffer.clone());
-        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-
-        vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
+        Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
+            .add(image.clone()).unwrap()
+            .add(depth_buffer.clone()).unwrap()
+            .build().unwrap())
     }).collect::<Vec<_>>();
 
 
@@ -182,8 +181,10 @@ fn main() {
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
-                renderpass.desc().start_clear_values()
-                    .color([0.0, 0.0, 1.0, 1.0]).depth((1f32))).unwrap()
+                vec![
+                    [0.0, 0.0, 1.0, 1.0].into(),
+                    1f32.into()
+                ]).unwrap()
             .draw_indexed(
                 pipeline.clone(), vulkano::command_buffer::DynamicState::none(),
                 (vertex_buffer.clone(), normals_buffer.clone()), 
