@@ -53,6 +53,7 @@ use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::ViewportsState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
+use vulkano::swapchain;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 use vulkano::sync::now;
@@ -106,7 +107,7 @@ fn main() {
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -118,7 +119,7 @@ fn main() {
     // queue to handle data transfers in parallel. In this example we only use one queue.
     //
     // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue = physical.queue_families().find(|q| {
+    let queue = physical.queue_families().find(|&q| {
         // We take the first queue that supports drawing to our window.
         q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
@@ -163,7 +164,7 @@ fn main() {
     let (swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = window.surface().get_capabilities(&physical)
+        let caps = window.surface().capabilities(physical)
                          .expect("failed to get surface capabilities");
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
@@ -184,7 +185,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(device.clone(), &window.surface(), caps.min_image_count, format, dimensions, 1,
+        Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
                        caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
                        present, true, None).expect("failed to create swapchain")
     };
@@ -245,7 +246,7 @@ fn main() {
                 // of your structs that implements the `FormatDesc` trait). Here we use the
                 // generic `vulkano::format::Format` enum because we don't know the format in
                 // advance.
-                format: images[0].format(),
+                format: swapchain.format(),
                 // TODO:
                 samples: 1,
             }
@@ -366,7 +367,8 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
-        let (image_num, acquire_future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = swapchain::acquire_next_image(swapchain.clone(),
+                                                                        Duration::new(1, 0)).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.

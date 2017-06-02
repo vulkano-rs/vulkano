@@ -43,30 +43,27 @@ use OomError;
 /// method on the swapchain), which will have the effect of showing the content of the image to
 /// the screen. Once an image has been presented, it can no longer be used unless it is acquired
 /// again.
-// TODO: #[derive(Debug)] (needs https://github.com/aturon/crossbeam/issues/62)
+// TODO: #[derive(Debug)]
 pub struct SwapchainImage {
-    image: UnsafeImage,
-    view: UnsafeImageView,
-    format: Format,
     swapchain: Arc<Swapchain>,
-    id: u32,
+    image_offset: usize,
+    view: UnsafeImageView,
 }
 
 impl SwapchainImage {
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
-    pub unsafe fn from_raw(image: UnsafeImage, format: Format, swapchain: &Arc<Swapchain>, id: u32)
+    pub unsafe fn from_raw(swapchain: Arc<Swapchain>, id: usize)
                            -> Result<Arc<SwapchainImage>, OomError>
     {
+        let image = swapchain.raw_image(id).unwrap();
         let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1));
 
         Ok(Arc::new(SwapchainImage {
-            image: image,
-            view: view,
-            format: format,
             swapchain: swapchain.clone(),
-            id: id,
+            image_offset: id,
+            view: view,
         }))
     }
 
@@ -75,15 +72,8 @@ impl SwapchainImage {
     /// A `SwapchainImage` is always two-dimensional.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
-        let dims = self.image.dimensions();
+        let dims = self.my_image().dimensions();
         [dims.width(), dims.height()]
-    }
-
-    /// Returns the format of the image.
-    // TODO: return `ColorFormat` or something like this instead, for stronger typing
-    #[inline]
-    pub fn format(&self) -> Format {
-        self.format
     }
 
     /// Returns the swapchain this image belongs to.
@@ -91,12 +81,17 @@ impl SwapchainImage {
     pub fn swapchain(&self) -> &Arc<Swapchain> {
         &self.swapchain
     }
+
+    #[inline]
+    fn my_image(&self) -> &UnsafeImage {
+        self.swapchain.raw_image(self.image_offset).unwrap()
+    }
 }
 
 unsafe impl ImageAccess for SwapchainImage {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
-        &self.image
+        self.my_image()
     }
 
     #[inline]
@@ -111,7 +106,7 @@ unsafe impl ImageAccess for SwapchainImage {
 
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
-        self.image.key()
+        self.my_image().key()
     }
 
     #[inline]
@@ -129,7 +124,7 @@ unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainIma
 {
     #[inline]
     fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
-        Some(self.format.decode_clear_value(value))
+        Some(self.swapchain.format().decode_clear_value(value))
     }
 }
 
@@ -148,8 +143,8 @@ unsafe impl ImageViewAccess for SwapchainImage {
 
     #[inline]
     fn dimensions(&self) -> Dimensions {
-        let dims = self.image.dimensions();
-        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+        let dims = self.swapchain.dimensions();
+        Dimensions::Dim2d { width: dims[0], height: dims[1] }
     }
 
     #[inline]
@@ -193,17 +188,17 @@ unsafe impl Image for SwapchainImage {
 
     #[inline]
     fn format(&self) -> Format {
-        self.image.format()
+        self.my_image().format()
     }
 
     #[inline]
     fn samples(&self) -> u32 {
-        self.image.samples()
+        self.my_image().samples()
     }
 
     #[inline]
     fn dimensions(&self) -> ImageDimensions {
-        self.image.dimensions()
+        self.my_image().dimensions()
     }
 }
 
@@ -225,17 +220,17 @@ unsafe impl Image for Arc<SwapchainImage> {
 
     #[inline]
     fn format(&self) -> Format {
-        self.image.format()
+        self.my_image().format()
     }
 
     #[inline]
     fn samples(&self) -> u32 {
-        self.image.samples()
+        self.my_image().samples()
     }
 
     #[inline]
     fn dimensions(&self) -> ImageDimensions {
-        self.image.dimensions()
+        self.my_image().dimensions()
     }
 }
 

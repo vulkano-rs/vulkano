@@ -34,9 +34,9 @@ fn main() {
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
     let events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
-    let queue = physical.queue_families().find(|q| q.supports_graphics() &&
+    let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
@@ -50,13 +50,13 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (swapchain, images) = {
-        let caps = window.surface().get_capabilities(&physical).expect("failed to get surface capabilities");
+        let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
 
-        vulkano::swapchain::Swapchain::new(device.clone(), &window.surface(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
                                            vulkano::format::B8G8R8A8Srgb, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
@@ -88,7 +88,7 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: images[0].format(),
+                    format: swapchain.format(),
                     samples: 1,
                 }
             },
@@ -169,7 +169,7 @@ fn main() {
     loop {
         previous_frame_end.cleanup_finished();
 
-        let (image_num, future) = swapchain.acquire_next_image(Duration::new(10, 0)).unwrap();
+        let (image_num, future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), Duration::new(10, 0)).unwrap();
 
         let cb = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
