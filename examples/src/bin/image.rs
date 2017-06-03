@@ -13,6 +13,8 @@ extern crate winit;
 
 #[macro_use]
 extern crate vulkano;
+#[macro_use]
+extern crate vulkano_shader_derive;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
@@ -77,9 +79,7 @@ fn main() {
                                            Vertex { position: [ 0.5,  0.5 ] },
                                        ].iter().cloned()).expect("failed to create buffer");
 
-    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_vs.glsl")} }
     let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/image_fs.glsl")} }
     let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
     let renderpass = Arc::new(
@@ -196,4 +196,39 @@ fn main() {
         });
         if done { return; }
     }
+}
+
+mod vs {
+    #[derive(VulkanoShader)]
+    #[ty = "vertex"]
+    #[src = "
+#version 450
+
+layout(location = 0) in vec2 position;
+layout(location = 0) out vec2 tex_coords;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    tex_coords = position + vec2(0.5);
+}
+"]
+    struct Dummy;
+}
+
+mod fs {
+    #[derive(VulkanoShader)]
+    #[ty = "fragment"]
+    #[src = "
+#version 450
+
+layout(location = 0) in vec2 tex_coords;
+layout(location = 0) out vec4 f_color;
+
+layout(set = 0, binding = 0) uniform sampler2D tex;
+
+void main() {
+    f_color = texture(tex, tex_coords);
+}
+"]
+    struct Dummy;
 }
