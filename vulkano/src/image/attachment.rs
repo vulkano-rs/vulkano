@@ -70,7 +70,7 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F, A = StdMemoryPoolAlloc> {
+pub struct AttachmentImage<F = Format, A = StdMemoryPoolAlloc> {
     // Inner implementation.
     image: UnsafeImage,
 
