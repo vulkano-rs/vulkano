@@ -101,7 +101,19 @@ impl<F> AttachmentImage<F> {
                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none())
+        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), 1)
+    }
+
+    /// Same as `new`, but creates a multisampled image.
+    ///
+    /// > **Note**: You can also use this function and pass `1` for the number of samples if you
+    /// > want a regular image.
+    #[inline]
+    pub fn multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+                        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
     }
 
     /// Same as `new`, but lets you specify additional usages.
@@ -110,7 +122,20 @@ impl<F> AttachmentImage<F> {
                       -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
-        AttachmentImage::new_impl(device, dimensions, format, usage)
+        AttachmentImage::new_impl(device, dimensions, format, usage, 1)
+    }
+
+    /// Same as `with_usage`, but creates a multisampled image.
+    ///
+    /// > **Note**: You can also use this function and pass `1` for the number of samples if you
+    /// > want a regular image.
+    #[inline]
+    pub fn multisampled_with_usage(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
+                                   format: F, usage: ImageUsage)
+                                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        AttachmentImage::new_impl(device, dimensions, format, usage, samples)
     }
 
     /// Same as `new`, except that the image will be transient.
@@ -127,11 +152,28 @@ impl<F> AttachmentImage<F> {
             .. ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
     }
 
-    fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage)
-                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    /// Same as `transient`, but creates a multisampled image.
+    ///
+    /// > **Note**: You can also use this function and pass `1` for the number of samples if you
+    /// > want a regular image.
+    #[inline]
+    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            transient_attachment: true,
+            .. ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+    }
+
+    fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage,
+                samples: u32) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
@@ -151,9 +193,15 @@ impl<F> AttachmentImage<F> {
         };
 
         let (image, mem_reqs) = unsafe {
-            try!(UnsafeImage::new(device.clone(), usage, format.format(),
-                                  ImageDimensions::Dim2d { width: dimensions[0], height: dimensions[1], array_layers: 1, cubemap_compatible: false },
-                                  1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            let dims = ImageDimensions::Dim2d {
+                width: dimensions[0],
+                height: dimensions[1],
+                array_layers: 1,
+                cubemap_compatible: false
+            };
+
+            try!(UnsafeImage::new(device.clone(), usage, format.format(), dims,
+                                  samples, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
         let mem_ty = {
