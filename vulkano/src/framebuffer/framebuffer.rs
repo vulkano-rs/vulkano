@@ -40,88 +40,46 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-/// Contains the list of images attached to a render pass.
+/// Contains a render pass and the image views that are attached to it.
 ///
-/// Creating a framebuffer is done by passing the render pass object, the dimensions of the
-/// framebuffer, and the list of attachments to `Framebuffer::new()`.
+/// Creating a framebuffer is done by calling `Framebuffer::start`, which returns a
+/// `FramebufferBuilder` object. You can then add the framebuffer attachments one by one by
+/// calling `add(image)`. When you are done, call `build()`.
 ///
-/// Just like all render pass objects implement the `RenderPassAbstract` trait, all framebuffer
-/// objects implement the `FramebufferAbstract` trait. This means that you can cast any
-/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
+/// Both the `add` and the `build` functions perform various checks to make sure that the number
+/// of images is correct and that each image is compatible with the attachment definition in the
+/// render pass.
 ///
-/// ## With a generic list of attachments
-///
-/// The list of attachments passed to `Framebuffer::new()` can be of various types, but one of the
-/// possibilities is to pass an object of type `Vec<Arc<ImageView + Send + Sync>>`.
-///
-/// > **Note**: If you access a render pass object through the `RenderPassAbstract` trait, passing
-/// > a `Vec<Arc<ImageView + Send + Sync>>` is the only possible method.
-///
-/// The framebuffer constructor will perform various checks to make sure that the number of images
-/// is correct and that each image can be used with this render pass.
-///
-/// ```ignore       // FIXME: unignore
+/// ```
 /// # use std::sync::Arc;
 /// # use vulkano::framebuffer::RenderPassAbstract;
 /// use vulkano::framebuffer::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
-/// # let my_image: Arc<vulkano::image::ImageViewAccess> = return;
-/// // let render_pass: Arc<RenderPassAbstract + Send + Sync> = ...;
-/// let framebuffer = Framebuffer::new(render_pass.clone(), [1024, 768, 1],
-///                                    vec![my_image.clone() as Arc<_>]).unwrap();
+/// # let my_image: Arc<vulkano::image::AttachmentImage<vulkano::format::Format>> = return;
+/// // let render_pass: Arc<_> = ...;
+/// let framebuffer = Framebuffer::build(render_pass.clone())
+///     .add(my_image).unwrap()
+///     .build().unwrap();
 /// ```
 ///
-/// ## With a specialized list of attachments
+/// Just like render pass objects implement the `RenderPassAbstract` trait, all framebuffer
+/// objects implement the `FramebufferAbstract` trait. This means that you can cast any
+/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
 ///
-/// The list of attachments can also be of any type `T`, as long as the render pass description
-/// implements the trait `RenderPassDescAttachmentsList<T>`.
+/// ## Framebuffer dimensions
 ///
-/// For example if you pass a render pass object that implements
-/// `RenderPassDescAttachmentsList<Foo>`, then you can pass a `Foo` as the list of attachments.
+/// If you use `Framebuffer::start()` to create a framebuffer then vulkano will automatically
+/// make sure that all the attachments have the same dimensions, as this is the most common
+/// situation.
 ///
-/// > **Note**: The reason why `Vec<Arc<ImageView + Send + Sync>>` always works (see previous section) is that
-/// > render pass descriptions are required to always implement
-/// > `RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>>`.
+/// Alternatively you can also use `with_intersecting_dimensions`, in which case the dimensions of
+/// the framebuffer will be the intersection of the dimensions of all attachments, or
+/// `with_dimensions` if you want to specify exact dimensions.
 ///
-/// When it comes to the `single_pass_renderpass!` and `ordered_passes_renderpass!` macros, you can
-/// build a list of attachments by calling `start_attachments()` on the render pass description,
-/// which will return an object that has a method whose name is the name of the first attachment
-/// and that can be used to specify it. This method will return another object that has a method
-/// whose name is the name of the second attachment, and so on. See the documentation of the macros
-/// for more details. TODO: put link here
+/// If the dimensions of the framebuffer don't match the dimensions of one of its attachment, then
+/// only the top-left hand corner of the image will be drawn to.
 ///
-/// ```ignore       // FIXME: unignore
-/// # #[macro_use] extern crate vulkano;
-/// # fn main() {
-/// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// use std::sync::Arc;
-/// use vulkano::format::Format;
-/// use vulkano::framebuffer::Framebuffer;
-///
-/// let render_pass = single_pass_renderpass!(device.clone(),
-///     attachments: {
-///         // `foo` is a custom name we give to the first and only attachment.
-///         foo: {
-///             load: Clear,
-///             store: Store,
-///             format: Format::R8G8B8A8Unorm,
-///             samples: 1,
-///         }
-///     },
-///     pass: {
-///         color: [foo],       // Repeat the attachment name here.
-///         depth_stencil: {}
-///     }
-/// ).unwrap();
-///
-/// # let my_image: Arc<vulkano::image::ImageViewAccess> = return;
-/// let framebuffer = {
-///     let atch = render_pass.desc().start_attachments().foo(my_image.clone() as Arc<_>);
-///     Framebuffer::new(render_pass, [1024, 768, 1], atch).unwrap()
-/// };
-/// # }
-/// ```
 #[derive(Debug)]
 pub struct Framebuffer<Rp, A> {
     // TODO: is this field really needed?
