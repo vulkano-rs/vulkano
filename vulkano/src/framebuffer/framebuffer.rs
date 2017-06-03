@@ -83,7 +83,6 @@ use vk;
 ///
 #[derive(Debug)]
 pub struct Framebuffer<Rp, A> {
-    // TODO: is this field really needed?
     device: Arc<Device>,
     render_pass: Rp,
     framebuffer: vk::Framebuffer,
