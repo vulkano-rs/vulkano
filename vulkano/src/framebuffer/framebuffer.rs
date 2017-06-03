@@ -132,6 +132,18 @@ pub struct FramebufferBuilder<Rp, A> {
     attachments: A,
 }
 
+impl<Rp, A> fmt::Debug for FramebufferBuilder<Rp, A> where Rp: fmt::Debug, A: fmt::Debug {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("FramebufferBuilder")
+            .field("render_pass", &self.render_pass)
+            .field("dimensions", &self.dimensions)
+            .field("attachments", &self.attachments)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 enum FramebufferBuilderDimensions {
     AutoIdentical(Option<[u32; 3]>),
     AutoSmaller(Option<[u32; 3]>),
