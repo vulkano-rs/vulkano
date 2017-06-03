@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::cmp;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
@@ -141,6 +142,27 @@ impl<Rp> Framebuffer<Rp, ()> {
             attachments: (),
         }
     }
+
+    /// Starts building a framebuffer. The dimensions of the framebuffer will automatically be
+    /// the intersection of the dimensions of all the attachments.
+    pub fn with_intersecting_dimensions(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
+        FramebufferBuilder {
+            render_pass: render_pass,
+            dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
+            num_attachments: 0,
+            attachments: (),
+        }
+    }
+
+    /// Starts building a framebuffer.
+    pub fn with_dimensions(render_pass: Rp, dimensions: [u32; 3]) -> FramebufferBuilder<Rp, ()> {
+        FramebufferBuilder {
+            render_pass: render_pass,
+            dimensions: FramebufferBuilderDimensions::Specific(dimensions),
+            num_attachments: 0,
+            attachments: (),
+        }
+    }
 }
 
 /// Prototype of a framebuffer.
@@ -153,7 +175,7 @@ pub struct FramebufferBuilder<Rp, A> {
 
 enum FramebufferBuilderDimensions {
     AutoIdentical,
-    AutoSmaller,
+    AutoSmaller(Option<[u32; 3]>),
     Specific([u32; 3]),
 }
 
@@ -182,28 +204,38 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err))
         };
 
+        let img_dims = access.dimensions();
+        debug_assert_eq!(img_dims.depth(), 1);
+
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::AutoIdentical => {
-                let dims = access.dimensions();
-                debug_assert_eq!(dims.depth(), 1);
-                let dims = [dims.width(), dims.height(), dims.array_layers()];
+                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
                 FramebufferBuilderDimensions::Specific(dims)
             },
-            FramebufferBuilderDimensions::AutoSmaller => {
-                FramebufferBuilderDimensions::AutoSmaller
+            FramebufferBuilderDimensions::AutoSmaller(None) => {
+                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
+                FramebufferBuilderDimensions::AutoSmaller(Some(dims))
+            },
+            FramebufferBuilderDimensions::AutoSmaller(Some(current)) => {
+                let new_dims = [
+                    cmp::min(current[0], img_dims.width()),
+                    cmp::min(current[1], img_dims.height()),
+                    cmp::min(current[2], img_dims.array_layers())
+                ];
+
+                FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
             },
             FramebufferBuilderDimensions::Specific(current) => {
-                let dims = access.dimensions();
-                if dims.width() != current[0] || dims.height() != current[1] ||
-                   dims.array_layers() != current[2]
+                if img_dims.width() != current[0] || img_dims.height() != current[1] ||
+                   img_dims.array_layers() != current[2]
                 {
-                    return Err(FramebufferCreationError::AttachmentTooSmall);  // TODO: more precise?
+                    return Err(FramebufferCreationError::AttachmentTooSmall);  // TODO: more precise error?
                 }
 
                 FramebufferBuilderDimensions::Specific([
-                    dims.width(),
-                    dims.height(),
-                    dims.array_layers()
+                    img_dims.width(),
+                    img_dims.height(),
+                    img_dims.array_layers()
                 ])
             }
         };
@@ -249,9 +281,14 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
 
         // Compute the dimensions.
         let dimensions = match self.dimensions {
-            FramebufferBuilderDimensions::AutoIdentical => panic!(),        // TODO: what if 0 attachment?
-            FramebufferBuilderDimensions::AutoSmaller => self.attachments.intersection_dimensions().unwrap(),        // TODO: what if 0 attachment?
-            FramebufferBuilderDimensions::Specific(dims) => dims,
+            FramebufferBuilderDimensions::Specific(dims) |
+            FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => {
+                dims
+            },
+            FramebufferBuilderDimensions::AutoIdentical |
+            FramebufferBuilderDimensions::AutoSmaller(None) => {
+                panic!()        // TODO: what if 0 attachment?
+            },
         };
 
         // Checking the dimensions against the limits.
