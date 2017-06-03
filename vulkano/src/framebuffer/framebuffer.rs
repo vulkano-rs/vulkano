@@ -229,7 +229,10 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 if img_dims.width() != current[0] || img_dims.height() != current[1] ||
                    img_dims.array_layers() != current[2]
                 {
-                    return Err(FramebufferCreationError::AttachmentTooSmall);  // TODO: more precise error?
+                    return Err(FramebufferCreationError::AttachmentDimensionsMismatch {
+                        expected: current,
+                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()]
+                    });
                 }
 
                 FramebufferBuilderDimensions::Specific([
@@ -290,7 +293,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             },
             FramebufferBuilderDimensions::AutoIdentical |
             FramebufferBuilderDimensions::AutoSmaller(None) => {
-                panic!()        // TODO: what if 0 attachment?
+                return Err(FramebufferCreationError::CantDetermineDimensions);
             },
         };
 
@@ -480,8 +483,13 @@ pub enum FramebufferCreationError {
     OomError(OomError),
     /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
-    /// One of the attachments is too small compared to the requested framebuffer dimensions.
-    AttachmentTooSmall,
+    /// The attachment has a size that isn't compatible with the framebuffer dimensions.
+    AttachmentDimensionsMismatch {
+        /// Expected dimensions.
+        expected: [u32; 3],
+        /// Attachment dimensions.
+        obtained: [u32; 3],
+    },
     /// The number of attachments doesn't match the number expected by the render pass.
     AttachmentsCountMismatch {
         /// Expected number of attachments.
@@ -491,6 +499,8 @@ pub enum FramebufferCreationError {
     },
     /// One of the images cannot be used as the requested attachment.
     IncompatibleAttachment(IncompatibleRenderPassAttachmentError),
+    /// The framebuffer has no attachment and no dimension was specified.
+    CantDetermineDimensions,
 }
 
 impl From<OomError> for FramebufferCreationError {
@@ -507,15 +517,17 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::OomError(_) => "no memory available",
             FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
                                                              are too large",
-            FramebufferCreationError::AttachmentTooSmall => {
-                "one of the attachments is too small compared to the requested framebuffer \
-                 dimensions"
+            FramebufferCreationError::AttachmentDimensionsMismatch { .. } => {
+                "the attachment has a size that isn't compatible with the framebuffer dimensions"
             },
             FramebufferCreationError::AttachmentsCountMismatch { .. } => {
                 "the number of attachments doesn't match the number expected by the render pass"
             },
             FramebufferCreationError::IncompatibleAttachment(_) => {
                 "one of the images cannot be used as the requested attachment"
+            },
+            FramebufferCreationError::CantDetermineDimensions => {
+                "the framebuffer has no attachment and no dimension was specified"
             },
         }
     }
@@ -642,7 +654,10 @@ mod tests {
         let img = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
-            Err(FramebufferCreationError::AttachmentTooSmall) => (),
+            Err(FramebufferCreationError::AttachmentDimensionsMismatch { expected, obtained }) => {
+                assert_eq!(expected, [600, 600, 1]);
+                assert_eq!(obtained, [512, 512, 1]);
+            },
             _ => panic!()
         }
     }
@@ -676,7 +691,10 @@ mod tests {
         let b = AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
-            Err(FramebufferCreationError::AttachmentTooSmall) => (),
+            Err(FramebufferCreationError::AttachmentDimensionsMismatch { expected, obtained }) => {
+                assert_eq!(expected, [512, 512, 1]);
+                assert_eq!(obtained, [512, 513, 1]);
+            },
             _ => panic!()
         }
     }
@@ -787,6 +805,38 @@ mod tests {
         match res {
             Err(FramebufferCreationError::AttachmentsCountMismatch { expected: 1,
                                                                      obtained: 2 }) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn empty_working() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let _ = Framebuffer::with_dimensions(rp, [512, 512, 1]).build().unwrap();
+    }
+
+    #[test]
+    fn cant_determine_dimensions_auto() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let res = Framebuffer::start(rp).build();
+        match res {
+            Err(FramebufferCreationError::CantDetermineDimensions) => (),
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn cant_determine_dimensions_intersect() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let res = Framebuffer::with_intersecting_dimensions(rp).build();
+        match res {
+            Err(FramebufferCreationError::CantDetermineDimensions) => (),
             _ => panic!()
         }
     }
