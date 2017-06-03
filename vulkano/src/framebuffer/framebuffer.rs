@@ -75,7 +75,8 @@ use vk;
 ///
 /// Alternatively you can also use `with_intersecting_dimensions`, in which case the dimensions of
 /// the framebuffer will be the intersection of the dimensions of all attachments, or
-/// `with_dimensions` if you want to specify exact dimensions.
+/// `with_dimensions` if you want to specify exact dimensions. If you use `with_dimensions`, you
+/// are allowed to attach images that are larger than these dimensions.
 ///
 /// If the dimensions of the framebuffer don't match the dimensions of one of its attachment, then
 /// only the top-left hand corner of the image will be drawn to.
@@ -96,7 +97,7 @@ impl<Rp> Framebuffer<Rp, ()> {
         FramebufferBuilder {
             render_pass: render_pass,
             raw_ids: SmallVec::new(),
-            dimensions: FramebufferBuilderDimensions::AutoIdentical,
+            dimensions: FramebufferBuilderDimensions::AutoIdentical(None),
             attachments: (),
         }
     }
@@ -132,7 +133,7 @@ pub struct FramebufferBuilder<Rp, A> {
 }
 
 enum FramebufferBuilderDimensions {
-    AutoIdentical,
+    AutoIdentical(Option<[u32; 3]>),
     AutoSmaller(Option<[u32; 3]>),
     Specific([u32; 3]),
 }
@@ -166,10 +167,22 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         debug_assert_eq!(img_dims.depth(), 1);
 
         let dimensions = match self.dimensions {
-            FramebufferBuilderDimensions::AutoIdentical => {
+            FramebufferBuilderDimensions::AutoIdentical(None) => {
                 let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
-                FramebufferBuilderDimensions::Specific(dims)
+                FramebufferBuilderDimensions::AutoIdentical(Some(dims))
             },
+            FramebufferBuilderDimensions::AutoIdentical(Some(current)) => {
+                if img_dims.width() != current[0] || img_dims.height() != current[1] ||
+                   img_dims.array_layers() != current[2]
+                {
+                    return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
+                        expected: current,
+                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()]
+                    });
+                }
+
+                FramebufferBuilderDimensions::AutoIdentical(Some(current))
+            }
             FramebufferBuilderDimensions::AutoSmaller(None) => {
                 let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
                 FramebufferBuilderDimensions::AutoSmaller(Some(dims))
@@ -184,10 +197,10 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
             },
             FramebufferBuilderDimensions::Specific(current) => {
-                if img_dims.width() != current[0] || img_dims.height() != current[1] ||
-                   img_dims.array_layers() != current[2]
+                if img_dims.width() < current[0] || img_dims.height() < current[1] ||
+                   img_dims.array_layers() < current[2]
                 {
-                    return Err(FramebufferCreationError::AttachmentDimensionsMismatch {
+                    return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
                         obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()]
                     });
@@ -246,10 +259,11 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         // Compute the dimensions.
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::Specific(dims) |
+            FramebufferBuilderDimensions::AutoIdentical(Some(dims)) |
             FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => {
                 dims
             },
-            FramebufferBuilderDimensions::AutoIdentical |
+            FramebufferBuilderDimensions::AutoIdentical(None) |
             FramebufferBuilderDimensions::AutoSmaller(None) => {
                 return Err(FramebufferCreationError::CantDetermineDimensions);
             },
@@ -441,8 +455,8 @@ pub enum FramebufferCreationError {
     OomError(OomError),
     /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
-    /// The attachment has a size that isn't compatible with the framebuffer dimensions.
-    AttachmentDimensionsMismatch {
+    /// The attachment has a size that isn't compatible with the requested framebuffer dimensions.
+    AttachmentDimensionsIncompatible {
         /// Expected dimensions.
         expected: [u32; 3],
         /// Attachment dimensions.
@@ -475,7 +489,7 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::OomError(_) => "no memory available",
             FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
                                                              are too large",
-            FramebufferCreationError::AttachmentDimensionsMismatch { .. } => {
+            FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
                 "the attachment has a size that isn't compatible with the framebuffer dimensions"
             },
             FramebufferCreationError::AttachmentsCountMismatch { .. } => {
@@ -591,7 +605,7 @@ mod tests {
     // TODO: check samples mismatch
 
     #[test]
-    fn attachment_dims_mismatch_specified() {
+    fn attachment_dims_larger_than_specified_valid() {
         let (device, _) = gfx_dev_and_queue!();
         
         let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
@@ -609,12 +623,38 @@ mod tests {
             }
         ).unwrap());
 
-        let img = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
+        let img = AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap();
+
+        let _ = Framebuffer::with_dimensions(render_pass, [512, 512, 1])
+            .add(img).unwrap()
+            .build().unwrap();
+    }
+
+    #[test]
+    fn attachment_dims_smaller_than_specified() {
+        let (device, _) = gfx_dev_and_queue!();
+        
+        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        ).unwrap());
+
+        let img = AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
-            Err(FramebufferCreationError::AttachmentDimensionsMismatch { expected, obtained }) => {
+            Err(FramebufferCreationError::AttachmentDimensionsIncompatible { expected, obtained }) => {
                 assert_eq!(expected, [600, 600, 1]);
-                assert_eq!(obtained, [512, 512, 1]);
+                assert_eq!(obtained, [512, 700, 1]);
             },
             _ => panic!()
         }
@@ -649,7 +689,7 @@ mod tests {
         let b = AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
-            Err(FramebufferCreationError::AttachmentDimensionsMismatch { expected, obtained }) => {
+            Err(FramebufferCreationError::AttachmentDimensionsIncompatible { expected, obtained }) => {
                 assert_eq!(expected, [512, 512, 1]);
                 assert_eq!(obtained, [512, 513, 1]);
             },
