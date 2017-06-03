@@ -139,7 +139,6 @@ impl<Rp> Framebuffer<Rp, ()> {
             render_pass: render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoIdentical,
-            num_attachments: 0,
             attachments: (),
         }
     }
@@ -151,7 +150,6 @@ impl<Rp> Framebuffer<Rp, ()> {
             render_pass: render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
-            num_attachments: 0,
             attachments: (),
         }
     }
@@ -162,7 +160,6 @@ impl<Rp> Framebuffer<Rp, ()> {
             render_pass: render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::Specific(dimensions),
-            num_attachments: 0,
             attachments: (),
         }
     }
@@ -173,7 +170,6 @@ pub struct FramebufferBuilder<Rp, A> {
     render_pass: Rp,
     raw_ids: SmallVec<[vk::ImageView; 8]>,
     dimensions: FramebufferBuilderDimensions,
-    num_attachments: usize,
     attachments: A,
 }
 
@@ -196,14 +192,14 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     {
         let access = attachment.access();
 
-        if self.num_attachments >= self.render_pass.num_attachments() {
+        if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
                 expected: self.render_pass.num_attachments(),
-                obtained: self.num_attachments,
+                obtained: self.raw_ids.len(),
             });
         }
 
-        match ensure_image_view_compatible(&self.render_pass, self.num_attachments, &access) {
+        match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &access) {
             Ok(()) => (),
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err))
         };
@@ -251,7 +247,6 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             render_pass: self.render_pass,
             raw_ids: raw_ids,
             dimensions: dimensions,
-            num_attachments: self.num_attachments + 1,
             attachments: (self.attachments, access),
         })
     }
@@ -271,7 +266,6 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             render_pass: self.render_pass,
             raw_ids: self.raw_ids,
             dimensions: self.dimensions,
-            num_attachments: self.num_attachments,
             attachments: Box::new(self.attachments) as Box<_>,
         }
     }
@@ -281,10 +275,10 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         let device = self.render_pass.device().clone();
 
         // Check the number of attachments.
-        if self.num_attachments != self.render_pass.num_attachments() {
+        if self.raw_ids.len() != self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
                 expected: self.render_pass.num_attachments(),
-                obtained: self.num_attachments,
+                obtained: self.raw_ids.len(),
             });
         }
 
