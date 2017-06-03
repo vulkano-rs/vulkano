@@ -18,6 +18,7 @@ use std::fmt;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::os::raw::c_ulong;
+use std::os::raw::c_double;
 
 pub type Flags = u32;
 pub type Bool32 = u32;
@@ -164,6 +165,8 @@ pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (52 * 1000);
+pub const STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (53 * 1000);
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR: u32 = 1000059001;
 pub const STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059002;
@@ -987,6 +990,10 @@ pub const DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT: u32 = 0x00000004;
 pub const DEBUG_REPORT_ERROR_BIT_EXT: u32 = 0x00000008;
 pub const DEBUG_REPORT_DEBUG_BIT_EXT: u32 = 0x00000010;
 pub type DebugReportFlagsEXT = Flags;
+
+pub type MacOSSurfaceCreateFlagsMVK = u32;
+
+pub type IOSSurfaceCreateFlagsMVK = u32;
 
 pub type DescriptorSetLayoutCreateFlagBits = u32;
 pub const DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR: u32 = 0x00000001;
@@ -2411,6 +2418,51 @@ pub struct DebugReportCallbackCreateInfoEXT {
 }
 
 #[repr(C)]
+pub struct IOSSurfaceCreateInfoMVK {
+	pub sType: StructureType,
+	pub pNext: *const c_void,
+	pub flags: IOSSurfaceCreateFlagsMVK,
+	pub pView: *const c_void,
+}
+
+#[repr(C)]
+pub struct MacOSSurfaceCreateInfoMVK {
+	pub sType: StructureType,
+	pub pNext: *const c_void,
+	pub flags: MacOSSurfaceCreateFlagsMVK,
+	pub pView: *const c_void,
+}
+
+#[repr(C)]
+pub struct MVKDeviceConfiguration {
+    pub supportDisplayContentsScale: Bool32,
+    pub imageFlipY: Bool32,
+    pub shaderConversionFlipFragmentY: Bool32,
+    pub shaderConversionFlipVertexY: Bool32,
+    pub shaderConversionLogging: Bool32,
+    pub performanceTracking: Bool32,
+    pub performanceLoggingFrameCount: u32,
+}
+
+#[repr(C)]
+pub struct MVKPhysicalDeviceMetalFeatures {
+	pub depthClipMode: Bool32,
+	pub indirectDrawing: Bool32,
+	pub baseVertexInstanceDrawing: Bool32,
+	pub maxVertexBufferCount: u32,
+	pub maxFragmentBufferCount: u32,
+    pub bufferAlignment: DeviceSize,
+    pub pushConstantsAlignment: DeviceSize,
+}
+
+#[repr(C)]
+pub struct MVKSwapchainPerformance {
+    pub lastFrameInterval: c_double,
+    pub averageFrameInterval: c_double,
+    pub averageFramesPerSecond: c_double,
+}
+
+#[repr(C)]
 pub struct PhysicalDeviceFeatures2KHR {
     pub sType: StructureType,
     pub pNext: *const c_void,
@@ -2527,7 +2579,7 @@ macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
             $(
-                $name: extern "system" fn($($param_ty),*) -> $ret,
+                pub $name: extern "system" fn($($param_ty),*) -> $ret,
             )+
         }
 
@@ -2618,6 +2670,14 @@ ptrs!(InstancePointers, {
     CreateDebugReportCallbackEXT => (instance: Instance, pCreateInfo: *const DebugReportCallbackCreateInfoEXT, pAllocator: *const AllocationCallbacks, pCallback: *mut DebugReportCallbackEXT) -> Result,
     DestroyDebugReportCallbackEXT => (instance: Instance, callback: DebugReportCallbackEXT, pAllocator: *const AllocationCallbacks) -> (),
     DebugReportMessageEXT => (instance: Instance, flags: DebugReportFlagsEXT, objectType: DebugReportObjectTypeEXT, object: u64, location: usize, messageCode: i32, pLayerPrefix: *const c_char, pMessage: *const c_char) -> (),
+    CreateIOSSurfaceMVK => (instance: Instance, pCreateInfo: *const IOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    CreateMacOSSurfaceMVK => (instance: Instance, pCreateInfo: *const MacOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    ActivateMoltenVKLicenseMVK => (licenseID: *const c_char, licenseKey: *const c_char, acceptLicenseTermsAndConditions: Bool32) -> Result,
+    ActivateMoltenVKLicensesMVK => () -> Result,
+    GetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    SetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    GetPhysicalDeviceMetalFeaturesMVK => (physicalDevice: PhysicalDevice, pMetalFeatures: *mut MVKPhysicalDeviceMetalFeatures) -> Result,
+    GetSwapchainPerformanceMVK => (device: Device, swapchain: SwapchainKHR, pSwapchainPerf: *mut MVKSwapchainPerformance) -> Result,
     CreateViSurfaceNN => (instance: Instance, pCreateInfo: *const ViSurfaceCreateInfoNN, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
     GetPhysicalDeviceFeatures2KHR => (physicalDevice: PhysicalDevice, pFeatures: *mut PhysicalDeviceFeatures2KHR) -> (),
     GetPhysicalDeviceProperties2KHR => (physicalDevice: PhysicalDevice, pProperties: *mut PhysicalDeviceProperties2KHR) -> (),

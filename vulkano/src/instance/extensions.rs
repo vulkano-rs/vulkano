@@ -201,6 +201,9 @@ instance_extensions! {
     khr_android_surface => b"VK_KHR_android_surface",
     khr_win32_surface => b"VK_KHR_win32_surface",
     ext_debug_report => b"VK_EXT_debug_report",
+    mvk_ios_surface => b"VK_MVK_ios_surface",
+    mvk_macos_surface => b"VK_MVK_macos_surface",
+    mvk_moltenvk => b"VK_MVK_moltenvk",     // TODO: confirm that it's an instance extension
     nn_vi_surface => b"VK_NN_vi_surface",
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
 }

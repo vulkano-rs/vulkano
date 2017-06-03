@@ -1,6 +1,13 @@
 extern crate vulkano;
 extern crate winit;
 
+#[cfg(target_os = "macos")]
+extern crate objc;
+#[cfg(target_os = "macos")]
+extern crate cocoa;
+#[cfg(target_os = "macos")]
+extern crate metal_rs as metal;
+
 use std::error;
 use std::fmt;
 use std::ptr;
@@ -13,6 +20,17 @@ use vulkano::swapchain::SurfaceCreationError;
 use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
+#[cfg(target_os = "macos")]
+use objc::runtime::{YES};
+#[cfg(target_os = "macos")]
+use cocoa::base::id as cocoa_id;
+#[cfg(target_os = "macos")]
+use cocoa::appkit::{NSWindow, NSView};
+#[cfg(target_os = "macos")]
+use metal::*;
+
+use std::mem;
+
 pub fn required_extensions() -> InstanceExtensions {
     let ideal = InstanceExtensions {
         khr_surface: true,
@@ -22,6 +40,8 @@ pub fn required_extensions() -> InstanceExtensions {
         khr_mir_surface: true,
         khr_android_surface: true,
         khr_win32_surface: true,
+        mvk_ios_surface: true,
+        mvk_macos_surface: true,
         ..InstanceExtensions::none()
     };
 
@@ -120,7 +140,7 @@ unsafe fn winit_to_surface(instance: Arc<Instance>,
     Surface::from_anativewindow(instance, win.get_native_window())
 }
 
-#[cfg(all(unix, not(target_os = "android")))]
+#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 unsafe fn winit_to_surface(instance: Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
@@ -143,7 +163,7 @@ unsafe fn winit_to_surface(instance: Arc<Instance>,
     }
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 unsafe fn winit_to_surface(instance: Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
@@ -151,4 +171,27 @@ unsafe fn winit_to_surface(instance: Arc<Instance>,
     Surface::from_hwnd(instance,
                        ptr::null() as *const (), // FIXME
                        win.get_hwnd())
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
+                           -> Result<Arc<Surface>, SurfaceCreationError>
+{
+    use winit::os::macos::WindowExt;
+
+    unsafe {
+        let wnd: cocoa_id = mem::transmute(win.get_nswindow());
+        
+        let layer = CAMetalLayer::new();
+
+        layer.set_edge_antialiasing_mask(0);
+        layer.set_presents_with_transaction(false);
+        layer.remove_all_animations();
+
+        let view = wnd.contentView();
+        view.setWantsLayer(YES);
+        view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory        
+    }
+    
+    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
