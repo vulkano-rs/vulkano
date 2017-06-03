@@ -104,6 +104,7 @@ pub use self::desc::StoreOp;
 pub use self::desc::LoadOp;
 pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
+pub use self::framebuffer::FramebufferBuilder;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;
 pub use self::sys::RenderPass;
