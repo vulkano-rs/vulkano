@@ -26,9 +26,9 @@ use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
+use framebuffer::ensure_image_view_compatible;
 use image::ImageView;
 use image::ImageViewAccess;
 
@@ -137,6 +137,7 @@ impl<Rp> Framebuffer<Rp, ()> {
         FramebufferBuilder {
             render_pass: render_pass,
             dimensions: FramebufferBuilderDimensions::AutoIdentical,
+            num_attachments: 0,
             attachments: (),
         }
     }
@@ -146,6 +147,7 @@ impl<Rp> Framebuffer<Rp, ()> {
 pub struct FramebufferBuilder<Rp, A> {
     render_pass: Rp,
     dimensions: FramebufferBuilderDimensions,
+    num_attachments: usize,
     attachments: A,
 }
 
@@ -168,7 +170,17 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     {
         let access = attachment.access();
 
-        // TODO: check number of attachments
+        if self.num_attachments >= self.render_pass.num_attachments() {
+            return Err(FramebufferCreationError::AttachmentsCountMismatch {
+                expected: self.render_pass.num_attachments(),
+                obtained: self.num_attachments,
+            });
+        }
+
+        match ensure_image_view_compatible(&self.render_pass, self.num_attachments, &access) {
+            Ok(()) => (),
+            Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err))
+        };
 
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::AutoIdentical => {
@@ -199,6 +211,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
             dimensions: dimensions,
+            num_attachments: self.num_attachments + 1,
             attachments: (self.attachments, access),
         })
     }
@@ -217,6 +230,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         FramebufferBuilder {
             render_pass: self.render_pass,
             dimensions: self.dimensions,
+            num_attachments: self.num_attachments,
             attachments: Box::new(self.attachments) as Box<_>,
         }
     }
@@ -225,21 +239,18 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     pub fn build(self) -> Result<Framebuffer<Rp, A>, FramebufferCreationError> {
         let device = self.render_pass.device().clone();
 
-        // This function call is supposed to check whether the attachments are valid.
-        // For more safety, we do some additional `debug_assert`s below.
-        // FIXME: check attachments when they are added to the builder instead of at the end
-        let attachments = self.attachments;
-        //let attachments = try!(self.render_pass.check_attachments_list(self.attachments));
-
-        // TODO: add a debug assertion that checks whether the attachments are compatible
-        //       with the RP ; this should be checked by the RenderPassDescAttachmentsList trait
-        //       impl, but we can double-check in debug mode
-        //       also check the number of attachments
+        // Check the number of attachments.
+        if self.num_attachments != self.render_pass.num_attachments() {
+            return Err(FramebufferCreationError::AttachmentsCountMismatch {
+                expected: self.render_pass.num_attachments(),
+                obtained: self.num_attachments,
+            });
+        }
 
         // Compute the dimensions.
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::AutoIdentical => panic!(),        // TODO: what if 0 attachment?
-            FramebufferBuilderDimensions::AutoSmaller => attachments.intersection_dimensions().unwrap(),        // TODO: what if 0 attachment?
+            FramebufferBuilderDimensions::AutoSmaller => self.attachments.intersection_dimensions().unwrap(),        // TODO: what if 0 attachment?
             FramebufferBuilderDimensions::Specific(dims) => dims,
         };
 
@@ -256,7 +267,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         }
 
         let ids: SmallVec<[vk::ImageView; 8]> =
-            attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
+            self.attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
 
         let framebuffer = unsafe {
             let vk = device.pointers();
@@ -284,7 +295,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             render_pass: self.render_pass,
             framebuffer: framebuffer,
             dimensions: dimensions,
-            resources: attachments,
+            resources: self.attachments,
         })
     }
 }
@@ -379,15 +390,6 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     }
 }
 
-unsafe impl<At, Rp, A> RenderPassDescAttachmentsList<At> for Framebuffer<Rp, A>
-    where Rp: RenderPassDescAttachmentsList<At>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: At) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.render_pass.check_attachments_list(atch)
-    }
-}
-
 unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
     where Rp: RenderPassDescClearValues<C>
 {
@@ -451,12 +453,7 @@ pub enum FramebufferCreationError {
         obtained: usize,
     },
     /// One of the images cannot be used as the requested attachment.
-    IncompatibleAttachment {
-        /// Zero-based id of the attachment.
-        attachment_num: usize,
-        /// The problem.
-        error: IncompatibleRenderPassAttachmentError,
-    },
+    IncompatibleAttachment(IncompatibleRenderPassAttachmentError),
 }
 
 impl From<OomError> for FramebufferCreationError {
@@ -480,7 +477,7 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::AttachmentsCountMismatch { .. } => {
                 "the number of attachments doesn't match the number expected by the render pass"
             },
-            FramebufferCreationError::IncompatibleAttachment { .. } => {
+            FramebufferCreationError::IncompatibleAttachment(_) => {
                 "one of the images cannot be used as the requested attachment"
             },
         }
@@ -490,7 +487,7 @@ impl error::Error for FramebufferCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             FramebufferCreationError::OomError(ref err) => Some(err),
-            FramebufferCreationError::IncompatibleAttachment { ref error, .. } => Some(error),
+            FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),
             _ => None,
         }
     }

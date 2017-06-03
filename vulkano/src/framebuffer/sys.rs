@@ -19,15 +19,12 @@ use smallvec::SmallVec;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::FramebufferCreationError;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassDescClearValues;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassAbstract;
 
@@ -358,15 +355,6 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     #[inline]
     fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         self.desc.dependency_desc(num)
-    }
-}
-
-unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
-    where D: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.desc.check_attachments_list(atch)
     }
 }
 
