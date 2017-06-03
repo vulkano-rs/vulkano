@@ -137,6 +137,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     pub fn start(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
             render_pass: render_pass,
+            raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoIdentical,
             num_attachments: 0,
             attachments: (),
@@ -148,6 +149,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     pub fn with_intersecting_dimensions(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
             render_pass: render_pass,
+            raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
             num_attachments: 0,
             attachments: (),
@@ -158,6 +160,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     pub fn with_dimensions(render_pass: Rp, dimensions: [u32; 3]) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
             render_pass: render_pass,
+            raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::Specific(dimensions),
             num_attachments: 0,
             attachments: (),
@@ -168,6 +171,7 @@ impl<Rp> Framebuffer<Rp, ()> {
 /// Prototype of a framebuffer.
 pub struct FramebufferBuilder<Rp, A> {
     render_pass: Rp,
+    raw_ids: SmallVec<[vk::ImageView; 8]>,
     dimensions: FramebufferBuilderDimensions,
     num_attachments: usize,
     attachments: A,
@@ -239,9 +243,13 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 ])
             }
         };
+        
+        let mut raw_ids = self.raw_ids;
+        raw_ids.push(access.inner().internal_object());
 
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
+            raw_ids: raw_ids,
             dimensions: dimensions,
             num_attachments: self.num_attachments + 1,
             attachments: (self.attachments, access),
@@ -261,6 +269,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     {
         FramebufferBuilder {
             render_pass: self.render_pass,
+            raw_ids: self.raw_ids,
             dimensions: self.dimensions,
             num_attachments: self.num_attachments,
             attachments: Box::new(self.attachments) as Box<_>,
@@ -303,9 +312,6 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             }
         }
 
-        let ids: SmallVec<[vk::ImageView; 8]> =
-            self.attachments.raw_image_view_handles().into_iter().map(|v| v.internal_object()).collect();
-
         let framebuffer = unsafe {
             let vk = device.pointers();
 
@@ -314,8 +320,8 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 pNext: ptr::null(),
                 flags: 0,   // reserved
                 renderPass: self.render_pass.inner().internal_object(),
-                attachmentCount: ids.len() as u32,
-                pAttachments: ids.as_ptr(),
+                attachmentCount: self.raw_ids.len() as u32,
+                pAttachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
                 height: dimensions[1],
                 layers: dimensions[2],
