@@ -58,7 +58,7 @@ use vk;
 /// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
 /// # let my_image: Arc<vulkano::image::AttachmentImage<vulkano::format::Format>> = return;
 /// // let render_pass: Arc<_> = ...;
-/// let framebuffer = Framebuffer::build(render_pass.clone())
+/// let framebuffer = Framebuffer::start(render_pass.clone())
 ///     .add(my_image).unwrap()
 ///     .build().unwrap();
 /// ```
