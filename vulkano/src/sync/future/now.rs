@@ -15,7 +15,7 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
-use image::Layout;
+use image::ImageLayout;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::FlushError;
@@ -72,7 +72,7 @@ unsafe impl GpuFuture for NowFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         Err(AccessCheckError::Unknown)

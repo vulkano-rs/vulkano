@@ -53,8 +53,10 @@ use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::ViewportsState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
+use vulkano::swapchain;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
@@ -105,7 +107,7 @@ fn main() {
     // This returns a `vulkano_win::Window` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, &instance).unwrap();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -117,7 +119,7 @@ fn main() {
     // queue to handle data transfers in parallel. In this example we only use one queue.
     //
     // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue = physical.queue_families().find(|q| {
+    let queue = physical.queue_families().find(|&q| {
         // We take the first queue that supports drawing to our window.
         q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
@@ -162,7 +164,7 @@ fn main() {
     let (swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = window.surface().get_capabilities(&physical)
+        let caps = window.surface().capabilities(physical)
                          .expect("failed to get surface capabilities");
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
@@ -183,8 +185,8 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(&device, &window.surface(), caps.min_image_count, format, dimensions, 1,
-                       &caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
+        Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
+                       caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
                        present, true, None).expect("failed to create swapchain")
     };
 
@@ -194,7 +196,7 @@ fn main() {
         struct Vertex { position: [f32; 2] }
         impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(&device, &BufferUsage::all(), Some(queue.family()), [
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), Some(queue.family()), [
             Vertex { position: [-0.5, -0.25] },
             Vertex { position: [0.0, 0.5] },
             Vertex { position: [0.25, -0.1] }
@@ -244,7 +246,7 @@ fn main() {
                 // of your structs that implements the `FormatDesc` trait). Here we use the
                 // generic `vulkano::format::Format` enum because we don't know the format in
                 // advance.
-                format: images[0].format(),
+                format: swapchain.format(),
                 // TODO:
                 samples: 1,
             }
@@ -259,7 +261,7 @@ fn main() {
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = Arc::new(GraphicsPipeline::new(&device, GraphicsPipelineParams {
+    let pipeline = Arc::new(GraphicsPipeline::new(device.clone(), GraphicsPipelineParams {
         // We need to indicate the layout of the vertices.
         // The type `SingleBufferDefinition` actually contains a template parameter corresponding
         // to the type of each vertex. But in this code it is automatically inferred.
@@ -323,22 +325,9 @@ fn main() {
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
     let framebuffers = images.iter().map(|image| {
-        // When we create the framebuffer we need to pass the actual list of images for the
-        // framebuffer's attachments.
-        //
-        // The type of data that corresponds to this list depends on the way you created the
-        // render pass. With the `single_pass_renderpass!` macro you need to call
-        // `.desc().start_attachments()`. The returned object will have a method whose name is the
-        // name of the first attachment. When called, it returns an object that will have a method
-        // whose name is the name of the second attachment. And so on. Only the object returned
-        // by the method of the last attachment can be passed to `Framebuffer::new`.
-        let attachments = render_pass.desc().start_attachments().color(image.clone());
-
-        // Actually creating the framebuffer. Note that we have to pass the dimensions of the
-        // framebuffer. These dimensions must be inferior or equal to the intersection of the
-        // dimensions of all the attachments.
-        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-        Framebuffer::new(render_pass.clone(), dimensions, attachments).unwrap()
+        Arc::new(Framebuffer::start(render_pass.clone())
+            .add(image.clone()).unwrap()
+            .build().unwrap())
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!
@@ -348,15 +337,15 @@ fn main() {
     // they are in use by the GPU.
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
-    // that, we store them in a `Vec` and clean them from time to time.
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    // that, we store the submission of the previous frame here.
+    let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        // Clearing the old submissions by keeping alive only the ones which probably aren't
-        // finished.
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        // It is important to call this function from time to time, otherwise resources will keep
+        // accumulating and you will eventually reach an out of memory error.
+        // Calling this function polls various fences in order to determine what the GPU has
+        // already processed, and frees the resources that are no longer needed.
+        previous_frame_end.cleanup_finished();
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
@@ -365,7 +354,8 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is a timeout after
         // which the function call will return an error.
-        let (image_num, future) = swapchain.acquire_next_image(Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = swapchain::acquire_next_image(swapchain.clone(),
+                                                                        Duration::new(1, 0)).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -385,7 +375,7 @@ fn main() {
             // is similar to the list of attachments when building the framebuffers, except that
             // only the attachments that use `load: Clear` appear in the list.
             .begin_render_pass(framebuffers[image_num].clone(), false,
-                               render_pass.desc().start_clear_values().color([0.0, 0.0, 1.0, 1.0]))
+                               vec![[0.0, 0.0, 1.0, 1.0].into()])
             .unwrap()
 
             // We are now inside the first subpass of the render pass. We add a draw command.
@@ -404,7 +394,7 @@ fn main() {
             // Finish building the command buffer by calling `build`.
             .build().unwrap();
 
-        let future = future
+        let future = previous_frame_end.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
 
             // The color output is now expected to contain our triangle. But in order to show it on
@@ -415,7 +405,7 @@ fn main() {
             // the GPU has finished executing the command buffer that draws the triangle.
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+        previous_frame_end = Box::new(future) as Box<_>;
 
         // Note that in more complex programs it is likely that one of `acquire_next_image`,
         // `command_buffer::submit`, or `present` will block for some time. This happens when the

@@ -52,11 +52,11 @@ pub fn required_extensions() -> InstanceExtensions {
 }
 
 pub trait VkSurfaceBuild {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: &Arc<Instance>) -> Result<Window, CreationError>;
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>) -> Result<Window, CreationError>;
 }
 
 impl VkSurfaceBuild for WindowBuilder {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: &Arc<Instance>) -> Result<Window, CreationError> {
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>) -> Result<Window, CreationError> {
         let window = try!(self.build(events_loop));
         let surface = try!(unsafe { winit_to_surface(instance, &window) });
 
@@ -133,7 +133,7 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
+unsafe fn winit_to_surface(instance: Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::android::WindowExt;
@@ -141,7 +141,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
+unsafe fn winit_to_surface(instance: Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::unix::WindowExt;
@@ -164,7 +164,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn winit_to_surface(instance: &Arc<Instance>,
+unsafe fn winit_to_surface(instance: Arc<Instance>,
                            win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::windows::WindowExt;
@@ -174,7 +174,7 @@ unsafe fn winit_to_surface(instance: &Arc<Instance>,
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn winit_to_surface(instance: &Arc<Instance>, win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError>
 {
     use winit::os::macos::WindowExt;

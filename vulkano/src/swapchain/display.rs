@@ -35,6 +35,7 @@ use std::vec::IntoIter;
 
 use instance::Instance;
 use instance::PhysicalDevice;
+use swapchain::capabilities;
 use swapchain::SupportedSurfaceTransforms;
 
 use check_errors;
@@ -233,7 +234,7 @@ impl Display {
     /// Returns the transforms supported by this display.
     #[inline]
     pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
-        SupportedSurfaceTransforms::from_bits(self.properties.supportedTransforms)
+        capabilities::surface_transforms_from_bits(self.properties.supportedTransforms)
     }
 
     /// Returns true if TODO.

@@ -417,6 +417,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]       // TODO: test fails for now on Mesa+Intel
     fn oom_multi() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())

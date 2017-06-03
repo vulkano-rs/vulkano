@@ -48,7 +48,7 @@ impl<L> PipelineLayout<L> where L: PipelineLayoutDesc {
     /// - Panics if one of the layout returned by `provided_set_layout()` belongs to a different
     ///   device than the one passed as parameter.
     #[inline]
-    pub fn new(device: &Arc<Device>, desc: L)
+    pub fn new(device: Arc<Device>, desc: L)
                -> Result<PipelineLayout<L>, PipelineLayoutCreationError>
     {
         let vk = device.pointers();

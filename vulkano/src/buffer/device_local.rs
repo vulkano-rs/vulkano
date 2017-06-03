@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::sys::Usage;
+use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
@@ -36,6 +36,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 use OomError;
@@ -63,7 +64,7 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryP
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -76,7 +77,7 @@ impl<T> DeviceLocalBuffer<T> {
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
+    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -93,7 +94,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
                              -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -107,7 +108,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
                 Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
@@ -124,7 +125,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         try!(buffer.bind_memory(mem.memory(), mem.offset()));
@@ -204,7 +205,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // FIXME: not implemented correctly
         /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
@@ -213,7 +214,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
             self.0.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             false
         }*/
-        true
+        Ok(())
     }
 
     #[inline]

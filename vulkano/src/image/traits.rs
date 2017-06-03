@@ -19,10 +19,11 @@ use format::PossibleStencilFormatDesc;
 use format::PossibleDepthStencilFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+use sync::AccessError;
 
 use SafeDeref;
 use VulkanObject;
@@ -110,10 +111,10 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
-    fn initial_layout_requirement(&self) -> Layout;
+    fn initial_layout_requirement(&self) -> ImageLayout;
 
     /// Returns the layout that the image must be returned to before the end of the command buffer.
-    fn final_layout_requirement(&self) -> Layout;
+    fn final_layout_requirement(&self) -> ImageLayout;
 
     /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
     /// layout requirement is either `Undefined` or `Preinitialized`.
@@ -208,7 +209,7 @@ pub unsafe trait ImageAccess {
     /// The only way to know that the GPU has stopped accessing a queue is when the image object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -224,12 +225,12 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> ImageLayout {
         (**self).initial_layout_requirement()
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
+    fn final_layout_requirement(&self) -> ImageLayout {
         (**self).final_layout_requirement()
     }
 
@@ -241,7 +242,7 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, queue)
     }
 
@@ -268,16 +269,16 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> Layout {
+    fn initial_layout_requirement(&self) -> ImageLayout {
         if self.preinitialized {
-            Layout::Preinitialized
+            ImageLayout::Preinitialized
         } else {
-            Layout::Undefined
+            ImageLayout::Undefined
         }
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Layout {
+    fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
     }
 
@@ -289,7 +290,7 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         self.image.try_gpu_lock(exclusive_access, queue)
     }
 
@@ -342,13 +343,13 @@ pub unsafe trait ImageViewAccess {
     }
 
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self) -> Layout;
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout;
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self) -> Layout;
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self) -> Layout;
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout;
 
     /// Returns true if the view doesn't use components swizzling.
     ///
@@ -383,19 +384,19 @@ unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAcc
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
         (**self).descriptor_set_storage_image_layout()
     }
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
         (**self).descriptor_set_combined_image_sampler_layout()
     }
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
         (**self).descriptor_set_sampled_image_layout()
     }
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
         (**self).descriptor_set_input_attachment_layout()
     }
 
@@ -411,5 +412,5 @@ unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAcc
 }
 
 pub unsafe trait AttachmentImageView: ImageViewAccess {
-    fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
+    fn accept(&self, initial_layout: ImageLayout, final_layout: ImageLayout) -> bool;
 }

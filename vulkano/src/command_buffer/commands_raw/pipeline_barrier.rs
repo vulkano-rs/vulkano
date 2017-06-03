@@ -20,7 +20,7 @@ use command_buffer::cb::AddCommand;
 use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use image::ImageAccess;
-use image::Layout;
+use image::ImageLayout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -102,8 +102,8 @@ impl<'a> CmdPipelineBarrier<'a> {
             self.dependency_flags = 0;
         }
 
-        self.src_stage_mask |= source.into();
-        self.dst_stage_mask |= dest.into();
+        self.src_stage_mask |= Into::<vk::PipelineStageFlags>::into(source);
+        self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(dest);
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
@@ -197,7 +197,7 @@ impl<'a> CmdPipelineBarrier<'a> {
     pub unsafe fn add_image_memory_barrier<I: ?Sized>(&mut self, image: &'a I, mipmaps: Range<u32>,
                   layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
                   dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
-                  queue_transfer: Option<(u32, u32)>, current_layout: Layout, new_layout: Layout)
+                  queue_transfer: Option<(u32, u32)>, current_layout: ImageLayout, new_layout: ImageLayout)
         where I: ImageAccess
     {
         self.add_execution_dependency(source_stage, dest_stage, by_region);

@@ -28,7 +28,7 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
-use image::Layout;
+use image::ImageLayout;
 use image::ImageAccess;
 use instance::QueueFamily;
 use sync::AccessCheckError;
@@ -317,7 +317,7 @@ unsafe impl<P> CommandBuffer for UnsafeCommandBuffer<P> where P: CommandPool {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         Err(AccessCheckError::Unknown)

@@ -33,14 +33,11 @@ use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::RenderPassSys;
@@ -184,7 +181,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// the other constructors for other possibilities.
     #[inline]
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
                                               Fs, Fi, Fo, Fl, Rp>)
@@ -203,7 +200,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 
         let pl = params.vertex_shader.layout().clone()
                     .union(params.fragment_shader.layout().clone())
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipelineDesc, (), (), (),
                                       EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, _, _, _, _>
@@ -219,7 +216,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// shader. See the other constructors for other possibilities.
     #[inline]
     pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
                                               Fo, Fl, Rp>)
@@ -252,9 +249,9 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
         let pl = params.vertex_shader.layout().clone()
                     .union(params.fragment_shader.layout().clone())
                     .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
-        GraphicsPipeline::new_inner(device, params, pl)
+        GraphicsPipeline::new_inner(device.clone(), params, pl)
     }
 
     /// Builds a new graphics pipeline object with tessellation shaders.
@@ -268,7 +265,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     #[inline]
     pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
                             Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
                                               Fo, Fl, Rp>)
@@ -308,7 +305,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                     .union(params.fragment_shader.layout().clone())
                     .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner(device, params, pl)
     }
@@ -324,7 +321,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     #[inline]
     pub fn with_tessellation_and_geometry<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi,
                              Go, Gl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi,
                                               Fo, Fl, Rp>)
@@ -377,7 +374,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                     .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner(device, params, pl)
     }
@@ -388,7 +385,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
-                (device: &Arc<Device>,
+                (device: Arc<Device>,
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                                 Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>,
                  pipeline_layout: L)
@@ -1153,8 +1150,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.render_pass.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment_desc(num)
     }
 
     #[inline]
@@ -1163,8 +1160,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.render_pass.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass_desc(num)
     }
 
     #[inline]
@@ -1173,17 +1170,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.render_pass.dependency(num)
-    }
-}
-
-unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.render_pass.check_attachments_list(atch)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency_desc(num)
     }
 }
 

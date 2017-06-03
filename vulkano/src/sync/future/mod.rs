@@ -21,7 +21,8 @@ use command_buffer::submit::SubmitCommandBufferError;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
-use image::Layout;
+use image::ImageLayout;
+use swapchain;
 use swapchain::Swapchain;
 use swapchain::PresentFuture;
 use sync::AccessFlagBits;
@@ -58,7 +59,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// It is the responsibility of the caller to ensure that the submission is going to be
     /// submitted only once. However keep in mind that this function can perfectly be called
-    /// multiple times (as long as the returned object is only submitted once).
+    /// multiple times (as long as the returned object is only submitted once). 
+    /// Also note that calling `flush()` on the future  may change the value returned by
+    /// `build_submission()`.
     ///
     /// It is however the responsibility of the implementation to not return the same submission
     /// from multiple different future objects. For example if you implement `GpuFuture` on
@@ -124,7 +127,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool,
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
@@ -197,9 +200,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
-        fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Block {
-            timeout: None
-        })
+        fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Continue)
     }
 
     /// Signals a fence after this future. Returns another future that represents the signal.
@@ -225,7 +226,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
                               image_index: usize) -> PresentFuture<Self>
         where Self: Sized
     {
-        Swapchain::present(swapchain, self, queue, image_index)
+        swapchain::present(swapchain, self, queue, image_index)
     }
 }
 
@@ -268,7 +269,7 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: Layout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         (**self).check_image_access(image, layout, exclusive, queue)
@@ -281,17 +282,26 @@ pub enum AccessError {
     /// Exclusive access is denied.
     ExclusiveDenied,
 
+    /// The resource is already in use, and there is no tracking of concurrent usages.
+    AlreadyInUse,
+
     UnexpectedImageLayout {
-        allowed: Layout,
-        requested: Layout,
+        allowed: ImageLayout,
+        requested: ImageLayout,
     },
 
     /// Trying to use an image without transitionning it from the "undefined" or "preinitialized"
     /// layouts first.
     ImageNotInitialized {
         /// The layout that was requested for the image.
-        requested: Layout,
+        requested: ImageLayout,
     },
+
+    /// Trying to use a buffer that still contains garbage data.
+    BufferNotInitialized,
+
+    /// Trying to use a swapchain image without depending on a corresponding acquire image future.
+    SwapchainImageAcquireOnly,
 }
 
 impl error::Error for AccessError {
@@ -301,12 +311,22 @@ impl error::Error for AccessError {
             AccessError::ExclusiveDenied => {
                 "only shared access is allowed for this resource"
             },
+            AccessError::AlreadyInUse => {
+                "the resource is already in use, and there is no tracking of concurrent usages"
+            },
             AccessError::UnexpectedImageLayout { .. } => {
                 unimplemented!()        // TODO: find a description
             },
             AccessError::ImageNotInitialized { .. } => {
                 "trying to use an image without transitionning it from the undefined or \
                  preinitialized layouts first"
+            },
+            AccessError::BufferNotInitialized => {
+                "trying to use a buffer that still contains garbage data"
+            },
+            AccessError::SwapchainImageAcquireOnly => {
+                "trying to use a swapchain image without depending on a corresponding acquire \
+                 image future"
             },
         }
     }

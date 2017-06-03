@@ -19,15 +19,12 @@ use smallvec::SmallVec;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::FramebufferCreationError;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassDescClearValues;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassAbstract;
 
@@ -73,12 +70,12 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
         // If the first use of an attachment in this render pass is as an input attachment, and
         // the attachment is not also used as a color or depth/stencil attachment in the same
         // subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
-        debug_assert!(description.attachments().enumerate().all(|(atch_num, attachment)| {
+        debug_assert!(description.attachment_descs().enumerate().all(|(atch_num, attachment)| {
             if attachment.load != LoadOp::Clear {
                 return true;
             }
 
-            for p in description.subpasses() {
+            for p in description.subpass_descs() {
                 if p.color_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return true; }
                 if let Some((a, _)) = p.depth_stencil { if a == atch_num { return true; } }
                 if p.input_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return false; }
@@ -87,7 +84,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             true
         }));
 
-        let attachments = description.attachments().map(|attachment| {
+        let attachments = description.attachment_descs().map(|attachment| {
             debug_assert!(attachment.samples.is_power_of_two());
 
             vk::AttachmentDescription {
@@ -109,7 +106,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
         // This block allocates, for each pass, in order, all color attachment references, then all
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
-        let attachment_references = description.subpasses().flat_map(|pass| {
+        let attachment_references = description.subpass_descs().flat_map(|pass| {
             // Performing some validation with debug asserts.
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
@@ -171,7 +168,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
         // Same as `attachment_references` but only for the preserve attachments.
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
-        let preserve_attachments_references = description.subpasses().flat_map(|pass| {
+        let preserve_attachments_references = description.subpass_descs().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -184,7 +181,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             let mut preserve_ref_index = 0usize;
             let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
-            for pass in description.subpasses() {
+            for pass in description.subpass_descs() {
                 if pass.color_attachments.len() as u32 >
                    device.physical_device().limits().max_color_attachments()
                 {
@@ -235,7 +232,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             out
         };
 
-        let dependencies = description.dependencies().map(|dependency| {
+        let dependencies = description.dependency_descs().map(|dependency| {
             debug_assert!(dependency.source_subpass < passes.len());
             debug_assert!(dependency.destination_subpass < passes.len());
 
@@ -336,8 +333,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
     
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.desc.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.desc.attachment_desc(num)
     }
 
     #[inline]
@@ -346,8 +343,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
     
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.desc.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.desc.subpass_desc(num)
     }
 
     #[inline]
@@ -356,17 +353,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.desc.dependency(num)
-    }
-}
-
-unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
-    where D: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.desc.check_attachments_list(atch)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.desc.dependency_desc(num)
     }
 }
 

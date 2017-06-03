@@ -21,7 +21,7 @@ use smallvec::SmallVec;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::sys::Usage;
+use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
@@ -35,6 +35,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 use OomError;
@@ -43,7 +44,7 @@ use OomError;
 ///
 /// This buffer is especially suitable when you want to upload or download some data at each frame.
 ///
-/// # Usage
+/// # BufferUsage
 ///
 /// A `CpuBufferPool` is a bit similar to a `Vec`. You start by creating an empty pool, then you
 /// grab elements from the pool and use them, and if the pool is full it will automatically grow
@@ -71,7 +72,7 @@ pub struct CpuBufferPool<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool 
     one_size: usize,
 
     // Buffer usage.
-    usage: Usage,
+    usage: BufferUsage,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -131,7 +132,7 @@ pub struct CpuBufferPoolSubbuffer<T: ?Sized, A> where A: MemoryPool {
 
 impl<T> CpuBufferPool<T> {
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: &Usage, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -146,13 +147,13 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, &Usage::transfer_source(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_source(), iter::empty())
     }
 }
 
 impl<T> CpuBufferPool<[T]> {
     #[inline]
-    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: &Usage, queue_families: I)
+    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                       -> CpuBufferPool<[T]>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -164,7 +165,7 @@ impl<T> CpuBufferPool<[T]> {
 
 impl<T: ?Sized> CpuBufferPool<T> {
     pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize,
-                             usage: &Usage, queue_families: I) -> CpuBufferPool<T>
+                             usage: BufferUsage, queue_families: I) -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families.into_iter().map(|f| f.id())
@@ -265,7 +266,7 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
                     None => return Err(OomError::OutOfDeviceMemory),
                 };
 
-                match UnsafeBuffer::new(&self.device, total_size, &self.usage, sharing, SparseLevel::none()) {
+                match UnsafeBuffer::new(self.device.clone(), total_size, self.usage, sharing, SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::OomError(err)) => return Err(err),
                     Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
@@ -436,15 +437,15 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         let in_use = &self.buffer.subbuffers[self.subbuffer_index].num_gpu_accesses;
         if in_use.compare_and_swap(0, 1, Ordering::SeqCst) != 0 {
-            return false;
+            return Err(AccessError::AlreadyInUse);
         }
 
         let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
         debug_assert!(!was_locked);
-        true
+        Ok(())
     }
 
     #[inline]
