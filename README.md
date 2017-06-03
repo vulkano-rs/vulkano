@@ -1,9 +1,5 @@
 # Vulkano
 
-**Note: requires Rust 1.9**. This library would highly benefit from multiple upcoming features in
-Rust. Therefore it is likely that in the future you will need to update your version of Rust to
-continue using vulkano.
-
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
 be able to trigger any undefined behavior. In the case of Vulkan, this means that non-unsafe code
@@ -14,22 +10,31 @@ What does vulkano do?
 - Provides a low-levelish API around Vulkan. It doesn't hide what it does, but provides some
   comfort types.
 - Plans to prevent all invalid API usages, even the most obscure ones. The purpose of vulkano
-  is not to draw a teapot, but to cover all possible usages of Vulkan and detect all the
-  possible problems. Invalid API usage is prevented thanks to both compile-time checks and
-  runtime checks.
-- Handles synchronization on the GPU side for you, as this aspect of Vulkan is both annoying
-  to handle and error-prone. Dependencies between submissions are automatically detected, and
-  semaphores are managed automatically. The behavior of the library can be customized thanks
-  to unsafe trait implementations.
+  is not to simply let you draw a teapot, but to cover all possible usages of Vulkan and detect all
+  the possible problems in order to write robust programs. Invalid API usage is prevented thanks to
+  both compile-time checks and runtime checks.
+- Can handle synchronization on the GPU side for you (unless you choose do that yourself), as this
+  aspect of Vulkan is both annoying to handle and error-prone. Dependencies between submissions are
+  automatically detected, and semaphores are managed automatically. The behavior of the library can
+  be customized thanks to unsafe trait implementations.
 - Tries to be convenient to use. Nobody is going to use a library that requires you to browse
   the documentation for hours for every single operation.
-
-**Warning: this library breaks every five minutes for the moment.**
 
 Note that vulkano does **not** require you to install the official Vulkan SDK. This is not
 something specific to vulkano (you don't need to SDK to write program that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
 required.
+
+## Development status
+
+**Please read this section.**
+
+The latest released version on crates.io is version 0.4. This version is not stable, and most
+likely differs from the code on github.
+
+Vulkano is still in heavy development and doesn't yet meet its goals of being very robust. However
+the general structure of the library is most likely definitive, and all future breaking changes
+will likely be straight-forward to fix in user code.
 
 ## [Documentation](https://docs.rs/vulkano)
 
@@ -40,26 +45,24 @@ the `triangle` example.
 
 ## Structure
 
-This repository contains four libraries:
+This repository contains five libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
+- `vulkano-shader-derive` provides a custom derive that invokes `vulkano-shaders`. It lets you
+  easily integrate your GLSL shaders within the rest of your source code.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window where to render to.
 - `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
   implementation detail that you don't need to use manually if you use vulkano.
 
-Once procedural macros are stabilized in Rust, the `vulkano-shaders` crate will be merged with the
-`vulkano` crate. The `glsl-to-spirv` crate is an implementation detail of vulkano and is not
-supposed to be used directly if you use vulkano. You are, however, free to use it if you want to
-write an alternative to vulkano.
+Once procedural macros are stabilized in Rust, the `vulkano-shaders` and `vulkano-shader-derive`
+crates will be merged with the `vulkano` crate. The `glsl-to-spirv` crate is an implementation
+detail of vulkano and is not supposed to be used directly if you use vulkano. You are, however,
+free to use it if you want to write an alternative to vulkano.
 
-This crate uses the Cargo workspaces feature that is available only in nightly, and whose purpose
-is to make several crates share the same `target/` directory. It is normal to get an error if you
-try to run `cargo build` at the root of the directory.
-
-In order to run tests, go to the `vulkano` subdirectory and run `cargo test`. Make sure your
-Vulkan driver is up to date before doing so.
+In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
+driver is up to date before doing so.
 
 ## License
 
