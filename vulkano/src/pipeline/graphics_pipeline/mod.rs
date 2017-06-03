@@ -33,14 +33,11 @@ use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::RenderPassSys;
@@ -1175,15 +1172,6 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     #[inline]
     fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         self.render_pass.dependency_desc(num)
-    }
-}
-
-unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.render_pass.check_attachments_list(atch)
     }
 }
 

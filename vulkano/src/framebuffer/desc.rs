@@ -14,12 +14,10 @@ use format::ClearValue;
 use format::Format;
 use format::FormatTy;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPassCreationError;
 use image::ImageLayout as ImageLayout;
-use image::ImageViewAccess;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -44,9 +42,7 @@ use vk;
 /// - The provided methods shouldn't be overriden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
-pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
-                                 RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>>
-{
+pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
 

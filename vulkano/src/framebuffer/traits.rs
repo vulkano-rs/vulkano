@@ -9,8 +9,6 @@
 
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
-use framebuffer::FramebufferCreationError;
 use framebuffer::FramebufferSys;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
@@ -105,40 +103,6 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
     #[inline]
     fn inner(&self) -> RenderPassSys {
         (**self).inner()
-    }
-}
-
-/// Extension trait for `RenderPassDesc`. Defines which types are allowed as an attachments list.
-///
-/// When the user creates a framebuffer, they need to pass a render pass object and a list of
-/// attachments. In order for it to work, the render pass object must implement
-/// `RenderPassDescAttachmentsList<A>` where `A` is the type of the list of attachments.
-///
-/// # Safety
-///
-/// This trait is unsafe because it's the job of the implementation to check whether the
-/// attachments list is correct. What needs to be checked:
-///
-/// - That the attachments' format and samples count match the render pass layout.
-/// - That the attachments have been created with the proper usage flags.
-/// - That the attachments only expose one mipmap.
-/// - That the attachments use identity components swizzling.
-/// TODO: more stuff with aliasing
-///
-pub unsafe trait RenderPassDescAttachmentsList<A> {
-    /// Decodes a `A` into a list of attachments.
-    ///
-    /// Checks that the attachments match the render pass, and returns a list. Returns an error if
-    /// one of the attachments is wrong.
-    fn check_attachments_list(&self, A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>;
-}
-
-unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
-    where T: SafeDeref, T::Target: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        (**self).check_attachments_list(atch)
     }
 }
 

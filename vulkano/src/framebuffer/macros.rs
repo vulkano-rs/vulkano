@@ -65,20 +65,14 @@ macro_rules! ordered_passes_renderpass {
             #![allow(non_camel_case_types)]
             #![allow(non_snake_case)]
 
-            use std::sync::Arc;
             use $crate::format::ClearValue;
             use $crate::format::Format;
-            use $crate::framebuffer::AttachmentsList;
-            use $crate::framebuffer::FramebufferCreationError;
             use $crate::framebuffer::RenderPassDesc;
-            use $crate::framebuffer::RenderPassDescAttachmentsList;
             use $crate::framebuffer::RenderPassDescClearValues;
             use $crate::framebuffer::LayoutAttachmentDescription;
             use $crate::framebuffer::LayoutPassDescription;
             use $crate::framebuffer::LayoutPassDependencyDescription;
-            use $crate::framebuffer::ensure_image_view_compatible;
             use $crate::image::ImageLayout;
-            use $crate::image::ImageViewAccess;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
 
@@ -125,29 +119,6 @@ macro_rules! ordered_passes_renderpass {
                 fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
-                }
-            }
-
-            unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for CustomRenderPassDesc {
-                fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-                    if list.len() != self.num_attachments() {
-                        return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                            expected: self.num_attachments(),
-                            obtained: list.len(),
-                        });
-                    }
-
-                    for n in 0 .. self.num_attachments() {
-                        match ensure_image_view_compatible(self, n, &*list[n]) {
-                            Ok(()) => (),
-                            Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment {
-                                attachment_num: n,
-                                error: err,
-                            })
-                        }
-                    }
-
-                    Ok(Box::new(list) as Box<_>)
                 }
             }
 

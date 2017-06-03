@@ -8,17 +8,12 @@
 // according to those terms.
 
 use std::iter;
-use std::sync::Arc;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
-use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use image::ImageViewAccess;
 
 /// Description of an empty render pass.
 ///
@@ -140,29 +135,6 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
         } else {
             None
         }
-    }
-}
-
-unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageViewAccess + Send + Sync>>> for EmptySinglePassRenderPassDesc {
-    #[inline]
-    fn check_attachments_list(&self, list: Vec<Arc<ImageViewAccess + Send + Sync>>)
-                              -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>
-    {
-        if list.is_empty() {
-            Ok(Box::new(()) as Box<_>)
-        } else {
-            Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: 0,
-                obtained: list.len(),
-            })
-        }
-    }
-}
-
-unsafe impl RenderPassDescAttachmentsList<()> for EmptySinglePassRenderPassDesc {
-    #[inline]
-    fn check_attachments_list(&self, list: ()) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        Ok(Box::new(()) as Box<_>)
     }
 }
 
