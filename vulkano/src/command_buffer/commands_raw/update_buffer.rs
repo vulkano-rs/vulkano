@@ -10,8 +10,6 @@
 use std::error;
 use std::fmt;
 use std::sync::Arc;
-use std::os::raw::c_void;
-use std::ptr;
 
 use buffer::Buffer;
 use buffer::BufferAccess;
@@ -38,9 +36,6 @@ pub struct CmdUpdateBuffer<B, D> {
     offset: vk::DeviceSize,
     // Size of the update.
     size: vk::DeviceSize,
-    // If null, contains a pointer to the raw data to write. If `None`, the data is the `data`
-    // field.
-    data_ptr: *const c_void,
     // The data to write to the buffer or a reference to it.
     data: D,
 }
@@ -106,7 +101,6 @@ impl<B, D> CmdUpdateBuffer<B, D> {
             buffer_handle: buffer_handle,
             offset: offset as vk::DeviceSize,
             size: size as vk::DeviceSize,
-            data_ptr: ptr::null(),
             data: data,
         })
     }
@@ -136,12 +130,7 @@ unsafe impl<'a, P, B, D> AddCommand<&'a CmdUpdateBuffer<B, D>> for UnsafeCommand
     #[inline]
     fn add(self, command: &'a CmdUpdateBuffer<B, D>) -> Result<Self::Out, CommandAddError> {
         unsafe {
-            let data = if command.data_ptr.is_null() {
-                &command.data as *const D as *const _
-            } else {
-                command.data_ptr as *const _
-            };
-
+            let data = &command.data as *const D as *const _;
             let vk = self.device().pointers();
             let cmd = self.internal_object();
             vk.CmdUpdateBuffer(cmd, command.buffer_handle, command.offset, command.size, data);
