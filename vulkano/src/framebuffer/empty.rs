@@ -29,11 +29,6 @@ use framebuffer::LayoutPassDependencyDescription;
 /// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
 /// ```
 ///
-/// # Clear value and attachments list
-///
-/// A render pass created from an `EmptySinglePassRenderPassDesc` accepts `()` for both the list
-/// of attachments and the clear colors.
-///
 #[derive(Debug, Copy, Clone)]
 pub struct EmptySinglePassRenderPassDesc;
 
