@@ -29,7 +29,7 @@ use vk;
 
 use features::Features;
 use version::Version;
-use instance::InstanceExtensions;
+use instance::{InstanceExtensions, RawInstanceExtensions};
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -115,18 +115,19 @@ impl Instance {
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
-                      layers: L) -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>
+    pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext,
+                           layers: L) -> Result<Arc<Instance>, InstanceCreationError>
+        where L: IntoIterator<Item = &'a &'a str>,
+              Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers.into_iter().map(|&layer| {
             CString::new(layer).unwrap()
         }).collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos, extensions, layers)
+        Instance::new_inner(app_infos, extensions.into(), layers)
     }
 
-    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
+    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>) -> Result<Arc<Instance>, InstanceCreationError>
     {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
@@ -169,8 +170,7 @@ impl Instance {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
-        let extensions_list = extensions.build_extensions_list();
-        let extensions_list = extensions_list.iter().map(|extension| {
+        let extensions_list = extensions.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
 
@@ -268,7 +268,7 @@ impl Instance {
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
-            extensions: extensions.clone(),
+            extensions: (&extensions).into(),
             layers: layers,
         }))
     }
