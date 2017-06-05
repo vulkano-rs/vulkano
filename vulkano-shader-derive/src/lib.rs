@@ -23,9 +23,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         }).next().expect("Can't find `src` attribute ; put #[src = \"...\"] for example.");
 
-        if Path::new(&src[..]).is_file() {
+        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+        let path = Path::new(&root).join(&src[..]);
+
+        if path.is_file() {
             let mut buf = String::new();
-            File::open(src).and_then(|mut file| file.read_to_string(&mut buf)).expect("Unable to read source from given file");
+            File::open(path).and_then(|mut file| file.read_to_string(&mut buf)).expect("Unable to read source from given file");
             buf
         } else {
             src
