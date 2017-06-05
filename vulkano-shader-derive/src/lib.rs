@@ -32,9 +32,6 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    println!("Source: {}", src);
-
-
     let ty_str = syn_item.attrs.iter().filter_map(|attr| {
         match attr.value {
             syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "ty" => {
