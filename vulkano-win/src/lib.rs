@@ -193,5 +193,5 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
         view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory
     }
 
-    Surface::from_macos_moltenvk(&instance, win.get_nsview() as *const ())
+    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
