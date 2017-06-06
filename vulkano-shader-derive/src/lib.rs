@@ -9,29 +9,51 @@ use std::io::Read;
 
 use proc_macro::TokenStream;
 
-#[proc_macro_derive(VulkanoShader, attributes(src, ty))]
+enum SourceKind {
+    Src(String),
+    Path(String),
+}
+
+#[proc_macro_derive(VulkanoShader, attributes(src, path, ty))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let syn_item = syn::parse_macro_input(&input.to_string()).unwrap();
 
     let src = {
-        let src = syn_item.attrs.iter().filter_map(|attr| {
+        let mut iter = syn_item.attrs.iter().filter_map(|attr| {
             match attr.value {
                 syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "src" => {
-                    Some(val.clone())
+                    Some(SourceKind::Src(val.clone()))
                 },
+
+                syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "path" => {
+                    Some(SourceKind::Path(val.clone()))
+                },
+
                 _ => None
             }
-        }).next().expect("Can't find `src` attribute ; put #[src = \"...\"] for example.");
+        });
 
-        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
-        let path = Path::new(&root).join(&src[..]);
+        let source = iter.next().expect("No source attribute given ; put #[src = \"...\"] or #[path = \"...\"]");
 
-        if path.is_file() {
-            let mut buf = String::new();
-            File::open(path).and_then(|mut file| file.read_to_string(&mut buf)).expect("Unable to read source from given file");
-            buf
-        } else {
-            src
+        if iter.next().is_some() {
+            panic!("Multilpe src or path attributes given ; please provide only one");
+        }
+
+        match source {
+            SourceKind::Src(src) => src,
+
+            SourceKind::Path(path) => {
+                let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+                let path = Path::new(&root).join(&path);
+
+                if path.is_file() {
+                    let mut buf = String::new();
+                    File::open(path).and_then(|mut file| file.read_to_string(&mut buf)).expect("Unable to read source from given file");
+                    buf
+                } else {
+                    panic!("Given source file does not exist");
+                }
+            }
         }
     };
 
