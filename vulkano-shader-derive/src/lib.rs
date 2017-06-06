@@ -44,14 +44,16 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             SourceKind::Path(path) => {
                 let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
-                let path = Path::new(&root).join(&path);
+                let full_path = Path::new(&root).join(&path);
 
-                if path.is_file() {
+                if full_path.is_file() {
                     let mut buf = String::new();
-                    File::open(path).and_then(|mut file| file.read_to_string(&mut buf)).expect("Unable to read source from given file");
+                    File::open(full_path)
+                        .and_then(|mut file| file.read_to_string(&mut buf))
+                        .expect(&format!("Error reading source from {:?}", path));
                     buf
                 } else {
-                    panic!("Given source file does not exist");
+                    panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
                 }
             }
         }
