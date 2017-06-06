@@ -36,7 +36,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let source = iter.next().expect("No source attribute given ; put #[src = \"...\"] or #[path = \"...\"]");
 
         if iter.next().is_some() {
-            panic!("Multilpe src or path attributes given ; please provide only one");
+            panic!("Multiple src or path attributes given ; please provide only one");
         }
 
         match source {
