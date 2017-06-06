@@ -181,7 +181,7 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
 
     unsafe {
         let wnd: cocoa_id = mem::transmute(win.get_nswindow());
-        
+
         let layer = CAMetalLayer::new();
 
         layer.set_edge_antialiasing_mask(0);
@@ -190,8 +190,8 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
 
         let view = wnd.contentView();
         view.setWantsLayer(YES);
-        view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory        
+        view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory
     }
-    
-    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
+
+    Surface::from_macos_moltenvk(&instance, win.get_nsview() as *const ())
 }
