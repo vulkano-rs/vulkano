@@ -336,7 +336,7 @@ impl Surface {
     /// - The caller must ensure that the `view` is correct and stays alive for the entire
     ///   lifetime of the surface.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_ios_moltenvk<T>(instance: &Arc<Instance>, view: *const T)
+    pub unsafe fn from_ios_moltenvk<T>(instance: Arc<Instance>, view: *const T)
                                        -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -373,7 +373,7 @@ impl Surface {
     /// - The caller must ensure that the `view` is correct and stays alive for the entire
     ///   lifetime of the surface.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_macos_moltenvk<T>(instance: &Arc<Instance>, view: *const T)
+    pub unsafe fn from_macos_moltenvk<T>(instance: Arc<Instance>, view: *const T)
                                          -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
