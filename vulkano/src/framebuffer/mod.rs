@@ -91,6 +91,8 @@
 //!
 
 pub use self::attachments_list::AttachmentsList;
+pub use self::compat_atch::ensure_image_view_compatible;
+pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::desc::LayoutAttachmentDescription;
 pub use self::desc::LayoutPassDescription;
 pub use self::desc::LayoutPassDependencyDescription;
@@ -102,6 +104,7 @@ pub use self::desc::StoreOp;
 pub use self::desc::LoadOp;
 pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
+pub use self::framebuffer::FramebufferBuilder;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;
 pub use self::sys::RenderPass;
@@ -110,7 +113,6 @@ pub use self::sys::RenderPassSys;
 pub use self::traits::FramebufferAbstract;
 pub use self::traits::RenderPassDescClearValues;
 pub use self::traits::RenderPassCompatible;
-pub use self::traits::RenderPassDescAttachmentsList;
 pub use self::traits::RenderPassAbstract;
 pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::Subpass;
@@ -118,6 +120,7 @@ pub use self::traits::Subpass;
 #[macro_use]
 mod macros;
 mod attachments_list;
+mod compat_atch;
 mod desc;
 mod empty;
 mod framebuffer;

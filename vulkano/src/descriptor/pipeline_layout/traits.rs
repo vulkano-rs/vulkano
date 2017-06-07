@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
+use std::fmt;
 use std::cmp;
 use std::sync::Arc;
 
@@ -23,19 +25,14 @@ use device::DeviceOwned;
 use SafeDeref;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-pub unsafe trait PipelineLayoutAbstract: DeviceOwned {
+// TODO: meh for PipelineLayoutDescNames ; the `Names` thing shouldn't be mandatory
+pub unsafe trait PipelineLayoutAbstract: PipelineLayoutDescNames + DeviceOwned {
     /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
     /// Can be obtained by calling `PipelineLayoutAbstract::sys()` on the pipeline layout.
     ///
     /// > **Note**: This is an internal function that you normally don't need to call.
     fn sys(&self) -> PipelineLayoutSys;
-
-    /// Returns the description of the pipeline layout.
-    ///
-    /// Can be obtained by calling `PipelineLayoutAbstract::desc()` on the pipeline layout.
-    // TODO: meh for `PipelineLayoutDescNames instead of `PipelineLayoutDesc`
-    fn desc(&self) -> &PipelineLayoutDescNames;
 
     /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
     ///
@@ -47,11 +44,6 @@ unsafe impl<T> PipelineLayoutAbstract for T where T: SafeDeref, T::Target: Pipel
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         (**self).sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        (**self).desc()
     }
 
     #[inline]
@@ -107,7 +99,7 @@ pub unsafe trait PipelineLayoutDesc {
     ///
     /// > **Note**: This is just a shortcut for `PipelineLayout::new`.
     #[inline]
-    fn build(self, device: &Arc<Device>)
+    fn build(self, device: Arc<Device>)
              -> Result<PipelineLayout<Self>, PipelineLayoutCreationError>
         where Self: Sized
     {
@@ -177,30 +169,41 @@ unsafe impl<T> PipelineLayoutDescNames for T where T: SafeDeref, T::Target: Pipe
 pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
     where Other: PipelineLayoutDesc
 {
-    /// Returns true if `self` is a superset of `Other`.
-    // TODO: return a Result instead of a bool
-    fn is_superset_of(&self, &Other) -> bool;
+    /// Makes sure that `self` is a superset of `Other`. Returns an `Err` if this is not the case.
+    fn ensure_superset_of(&self, &Other) -> Result<(), PipelineLayoutNotSupersetError>;
 }
 
 unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
     where T: PipelineLayoutDesc, U: PipelineLayoutDesc
 {
-    fn is_superset_of(&self, other: &U) -> bool {
+    fn ensure_superset_of(&self, other: &U) -> Result<(), PipelineLayoutNotSupersetError> {
         for set_num in 0 .. cmp::max(self.num_sets(), other.num_sets()) {
             let other_num_bindings = other.num_bindings_in_set(set_num).unwrap_or(0);
+            let self_num_bindings = self.num_bindings_in_set(set_num).unwrap_or(0);
 
-            if self.num_bindings_in_set(set_num).unwrap_or(0) < other_num_bindings {
-                return false;
+            if self_num_bindings < other_num_bindings {
+                return Err(PipelineLayoutNotSupersetError::DescriptorsCountMismatch {
+                    set_num: set_num as u32,
+                    self_num_descriptors: self_num_bindings as u32,
+                    other_num_descriptors: other_num_bindings as u32,
+                });
             }
 
             for desc_num in 0 .. other_num_bindings {
                 match (self.descriptor(set_num, desc_num), other.descriptor(set_num, desc_num)) {
                     (Some(mine), Some(other)) => {
                         if !mine.is_superset_of(&other) {
-                            return false;
+                            return Err(PipelineLayoutNotSupersetError::IncompatibleDescriptors {
+                                set_num: set_num as u32,
+                                descriptor: desc_num as u32,
+                                // TODO: child error
+                            });
                         }
                     },
-                    (None, Some(_)) => return false,
+                    (None, Some(_)) => return Err(PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor {
+                        set_num: set_num as u32,
+                        descriptor: desc_num as u32,
+                    }),
                     _ => ()
                 }
             }
@@ -208,7 +211,55 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
 
         // FIXME: check push constants
 
-        true
+        Ok(())
+    }
+}
+
+/// Error that can happen when creating a graphics pipeline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PipelineLayoutNotSupersetError {
+    /// There are more descriptors in the child than in the parent layout.
+    DescriptorsCountMismatch {
+        set_num: u32,
+        self_num_descriptors: u32,
+        other_num_descriptors: u32 
+    },
+
+    /// Expected an empty descriptor, but got something instead.
+    ExpectedEmptyDescriptor {
+        set_num: u32,
+        descriptor: u32,
+    },
+
+    /// Two descriptors are incompatible.
+    IncompatibleDescriptors {
+        set_num: u32,
+        descriptor: u32,
+        // TODO: child error here
+    },
+}
+
+impl error::Error for PipelineLayoutNotSupersetError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
+                "there are more descriptors in the child than in the parent layout"
+            },
+            PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
+                "expected an empty descriptor, but got something instead"
+            },
+            PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
+                "two descriptors are incompatible"
+            },
+        }
+    }
+}
+
+impl fmt::Display for PipelineLayoutNotSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
 

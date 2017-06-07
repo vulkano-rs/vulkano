@@ -9,11 +9,10 @@
 
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
-use framebuffer::FramebufferCreationError;
 use framebuffer::FramebufferSys;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
+use image::ImageViewAccess;
 use pipeline::shader::ShaderInterfaceDef;
 
 use SafeDeref;
@@ -28,6 +27,10 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
 
     /// Returns the width, height and array layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
+
+    /// Returns all the attachments of the framebuffer.
+    // TODO: meh for trait object
+    fn attachments(&self) -> Vec<&ImageViewAccess>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -57,6 +60,11 @@ unsafe impl<T> FramebufferAbstract for T where T: SafeDeref, T::Target: Framebuf
     #[inline]
     fn dimensions(&self) -> [u32; 3] {
         (**self).dimensions()
+    }
+
+    #[inline]
+    fn attachments(&self) -> Vec<&ImageViewAccess> {
+        FramebufferAbstract::attachments(&**self)
     }
 }
 
@@ -95,40 +103,6 @@ unsafe impl<T> RenderPassAbstract for T where T: SafeDeref, T::Target: RenderPas
     #[inline]
     fn inner(&self) -> RenderPassSys {
         (**self).inner()
-    }
-}
-
-/// Extension trait for `RenderPassDesc`. Defines which types are allowed as an attachments list.
-///
-/// When the user creates a framebuffer, they need to pass a render pass object and a list of
-/// attachments. In order for it to work, the render pass object must implement
-/// `RenderPassDescAttachmentsList<A>` where `A` is the type of the list of attachments.
-///
-/// # Safety
-///
-/// This trait is unsafe because it's the job of the implementation to check whether the
-/// attachments list is correct. What needs to be checked:
-///
-/// - That the attachments' format and samples count match the render pass layout.
-/// - That the attachments have been created with the proper usage flags.
-/// - That the attachments only expose one mipmap.
-/// - That the attachments use identity components swizzling.
-/// TODO: more stuff with aliasing
-///
-pub unsafe trait RenderPassDescAttachmentsList<A> {
-    /// Decodes a `A` into a list of attachments.
-    ///
-    /// Checks that the attachments match the render pass, and returns a list. Returns an error if
-    /// one of the attachments is wrong.
-    fn check_attachments_list(&self, A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError>;
-}
-
-unsafe impl<A, T> RenderPassDescAttachmentsList<A> for T
-    where T: SafeDeref, T::Target: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        (**self).check_attachments_list(atch)
     }
 }
 
@@ -193,7 +167,7 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
     where A: RenderPassDesc, B: ShaderInterfaceDef
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match RenderPassDesc::subpasses(self).skip(subpass as usize).next() {
+        let pass_descr = match RenderPassDesc::subpass_descs(self).skip(subpass as usize).next() {
             Some(s) => s,
             None => return false,
         };
@@ -205,7 +179,7 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
                     None => return false,
                 };
 
-                let attachment_desc = (&self).attachments().skip(attachment_id).next().unwrap();
+                let attachment_desc = (&self).attachment_descs().skip(attachment_id).next().unwrap();
 
                 // FIXME: compare formats depending on the number of components and data type
                 /*if attachment_desc.format != element.format {

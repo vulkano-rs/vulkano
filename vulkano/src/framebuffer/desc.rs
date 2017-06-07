@@ -14,12 +14,10 @@ use format::ClearValue;
 use format::Format;
 use format::FormatTy;
 use framebuffer::RenderPass;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPassCreationError;
-use image::Layout as ImageLayout;
-use image::ImageView;
+use image::ImageLayout as ImageLayout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
@@ -44,42 +42,46 @@ use vk;
 /// - The provided methods shouldn't be overriden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
-pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
-                                 RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>>
-{
+pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
+
     /// Returns the description of an attachment.
     ///
     /// Returns `None` if `num` is superior to `num_attachments()`.
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription>;
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription>;
+
     /// Returns an iterator to the list of attachments.
     #[inline]
-    fn attachments(&self) -> RenderPassDescAttachments<Self> where Self: Sized {
+    fn attachment_descs(&self) -> RenderPassDescAttachments<Self> where Self: Sized {
         RenderPassDescAttachments { render_pass: self, num: 0 }
     }
 
     /// Returns the number of subpasses of the render pass.
     fn num_subpasses(&self) -> usize;
-    /// Returns the description of a suvpass.
+
+    /// Returns the description of a subpass.
     ///
     /// Returns `None` if `num` is superior to `num_subpasses()`.
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription>;
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription>;
+
     /// Returns an iterator to the list of subpasses.
     #[inline]
-    fn subpasses(&self) -> RenderPassDescSubpasses<Self> where Self: Sized {
+    fn subpass_descs(&self) -> RenderPassDescSubpasses<Self> where Self: Sized {
         RenderPassDescSubpasses { render_pass: self, num: 0 }
     }
 
     /// Returns the number of dependencies of the render pass.
     fn num_dependencies(&self) -> usize;
+
     /// Returns the description of a dependency.
     ///
     /// Returns `None` if `num` is superior to `num_dependencies()`.
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
+
     /// Returns an iterator to the list of dependencies.
     #[inline]
-    fn dependencies(&self) -> RenderPassDescDependencies<Self> where Self: Sized {
+    fn dependency_descs(&self) -> RenderPassDescDependencies<Self> where Self: Sized {
         RenderPassDescDependencies { render_pass: self, num: 0 }
     }
 
@@ -112,17 +114,17 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// Returns the number of color attachments of a subpass. Returns `None` if out of range.
     #[inline]
     fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| p.color_attachments.len() as u32)
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| p.color_attachments.len() as u32)
     }
 
     /// Returns the number of samples of the attachments of a subpass. Returns `None` if out of
     /// range or if the subpass has no attachment. TODO: return an enum instead?
     #[inline]
     fn num_samples(&self, subpass: u32) -> Option<u32> {
-        (&self).subpasses().skip(subpass as usize).next().and_then(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().and_then(|p| {
             // TODO: chain input attachments as well?
             p.color_attachments.iter().cloned().chain(p.depth_stencil.clone().into_iter())
-                               .filter_map(|a| (&self).attachments().skip(a.0).next())
+                               .filter_map(|a| (&self).attachment_descs().skip(a.0).next())
                                .next().map(|a| a.samples)
         })
     }
@@ -131,13 +133,13 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// second element is `true` if there's a stencil attachment. Returns `None` if out of range.
     #[inline]
     fn has_depth_stencil_attachment(&self, subpass: u32) -> Option<(bool, bool)> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| {
             let atch_num = match p.depth_stencil {
                 Some((d, _)) => d,
                 None => return (false, false)
             };
 
-            match (&self).attachments().skip(atch_num).next().unwrap().format.ty() {
+            match (&self).attachment_descs().skip(atch_num).next().unwrap().format.ty() {
                 FormatTy::Depth => (true, false),
                 FormatTy::Stencil => (false, true),
                 FormatTy::DepthStencil => (true, true),
@@ -149,13 +151,13 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// Returns true if a subpass has a depth attachment or a depth-stencil attachment.
     #[inline]
     fn has_depth(&self, subpass: u32) -> Option<bool> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| {
             let atch_num = match p.depth_stencil {
                 Some((d, _)) => d,
                 None => return false
             };
 
-            match (&self).attachments().skip(atch_num).next().unwrap().format.ty() {
+            match (&self).attachment_descs().skip(atch_num).next().unwrap().format.ty() {
                 FormatTy::Depth => true,
                 FormatTy::Stencil => false,
                 FormatTy::DepthStencil => true,
@@ -168,7 +170,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| {
             let atch_num = match p.depth_stencil {
                 Some((d, l)) => {
                     if l == ImageLayout::DepthStencilReadOnlyOptimal { return false; }
@@ -177,7 +179,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
                 None => return false
             };
 
-            match (&self).attachments().skip(atch_num).next().unwrap().format.ty() {
+            match (&self).attachment_descs().skip(atch_num).next().unwrap().format.ty() {
                 FormatTy::Depth => true,
                 FormatTy::Stencil => false,
                 FormatTy::DepthStencil => true,
@@ -189,13 +191,13 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// Returns true if a subpass has a stencil attachment or a depth-stencil attachment.
     #[inline]
     fn has_stencil(&self, subpass: u32) -> Option<bool> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| {
             let atch_num = match p.depth_stencil {
                 Some((d, _)) => d,
                 None => return false
             };
 
-            match (&self).attachments().skip(atch_num).next().unwrap().format.ty() {
+            match (&self).attachment_descs().skip(atch_num).next().unwrap().format.ty() {
                 FormatTy::Depth => false,
                 FormatTy::Stencil => true,
                 FormatTy::DepthStencil => true,
@@ -208,7 +210,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
-        (&self).subpasses().skip(subpass as usize).next().map(|p| {
+        (&self).subpass_descs().skip(subpass as usize).next().map(|p| {
             let atch_num = match p.depth_stencil {
                 Some((d, l)) => {
                     if l == ImageLayout::DepthStencilReadOnlyOptimal { return false; }
@@ -217,7 +219,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> +
                 None => return false
             };
 
-            match (&self).attachments().skip(atch_num).next().unwrap().format.ty() {
+            match (&self).attachment_descs().skip(atch_num).next().unwrap().format.ty() {
                 FormatTy::Depth => false,
                 FormatTy::Stencil => true,
                 FormatTy::DepthStencil => true,
@@ -234,8 +236,8 @@ unsafe impl<T> RenderPassDesc for T where T: SafeDeref, T::Target: RenderPassDes
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        (**self).attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        (**self).attachment_desc(num)
     }
 
     #[inline]
@@ -244,8 +246,8 @@ unsafe impl<T> RenderPassDesc for T where T: SafeDeref, T::Target: RenderPassDes
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        (**self).subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        (**self).subpass_desc(num)
     }
 
     #[inline]
@@ -254,8 +256,8 @@ unsafe impl<T> RenderPassDesc for T where T: SafeDeref, T::Target: RenderPassDes
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        (**self).dependency(num)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        (**self).dependency_desc(num)
     }
 }
 
@@ -273,7 +275,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R> where R: 
         if self.num < self.render_pass.num_attachments() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass.attachment(n).expect("Wrong RenderPassDesc implementation"))
+            Some(self.render_pass.attachment_desc(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
@@ -294,7 +296,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R> where R: Re
         if self.num < self.render_pass.num_subpasses() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass.subpass(n).expect("Wrong RenderPassDesc implementation"))
+            Some(self.render_pass.subpass_desc(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
@@ -315,7 +317,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R> where R:
         if self.num < self.render_pass.num_dependencies() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass.dependency(n).expect("Wrong RenderPassDesc implementation"))
+            Some(self.render_pass.dependency_desc(n).expect("Wrong RenderPassDesc implementation"))
         } else {
             None
         }
@@ -330,10 +332,17 @@ pub struct LayoutAttachmentDescription {
     /// Number of samples of the image that is going to be binded.
     pub samples: u32,
 
-    /// What the implementation should do with that attachment at the start of the renderpass.
+    /// What the implementation should do with that attachment at the start of the render pass.
     pub load: LoadOp,
-    /// What the implementation should do with that attachment at the end of the renderpass.
+    /// What the implementation should do with that attachment at the end of the render pass.
     pub store: StoreOp,
+
+    /// Equivalent of `load` for the stencil component of the attachment, if any. Irrelevant if
+    /// there is no stencil component.
+    pub stencil_load: LoadOp,
+    /// Equivalent of `store` for the stencil component of the attachment, if any. Irrelevant if
+    /// there is no stencil component.
+    pub stencil_store: StoreOp,
 
     /// Layout that the image is going to be in at the start of the renderpass.
     ///

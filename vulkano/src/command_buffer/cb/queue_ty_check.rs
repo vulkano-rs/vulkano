@@ -10,10 +10,14 @@
 use std::sync::Arc;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBufferBuilder;
-use command_buffer::cmd;
+use command_buffer::CommandBuffer;
+use command_buffer::commands_raw;
 use device::Device;
 use device::DeviceOwned;
+use instance::QueueFamily;
+use VulkanObject;
 
 /// Layer around a command buffer builder that checks whether the commands added to it match the
 /// type of the queue family of the underlying builder.
@@ -52,58 +56,190 @@ unsafe impl<I> DeviceOwned for QueueTyCheckLayer<I>
 unsafe impl<I> CommandBufferBuilder for QueueTyCheckLayer<I>
     where I: CommandBufferBuilder
 {
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
+    }
 }
 
-unsafe impl<I, O> CommandBufferBuild for QueueTyCheckLayer<I>
-    where I: CommandBufferBuild<Out = O>
+unsafe impl<I, O, E> CommandBufferBuild for QueueTyCheckLayer<I>
+    where I: CommandBufferBuild<Out = O, Err = E>
 {
     type Out = O;
+    type Err = E;
 
     #[inline]
-    fn build(self) -> O {
+    fn build(self) -> Result<O, E> {
         self.inner.build()
     }
 }
 
-// TODO: actually implement
-
-macro_rules! pass_through {
+macro_rules! q_ty_impl_always {
     (($($param:ident),*), $cmd:ty) => {
         unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for QueueTyCheckLayer<I>
-            where I: AddCommand<$cmd, Out = O>
+            where I: CommandBufferBuilder + AddCommand<$cmd, Out = O>
         {
             type Out = QueueTyCheckLayer<O>;
 
             #[inline]
-            fn add(self, command: $cmd) -> Self::Out {
-                QueueTyCheckLayer {
-                    inner: self.inner.add(command),
-                }
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
             }
         }
     }
 }
 
-pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
-pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
-pass_through!((B), cmd::CmdBindIndexBuffer<B>);
-pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
-pass_through!((V), cmd::CmdBindVertexBuffers<V>);
-pass_through!((S, D), cmd::CmdBlitImage<S, D>);
-pass_through!((), cmd::CmdClearAttachments);
-pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
-pass_through!((S, D), cmd::CmdCopyBufferToImage<S, D>);
-pass_through!((S, D), cmd::CmdCopyImage<S, D>);
-pass_through!((), cmd::CmdDispatchRaw);
-pass_through!((), cmd::CmdDrawIndexedRaw);
-pass_through!((B), cmd::CmdDrawIndirectRaw<B>);
-pass_through!((), cmd::CmdDrawRaw);
-pass_through!((), cmd::CmdEndRenderPass);
-pass_through!((C), cmd::CmdExecuteCommands<C>);
-pass_through!((B), cmd::CmdFillBuffer<B>);
-pass_through!((), cmd::CmdNextSubpass);
-pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
-pass_through!((S, D), cmd::CmdResolveImage<S, D>);
-pass_through!((), cmd::CmdSetEvent);
-pass_through!((), cmd::CmdSetState);
-pass_through!((B, D), cmd::CmdUpdateBuffer<B, D>);
+q_ty_impl_always!((S, D), commands_raw::CmdCopyBuffer<S, D>);
+q_ty_impl_always!((S, D), commands_raw::CmdCopyBufferToImage<S, D>);
+q_ty_impl_always!((S, D), commands_raw::CmdCopyImage<S, D>);
+q_ty_impl_always!((B), commands_raw::CmdFillBuffer<B>);
+q_ty_impl_always!((B, D), commands_raw::CmdUpdateBuffer<B, D>);
+
+macro_rules! q_ty_impl_graphics {
+    (($($param:ident),*), $cmd:ty) => {
+        unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for QueueTyCheckLayer<I>
+            where I: CommandBufferBuilder + AddCommand<$cmd, Out = O>
+        {
+            type Out = QueueTyCheckLayer<O>;
+
+            #[inline]
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if !self.supports_graphics() {
+                    return Err(CommandAddError::GraphicsOperationsNotSupported);
+                }
+
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
+            }
+        }
+    }
+}
+
+q_ty_impl_graphics!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
+q_ty_impl_graphics!((B), commands_raw::CmdBindIndexBuffer<B>);
+q_ty_impl_graphics!((V), commands_raw::CmdBindVertexBuffers<V>);
+q_ty_impl_graphics!((S, D), commands_raw::CmdBlitImage<S, D>);
+q_ty_impl_graphics!((), commands_raw::CmdClearAttachments);
+q_ty_impl_graphics!((), commands_raw::CmdDrawIndexedRaw);
+q_ty_impl_graphics!((B), commands_raw::CmdDrawIndirectRaw<B>);
+q_ty_impl_graphics!((), commands_raw::CmdDrawRaw);
+q_ty_impl_graphics!((), commands_raw::CmdEndRenderPass);
+q_ty_impl_graphics!((), commands_raw::CmdNextSubpass);
+q_ty_impl_graphics!((S, D), commands_raw::CmdResolveImage<S, D>);
+
+macro_rules! q_ty_impl_compute {
+    (($($param:ident),*), $cmd:ty) => {
+        unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for QueueTyCheckLayer<I>
+            where I: CommandBufferBuilder + AddCommand<$cmd, Out = O>
+        {
+            type Out = QueueTyCheckLayer<O>;
+
+            #[inline]
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                if !self.supports_compute() {
+                    return Err(CommandAddError::ComputeOperationsNotSupported);
+                }
+
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
+            }
+        }
+    }
+}
+
+q_ty_impl_compute!((), commands_raw::CmdDispatchRaw);
+
+macro_rules! q_ty_impl_graphics_or_compute {
+    (($($param:ident),*), $cmd:ty) => {
+        unsafe impl<'a, I, O $(, $param)*> AddCommand<$cmd> for QueueTyCheckLayer<I>
+            where I: CommandBufferBuilder + AddCommand<$cmd, Out = O>
+        {
+            type Out = QueueTyCheckLayer<O>;
+
+            #[inline]
+            fn add(self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                assert!(self.supports_graphics() || self.supports_compute());      // TODO: proper error?
+                Ok(QueueTyCheckLayer {
+                    inner: self.inner.add(command)?,
+                })
+            }
+        }
+    }
+}
+
+q_ty_impl_graphics_or_compute!((Pc, Pl), commands_raw::CmdPushConstants<Pc, Pl>);
+q_ty_impl_graphics_or_compute!((), commands_raw::CmdSetEvent);
+q_ty_impl_graphics_or_compute!((), commands_raw::CmdSetState);
+
+unsafe impl<I, O, Pl> AddCommand<commands_raw::CmdBindPipeline<Pl>> for QueueTyCheckLayer<I>
+    where I: CommandBufferBuilder + AddCommand<commands_raw::CmdBindPipeline<Pl>, Out = O>
+{
+    type Out = QueueTyCheckLayer<O>;
+
+    #[inline]
+    fn add(self, command: commands_raw::CmdBindPipeline<Pl>) -> Result<Self::Out, CommandAddError> {
+        if command.is_graphics() {
+            if !self.supports_graphics() {
+                return Err(CommandAddError::GraphicsOperationsNotSupported);
+            }
+        } else {
+            if !self.supports_compute() {
+                return Err(CommandAddError::ComputeOperationsNotSupported);
+            }
+        }
+
+        Ok(QueueTyCheckLayer {
+            inner: self.inner.add(command)?,
+        })
+    }
+}
+
+unsafe impl<I, O, S, Pl> AddCommand<commands_raw::CmdBindDescriptorSets<S, Pl>> for QueueTyCheckLayer<I>
+    where I: CommandBufferBuilder + AddCommand<commands_raw::CmdBindDescriptorSets<S, Pl>, Out = O>
+{
+    type Out = QueueTyCheckLayer<O>;
+
+    #[inline]
+    fn add(self, command: commands_raw::CmdBindDescriptorSets<S, Pl>) -> Result<Self::Out, CommandAddError> {
+        if command.is_graphics() {
+            if !self.supports_graphics() {
+                return Err(CommandAddError::GraphicsOperationsNotSupported);
+            }
+        } else {
+            if !self.supports_compute() {
+                return Err(CommandAddError::ComputeOperationsNotSupported);
+            }
+        }
+
+        Ok(QueueTyCheckLayer {
+            inner: self.inner.add(command)?,
+        })
+    }
+}
+
+unsafe impl<I, O, C> AddCommand<commands_raw::CmdExecuteCommands<C>> for QueueTyCheckLayer<I>
+    where I: CommandBufferBuilder + AddCommand<commands_raw::CmdExecuteCommands<C>, Out = O>,
+          C: CommandBuffer
+{
+    type Out = QueueTyCheckLayer<O>;
+
+    #[inline]
+    fn add(self, command: commands_raw::CmdExecuteCommands<C>) -> Result<Self::Out, CommandAddError> {
+        // Note that safety rules guarantee that the secondary command buffer belongs to the same
+        // device as ourselves. Therefore this assert is only a debug assert.
+        debug_assert_eq!(command.command_buffer().queue_family().physical_device().internal_object(),
+                         self.queue_family().physical_device().internal_object());
+
+        if command.command_buffer().queue_family().id() != self.queue_family().id() {
+            return Err(CommandAddError::QueueFamilyMismatch);
+        }
+
+        Ok(QueueTyCheckLayer {
+            inner: self.inner.add(command)?,
+        })
+    }
+}

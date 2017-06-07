@@ -120,7 +120,7 @@ use VulkanPointers;
 use check_errors;
 use vk;
 
-pub use instance::DeviceExtensions;
+pub use instance::{DeviceExtensions, RawDeviceExtensions};
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -161,10 +161,11 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I>(phys: &'a PhysicalDevice, requested_features: &Features,
-                      extensions: &DeviceExtensions, queue_families: I)
-                      -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
-        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>
+    pub fn new<'a, I, Ext>(phys: &'a PhysicalDevice, requested_features: &Features,
+                               extensions: Ext, queue_families: I)
+                           -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
+        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
+              Ext: Into<RawDeviceExtensions>,
     {
         let queue_families = queue_families.into_iter();
 
@@ -190,8 +191,8 @@ impl Device {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
-        let extensions_list = extensions.build_extensions_list();
-        let extensions_list = extensions_list.iter().map(|extension| {
+        let extensions = extensions.into();
+        let extensions_list = extensions.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -286,7 +287,7 @@ impl Device {
             standard_descriptor_pool: Mutex::new(Weak::new()),
             standard_command_pools: Mutex::new(Default::default()),
             features: requested_features.clone(),
-            extensions: extensions.clone(),
+            extensions: (&extensions).into(),
         });
 
         // Iterator for the produced queues.
@@ -299,29 +300,20 @@ impl Device {
         Ok((device, output_queues))
     }
 
-    /// See the docs of wait().
-    // FIXME: must synchronize all queuees
-    #[inline]
-    pub fn wait_raw(&self) -> Result<(), OomError> {
-        unsafe {
-            try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
-            Ok(())
-        }
-    }
-
     /// Waits until all work on this device has finished. You should never need to call
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
-    /// This is the Vulkan equivalent of `glFinish`.
+    /// > **Note**: This is the Vulkan equivalent of OpenGL's `glFinish`.
     ///
-    /// # Panic
+    /// # Safety
     ///
-    /// - Panics if the device or host ran out of memory.
+    /// This function is not thread-safe. You must not submit anything to any of the queue
+    /// of the device (either explicitely or implicitely, for example with a future's destructor)
+    /// while this function is waiting.
     ///
-    // FIXME: must synchronize all queuees
-    #[inline]
-    pub fn wait(&self) {
-        self.wait_raw().unwrap();
+    pub unsafe fn wait(&self) -> Result<(), OomError> {
+        try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
+        Ok(())
     }
 
     /// Returns the instance used to create this device.
@@ -357,7 +349,7 @@ impl Device {
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StdMemoryPool::new(me);
+        let new_pool = StdMemoryPool::new(me.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }
@@ -392,12 +384,12 @@ impl Device {
                     return pool;
                 }
 
-                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 *entry.get_mut() = Arc::downgrade(&new_pool);
                 new_pool
             },
             Entry::Vacant(entry) => {
-                let new_pool = Arc::new(StandardCommandPool::new(me, queue));
+                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 entry.insert(Arc::downgrade(&new_pool));
                 new_pool
             }
@@ -408,7 +400,7 @@ impl Device {
 impl fmt::Debug for Device {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan device>")
+        write!(fmt, "<Vulkan device {:?}>", self.device)
     }
 }
 

@@ -16,28 +16,28 @@ use std::sync::Arc;
 use std::u32;
 use smallvec::SmallVec;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferInner;
 use device::Device;
 use device::DeviceOwned;
 use descriptor::PipelineLayoutAbstract;
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSys;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::RenderPassSys;
@@ -181,7 +181,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// the other constructors for other possibilities.
     #[inline]
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
                                               Fs, Fi, Fo, Fl, Rp>)
@@ -200,7 +200,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 
         let pl = params.vertex_shader.layout().clone()
                     .union(params.fragment_shader.layout().clone())
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner::<_, _, _, _, (), (), (), EmptyPipelineDesc, (), (), (),
                                       EmptyPipelineDesc, (), (), (), EmptyPipelineDesc, _, _, _, _>
@@ -216,7 +216,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// shader. See the other constructors for other possibilities.
     #[inline]
     pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
                                               (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
                                               Fo, Fl, Rp>)
@@ -249,9 +249,9 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
         let pl = params.vertex_shader.layout().clone()
                     .union(params.fragment_shader.layout().clone())
                     .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
 
-        GraphicsPipeline::new_inner(device, params, pl)
+        GraphicsPipeline::new_inner(device.clone(), params, pl)
     }
 
     /// Builds a new graphics pipeline object with tessellation shaders.
@@ -265,11 +265,11 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     #[inline]
     pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
                             Fo, Fl>
-              (device: &Arc<Device>,
+              (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
                                               Fo, Fl, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
+               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
               Vl: PipelineLayoutDescNames + Clone,
               Fl: PipelineLayoutDescNames + Clone,
@@ -305,7 +305,76 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                     .union(params.fragment_shader.layout().clone())
                     .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
-                    .build(device).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap();      // TODO: error
+
+        GraphicsPipeline::new_inner(device, params, pl)
+    }
+
+    /// Builds a new graphics pipeline object with a geometry and tessellation shaders.
+    ///
+    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
+    ///
+    /// In order to avoid compiler errors caused by not being able to infer template parameters,
+    /// this function assumes that you will use a vertex shader, a tessellation control shader, a
+    /// tessellation evaluation shader, a geometry shader and a fragment shader. See the other
+    /// constructors for other possibilities.
+    #[inline]
+    pub fn with_tessellation_and_geometry<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi,
+                             Go, Gl, Fs, Fi, Fo, Fl>
+              (device: Arc<Device>,
+               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
+                                              Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi,
+                                              Fo, Fl, Rp>)
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>, Gl>>, Rp>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vi>,
+              Vl: PipelineLayoutDescNames + Clone,
+              Fl: PipelineLayoutDescNames + Clone,
+              Tcl: PipelineLayoutDescNames + Clone,
+              Tel: PipelineLayoutDescNames + Clone,
+              Gl: PipelineLayoutDescNames + Clone,
+              Tci: ShaderInterfaceDefMatch<Vo>,
+              Tei: ShaderInterfaceDefMatch<Tco>,
+              Gi: ShaderInterfaceDefMatch<Teo>,
+              Vo: ShaderInterfaceDef,
+              Tco: ShaderInterfaceDef,
+              Teo: ShaderInterfaceDef,
+              Go: ShaderInterfaceDef,
+              Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
+              Fo: ShaderInterfaceDef,
+              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
+    {
+        assert!(params.tessellation.is_some());     // TODO:
+        assert!(params.geometry_shader.is_some());     // TODO:
+
+        if let Some(ref tess) = params.tessellation {
+            if let Some(ref gs) = params.geometry_shader {
+                if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                }
+                if let Err(err) = tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                }
+                if let Err(err) = gs.input().matches(tess.tessellation_evaluation_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(err));
+                }
+                if let Err(err) = params.fragment_shader.input().matches(gs.output()) {
+                    return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                }
+
+            } else {
+                unreachable!()
+            }
+
+        } else {
+            unreachable!()
+        }
+
+        let pl = params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap();      // TODO: error
 
         GraphicsPipeline::new_inner(device, params, pl)
     }
@@ -316,7 +385,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 {
     fn new_inner<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs,
                  Fi, Fo, Fl>
-                (device: &Arc<Device>,
+                (device: Arc<Device>,
                  params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                                 Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>,
                  pipeline_layout: L)
@@ -334,34 +403,19 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.vertex_shader.layout())
-        {
-            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-        }
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                   params.fragment_shader.layout())
-        {
-            return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-        }
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                   params.vertex_shader.layout())?;
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                   params.fragment_shader.layout())?;
         if let Some(ref geometry_shader) = params.geometry_shader {
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       geometry_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       geometry_shader.layout())?;
         }
         if let Some(ref tess) = params.tessellation {
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_control_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
-            if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(),
-                                                       tess.tessellation_evaluation_shader.layout())
-            {
-                return Err(GraphicsPipelineCreationError::IncompatiblePipelineLayout);
-            }
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       tess.tessellation_control_shader.layout())?;
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       tess.tessellation_evaluation_shader.layout())?;
         }
 
         // Check that the subpass can accept the output of the fragment shader.
@@ -1021,17 +1075,46 @@ unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
-        self.layout().sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        self.layout().desc()
+        self.layout.sys()
     }
 
     #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout().descriptor_set_layout(index)
+        self.layout.descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Mv, L, Rp> PipelineLayoutDesc for GraphicsPipeline<Mv, L, Rp> where L: PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        self.layout.num_sets()
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.layout.num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.layout.descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        self.layout.num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        self.layout.push_constants_range(num)
+    }
+}
+
+unsafe impl<Mv, L, Rp> PipelineLayoutDescNames for GraphicsPipeline<Mv, L, Rp> where L: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        self.layout.descriptor_by_name(name)
     }
 }
 
@@ -1039,6 +1122,13 @@ unsafe impl<Mv, L, Rp> DeviceOwned for GraphicsPipeline<Mv, L, Rp> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.inner.device
+    }
+}
+
+impl<Mv, L, Rp> fmt::Debug for GraphicsPipeline<Mv, L, Rp> {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
     }
 }
 
@@ -1060,8 +1150,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.render_pass.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.render_pass.attachment_desc(num)
     }
 
     #[inline]
@@ -1070,8 +1160,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.render_pass.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.render_pass.subpass_desc(num)
     }
 
     #[inline]
@@ -1080,17 +1170,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.render_pass.dependency(num)
-    }
-}
-
-unsafe impl<A, Mv, L, Rp> RenderPassDescAttachmentsList<A> for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.render_pass.check_attachments_list(atch)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.render_pass.dependency_desc(num)
     }
 }
 
@@ -1124,13 +1205,13 @@ impl Drop for Inner {
 
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<Buffer + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<Buffer + Send + Sync>>>
+    where L: PipelineLayoutAbstract, Rp: RenderPassAbstract, Mv: VertexSource<Vec<Arc<BufferAccess + Send + Sync>>>
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
@@ -1190,7 +1271,7 @@ pub enum GraphicsPipelineCreationError {
     OomError(OomError),
 
     /// The pipeline layout is not compatible with what the shaders expect.
-    IncompatiblePipelineLayout,
+    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 
     /// The interface between the vertex shader and the geometry shader mismatches.
     VertexGeometryStagesMismatch(ShaderInterfaceMismatchError),
@@ -1369,7 +1450,7 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => {
                 "the interface between the geometry shader and the fragment shader mismatches"
             },
-            GraphicsPipelineCreationError::IncompatiblePipelineLayout => {
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
                 "the pipeline layout is not compatible with what the shaders expect"
             },
             GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
@@ -1471,6 +1552,7 @@ impl error::Error for GraphicsPipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
@@ -1495,6 +1577,13 @@ impl From<OomError> for GraphicsPipelineCreationError {
     #[inline]
     fn from(err: OomError) -> GraphicsPipelineCreationError {
         GraphicsPipelineCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutNotSupersetError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutNotSupersetError) -> GraphicsPipelineCreationError {
+        GraphicsPipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }
 

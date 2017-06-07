@@ -19,15 +19,12 @@ use smallvec::SmallVec;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::FramebufferCreationError;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassDescClearValues;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassAbstract;
 
@@ -44,7 +41,7 @@ use vk;
 /// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
 pub struct RenderPass<D> {
     // The internal Vulkan object.
-    renderpass: vk::RenderPass,
+    render_pass: vk::RenderPass,
 
     // Device this render pass was created from.
     device: Arc<Device>,
@@ -57,7 +54,7 @@ pub struct RenderPass<D> {
 }
 
 impl<D> RenderPass<D> where D: RenderPassDesc {
-    /// Builds a new renderpass.
+    /// Builds a new render pass.
     ///
     /// # Panic
     ///
@@ -73,12 +70,12 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
         // If the first use of an attachment in this render pass is as an input attachment, and
         // the attachment is not also used as a color or depth/stencil attachment in the same
         // subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
-        debug_assert!(description.attachments().enumerate().all(|(atch_num, attachment)| {
+        debug_assert!(description.attachment_descs().enumerate().all(|(atch_num, attachment)| {
             if attachment.load != LoadOp::Clear {
                 return true;
             }
 
-            for p in description.subpasses() {
+            for p in description.subpass_descs() {
                 if p.color_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return true; }
                 if let Some((a, _)) = p.depth_stencil { if a == atch_num { return true; } }
                 if p.input_attachments.iter().find(|&&(a, _)| a == atch_num).is_some() { return false; }
@@ -87,7 +84,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             true
         }));
 
-        let attachments = description.attachments().map(|attachment| {
+        let attachments = description.attachment_descs().map(|attachment| {
             debug_assert!(attachment.samples.is_power_of_two());
 
             vk::AttachmentDescription {
@@ -96,20 +93,20 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
                 samples: attachment.samples,
                 loadOp: attachment.load as u32,
                 storeOp: attachment.store as u32,
-                stencilLoadOp: attachment.load as u32,       // TODO: allow user to choose
-                stencilStoreOp: attachment.store as u32,      // TODO: allow user to choose
+                stencilLoadOp: attachment.stencil_load as u32,
+                stencilStoreOp: attachment.stencil_store as u32,
                 initialLayout: attachment.initial_layout as u32,
                 finalLayout: attachment.final_layout as u32,
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        // We need to pass pointers to vkAttachmentReference structs when creating the renderpass.
+        // We need to pass pointers to vkAttachmentReference structs when creating the render pass.
         // Therefore we need to allocate them in advance.
         //
         // This block allocates, for each pass, in order, all color attachment references, then all
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
-        let attachment_references = description.subpasses().flat_map(|pass| {
+        let attachment_references = description.subpass_descs().flat_map(|pass| {
             // Performing some validation with debug asserts.
             debug_assert!(pass.resolve_attachments.is_empty() ||
                           pass.resolve_attachments.len() == pass.color_attachments.len());
@@ -171,7 +168,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
         // Same as `attachment_references` but only for the preserve attachments.
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
-        let preserve_attachments_references = description.subpasses().flat_map(|pass| {
+        let preserve_attachments_references = description.subpass_descs().flat_map(|pass| {
             pass.preserve_attachments.into_iter().map(|offset| offset as u32)
         }).collect::<SmallVec<[_; 16]>>();
 
@@ -184,7 +181,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             let mut preserve_ref_index = 0usize;
             let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
-            for pass in description.subpasses() {
+            for pass in description.subpass_descs() {
                 if pass.color_attachments.len() as u32 >
                    device.physical_device().limits().max_color_attachments()
                 {
@@ -235,7 +232,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             out
         };
 
-        let dependencies = description.dependencies().map(|dependency| {
+        let dependencies = description.dependency_descs().map(|dependency| {
             debug_assert!(dependency.source_subpass < passes.len());
             debug_assert!(dependency.destination_subpass < passes.len());
 
@@ -250,7 +247,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
             }
         }).collect::<SmallVec<[_; 16]>>();
 
-        let renderpass = unsafe {
+        let render_pass = unsafe {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
                 pNext: ptr::null(),
@@ -273,7 +270,7 @@ impl<D> RenderPass<D> where D: RenderPassDesc {
 
         Ok(RenderPass {
             device: device.clone(),
-            renderpass: renderpass,
+            render_pass: render_pass,
             desc: description,
             granularity: Mutex::new(None),
         })
@@ -309,18 +306,14 @@ impl<D> RenderPass<D> {
             let vk = self.device.pointers();
             let mut out = mem::uninitialized();
             vk.GetRenderAreaGranularity(self.device.internal_object(),
-                                        self.renderpass, &mut out);
+                                        self.render_pass, &mut out);
 
+            debug_assert_ne!(out.width, 0);
+            debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
             *granularity = Some(gran);
             gran
         }
-    }
-
-    /// Returns the device that was used to create this render pass.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 
     /// Returns the description of the render pass.
@@ -340,8 +333,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
     
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
-        self.desc.attachment(num)
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+        self.desc.attachment_desc(num)
     }
 
     #[inline]
@@ -350,8 +343,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
     
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
-        self.desc.subpass(num)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        self.desc.subpass_desc(num)
     }
 
     #[inline]
@@ -360,17 +353,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D> where D: RenderPassDesc {
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
-        self.desc.dependency(num)
-    }
-}
-
-unsafe impl<A, D> RenderPassDescAttachmentsList<A> for RenderPass<D>
-    where D: RenderPassDescAttachmentsList<A>
-{
-    #[inline]
-    fn check_attachments_list(&self, atch: A) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        self.desc.check_attachments_list(atch)
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+        self.desc.dependency_desc(num)
     }
 }
 
@@ -386,7 +370,7 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
 unsafe impl<D> RenderPassAbstract for RenderPass<D> where D: RenderPassDesc {
     #[inline]
     fn inner(&self) -> RenderPassSys {
-        RenderPassSys(self.renderpass, PhantomData)
+        RenderPassSys(self.render_pass, PhantomData)
     }
 }
 
@@ -397,12 +381,22 @@ unsafe impl<D> DeviceOwned for RenderPass<D> {
     }
 }
 
+impl<D> fmt::Debug for RenderPass<D> where D: fmt::Debug {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("RenderPass")
+            .field("raw", &self.render_pass)
+            .field("device", &self.device)
+            .field("desc", &self.desc)
+            .finish()
+    }
+}
+
 impl<D> Drop for RenderPass<D> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyRenderPass(self.device.internal_object(), self.renderpass, ptr::null());
+            vk.DestroyRenderPass(self.device.internal_object(), self.render_pass, ptr::null());
         }
     }
 }
@@ -478,11 +472,17 @@ impl From<Error> for RenderPassCreationError {
     }
 }
 
-// FIXME: restore
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
-    use format::R8G8B8A8Unorm;
+    use format::Format;
+    use framebuffer::RenderPass;
     use framebuffer::RenderPassCreationError;
+
+    #[test]
+    fn empty() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = RenderPass::empty_single_pass(device).unwrap();
+    }
 
     #[test]
     fn too_many_color_atch() {
@@ -495,16 +495,16 @@ mod tests {
         let rp = single_pass_renderpass! {
             device.clone(),
             attachments: {
-                a1: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a2: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a3: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a4: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a5: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a6: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a7: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a8: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a9: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, },
-                a10: { load: Clear, store: DontCare, format: R8G8B8A8Unorm, samples: 1, }
+                a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a3: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a4: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a5: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a6: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
+                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
@@ -517,4 +517,24 @@ mod tests {
             _ => panic!()
         }
     }
-}*/
+
+    #[test]
+    fn non_zero_granularity() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let rp = single_pass_renderpass! {
+            device.clone(),
+            attachments: {
+                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
+            },
+            pass: {
+                color: [a],
+                depth_stencil: {}
+            }
+        }.unwrap();
+
+        let granularity = rp.granularity();
+        assert_ne!(granularity[0], 0);
+        assert_ne!(granularity[1], 0);
+    }
+}

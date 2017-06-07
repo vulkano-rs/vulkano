@@ -8,20 +8,24 @@
 // according to those terms.
 
 use std::any::Any;
-use std::error::Error;
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use command_buffer::cb::AddCommand;
 use command_buffer::cb::CommandBufferBuild;
 use command_buffer::cb::UnsafeCommandBuffer;
-use command_buffer::cmd;
+use command_buffer::commands_raw;
+use command_buffer::CommandAddError;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferBuilder;
+use command_buffer::CommandBufferExecError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use image::Image;
+use image::ImageLayout;
+use image::ImageAccess;
+use instance::QueueFamily;
+use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -52,22 +56,22 @@ unsafe impl<I> CommandBuffer for AbstractStorageLayer<I> where I: CommandBuffer 
     }
 
     #[inline]
-    fn submit_check(&self, future: &GpuFuture, queue: &Queue) -> Result<(), Box<Error>> {
-        self.inner.submit_check(future, queue)
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+        self.inner.prepare_submit(future, queue)
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &Buffer, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &Image, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, ()>
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
     {
-        self.inner.check_image_access(image, exclusive, queue)
+        self.inner.check_image_access(image, layout, exclusive, queue)
     }
 }
 
@@ -78,23 +82,28 @@ unsafe impl<I> DeviceOwned for AbstractStorageLayer<I> where I: DeviceOwned {
     }
 }
 
-unsafe impl<I, O> CommandBufferBuild for AbstractStorageLayer<I>
-    where I: CommandBufferBuild<Out = O>
+unsafe impl<I, O, E> CommandBufferBuild for AbstractStorageLayer<I>
+    where I: CommandBufferBuild<Out = O, Err = E>
 {
     type Out = AbstractStorageLayer<O>;
+    type Err = E;
 
     #[inline]
-    fn build(mut self) -> Self::Out {
-        let inner = self.inner.build();
+    fn build(self) -> Result<Self::Out, E> {
+        let inner = try!(self.inner.build());
 
-        AbstractStorageLayer {
+        Ok(AbstractStorageLayer {
             inner: inner,
             commands: self.commands,
-        }
+        })
     }
 }
 
-unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: DeviceOwned {
+unsafe impl<I> CommandBufferBuilder for AbstractStorageLayer<I> where I: CommandBufferBuilder {
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.inner.queue_family()
+    }
 }
 
 macro_rules! pass_through {
@@ -105,40 +114,40 @@ macro_rules! pass_through {
             type Out = AbstractStorageLayer<I>;
 
             #[inline]
-            fn add(mut self, command: $cmd) -> Self::Out {
-                let new_inner = AddCommand::add(self.inner, &command);
+            fn add(mut self, command: $cmd) -> Result<Self::Out, CommandAddError> {
+                let new_inner = AddCommand::add(self.inner, &command)?;
                 // TODO: should store a lightweight version of the command
                 self.commands.push(Box::new(command) as Box<_>);
                 
-                AbstractStorageLayer {
+                Ok(AbstractStorageLayer {
                     inner: new_inner,
                     commands: self.commands,
-                }
+                })
             }
         }
     }
 }
 
-pass_through!((Rp, F), cmd::CmdBeginRenderPass<Rp, F>);
-pass_through!((S, Pl), cmd::CmdBindDescriptorSets<S, Pl>);
-pass_through!((B), cmd::CmdBindIndexBuffer<B>);
-pass_through!((Pl), cmd::CmdBindPipeline<Pl>);
-pass_through!((V), cmd::CmdBindVertexBuffers<V>);
-pass_through!((S, D), cmd::CmdBlitImage<S, D>);
-pass_through!((), cmd::CmdClearAttachments);
-pass_through!((S, D), cmd::CmdCopyBuffer<S, D>);
-pass_through!((S, D), cmd::CmdCopyBufferToImage<S, D>);
-pass_through!((S, D), cmd::CmdCopyImage<S, D>);
-pass_through!((), cmd::CmdDispatchRaw);
-pass_through!((), cmd::CmdDrawIndexedRaw);
-pass_through!((B), cmd::CmdDrawIndirectRaw<B>);
-pass_through!((), cmd::CmdDrawRaw);
-pass_through!((), cmd::CmdEndRenderPass);
-pass_through!((C), cmd::CmdExecuteCommands<C>);
-pass_through!((B), cmd::CmdFillBuffer<B>);
-pass_through!((), cmd::CmdNextSubpass);
-pass_through!((Pc, Pl), cmd::CmdPushConstants<Pc, Pl>);
-pass_through!((S, D), cmd::CmdResolveImage<S, D>);
-pass_through!((), cmd::CmdSetEvent);
-pass_through!((), cmd::CmdSetState);
-pass_through!((B, D), cmd::CmdUpdateBuffer<B, D>);
+pass_through!((Rp, F), commands_raw::CmdBeginRenderPass<Rp, F>);
+pass_through!((S, Pl), commands_raw::CmdBindDescriptorSets<S, Pl>);
+pass_through!((B), commands_raw::CmdBindIndexBuffer<B>);
+pass_through!((Pl), commands_raw::CmdBindPipeline<Pl>);
+pass_through!((V), commands_raw::CmdBindVertexBuffers<V>);
+pass_through!((S, D), commands_raw::CmdBlitImage<S, D>);
+pass_through!((), commands_raw::CmdClearAttachments);
+pass_through!((S, D), commands_raw::CmdCopyBuffer<S, D>);
+pass_through!((S, D), commands_raw::CmdCopyBufferToImage<S, D>);
+pass_through!((S, D), commands_raw::CmdCopyImage<S, D>);
+pass_through!((), commands_raw::CmdDispatchRaw);
+pass_through!((), commands_raw::CmdDrawIndexedRaw);
+pass_through!((B), commands_raw::CmdDrawIndirectRaw<B>);
+pass_through!((), commands_raw::CmdDrawRaw);
+pass_through!((), commands_raw::CmdEndRenderPass);
+pass_through!((C), commands_raw::CmdExecuteCommands<C>);
+pass_through!((B), commands_raw::CmdFillBuffer<B>);
+pass_through!((), commands_raw::CmdNextSubpass);
+pass_through!((Pc, Pl), commands_raw::CmdPushConstants<Pc, Pl>);
+pass_through!((S, D), commands_raw::CmdResolveImage<S, D>);
+pass_through!((), commands_raw::CmdSetEvent);
+pass_through!((), commands_raw::CmdSetState);
+pass_through!((B, D), commands_raw::CmdUpdateBuffer<B, D>);

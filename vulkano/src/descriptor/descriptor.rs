@@ -105,7 +105,7 @@ impl DescriptorDesc {
 pub enum DescriptorDescTy {
     Sampler,                // TODO: the sampler has some restrictions as well
     CombinedImageSampler(DescriptorImageDesc),               // TODO: the sampler has some restrictions as well
-    Image(DescriptorImageDesc),
+    ImageAccess(DescriptorImageDesc),
     TexelBuffer {
         /// If `true`, this describes a storage texel buffer.
         storage: bool,
@@ -133,7 +133,7 @@ impl DescriptorDescTy {
         Some(match *self {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,
             DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
-            DescriptorDescTy::Image(ref desc) => {
+            DescriptorDescTy::ImageAccess(ref desc) => {
                 if desc.sampled { DescriptorType::SampledImage }
                 else { DescriptorType::StorageImage }
             },
@@ -164,8 +164,8 @@ impl DescriptorDescTy {
             (&DescriptorDescTy::CombinedImageSampler(ref me),
              &DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
 
-            (&DescriptorDescTy::Image(ref me),
-             &DescriptorDescTy::Image(ref other)) => me.is_superset_of(other),
+            (&DescriptorDescTy::ImageAccess(ref me),
+             &DescriptorDescTy::ImageAccess(ref other)) => me.is_superset_of(other),
 
             (&DescriptorDescTy::InputAttachment { multisampled: me_multisampled,
                                                   array_layers: me_array_layers },
@@ -254,7 +254,8 @@ impl DescriptorImageDesc {
                 match (my_max, other_max) {
                     (Some(m), Some(o)) => if m < o { return false; },
                     (Some(_), None) => (),
-                    (None, _) => return false,
+                    (None, Some(_)) => return false,
+                    (None, None) => (),     // TODO: is this correct?
                 };
             },
             _ => return false

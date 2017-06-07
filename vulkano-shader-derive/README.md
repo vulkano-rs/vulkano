@@ -2,6 +2,8 @@
 
 This replaces `vulkano-shaders`.
 
+Either provide glsl source code directly as an attribute:
+
 ```rust
 #[macro_use]
 extern crate vulkano_shader_derive;
@@ -25,3 +27,21 @@ void main() {
 
 let fs = fs::Shader::load(&device).expect("failed to create shader module");
 ```
+
+Or by providing a path to a file containing the glsl code:
+
+```rust
+#[macro_use]
+extern crate vulkano_shader_derive;
+
+mod fs {
+    #[derive(VulkanoShader)]
+    #[ty = "fragment"]
+    #[path = "shader/fragment.glsl"]
+    struct Dummy;
+}
+
+let fs = fs::Shader::load(&device).expect("failed to create shader module");
+```
+
+Note that this file path is relative to the project's Cargo.toml, and not to the file the attribute is being used in.

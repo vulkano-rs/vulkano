@@ -12,13 +12,15 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
-use buffer::traits::Buffer;
+use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBuffer;
-use buffer::traits::IntoBuffer;
+use buffer::traits::TypedBufferAccess;
+use buffer::traits::Buffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use sync::AccessError;
 
 /// A subpart of a buffer.
 ///
@@ -28,19 +30,17 @@ use device::Queue;
 ///
 /// Creating a slice:
 ///
-/// ```no_run
+/// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> = return;
 /// let _slice = BufferSlice::from(&buffer);
 /// ```
 ///
 /// Selecting a slice of a buffer that contains `[T]`:
 ///
-/// ```no_run
+/// ```ignore       // FIXME: unignore
 /// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
+/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> = return;
 /// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
 /// ```
 ///
@@ -67,6 +67,34 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B>
 }
 
 impl<T: ?Sized, B> BufferSlice<T, B> {
+    #[inline]
+    pub fn from_typed_buffer(r: B) -> BufferSlice<T, B>
+        where B: TypedBuffer<Content = T>
+    {
+        let size = r.size();
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: r,
+            offset: 0,
+            size: size,
+        }
+    }
+
+    #[inline]
+    pub fn from_typed_buffer_access(r: B) -> BufferSlice<T, B>
+        where B: TypedBufferAccess<Content = T>
+    {
+        let size = r.size();
+
+        BufferSlice {
+            marker: PhantomData,
+            resource: r,
+            offset: 0,
+            size: size,
+        }
+    }
+
     /// Returns the buffer that this slice belongs to.
     pub fn buffer(&self) -> &B {
         &self.resource
@@ -161,16 +189,26 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> IntoBuffer for BufferSlice<T, B> where B: Buffer {
-    type Target = Self;
+unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+    type Access = BufferSlice<T, B::Access>;
 
     #[inline]
-    fn into_buffer(self) -> Self {
-        self
+    fn access(self) -> Self::Access {
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource.access(),
+            offset: self.offset,
+            size: self.size,
+        }
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.size
     }
 }
 
-unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
+unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAccess {
     #[inline]
     fn inner(&self) -> BufferInner {
         let inner = self.resource.inner();
@@ -187,7 +225,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
 
     #[inline]
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &Buffer, other_offset: usize, other_size: usize) -> bool
+                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
     {
         let self_offset = self.offset + self_offset;
         // FIXME: spurious failures ; needs investigation
@@ -204,7 +242,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         self.resource.try_gpu_lock(exclusive_access, queue)
     }
 
@@ -214,7 +252,7 @@ unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBuffer for BufferSlice<T, B> where B: Buffer, T: 'static {
+unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess,  {
     type Content = T;
 }
 
@@ -224,22 +262,6 @@ unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.resource.device()
-    }
-}
-
-impl<T: ?Sized, B> From<B> for BufferSlice<T, B>
-    where B: TypedBuffer<Content = T>, T: 'static
-{
-    #[inline]
-    fn from(r: B) -> BufferSlice<T, B> {
-        let size = r.size();
-
-        BufferSlice {
-            marker: PhantomData,
-            resource: r,
-            offset: 0,
-            size: size,
-        }
     }
 }
 

@@ -19,8 +19,8 @@ macro_rules! features {
         ///
         /// # Example
         ///
-        /// ```no_run
-        /// # let physical_device: vulkano::instance::PhysicalDevice = unsafe { ::std::mem::uninitialized() };
+        /// ```
+        /// # let physical_device: vulkano::instance::PhysicalDevice = return;
         /// let minimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     .. vulkano::instance::Features::none()

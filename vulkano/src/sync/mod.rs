@@ -7,56 +7,126 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Synchronization primitives for Vulkan objects.
-//! 
-//! In Vulkan, you have to manually ensure two things:
-//! 
-//! - That a buffer or an image are not read and written simultaneously (similarly to the CPU).
-//! - That writes to a buffer or an image are propagated to other queues by inserting memory
-//!   barriers.
+//! Synchronization on the GPU.
 //!
-//! But don't worry ; this is automatically enforced by this library (as long as you don't use
-//! any unsafe function). See the `memory` module for more info.
+//! Just like for CPU code, you have to ensure that buffers and images are not accessed mutably by
+//! multiple GPU queues simultaneously and that they are not accessed mutably by the CPU and by the
+//! GPU simultaneously.
+//! 
+//! This safety is enforced at runtime by vulkano but it is not magic and you will require some
+//! knowledge if you want to avoid errors.
 //!
+//! # Futures
+//!
+//! Whenever you ask the GPU to start an operation by using a function of the vulkano library (for
+//! example executing a command buffer), this function will return a *future*. A future is an
+//! object that implements [the `GpuFuture` trait](trait.GpuFuture.html) and that represents the
+//! point in time when this operation is over.
+//!
+//! No function in vulkano immediately sends an operation to the GPU (with the exception of some
+//! unsafe low-level functions). Instead they return a future that is in the pending state. Before
+//! the GPU actually starts doing anything, you have to *flush* the future by calling the `flush()`
+//! method or one of its derivatives.
+//!
+//! Futures serve several roles:
+//!
+//! - Futures can be used to build dependencies between operations and makes it possible to ask
+//!   that an operation starts only after a previous operation is finished.
+//! - Submitting an operation to the GPU is a costly operation. By chaining multiple operations
+//!   with futures you will submit them all at once instead of one by one, thereby reducing this
+//!   cost.
+//! - Futures keep alive the resources and objects used by the GPU so that they don't get destroyed
+//!   while they are still in use.
+//!
+//! The last point means that you should keep futures alive in your program for as long as their
+//! corresponding operation is potentially still being executed by the GPU. Dropping a future
+//! earlier will block the current thread (after flushing, if necessary) until the GPU has finished
+//! the operation, which is usually not what you want.
+//!
+//! If you write a function that submits an operation to the GPU in your program, you are
+//! encouraged to let this function return the corresponding future and let the caller handle it.
+//! This way the caller will be able to chain multiple futures together and decide when it wants to
+//! keep the future alive or drop it.
+//!
+//! # Executing an operation after a future
+//!
+//! Respecting the order of operations on the GPU is important, as it is what *proves* vulkano that
+//! what you are doing is indeed safe. For example if you submit two operations that modify the
+//! same buffer, then you need to execute one after the other instead of submitting them
+//! independantly. Failing to do so would mean that these two operations could potentially execute
+//! simultaneously on the GPU, which would be unsafe.
+//!
+//! This is done by calling one of the methods of the `GpuFuture` trait. For example calling
+//! `prev_future.then_execute(command_buffer)` takes ownership of `prev_future` and will make sure
+//! to only start executing `command_buffer` after the moment corresponding to `prev_future`
+//! happens. The object returned by the `then_execute` function is itself a future that corresponds
+//! to the moment when the execution of `command_buffer` ends.
+//!
+//! ## Between two different GPU queues
+//!
+//! When you want to perform an operation after another operation on two different queues, you
+//! **must** put a *semaphore* between them. Failure to do so would result in a runtime error.
+//! Adding a semaphore is a simple as replacing `prev_future.then_execute(...)` with
+//! `prev_future.then_signal_semaphore().then_execute(...)`.
+//!
+//! > **Note**: A common use-case is using a transfer queue (ie. a queue that is only capable of
+//! > performing transfer operations) to write data to a buffer, then read that data from the
+//! > rendering queue.
+//!
+//! What happens when you do so is that the first queue will execute the first set of operations
+//! (represented by `prev_future` in the example), then put a semaphore in the signalled state.
+//! Meanwhile the second queue blocks (if necessary) until that same semaphore gets signalled, and
+//! then only will execute the second set of operations.
+//!
+//! Since you want to avoid blocking the second queue as much as possible, you probably want to
+//! flush the operation to the first queue as soon as possible. This can easily be done by calling
+//! `then_signal_semaphore_and_flush()` instead of `then_signal_semaphore()`.
+//!
+//! ## Between several different GPU queues
+//!
+//! The `then_signal_semaphore()` method is appropriate when you perform an operation in one queue,
+//! and want to see the result in another queue. However in some situations you want to start
+//! multiple operations on several different queues.
+//!
+//! TODO: this is not yet implemented
+//!
+//! # Fences
+//!
+//! A `Fence` is an object that is used to signal the CPU when an operation on the GPU is finished.
+//!
+//! Signalling a fence is done by calling `then_signal_fence()` on a future. Just like semaphores,
+//! you are encouraged to use `then_signal_fence_and_flush()` instead.
+//!
+//! Signalling a fence is kind of a "terminator" to a chain of futures.
+//!
+//! TODO: lots of problems with how to use fences
+//! TODO: talk about fence + semaphore simultaneously
+//! TODO: talk about using fences to clean up
 
-use std::ops;
 use std::sync::Arc;
 use device::Queue;
-use vk;
 
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
-pub use self::future::DummyFuture;
+pub use self::future::now;
+pub use self::future::NowFuture;
 pub use self::future::GpuFuture;
 pub use self::future::SemaphoreSignalFuture;
 pub use self::future::FenceSignalFuture;
 pub use self::future::JoinFuture;
+pub use self::future::AccessError;
+pub use self::future::AccessCheckError;
+pub use self::future::FlushError;
+pub use self::pipeline::AccessFlagBits;
+pub use self::pipeline::PipelineStages;
 pub use self::semaphore::Semaphore;
 
 mod event;
 mod fence;
 mod future;
+mod pipeline;
 mod semaphore;
-
-/// Base trait for objects that can be used as resources and must be synchronized.
-// TODO: remove
-pub unsafe trait Resource {
-    /// Returns in which queue family or families this resource can be used.
-    fn sharing_mode(&self) -> &SharingMode;
-
-    /// Returns true if the `gpu_access` function should be passed a fence.
-    #[inline]
-    fn requires_fence(&self) -> bool {
-        true
-    }
-
-    /// Returns true if the `gpu_access` function should be passed a semaphore.
-    #[inline]
-    fn requires_semaphore(&self) -> bool {
-        true
-    }
-}
 
 /// Declares in which queue(s) a resource can be used.
 ///
@@ -95,167 +165,4 @@ pub enum Sharing<I> where I: Iterator<Item = u32> {
     Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(I),
-}
-
-macro_rules! pipeline_stages {
-    ($($elem:ident => $val:expr,)+) => (
-        #[derive(Debug, Copy, Clone)]
-        #[allow(missing_docs)]
-        pub struct PipelineStages {
-            $(
-                pub $elem: bool,
-            )+
-        }
-
-        impl PipelineStages {
-            /// Builds an `PipelineStages` struct with none of the stages set.
-            pub fn none() -> PipelineStages {
-                PipelineStages {
-                    $(
-                        $elem: false,
-                    )+
-                }
-            }
-        }
-
-        impl ops::BitOr for PipelineStages {
-            type Output = PipelineStages;
-
-            #[inline]
-            fn bitor(self, rhs: PipelineStages) -> PipelineStages {
-                PipelineStages {
-                    $(
-                        $elem: self.$elem || rhs.$elem,
-                    )+
-                }
-            }
-        }
-
-        impl ops::BitOrAssign for PipelineStages {
-            #[inline]
-            fn bitor_assign(&mut self, rhs: PipelineStages) {
-                $(
-                    self.$elem = self.$elem || rhs.$elem;
-                )+
-            }
-        }
-
-        #[doc(hidden)]
-        impl Into<vk::PipelineStageFlagBits> for PipelineStages {
-            #[inline]
-            fn into(self) -> vk::PipelineStageFlagBits {
-                let mut result = 0;
-                $(
-                    if self.$elem { result |= $val }
-                )+
-                result
-            }
-        }
-    );
-}
-
-pipeline_stages!{
-    top_of_pipe => vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-    draw_indirect => vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-    vertex_input => vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
-    vertex_shader => vk::PIPELINE_STAGE_VERTEX_SHADER_BIT,
-    tessellation_control_shader => vk::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT,
-    tessellation_evaluation_shader => vk::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT,
-    geometry_shader => vk::PIPELINE_STAGE_GEOMETRY_SHADER_BIT,
-    fragment_shader => vk::PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-    early_fragment_tests => vk::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-    late_fragment_tests => vk::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-    color_attachment_output => vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-    compute_shader => vk::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-    transfer => vk::PIPELINE_STAGE_TRANSFER_BIT,
-    bottom_of_pipe => vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-    host => vk::PIPELINE_STAGE_HOST_BIT,
-    all_graphics => vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-    all_commands => vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,
-}
-
-macro_rules! access_flags {
-    ($($elem:ident => $val:expr,)+) => (
-        #[derive(Debug, Copy, Clone)]
-        #[allow(missing_docs)]
-        pub struct AccessFlagBits {
-            $(
-                pub $elem: bool,
-            )+
-        }
-
-        impl AccessFlagBits {
-            /// Builds an `AccessFlagBits` struct with all bits set.
-            pub fn all() -> AccessFlagBits {
-                AccessFlagBits {
-                    $(
-                        $elem: true,
-                    )+
-                }
-            }
-
-            /// Builds an `AccessFlagBits` struct with none of the bits set.
-            pub fn none() -> AccessFlagBits {
-                AccessFlagBits {
-                    $(
-                        $elem: false,
-                    )+
-                }
-            }
-        }
-
-        impl ops::BitOr for AccessFlagBits {
-            type Output = AccessFlagBits;
-
-            #[inline]
-            fn bitor(self, rhs: AccessFlagBits) -> AccessFlagBits {
-                AccessFlagBits {
-                    $(
-                        $elem: self.$elem || rhs.$elem,
-                    )+
-                }
-            }
-        }
-
-        impl ops::BitOrAssign for AccessFlagBits {
-            #[inline]
-            fn bitor_assign(&mut self, rhs: AccessFlagBits) {
-                $(
-                    self.$elem = self.$elem || rhs.$elem;
-                )+
-            }
-        }
-
-        #[doc(hidden)]
-        impl Into<vk::AccessFlagBits> for AccessFlagBits {
-            #[inline]
-            fn into(self) -> vk::AccessFlagBits {
-                let mut result = 0;
-                $(
-                    if self.$elem { result |= $val }
-                )+
-                result
-            }
-        }
-    );
-}
-
-access_flags!{
-    indirect_command_read => vk::ACCESS_INDIRECT_COMMAND_READ_BIT,
-    index_read => vk::ACCESS_INDEX_READ_BIT,
-    vertex_attribute_read => vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-    uniform_read => vk::ACCESS_UNIFORM_READ_BIT,
-    input_attachment_read => vk::ACCESS_INPUT_ATTACHMENT_READ_BIT,
-    shader_read => vk::ACCESS_SHADER_READ_BIT,
-    shader_write => vk::ACCESS_SHADER_WRITE_BIT,
-    color_attachment_read => vk::ACCESS_COLOR_ATTACHMENT_READ_BIT,
-    color_attachment_write => vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    depth_stencil_attachment_read => vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-    depth_stencil_attachment_write => vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-    transfer_read => vk::ACCESS_TRANSFER_READ_BIT,
-    transfer_write => vk::ACCESS_TRANSFER_WRITE_BIT,
-    host_read => vk::ACCESS_HOST_READ_BIT,
-    host_write => vk::ACCESS_HOST_WRITE_BIT,
-    memory_read => vk::ACCESS_MEMORY_READ_BIT,
-    memory_write => vk::ACCESS_MEMORY_WRITE_BIT,
 }

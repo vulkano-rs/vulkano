@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -19,23 +19,35 @@ use format::PossibleStencilFormatDesc;
 use format::PossibleDepthStencilFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
-use image::sys::Layout;
+use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use sampler::Sampler;
+use sync::AccessError;
 
 use SafeDeref;
 use VulkanObject;
 
-/// Utility trait.
-pub unsafe trait IntoImage {
-    type Target: Image;
-
-    fn into_image(self) -> Self::Target;
-}
-
 /// Trait for types that represent images.
 pub unsafe trait Image {
+    /// Object that represents a GPU access to the image.
+    type Access: ImageAccess;
+
+    /// Builds an object that represents a GPU access to the image.
+    fn access(self) -> Self::Access;
+
+    /// Returns the format of this image.
+    fn format(&self) -> Format;
+
+    /// Returns the number of samples of this image.
+    fn samples(&self) -> u32;
+
+    /// Returns the dimensions of the image.
+    fn dimensions(&self) -> ImageDimensions;
+}
+
+/// Trait for types that represent the way a GPU can access an image.
+pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> &UnsafeImage;
 
@@ -68,6 +80,12 @@ pub unsafe trait Image {
         format.is_stencil() || format.is_depth_stencil()
     }
 
+    /// Returns the number of mipmap levels of this image.
+    #[inline]
+    fn mipmap_levels(&self) -> u32 {
+        self.inner().mipmap_levels()
+    }
+
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
@@ -92,6 +110,25 @@ pub unsafe trait Image {
         self.inner().supports_blit_destination()
     }
 
+    /// Returns the layout that the image has when it is first used in a primary command buffer.
+    fn initial_layout_requirement(&self) -> ImageLayout;
+
+    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    fn final_layout_requirement(&self) -> ImageLayout;
+
+    /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
+    /// layout requirement is either `Undefined` or `Preinitialized`.
+    #[inline]
+    unsafe fn forced_undefined_initial_layout(self, preinitialized: bool)
+                                              -> ImageAccessFromUndefinedLayout<Self>
+        where Self: Sized
+    {
+        ImageAccessFromUndefinedLayout {
+            image: self,
+            preinitialized: preinitialized,
+        }
+    }
+
     /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
     /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
     /// access to `other` (as defined by `other_offset` and `other_size`).
@@ -99,7 +136,7 @@ pub unsafe trait Image {
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, other: &Buffer, other_offset: usize,
+                        self_num_mipmaps: u32, other: &BufferAccess, other_offset: usize,
                         other_size: usize) -> bool
     {
         // TODO: should we really provide a default implementation?
@@ -114,7 +151,7 @@ pub unsafe trait Image {
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, other: &Image,
+                       self_num_mipmaps: u32, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32) -> bool
     {
@@ -144,6 +181,26 @@ pub unsafe trait Image {
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
                     -> u64;
 
+    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
+    #[inline]
+    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
+        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.size())
+    }
+
+    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
+    #[inline]
+    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
+        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
+                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+    }
+
+    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
+    #[inline]
+    fn conflict_key_all(&self) -> u64 {
+        self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
+    }
+
     /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
     ///
     /// This function implementation should remember that it has been called and return `false` if
@@ -152,7 +209,7 @@ pub unsafe trait Image {
     /// The only way to know that the GPU has stopped accessing a queue is when the image object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool;
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -161,10 +218,20 @@ pub unsafe trait Image {
     unsafe fn increase_gpu_lock(&self);
 }
 
-unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
+unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
+    }
+
+    #[inline]
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        (**self).initial_layout_requirement()
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> ImageLayout {
+        (**self).final_layout_requirement()
     }
 
     #[inline]
@@ -175,7 +242,7 @@ unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> bool {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, queue)
     }
 
@@ -185,28 +252,78 @@ unsafe impl<T> Image for T where T: SafeDeref, T::Target: Image {
     }
 }
 
+/// Wraps around an object that implements `ImageAccess` and modifies the initial layout
+/// requirement to be either `Undefined` or `Preinitialized`.
+#[derive(Debug, Copy, Clone)]
+pub struct ImageAccessFromUndefinedLayout<I> {
+    image: I,
+    preinitialized: bool,
+}
+
+unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeImage {
+        self.image.inner()
+    }
+
+    #[inline]
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        if self.preinitialized {
+            ImageLayout::Preinitialized
+        } else {
+            ImageLayout::Undefined
+        }
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> ImageLayout {
+        self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
+                    -> u64
+    {
+        self.image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        self.image.try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        self.image.increase_gpu_lock()
+    }
+}
+
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
 /// given image.
 // TODO: isn't that for image views instead?
-pub unsafe trait ImageClearValue<T>: Image {
+pub unsafe trait ImageClearValue<T>: ImageAccess {
     fn decode(&self, T) -> Option<ClearValue>;
 }
 
-pub unsafe trait ImageContent<P>: Image {
+pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
 }
 
-/// Utility trait.
-pub unsafe trait IntoImageView {
-    type Target: ImageView;
-
-    fn into_image_view(self) -> Self::Target;
-}
-
 /// Trait for types that represent image views.
 pub unsafe trait ImageView {
-    fn parent(&self) -> &Image;
+    /// Object that represents a GPU access to the image view.
+    type Access: ImageViewAccess;
+
+    /// Builds an object that represents a GPU access to the image view.
+    fn access(self) -> Self::Access;
+}
+
+/// Trait for types that represent the GPU can access an image view.
+pub unsafe trait ImageViewAccess {
+    fn parent(&self) -> &ImageAccess;
 
     /// Returns the dimensions of the image view.
     fn dimensions(&self) -> Dimensions;
@@ -226,13 +343,13 @@ pub unsafe trait ImageView {
     }
 
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self) -> Layout;
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout;
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self) -> Layout;
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout;
     /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self) -> Layout;
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout;
 
     /// Returns true if the view doesn't use components swizzling.
     ///
@@ -250,9 +367,9 @@ pub unsafe trait ImageView {
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
+unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAccess {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         (**self).parent()
     }
 
@@ -267,19 +384,19 @@ unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
         (**self).descriptor_set_storage_image_layout()
     }
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
         (**self).descriptor_set_combined_image_sampler_layout()
     }
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
         (**self).descriptor_set_sampled_image_layout()
     }
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
         (**self).descriptor_set_input_attachment_layout()
     }
 
@@ -294,6 +411,6 @@ unsafe impl<T> ImageView for T where T: SafeDeref, T::Target: ImageView {
     }
 }
 
-pub unsafe trait AttachmentImageView: ImageView {
-    fn accept(&self, initial_layout: Layout, final_layout: Layout) -> bool;
+pub unsafe trait AttachmentImageView: ImageViewAccess {
+    fn accept(&self, initial_layout: ImageLayout, final_layout: ImageLayout) -> bool;
 }

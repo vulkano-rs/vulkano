@@ -97,7 +97,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///     builder.submit(&queue).unwrap();
     ///
     ///     // We must not destroy the fence before it is signaled.
-    ///     fence.wait(Duration::from_secs(5)).unwrap();
+    ///     fence.wait(Some(Duration::from_secs(5))).unwrap();
     /// }
     /// ```
     ///
@@ -204,7 +204,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// > **Note**: This is an expensive operation, so you may want to merge as many builders as
     /// > possible together and avoid submitting them one by one.
     ///
-    pub fn submit(mut self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
+    pub fn submit(self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
         unsafe {
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
@@ -301,7 +301,6 @@ impl From<Error> for SubmitCommandBufferError {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
     use std::time::Duration;
     use super::*;
     use sync::Fence;
@@ -309,7 +308,7 @@ mod tests {
     #[test]
     fn empty_submit() {
         let (device, queue) = gfx_dev_and_queue!();
-        let mut builder = SubmitCommandBufferBuilder::new();
+        let builder = SubmitCommandBufferBuilder::new();
         builder.submit(&queue).unwrap();
     }
 
@@ -325,7 +324,7 @@ mod tests {
             builder.set_fence_signal(&fence);
 
             builder.submit(&queue).unwrap();
-            fence.wait(Duration::from_secs(10)).unwrap();
+            fence.wait(Some(Duration::from_secs(5))).unwrap();
             assert!(fence.ready().unwrap());
         }
     }

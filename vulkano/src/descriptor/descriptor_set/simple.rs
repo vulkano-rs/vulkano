@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use buffer::BufferViewRef;
-use buffer::IntoBuffer;
+use buffer::Buffer;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::DescriptorSet;
@@ -25,10 +25,9 @@ use descriptor::descriptor_set::StdDescriptorPool;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
-use image::Image;
+use image::ImageAccess;
 use image::ImageView;
-use image::IntoImageView;
-use image::sys::Layout;
+use image::ImageLayout;
 use sampler::Sampler;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -70,12 +69,12 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P> where P: Descripto
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         unimplemented!()
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         unimplemented!()
     }
 }
@@ -111,8 +110,8 @@ macro_rules! simple_descriptor_set {
 
         $(
             // Here `$val` can be either a buffer or an image. However we can't create an extension
-            // trait for both buffers and image, because `impl<T: Image> ExtTrait for T {}` would
-            // conflict with `impl<T: Buffer> ExtTrait for T {}`.
+            // trait for both buffers and image, because `impl<T: ImageAccess> ExtTrait for T {}` would
+            // conflict with `impl<T: BufferAccess> ExtTrait for T {}`.
             //
             // Therefore we use a trick: we create two traits, one for buffers
             // (`SimpleDescriptorSetBufferExt`) and one for images (`SimpleDescriptorSetImageExt`),
@@ -156,9 +155,9 @@ impl<L> SimpleDescriptorSetBuilder<L, ()> where L: PipelineLayoutAbstract {
     /// - Panics if the set id is out of range.
     ///
     pub fn new(layout: L, set_id: usize) -> SimpleDescriptorSetBuilder<L, ()> {
-        assert!(layout.desc().num_sets() > set_id);
+        assert!(layout.num_sets() > set_id);
 
-        let cap = layout.desc().num_bindings_in_set(set_id).unwrap_or(0);
+        let cap = layout.num_bindings_in_set(set_id).unwrap_or(0);
 
         SimpleDescriptorSetBuilder {
             layout: layout,
@@ -202,26 +201,26 @@ pub unsafe trait SimpleDescriptorSetBufferExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetBufferExt<L, R> for T
-    where T: IntoBuffer, L: PipelineLayoutAbstract
+    where T: Buffer, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetBuf<T::Target>);
+    type Out = (R, SimpleDescriptorSetBuf<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let buffer = self.into_buffer();
+        let buffer = self.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
             DescriptorType::UniformBuffer => unsafe {
-                DescriptorWrite::uniform_buffer(binding_id as u32, &buffer)
+                DescriptorWrite::uniform_buffer(binding_id as u32, 0, &buffer)
             },
             DescriptorType::StorageBuffer => unsafe {
-                DescriptorWrite::storage_buffer(binding_id as u32, &buffer)
+                DescriptorWrite::storage_buffer(binding_id as u32, 0, &buffer)
             },
             _ => panic!()
         });
@@ -252,29 +251,29 @@ pub unsafe trait SimpleDescriptorSetImageExt<L, R> {
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetImg<T::Target>);
+    type Out = (R, SimpleDescriptorSetImg<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let image_view = self.into_image_view();
+        let image_view = self.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
-            DescriptorType::SampledImage => unsafe {
-                DescriptorWrite::sampled_image(binding_id as u32, &image_view)
+            DescriptorType::SampledImage => {
+                DescriptorWrite::sampled_image(binding_id as u32, 0, &image_view)
             },
-            DescriptorType::StorageImage => unsafe {
-                DescriptorWrite::storage_image(binding_id as u32, &image_view)
+            DescriptorType::StorageImage => {
+                DescriptorWrite::storage_image(binding_id as u32, 0, &image_view)
             },
-            DescriptorType::InputAttachment => unsafe {
-                DescriptorWrite::input_attachment(binding_id as u32, &image_view)
+            DescriptorType::InputAttachment => {
+                DescriptorWrite::input_attachment(binding_id as u32, 0, &image_view)
             },
             _ => panic!()
         });
@@ -291,7 +290,7 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
                 num_mipmaps: 1,         // FIXME:
                 first_layer: 0,         // FIXME:
                 num_layers: 1,          // FIXME:
-                layout: Layout::General,            // FIXME:
+                layout: ImageLayout::General,            // FIXME:
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             })
@@ -300,23 +299,23 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for T
 }
 
 unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
-    where T: IntoImageView, L: PipelineLayoutAbstract
+    where T: ImageView, L: PipelineLayoutAbstract
 {
-    type Out = (R, SimpleDescriptorSetImg<T::Target>);
+    type Out = (R, SimpleDescriptorSetImg<T::Access>);
 
     fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
               -> SimpleDescriptorSetBuilder<L, Self::Out>
     {
-        let image_view = self.0.into_image_view();
+        let image_view = self.0.access();
 
-        let (set_id, binding_id) = i.layout.desc().descriptor_by_name(name).unwrap();    // TODO: Result instead
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
         assert_eq!(set_id, i.set_id);       // TODO: Result instead
-        let desc = i.layout.desc().descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
 
         assert!(desc.array_count == 1);     // not implemented
         i.writes.push(match desc.ty.ty().unwrap() {
-            DescriptorType::CombinedImageSampler => unsafe {
-                DescriptorWrite::combined_image_sampler(binding_id as u32, &self.1, &image_view)
+            DescriptorType::CombinedImageSampler => {
+                DescriptorWrite::combined_image_sampler(binding_id as u32, 0, &self.1, &image_view)
             },
             _ => panic!()
         });
@@ -333,10 +332,60 @@ unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for (T, Arc<Sampler>)
                 num_mipmaps: 1,         // FIXME:
                 first_layer: 0,         // FIXME:
                 num_layers: 1,          // FIXME:
-                layout: Layout::General,            // FIXME:
+                layout: ImageLayout::General,            // FIXME:
                 stage: PipelineStages::none(),          // FIXME:
                 access: AccessFlagBits::none(),         // FIXME:
             })
+        }
+    }
+}
+
+// TODO: DRY
+unsafe impl<L, R, T> SimpleDescriptorSetImageExt<L, R> for Vec<(T, Arc<Sampler>)>
+    where T: ImageView, L: PipelineLayoutAbstract
+{
+    type Out = (R, Vec<SimpleDescriptorSetImg<T::Access>>);
+
+    fn add_me(self, mut i: SimpleDescriptorSetBuilder<L, R>, name: &str)
+              -> SimpleDescriptorSetBuilder<L, Self::Out>
+    {
+        let (set_id, binding_id) = i.layout.descriptor_by_name(name).unwrap();    // TODO: Result instead
+        assert_eq!(set_id, i.set_id);       // TODO: Result instead
+        let desc = i.layout.descriptor(set_id, binding_id).unwrap();     // TODO: Result instead
+
+        assert_eq!(desc.array_count as usize, self.len());     // not implemented
+
+        let mut imgs = Vec::new();
+        for (num, (img, sampler)) in self.into_iter().enumerate() {
+            let image_view = img.access();
+
+            i.writes.push(match desc.ty.ty().unwrap() {
+                DescriptorType::CombinedImageSampler => {
+                    DescriptorWrite::combined_image_sampler(binding_id as u32, num as u32,
+                                                            &sampler, &image_view)
+                },
+                _ => panic!()
+            });
+
+            imgs.push(SimpleDescriptorSetImg {
+                image: image_view,
+                sampler: Some(sampler),
+                write: !desc.readonly,
+                first_mipmap: 0,            // FIXME:
+                num_mipmaps: 1,         // FIXME:
+                first_layer: 0,         // FIXME:
+                num_layers: 1,          // FIXME:
+                layout: ImageLayout::General,            // FIXME:
+                stage: PipelineStages::none(),          // FIXME:
+                access: AccessFlagBits::none(),         // FIXME:
+            });
+        }
+
+        SimpleDescriptorSetBuilder {
+            layout: i.layout,
+            set_id: i.set_id,
+            writes: i.writes,
+            resources: (i.resources, imgs),
         }
     }
 }
@@ -363,7 +412,7 @@ pub struct SimpleDescriptorSetBuf<B> {
 }
 
 /*unsafe impl<B> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBuf<B>
-    where B: Buffer
+    where B: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -394,7 +443,7 @@ pub struct SimpleDescriptorSetBufView<V> where V: BufferViewRef {
 }
 
 /*unsafe impl<V> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetBufView<V>
-    where V: BufferViewRef, V::Buffer: Buffer
+    where V: BufferViewRef, V::BufferAccess: BufferAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {
@@ -426,13 +475,13 @@ pub struct SimpleDescriptorSetImg<I> {
     num_mipmaps: u32,
     first_layer: u32,
     num_layers: u32,
-    layout: Layout,
+    layout: ImageLayout,
     stage: PipelineStages,
     access: AccessFlagBits,
 }
 
 /*unsafe impl<I> SimpleDescriptorSetResourcesCollection for SimpleDescriptorSetImg<I>
-    where I: ImageView
+    where I: ImageViewAccess
 {
     #[inline]
     fn add_transition<'a>(&'a self, sink: &mut CommandsListSink<'a>) {

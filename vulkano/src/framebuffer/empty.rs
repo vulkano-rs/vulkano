@@ -8,17 +8,12 @@
 // according to those terms.
 
 use std::iter;
-use std::sync::Arc;
 use format::ClearValue;
-use framebuffer::AttachmentsList;
-use framebuffer::FramebufferCreationError;
 use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescAttachmentsList;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::LayoutPassDependencyDescription;
-use image::ImageView;
 
 /// Description of an empty render pass.
 ///
@@ -34,11 +29,6 @@ use image::ImageView;
 /// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
 /// ```
 ///
-/// # Clear value and attachments list
-///
-/// A render pass created from an `EmptySinglePassRenderPassDesc` accepts `()` for both the list
-/// of attachments and the clear colors.
-///
 #[derive(Debug, Copy, Clone)]
 pub struct EmptySinglePassRenderPassDesc;
 
@@ -49,7 +39,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
         None
     }
 
@@ -59,7 +49,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn subpass(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
         if num == 0 {
             Some(LayoutPassDescription {
                 color_attachments: vec![],
@@ -79,7 +69,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
         None
     }
 
@@ -140,24 +130,6 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
         } else {
             None
         }
-    }
-}
-
-unsafe impl RenderPassDescAttachmentsList<Vec<Arc<ImageView + Send + Sync>>> for EmptySinglePassRenderPassDesc {
-    #[inline]
-    fn check_attachments_list(&self, list: Vec<Arc<ImageView + Send + Sync>>) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        if list.is_empty() {
-            Ok(Box::new(()) as Box<_>)
-        } else {
-            panic!()        // FIXME: return error instead
-        }
-    }
-}
-
-unsafe impl RenderPassDescAttachmentsList<()> for EmptySinglePassRenderPassDesc {
-    #[inline]
-    fn check_attachments_list(&self, list: ()) -> Result<Box<AttachmentsList + Send + Sync>, FramebufferCreationError> {
-        Ok(Box::new(()) as Box<_>)
     }
 }
 

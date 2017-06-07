@@ -22,6 +22,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         set: u32,
         binding: u32,
         desc_ty: String,
+        array_count: u64,
         readonly: bool,
     }
 
@@ -50,13 +51,14 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         }).next().expect(&format!("Uniform `{}` is missing a binding", name));
 
         // Find informations about the kind of binding for this descriptor.
-        let (desc_ty, readonly) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
+        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
             name: name,
             desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
+            array_count: array_count,
             readonly: readonly,
         });
     }
@@ -80,11 +82,11 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     let descriptor_body = descriptors.iter().map(|d| {
         format!("({set}, {binding}) => Some(DescriptorDesc {{
             ty: {desc_ty},
-            array_count: 1,
+            array_count: {array_count},
             stages: self.0.clone(),
             readonly: {readonly},
-        }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty,
-              readonly = if d.readonly { "true" } else { "false" })
+        }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty, array_count = d.array_count,
+               readonly = if d.readonly { "true" } else { "false" })
 
     }).collect::<Vec<_>>().concat();
 
@@ -194,12 +196,12 @@ fn pointer_variable_ty(doc: &parse::Spirv, variable: u32) -> u32 {
     }).next().unwrap()
 }
 
-/// Returns a `DescriptorDescTy` constructor and a bool indicating whether the descriptor is
-/// read-only.
+/// Returns a `DescriptorDescTy` constructor, a bool indicating whether the descriptor is
+/// read-only, and the number of array elements.
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
 fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sampled: bool)
-                    -> Option<(String, bool)>
+                    -> Option<(String, bool, u64)>
 {
     doc.instructions.iter().filter_map(|i| {
         match i {
@@ -233,7 +235,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                     content: DescriptorBufferContentDesc::F32,      // FIXME: wrong
                 }})", if is_ssbo { "true" } else { "false "});
 
-                Some((desc, true))
+                Some((desc, true, 1))
             },
 
             &parse::Instruction::TypeImage { result_id, ref dim, arrayed, ms, sampled,
@@ -263,7 +265,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                                             array_layers: {}
                                         }}", ms, arrayed);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
 
                 } else if let &enums::Dim::DimBuffer = dim {
                     // We are a texel buffer.
@@ -272,7 +274,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                         format: None,       // TODO: specify format if known
                     }}", !sampled);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
 
                 } else {
                     // We are a sampled or storage image.
@@ -296,7 +298,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                         array_layers: {},
                     }})", ty, sampled, dim, ms, arrayed);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
                 }
             },
 
@@ -308,7 +310,20 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
 
             &parse::Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
                 let desc = format!("DescriptorDescTy::Sampler");
-                Some((desc, true))
+                Some((desc, true, 1))
+            },
+
+            &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == pointed_ty => {
+                let (desc, readonly, arr) = match descriptor_infos(doc, type_id, false) {
+                    None => return None,
+                    Some(v) => v,
+                };
+                assert_eq!(arr, 1);     // TODO: implement?
+                let len = doc.instructions.iter().filter_map(|e| {
+                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
+                }).next().expect("failed to find array length");
+                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
+                Some((desc, readonly, len))
             },
 
             _ => None,      // TODO: other types

@@ -14,16 +14,16 @@ extern crate time;
 
 #[macro_use]
 extern crate vulkano;
+#[macro_use]
+extern crate vulkano_shader_derive;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::sync::GpuFuture;
+use vulkano::image::ImageView;
 
 use std::sync::Arc;
-
-mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/teapot_vs.glsl")} }
-mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/bin/teapot_fs.glsl")} }
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -36,9 +36,10 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
+    let events_loop = winit::EventsLoop::new();
+    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
-    let queue = physical.queue_families().find(|q| q.supports_graphics() &&
+    let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
@@ -53,32 +54,32 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (swapchain, images) = {
-        let caps = window.surface().get_capabilities(&physical).expect("failed to get surface capabilities");
+        let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
         let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(&device, &window.surface(), caps.min_image_count, format, dimensions, 1,
-                                           &usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
+        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
+                                           usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
                                            present, true, None).expect("failed to create swapchain")
     };
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(&device, images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
+    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
                                 .expect("failed to create buffer");
 
     let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::NORMALS.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::NORMALS.iter().cloned())
                                 .expect("failed to create buffer");
 
     let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::INDICES.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::INDICES.iter().cloned())
                                 .expect("failed to create buffer");
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
@@ -88,7 +89,7 @@ fn main() {
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::from_data(&device, &vulkano::buffer::BufferUsage::all(), Some(queue.family()), 
+                               ::from_data(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), 
                                 vs::ty::Data {
                                     world : <cgmath::Matrix4<f32> as cgmath::SquareMatrix>::identity().into(),
                                     view : (view * scale).into(),
@@ -105,13 +106,13 @@ fn main() {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: images[0].format(),
+                    format: swapchain.format(),
                     samples: 1,
                 },
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: vulkano::image::Image::format(&depth_buffer),
+                    format: vulkano::format::Format::D16Unorm,
                     samples: 1,
                 }
             },
@@ -122,7 +123,7 @@ fn main() {
         ).unwrap()
     );
 
-    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(&device, vulkano::pipeline::GraphicsPipelineParams {
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(device.clone(), vulkano::pipeline::GraphicsPipelineParams {
         vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
         vertex_shader: vs.main_entry_point(),
         input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
@@ -151,20 +152,17 @@ fn main() {
     }));
 
     let framebuffers = images.iter().map(|image| {
-        let attachments = renderpass.desc().start_attachments()
-            .color(image.clone()).depth(depth_buffer.clone());
-        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-
-        vulkano::framebuffer::Framebuffer::new(renderpass.clone(), dimensions, attachments).unwrap()
+        Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
+            .add(image.clone()).unwrap()
+            .add(depth_buffer.clone()).unwrap()
+            .build().unwrap())
     }).collect::<Vec<_>>();
 
 
-    let mut submissions: Vec<Box<GpuFuture>> = Vec::new();
+    let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
-        while submissions.len() >= 4 {
-            submissions.remove(0);
-        }
+        previous_frame.cleanup_finished();
 
         {
             // aquiring write lock for the uniform buffer
@@ -177,32 +175,83 @@ fn main() {
             buffer_content.world = cgmath::Matrix4::from(rotation).into();
         }
 
-        let (image_num, future) = swapchain.acquire_next_image(std::time::Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), std::time::Duration::new(1, 0)).unwrap();
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
-                renderpass.desc().start_clear_values()
-                    .color([0.0, 0.0, 1.0, 1.0]).depth((1f32)))
+                vec![
+                    [0.0, 0.0, 1.0, 1.0].into(),
+                    1f32.into()
+                ]).unwrap()
             .draw_indexed(
                 pipeline.clone(), vulkano::command_buffer::DynamicState::none(),
                 (vertex_buffer.clone(), normals_buffer.clone()), 
-                index_buffer.clone(), set.clone(), ())
-            .end_render_pass()
-            .build();
+                index_buffer.clone(), set.clone(), ()).unwrap()
+            .end_render_pass().unwrap()
+            .build().unwrap();
         
-        let future = future
-            .then_execute(queue.clone(), command_buffer)
+        let future = previous_frame.join(acquire_future)
+            .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence();
-        future.flush().unwrap();
-        submissions.push(Box::new(future) as Box<_>);
+            .then_signal_fence_and_flush().unwrap();
+        previous_frame = Box::new(future) as Box<_>;
 
-        for ev in window.window().poll_events() {
+        let mut done = false;
+        events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::Closed => return,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
                 _ => ()
             }
-        }
+        });
+        if done { return; }
     }
+}
+
+mod vs {
+    #[derive(VulkanoShader)]
+    #[ty = "vertex"]
+    #[src = "
+#version 450
+
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+
+layout(location = 0) out vec3 v_normal;
+
+layout(set = 0, binding = 0) uniform Data {
+    mat4 world;
+    mat4 view;
+    mat4 proj;
+} uniforms;
+
+void main() {
+    mat4 worldview = uniforms.view * uniforms.world;
+    v_normal = transpose(inverse(mat3(worldview))) * normal;
+    gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
+}
+"]
+    struct Dummy;
+}
+
+mod fs {
+    #[derive(VulkanoShader)]
+    #[ty = "fragment"]
+    #[src = "
+#version 450
+
+layout(location = 0) in vec3 v_normal;
+layout(location = 0) out vec4 f_color;
+
+const vec3 LIGHT = vec3(0.0, 0.0, 1.0);
+
+void main() {
+    float brightness = dot(normalize(v_normal), normalize(LIGHT));
+    vec3 dark_color = vec3(0.6, 0.0, 0.0);
+    vec3 regular_color = vec3(1.0, 0.0, 0.0);
+
+    f_color = vec4(mix(dark_color, regular_color, brightness), 1.0);
+}
+"]
+    struct Dummy;
 }

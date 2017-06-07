@@ -23,7 +23,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 /// use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
 /// 
 /// # let device: Arc<Device> = return;
-/// let pipeline_layout = EmptyPipelineDesc.build(&device).unwrap(); 
+/// let pipeline_layout = EmptyPipelineDesc.build(device.clone()).unwrap(); 
 /// ```
 #[derive(Debug, Copy, Clone)]
 pub struct EmptyPipelineDesc;

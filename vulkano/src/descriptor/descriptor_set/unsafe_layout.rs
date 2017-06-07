@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ use vk;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorsCount;
 use device::Device;
+use device::DeviceOwned;
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 ///
@@ -94,16 +96,26 @@ impl UnsafeDescriptorSetLayout {
         })
     }
 
-    /// Returns the device used to create this layout.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Returns the number of descriptors of each type.
     #[inline]
     pub fn descriptors_count(&self) -> &DescriptorsCount {
         &self.descriptors_count
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeDescriptorSetLayout {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl fmt::Debug for UnsafeDescriptorSetLayout {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("UnsafeDescriptorSetLayout")
+            .field("raw", &self.layout)
+            .field("device", &self.device)
+            .finish()
     }
 }
 
@@ -130,11 +142,40 @@ impl Drop for UnsafeDescriptorSetLayout {
 #[cfg(test)]
 mod tests {
     use std::iter;
-    use descriptor::descriptor_set::unsafe_layout::UnsafeDescriptorSetLayout;
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::DescriptorBufferDesc;
+    use descriptor::descriptor::DescriptorBufferContentDesc;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::DescriptorsCount;
+    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
         let _layout = UnsafeDescriptorSetLayout::new(device, iter::empty());
+    }
+
+    #[test]
+    fn basic_create() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let layout = DescriptorDesc {
+            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                dynamic: Some(false),
+                storage: false,
+                content: DescriptorBufferContentDesc::F32,
+            }),
+            array_count: 1,
+            stages: ShaderStages::all_graphics(),
+            readonly: true,
+        };
+
+        let sl = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
+
+        assert_eq!(sl.descriptors_count(), &DescriptorsCount {
+            uniform_buffer: 1,
+            .. DescriptorsCount::zero()
+        });
     }
 }

@@ -35,30 +35,30 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use buffer::Buffer;
+use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use image::Image;
+use image::ImageAccess;
 use SafeDeref;
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::pool::DescriptorPool;
-pub use self::pool::DescriptorPoolAlloc;
-pub use self::pool::DescriptorPoolAllocError;
-pub use self::pool::DescriptorWrite;
-pub use self::pool::DescriptorsCount;
-pub use self::pool::UnsafeDescriptorPool;
-pub use self::pool::UnsafeDescriptorPoolAllocIter;
-pub use self::pool::UnsafeDescriptorSet;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;
 pub use self::simple::*;
+pub use self::sys::DescriptorPool;
+pub use self::sys::DescriptorPoolAlloc;
+pub use self::sys::DescriptorPoolAllocError;
+pub use self::sys::DescriptorWrite;
+pub use self::sys::DescriptorsCount;
+pub use self::sys::UnsafeDescriptorPool;
+pub use self::sys::UnsafeDescriptorPoolAllocIter;
+pub use self::sys::UnsafeDescriptorSet;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
 
-mod pool;
 mod simple;
 mod std_pool;
+mod sys;
 mod unsafe_layout;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
@@ -70,11 +70,11 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 
     /// Returns the list of buffers used by this descriptor set. Includes buffer views.
     // TODO: meh for boxing
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a>;
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
 
     /// Returns the list of images used by this descriptor set. Includes image views.
     // TODO: meh for boxing
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a>;
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet {
@@ -84,12 +84,12 @@ unsafe impl<T> DescriptorSet for T where T: SafeDeref, T::Target: DescriptorSet 
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a Buffer> + 'a> {
+    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
         (**self).buffers_list()
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a Image> + 'a> {
+    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
         (**self).images_list()
     }
 }

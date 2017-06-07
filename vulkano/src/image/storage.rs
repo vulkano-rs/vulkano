@@ -18,23 +18,26 @@ use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
+use format::Format;
 use image::Dimensions;
+use image::ImageDimensions;
 use image::sys::ImageCreationError;
-use image::sys::Layout;
+use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
+use image::traits::ImageViewAccess;
+use image::traits::Image;
 use image::traits::ImageView;
-use image::traits::IntoImage;
-use image::traits::IntoImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -65,7 +68,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
-    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
                  I: IntoIterator<Item = QueueFamily<'a>>
@@ -78,7 +81,7 @@ impl<F> StorageImage<F> {
             _ => false
         };
 
-        let usage = Usage {
+        let usage = ImageUsage {
             transfer_source: true,
             transfer_dest: true,
             sampled: true,
@@ -99,7 +102,7 @@ impl<F> StorageImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
+            try!(UnsafeImage::new(device.clone(), usage, format.format(), dimensions.to_image_dimensions(),
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -112,7 +115,7 @@ impl<F> StorageImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
@@ -143,33 +146,58 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImage for Arc<StorageImage<F, A>>
+unsafe impl<F, A> Image for Arc<StorageImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_image(self) -> Self {
+    fn access(self) -> Self {
         self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
     }
 }
 
 // FIXME: wrong
-unsafe impl<F, A> IntoImageView for Arc<StorageImage<F, A>>
+unsafe impl<F, A> ImageView for Arc<StorageImage<F, A>>
     where F: 'static + Send + Sync, A: MemoryPool
 {
-    type Target = Self;
+    type Access = Self;
 
     #[inline]
-    fn into_image_view(self) -> Self {
+    fn access(self) -> Self {
         self
     }
 }
 
-unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
+    }
+
+    #[inline]
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
@@ -178,13 +206,13 @@ unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> bool {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
-            true
+            Ok(())
         } else {
             self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            false
+            Err(AccessError::AlreadyInUse)
         }
     }
 
@@ -213,11 +241,11 @@ unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
     }
 }
 
-unsafe impl<F, A> ImageView for StorageImage<F, A>
+unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
     }
 
@@ -232,23 +260,23 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
@@ -266,7 +294,7 @@ mod tests {
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _img = StorageImage::new(&device, Dimensions::Dim2d { width: 32, height: 32 },
+        let _img = StorageImage::new(device, Dimensions::Dim2d { width: 32, height: 32 },
                                      Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
     }
 }

@@ -14,12 +14,16 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::PipelineLayoutAbstract;
+use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
+use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
 
@@ -52,7 +56,7 @@ struct Inner {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: &Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
+    pub fn new<Css, Csl>(device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
                          specialization: &Css) 
                          -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
@@ -60,12 +64,9 @@ impl ComputePipeline<()> {
     {
         let vk = device.pointers();
 
-        let pipeline_layout = shader.layout().clone().build(device).unwrap();     // TODO: error
+        let pipeline_layout = shader.layout().clone().build(device.clone()).unwrap();     // TODO: error
 
-        // TODO: more details in the error
-        if !PipelineLayoutSuperset::is_superset_of(pipeline_layout.desc(), shader.layout()) {
-            return Err(ComputePipelineCreationError::IncompatiblePipelineLayout);
-        }
+        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(), shader.layout())?;
 
         let pipeline = unsafe {
             let spec_descriptors = <Css as SpecializationConstants>::descriptors();
@@ -113,6 +114,13 @@ impl ComputePipeline<()> {
             },
             pipeline_layout: pipeline_layout,
         })
+    }
+}
+
+impl<Pl> fmt::Debug for ComputePipeline<Pl> {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan compute pipeline {:?}>", self.inner.pipeline)
     }
 }
 
@@ -175,13 +183,42 @@ unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: Pipelin
     }
 
     #[inline]
-    fn desc(&self) -> &PipelineLayoutDescNames {
-        self.layout().desc()
+    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.layout().descriptor_set_layout(index)
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl> where Pl: PipelineLayoutDesc {
+    #[inline]
+    fn num_sets(&self) -> usize {
+        self.pipeline_layout.num_sets()
     }
 
     #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout().descriptor_set_layout(index)
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.pipeline_layout.num_bindings_in_set(set)
+    }
+
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.pipeline_layout.descriptor(set, binding)
+    }
+
+    #[inline]
+    fn num_push_constants_ranges(&self) -> usize {
+        self.pipeline_layout.num_push_constants_ranges()
+    }
+
+    #[inline]
+    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+        self.pipeline_layout.push_constants_range(num)
+    }
+}
+
+unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl> where Pl: PipelineLayoutDescNames {
+    #[inline]
+    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
+        self.pipeline_layout.descriptor_by_name(name)
     }
 }
 
@@ -218,7 +255,7 @@ pub enum ComputePipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
     /// The pipeline layout is not compatible with what the shader expects.
-    IncompatiblePipelineLayout,
+    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 }
 
 impl error::Error for ComputePipelineCreationError {
@@ -226,9 +263,9 @@ impl error::Error for ComputePipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             ComputePipelineCreationError::OomError(_) => "not enough memory available",
-            ComputePipelineCreationError::IncompatiblePipelineLayout => "the pipeline layout is \
-                                                                         not compatible with what \
-                                                                         the shader expects",
+            ComputePipelineCreationError::IncompatiblePipelineLayout(_) => "the pipeline layout is \
+                                                                            not compatible with what \
+                                                                            the shader expects",
         }
     }
 
@@ -236,7 +273,7 @@ impl error::Error for ComputePipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
-            _ => None
+            ComputePipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
         }
     }
 }
@@ -252,6 +289,13 @@ impl From<OomError> for ComputePipelineCreationError {
     #[inline]
     fn from(err: OomError) -> ComputePipelineCreationError {
         ComputePipelineCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutNotSupersetError> for ComputePipelineCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutNotSupersetError) -> ComputePipelineCreationError {
+        ComputePipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }
 

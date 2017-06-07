@@ -63,19 +63,22 @@
 //!
 
 pub use self::cpu_access::CpuAccessibleBuffer;
+pub use self::cpu_pool::CpuBufferPool;
 pub use self::device_local::DeviceLocalBuffer;
 pub use self::immutable::ImmutableBuffer;
 pub use self::slice::BufferSlice;
 pub use self::sys::BufferCreationError;
-pub use self::sys::Usage as BufferUsage;
-pub use self::traits::Buffer;
+pub use self::traits::BufferAccess;
 pub use self::traits::BufferInner;
-pub use self::traits::IntoBuffer;
+pub use self::traits::Buffer;
 pub use self::traits::TypedBuffer;
+pub use self::traits::TypedBufferAccess;
+pub use self::usage::BufferUsage;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
 
 pub mod cpu_access;
+pub mod cpu_pool;
 pub mod device_local;
 pub mod immutable;
 pub mod sys;
@@ -83,3 +86,4 @@ pub mod view;
 
 mod slice;
 mod traits;
+mod usage;

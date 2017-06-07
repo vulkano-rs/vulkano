@@ -16,12 +16,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use format::Format;
-use image::Usage as ImageUsage;
+use image::ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
+use swapchain::capabilities;
+use swapchain::Capabilities;
 use swapchain::SurfaceSwapchainLock;
-use swapchain::SupportedSurfaceTransforms;
 use swapchain::display::DisplayMode;
 use swapchain::display::DisplayPlane;
 
@@ -35,7 +36,6 @@ use vk;
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
-#[derive(Debug)]
 pub struct Surface {
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
@@ -105,7 +105,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_hwnd<T, U>(instance: &Arc<Instance>, hinstance: *const T, hwnd: *const U)
+    pub unsafe fn from_hwnd<T, U>(instance: Arc<Instance>, hinstance: *const T, hwnd: *const U)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -144,7 +144,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xcb<C>(instance: &Arc<Instance>, connection: *const C, window: u32)
+    pub unsafe fn from_xcb<C>(instance: Arc<Instance>, connection: *const C, window: u32)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -183,7 +183,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_xlib<D>(instance: &Arc<Instance>, display: *const D, window: c_ulong)
+    pub unsafe fn from_xlib<D>(instance: Arc<Instance>, display: *const D, window: c_ulong)
                                   -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -222,7 +222,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_wayland<D, S>(instance: &Arc<Instance>, display: *const D, surface: *const S)
+    pub unsafe fn from_wayland<D, S>(instance: Arc<Instance>, display: *const D, surface: *const S)
                                      -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -262,7 +262,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `connection` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_mir<C, S>(instance: &Arc<Instance>, connection: *const C, surface: *const S)
+    pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C, surface: *const S)
                                  -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -299,7 +299,7 @@ impl Surface {
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
-    pub unsafe fn from_anativewindow<T>(instance: &Arc<Instance>, window: *const T)
+    pub unsafe fn from_anativewindow<T>(instance: Arc<Instance>, window: *const T)
                                         -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -329,13 +329,87 @@ impl Surface {
         }))
     }
 
+    /// Creates a `Surface` from an iOS `UIView`.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the `view` is correct and stays alive for the entire
+    ///   lifetime of the surface.
+    /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    pub unsafe fn from_ios_moltenvk<T>(instance: Arc<Instance>, view: *const T)
+                                       -> Result<Arc<Surface>, SurfaceCreationError>
+    {
+        let vk = instance.pointers();
+
+        if !instance.loaded_extensions().mvk_ios_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_MVK_ios_surface" });
+        }
+
+        let surface = {
+            let infos = vk::IOSSurfaceCreateInfoMVK {
+                sType: vk::STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                pView: view as *const _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateIOSSurfaceMVK(instance.internal_object(), &infos,
+                                                     ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
+    /// Creates a `Surface` from a MacOS `NSView`.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the `view` is correct and stays alive for the entire
+    ///   lifetime of the surface.
+    /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    pub unsafe fn from_macos_moltenvk<T>(instance: Arc<Instance>, view: *const T)
+                                         -> Result<Arc<Surface>, SurfaceCreationError>
+    {
+        let vk = instance.pointers();
+
+        if !instance.loaded_extensions().mvk_macos_surface {
+            return Err(SurfaceCreationError::MissingExtension { name: "VK_MVK_macos_surface" });
+        }
+
+        let surface = {
+            let infos = vk::MacOSSurfaceCreateInfoMVK {
+                sType: vk::STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
+                pNext: ptr::null(),
+                flags: 0,   // reserved
+                pView: view as *const _,
+            };
+
+            let mut output = mem::uninitialized();
+            try!(check_errors(vk.CreateMacOSSurfaceMVK(instance.internal_object(), &infos,
+                                                       ptr::null(), &mut output)));
+            output
+        };
+
+        Ok(Arc::new(Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
     ///
     /// # Safety
     ///
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
-    pub unsafe fn from_vi_surface<T>(instance: &Arc<Instance>, window: *const T)
+    pub unsafe fn from_vi_surface<T>(instance: Arc<Instance>, window: *const T)
                                         -> Result<Arc<Surface>, SurfaceCreationError>
     {
         let vk = instance.pointers();
@@ -366,7 +440,8 @@ impl Surface {
     }
 
     /// Returns true if the given queue family can draw on this surface.
-    pub fn is_supported(&self, queue: &QueueFamily) -> Result<bool, OomError> {
+    // FIXME: vulkano doesn't check this for the moment!
+    pub fn is_supported(&self, queue: QueueFamily) -> Result<bool, CapabilitiesError> {
         unsafe {
             let vk = self.instance.pointers();
 
@@ -379,15 +454,22 @@ impl Surface {
         }
     }
 
+    #[deprecated = "Renamed to `capabilities`"]
+    #[inline]
+    pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> {
+        Ok(self.capabilities(*device).unwrap())
+    }
+
     /// Retreives the capabilities of a surface when used by a certain device.
     ///
     /// # Panic
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
     ///
-    pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> { // TODO: wrong error type
+    pub fn capabilities(&self, device: PhysicalDevice) -> Result<Capabilities, CapabilitiesError> {
         unsafe {
-            assert_eq!(&*self.instance as *const _, &**device.instance() as *const _);
+            assert_eq!(&*self.instance as *const _, &**device.instance() as *const _,
+                       "Instance mismatch in Surface::capabilities");
 
             let vk = self.instance.pointers();
 
@@ -437,7 +519,7 @@ impl Surface {
                 // https://bugs.freedesktop.org/show_bug.cgi?id=97153
                 // debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
                 debug_assert!(modes.iter().count() > 0);
-                SupportedPresentModes::from_list(modes.into_iter())
+                capabilities::supported_present_modes_from_list(modes.into_iter())
             };
 
             Ok(Capabilities {
@@ -454,16 +536,16 @@ impl Surface {
                 min_image_extent: [caps.minImageExtent.width, caps.minImageExtent.height],
                 max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
                 max_image_array_layers: caps.maxImageArrayLayers,
-                supported_transforms: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms),
-                current_transform: SupportedSurfaceTransforms::from_bits(caps.supportedTransforms).iter().next().unwrap(),        // TODO:
-                supported_composite_alpha: SupportedCompositeAlpha::from_bits(caps.supportedCompositeAlpha),
+                supported_transforms: capabilities::surface_transforms_from_bits(caps.supportedTransforms),
+                current_transform: capabilities::surface_transforms_from_bits(caps.currentTransform).iter().next().unwrap(),        // TODO:
+                supported_composite_alpha: capabilities::supported_composite_alpha_from_bits(caps.supportedCompositeAlpha),
                 supported_usage_flags: {
                     let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
                     debug_assert!(usage.color_attachment);  // specs say that this must be true
                     usage
                 },
                 supported_formats: formats.into_iter().map(|f| {
-                    (Format::from_num(f.format).unwrap(), ColorSpace::from_num(f.colorSpace))
+                    (Format::from_num(f.format).unwrap(), capabilities::color_space_from_num(f.colorSpace))
                 }).collect(),
                 present_modes: modes,
             })
@@ -484,6 +566,13 @@ unsafe impl VulkanObject for Surface {
     #[inline]
     fn internal_object(&self) -> vk::SurfaceKHR {
         self.surface
+    }
+}
+
+impl fmt::Debug for Surface {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan surface {:?}>", self.surface)
     }
 }
 
@@ -554,386 +643,57 @@ impl From<Error> for SurfaceCreationError {
     }
 }
 
-/// The capabilities of a surface when used by a physical device.
-///
-/// You have to match these capabilities when you create a swapchain.
-#[derive(Clone, Debug)]
-pub struct Capabilities {
-    /// Minimum number of images that must be present in the swapchain.
-    pub min_image_count: u32,
-
-    /// Maximum number of images that must be present in the swapchain, or `None` if there is no
-    /// maximum value. Note that "no maximum" doesn't mean that you can set a very high value, as
-    /// you may still get out of memory errors.
-    pub max_image_count: Option<u32>,
-
-    /// The current dimensions of the surface. `None` means that the surface's dimensions will
-    /// depend on the dimensions of the swapchain that you are going to create.
-    pub current_extent: Option<[u32; 2]>,
-
-    /// Minimum width and height of a swapchain that uses this surface.
-    pub min_image_extent: [u32; 2],
-
-    /// Maximum width and height of a swapchain that uses this surface.
-    pub max_image_extent: [u32; 2],
-
-    /// Maximum number of image layers if you create an image array. The minimum is 1.
-    pub max_image_array_layers: u32,
-
-    /// List of transforms supported for the swapchain.
-    pub supported_transforms: SupportedSurfaceTransforms,
-
-    /// Current transform used by the surface.
-    pub current_transform: SurfaceTransform,
-
-    /// List of composite alpha modes supports for the swapchain.
-    pub supported_composite_alpha: SupportedCompositeAlpha,
-
-    /// List of image usages that are supported for images of the swapchain. Only
-    /// the `color_attachment` usage is guaranteed to be supported.
-    pub supported_usage_flags: ImageUsage,
-
-    /// List of formats supported for the swapchain.
-    pub supported_formats: Vec<(Format, ColorSpace)>,       // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
-
-    /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
-    pub present_modes: SupportedPresentModes,
-}
-
-/// The way presenting a swapchain is accomplished.
+/// Error that can happen when retreiving a surface's capabilities.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum PresentMode {
-    /// Immediately shows the image to the user. May result in visible tearing.
-    Immediate = vk::PRESENT_MODE_IMMEDIATE_KHR,
+pub enum CapabilitiesError {
+    /// Not enough memory.
+    OomError(OomError),
 
-    /// The action of presenting an image puts it in wait. When the next vertical blanking period
-    /// happens, the waiting image is effectively shown to the user. If an image is presented while
-    /// another one is waiting, it is replaced.
-    Mailbox = vk::PRESENT_MODE_MAILBOX_KHR,
-
-    /// The action of presenting an image adds it to a queue of images. At each vertical blanking
-    /// period, the queue is poped and an image is presented.
-    ///
-    /// Guaranteed to be always supported.
-    ///
-    /// This is the equivalent of OpenGL's `SwapInterval` with a value of 1.
-    Fifo = vk::PRESENT_MODE_FIFO_KHR,
-
-    /// Same as `Fifo`, except that if the queue was empty during the previous vertical blanking
-    /// period then it is equivalent to `Immediate`.
-    ///
-    /// This is the equivalent of OpenGL's `SwapInterval` with a value of -1.
-    Relaxed = vk::PRESENT_MODE_FIFO_RELAXED_KHR,
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
 }
 
-/// List of `PresentMode`s that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedPresentModes {
-    pub immediate: bool,
-    pub mailbox: bool,
-    pub fifo: bool,
-    pub relaxed: bool,
-}
-
-impl SupportedPresentModes {
-    /// Builds a `SupportedPresentModes` with all fields set to false.
+impl error::Error for CapabilitiesError {
     #[inline]
-    pub fn none() -> SupportedPresentModes {
-        SupportedPresentModes {
-            immediate: false,
-            mailbox: false,
-            fifo: false,
-            relaxed: false,
+    fn description(&self) -> &str {
+        match *self {
+            CapabilitiesError::OomError(_) => "not enough memory",
+            CapabilitiesError::SurfaceLost => "the surface is no longer valid",
         }
     }
 
     #[inline]
-    fn from_list<I>(elem: I) -> SupportedPresentModes where I: Iterator<Item = vk::PresentModeKHR> {
-        let mut result = SupportedPresentModes::none();
-        for e in elem {
-            match e {
-                vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
-                vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
-                vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
-                vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
-                _ => panic!("Wrong value for vk::PresentModeKHR")
-            }
-        }
-        result
-    }
-
-    /// Returns true if the given present mode is in this list of supported modes.
-    #[inline]
-    pub fn supports(&self, mode: PresentMode) -> bool {
-        match mode {
-            PresentMode::Immediate => self.immediate,
-            PresentMode::Mailbox => self.mailbox,
-            PresentMode::Fifo => self.fifo,
-            PresentMode::Relaxed => self.relaxed,
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CapabilitiesError::OomError(ref err) => Some(err),
+            _ => None
         }
     }
+}
 
-    /// Returns an iterator to the list of supported present modes.
+impl fmt::Display for CapabilitiesError {
     #[inline]
-    pub fn iter(&self) -> SupportedPresentModesIter {
-        SupportedPresentModesIter(self.clone())
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
 
-/// Enumeration of the `PresentMode`s that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedPresentModesIter(SupportedPresentModes);
-
-impl Iterator for SupportedPresentModesIter {
-    type Item = PresentMode;
-
+impl From<OomError> for CapabilitiesError {
     #[inline]
-    fn next(&mut self) -> Option<PresentMode> {
-        if self.0.immediate { self.0.immediate = false; return Some(PresentMode::Immediate); }
-        if self.0.mailbox { self.0.mailbox = false; return Some(PresentMode::Mailbox); }
-        if self.0.fifo { self.0.fifo = false; return Some(PresentMode::Fifo); }
-        if self.0.relaxed { self.0.relaxed = false; return Some(PresentMode::Relaxed); }
-        None
+    fn from(err: OomError) -> CapabilitiesError {
+        CapabilitiesError::OomError(err)
     }
 }
 
-/// A transformation to apply to the image before showing it on the screen.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum SurfaceTransform {
-    /// Don't transform the image.
-    Identity = vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-    /// Rotate 90 degrees.
-    Rotate90 = vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
-    /// Rotate 180 degrees.
-    Rotate180 = vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
-    /// Rotate 270 degrees.
-    Rotate270 = vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
-    /// Mirror the image horizontally.
-    HorizontalMirror = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
-    /// Mirror the image horizontally and rotate 90 degrees.
-    HorizontalMirrorRotate90 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-    /// Mirror the image horizontally and rotate 180 degrees.
-    HorizontalMirrorRotate180 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-    /// Mirror the image horizontally and rotate 270 degrees.
-    HorizontalMirrorRotate270 = vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-    /// Let the operating system or driver implementation choose.
-    Inherit = vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR,
-}
-
-/// How the alpha values of the pixels of the window are treated.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum CompositeAlpha {
-    /// The alpha channel of the image is ignored. All the pixels are considered as if they have a
-    /// value of 1.0.
-    Opaque = vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-
-    /// The alpha channel of the image is respected. The color channels are expected to have
-    /// already been multiplied by the alpha value.
-    PreMultiplied = vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-
-    /// The alpha channel of the image is respected. The color channels will be multiplied by the
-    /// alpha value by the compositor before being added to what is behind.
-    PostMultiplied = vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
-
-    /// Let the operating system or driver implementation choose.
-    Inherit = vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR,
-}
-
-/// List of supported composite alpha modes.
-///
-/// See the docs of `CompositeAlpha`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub struct SupportedCompositeAlpha {
-    pub opaque: bool,
-    pub pre_multiplied: bool,
-    pub post_multiplied: bool,
-    pub inherit: bool,
-}
-
-impl SupportedCompositeAlpha {
-    /// Builds a `SupportedCompositeAlpha` with all fields set to false.
+impl From<Error> for CapabilitiesError {
     #[inline]
-    pub fn none() -> SupportedCompositeAlpha {
-        SupportedCompositeAlpha {
-            opaque: false,
-            pre_multiplied: false,
-            post_multiplied: false,
-            inherit: false,
-        }
-    }
-
-    #[inline]
-    fn from_bits(val: u32) -> SupportedCompositeAlpha {
-        let mut result = SupportedCompositeAlpha::none();
-        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.opaque = true; }
-        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.pre_multiplied = true; }
-        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.post_multiplied = true; }
-        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.inherit = true; }
-        result
-    }
-
-    /// Returns true if the given `CompositeAlpha` is in this list.
-    #[inline]
-    pub fn supports(&self, value: CompositeAlpha) -> bool {
-        match value {
-            CompositeAlpha::Opaque => self.opaque,
-            CompositeAlpha::PreMultiplied => self.pre_multiplied,
-            CompositeAlpha::PostMultiplied => self.post_multiplied,
-            CompositeAlpha::Inherit => self.inherit,
-        }
-    }
-
-    /// Returns an iterator to the list of supported composite alpha.
-    #[inline]
-    pub fn iter(&self) -> SupportedCompositeAlphaIter {
-        SupportedCompositeAlphaIter(self.clone())
-    }
-}
-
-/// Enumeration of the `CompositeAlpha` that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedCompositeAlphaIter(SupportedCompositeAlpha);
-
-impl Iterator for SupportedCompositeAlphaIter {
-    type Item = CompositeAlpha;
-
-    #[inline]
-    fn next(&mut self) -> Option<CompositeAlpha> {
-        if self.0.opaque { self.0.opaque = false; return Some(CompositeAlpha::Opaque); }
-        if self.0.pre_multiplied { self.0.pre_multiplied = false; return Some(CompositeAlpha::PreMultiplied); }
-        if self.0.post_multiplied { self.0.post_multiplied = false; return Some(CompositeAlpha::PostMultiplied); }
-        if self.0.inherit { self.0.inherit = false; return Some(CompositeAlpha::Inherit); }
-        None
-    }
-}
-
-/// How the presentation engine should interpret the data.
-///
-/// # A quick lesson about color spaces
-///
-/// ## What is a color space?
-///
-/// Each pixel of a monitor is made of three components: one red, one green, and one blue. In the
-/// past, computers would simply send to the monitor the intensity of each of the three components.
-///
-/// This proved to be problematic, because depending on the brand of the monitor the colors would
-/// not exactly be the same. For example on some monitors, a value of `[1.0, 0.0, 0.0]` would be a
-/// bit more orange than on others.
-///
-/// In order to standardize this, there exist what are called *color spaces*: sRGB, AdobeRGB,
-/// DCI-P3, scRGB, etc. When you manipulate RGB values in a specific color space, these values have
-/// a precise absolute meaning in terms of color, that is the same across all systems and monitors.
-///
-/// > **Note**: Color spaces are orthogonal to concept of RGB. *RGB* only indicates what is the
-/// > representation of the data, but not how it is interpreted. You can think of this a bit like
-/// > text encoding. An *RGB* value is a like a byte, in other words it is the medium by which
-/// > values are communicated, and a *color space* is like a text encoding (eg. UTF-8), in other
-/// > words it is the way the value should be interpreted.
-///
-/// The most commonly used color space today is sRGB. Most monitors today use this color space,
-/// and most images files are encoded in this color space.
-///
-/// ## Pixel formats and linear vs non-linear
-///
-/// In Vulkan all images have a specific format in which the data is stored. The data of an image
-/// consists of pixels in RGB but contains no information about the color space (or lack thereof)
-/// of these pixels. You are free to store them in whatever color space you want.
-///
-/// But one big practical problem with color spaces is that they are sometimes not linear, and in
-/// particular the popular sRGB color space is not linear. In a non-linear color space, a value of
-/// `[0.6, 0.6, 0.6]` for example is **not** twice as bright as a value of `[0.3, 0.3, 0.3]`. This
-/// is problematic, because operations such as taking the average of two colors or calculating the
-/// lighting of a texture with a dot product are mathematically incorrect and will produce
-/// incorrect colors.
-///
-/// > **Note**: If the texture format has an alpha component, it is not affected by the color space
-/// > and always behaves linearly.
-///
-/// In order to solve this Vulkan also provides image formats with the `Srgb` suffix, which are
-/// expected to contain RGB data in the sRGB color space. When you sample an image with such a
-/// format from a shader, the implementation will automatically turn the pixel values into a linear
-/// color space that is suitable for linear operations (such as additions or multiplications).
-/// When you write to a framebuffer attachment with such a format, the implementation will
-/// automatically perform the opposite conversion. These conversions are most of the time performed
-/// by the hardware and incur no additional cost.
-///
-/// ## Color space of the swapchain
-///
-/// The color space that you specify when you create a swapchain is how the implementation will
-/// interpret the raw data inside of the image.
-///
-/// > **Note**: The implementation can choose to send the data in the swapchain image directly to
-/// > the monitor, but it can also choose to write it in an intermediary buffer that is then read
-/// > by the operating system or windowing system. Therefore the color space that the
-/// > implementation supports is not necessarily the same as the one supported by the monitor.
-///
-/// It is *your* job to ensure that the data in the swapchain image is in the color space
-/// that is specified here, otherwise colors will be incorrect.
-/// The implementation will never perform any additional automatic conversion after the colors have
-/// been written to the swapchain image.
-///
-/// # How do I handle this correctly?
-///
-/// The easiest way to handle color spaces in a cross-platform program is:
-///
-/// - Always request the `SrgbNonLinear` color space when creating the swapchain.
-/// - Make sure that all your image files use the sRGB color space, and load them in images whose
-///   format has the `Srgb` suffix. Only use non-sRGB image formats for intermediary computations
-///   or to store non-color data.
-/// - Swapchain images should have a format with the `Srgb` suffix.
-///
-/// > **Note**: It is unclear whether the `SrgbNonLinear` color space is always supported by the
-/// > the implementation or not. See https://github.com/KhronosGroup/Vulkan-Docs/issues/442.
-///
-/// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
-/// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
-/// > example. These are all hacks and you should use the sRGB pixel formats intead.
-///
-/// If you follow these three rules, then everything should render the same way on all platforms.
-///
-/// Additionally you can try detect whether the implementation supports any additional color space
-/// and perform a manual conversion to that color space from inside your shader.
-///
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum ColorSpace {
-    SrgbNonLinear = vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,
-    DisplayP3Linear = vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT,
-    DisplayP3NonLinear = vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT,
-    ScrgbLinear = vk::COLOR_SPACE_SCRGB_LINEAR_EXT,
-    ScrgbNonLinear = vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT,
-    DciP3Linear = vk::COLOR_SPACE_DCI_P3_LINEAR_EXT,
-    DciP3NonLinear = vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT,
-    Bt709Linear = vk::COLOR_SPACE_BT709_LINEAR_EXT,
-    Bt709NonLinear = vk::COLOR_SPACE_BT709_NONLINEAR_EXT,
-    Bt2020Linear = vk::COLOR_SPACE_BT2020_LINEAR_EXT,
-    Bt2020NonLinear = vk::COLOR_SPACE_BT2020_NONLINEAR_EXT,
-    AdobeRgbLinear = vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT,
-    AdobeRgbNonLinear = vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT,
-}
-
-impl ColorSpace {
-    #[inline]
-    fn from_num(val: u32) -> ColorSpace {
-        match val {
-            vk::COLOR_SPACE_SRGB_NONLINEAR_KHR => ColorSpace::SrgbNonLinear,
-            vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT => ColorSpace::DisplayP3Linear,
-            vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
-            vk::COLOR_SPACE_SCRGB_LINEAR_EXT => ColorSpace::ScrgbLinear,
-            vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT => ColorSpace::ScrgbNonLinear,
-            vk::COLOR_SPACE_DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
-            vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
-            vk::COLOR_SPACE_BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
-            vk::COLOR_SPACE_BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
-            vk::COLOR_SPACE_BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
-            vk::COLOR_SPACE_BT2020_NONLINEAR_EXT => ColorSpace::Bt2020NonLinear,
-            vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
-            vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
-            _ => panic!("Wrong value for color space enum")
+    fn from(err: Error) -> CapabilitiesError {
+        match err {
+            err @ Error::OutOfHostMemory => CapabilitiesError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => CapabilitiesError::OomError(OomError::from(err)),
+            Error::SurfaceLost => CapabilitiesError::SurfaceLost,
+            _ => panic!("unexpected error: {:?}", err)
         }
     }
 }
@@ -947,7 +707,7 @@ mod tests {
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_hwnd(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_hwnd(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -956,7 +716,7 @@ mod tests {
     #[test]
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xcb(&instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -965,7 +725,7 @@ mod tests {
     #[test]
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_xlib(&instance, ptr::null::<u8>(), 0) } {
+        match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -974,7 +734,7 @@ mod tests {
     #[test]
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_wayland(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -983,7 +743,7 @@ mod tests {
     #[test]
     fn khr_mir_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_mir(&instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
+        match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }
@@ -992,7 +752,7 @@ mod tests {
     #[test]
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
-        match unsafe { Surface::from_anativewindow(&instance, ptr::null::<u8>()) } {
+        match unsafe { Surface::from_anativewindow(instance, ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!()
         }

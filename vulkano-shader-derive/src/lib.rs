@@ -3,20 +3,61 @@ extern crate proc_macro;
 extern crate syn;
 extern crate vulkano_shaders;
 
+use std::path::Path;
+use std::fs::File;
+use std::io::Read;
+
 use proc_macro::TokenStream;
 
-#[proc_macro_derive(VulkanoShader, attributes(src, ty))]
+enum SourceKind {
+    Src(String),
+    Path(String),
+}
+
+#[proc_macro_derive(VulkanoShader, attributes(src, path, ty))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let syn_item = syn::parse_macro_input(&input.to_string()).unwrap();
 
-    let src = syn_item.attrs.iter().filter_map(|attr| {
-        match attr.value {
-            syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "src" => {
-                Some(val.clone())
-            },
-            _ => None
+    let src = {
+        let mut iter = syn_item.attrs.iter().filter_map(|attr| {
+            match attr.value {
+                syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "src" => {
+                    Some(SourceKind::Src(val.clone()))
+                },
+
+                syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "path" => {
+                    Some(SourceKind::Path(val.clone()))
+                },
+
+                _ => None
+            }
+        });
+
+        let source = iter.next().expect("No source attribute given ; put #[src = \"...\"] or #[path = \"...\"]");
+
+        if iter.next().is_some() {
+            panic!("Multiple src or path attributes given ; please provide only one");
         }
-    }).next().expect("Can't find `src` attribute ; put #[src = \"...\"] for example.");
+
+        match source {
+            SourceKind::Src(src) => src,
+
+            SourceKind::Path(path) => {
+                let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+                let full_path = Path::new(&root).join(&path);
+
+                if full_path.is_file() {
+                    let mut buf = String::new();
+                    File::open(full_path)
+                        .and_then(|mut file| file.read_to_string(&mut buf))
+                        .expect(&format!("Error reading source from {:?}", path));
+                    buf
+                } else {
+                    panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
+                }
+            }
+        }
+    };
 
     let ty_str = syn_item.attrs.iter().filter_map(|attr| {
         match attr.value {

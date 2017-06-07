@@ -58,6 +58,7 @@ pub use self::traits::PipelineLayoutDesc;
 pub use self::traits::PipelineLayoutDescNames;
 pub use self::traits::PipelineLayoutDescPcRange;
 pub use self::traits::PipelineLayoutSuperset;
+pub use self::traits::PipelineLayoutNotSupersetError;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 pub use self::union::PipelineLayoutDescUnion;
