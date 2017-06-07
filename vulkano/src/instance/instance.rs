@@ -218,10 +218,13 @@ impl Instance {
             devices
         };
 
+        // TODO: should be Into
+        let extensions: InstanceExtensions = (&extensions).into();
+
         // Getting the properties of all physical devices.
         // If possible, we use VK_KHR_get_physical_device_properties2.
         let physical_devices = if extensions.khr_get_physical_device_properties2 {
-            Instance::init_physical_devices2(&vk, physical_devices, extensions)
+            Instance::init_physical_devices2(&vk, physical_devices, &extensions)
         } else {
             Instance::init_physical_devices(&vk, physical_devices)
         };
@@ -231,7 +234,7 @@ impl Instance {
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
-            extensions: (&extensions).into(),
+            extensions: extensions,
             layers: layers,
         }))
     }
@@ -304,11 +307,13 @@ impl Instance {
                 let mut num = 0;
                 vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num, ptr::null_mut());
 
-                let mut families = vec![vk::QueueFamilyProperties2KHR {
-                    sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
-                    pNext: ptr::null_mut(),
-                    queueFamilyProperties: mem::uninitialized(),
-                }; num as usize];
+                let mut families = (0 .. num).map(|_| {
+                    vk::QueueFamilyProperties2KHR {
+                        sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
+                        pNext: ptr::null_mut(),
+                        queueFamilyProperties: mem::uninitialized(),
+                    }
+                }).collect::<Vec<_>>();
 
                 vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num,
                                                               families.as_mut_ptr());

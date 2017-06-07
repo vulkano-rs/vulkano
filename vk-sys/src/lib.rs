@@ -1115,7 +1115,6 @@ pub struct FormatProperties {
 }
 
 #[repr(C)]
-#[derive(Clone)]
 pub struct Extent3D {
     pub width: u32,
     pub height: u32,
@@ -1264,7 +1263,6 @@ pub struct PhysicalDeviceProperties {
 }
 
 #[repr(C)]
-#[derive(Clone)]
 pub struct QueueFamilyProperties {
     pub queueFlags: QueueFlags,
     pub queueCount: u32,
@@ -2504,7 +2502,6 @@ pub struct PhysicalDeviceImageFormatInfo2KHR {
 }
 
 #[repr(C)]
-#[derive(Clone)]
 pub struct QueueFamilyProperties2KHR {
     pub sType: StructureType,
     pub pNext: *const c_void,
