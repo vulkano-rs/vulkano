@@ -40,7 +40,6 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
 use vulkano::device::Device;
 use vulkano::framebuffer::Framebuffer;

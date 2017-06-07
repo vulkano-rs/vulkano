@@ -17,13 +17,7 @@ use image::ImageAccess;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
-    /// Returns the number of sets in the collection. Includes possibly empty sets.
-    ///
-    /// In other words, this should be equal to the highest set number plus one.
-    fn num_sets(&self) -> usize;
-
-    /// Returns the descriptor set with the given id. Returns `None` if the set is empty.
-    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet>;
+    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>>;
 
     /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
     ///
@@ -44,13 +38,8 @@ pub unsafe trait DescriptorSetsCollection {
 
 unsafe impl DescriptorSetsCollection for () {
     #[inline]
-    fn num_sets(&self) -> usize {
-        0
-    }
-
-    #[inline]
-    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
-        None
+    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+        vec![]
     }
 
     #[inline]
@@ -75,19 +64,11 @@ unsafe impl DescriptorSetsCollection for () {
 }
 
 unsafe impl<T> DescriptorSetsCollection for T
-    where T: DescriptorSet
+    where T: DescriptorSet + Send + Sync + 'static
 {
     #[inline]
-    fn num_sets(&self) -> usize {
-        1
-    }
-
-    #[inline]
-    fn descriptor_set(&self, set: usize) -> Option<&UnsafeDescriptorSet> {
-        match set {
-            0 => Some(self.inner()),
-            _ => None
-        }
+    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+        vec![Box::new(self) as Box<_>]
     }
 
     #[inline]
@@ -118,36 +99,16 @@ unsafe impl<T> DescriptorSetsCollection for T
 }
 
 macro_rules! impl_collection {
-    ($first:ident $(, $others:ident)*) => (
-        unsafe impl<$first$(, $others)*> DescriptorSetsCollection for ($first, $($others),*)
-            where $first: DescriptorSet + DescriptorSetDesc
-                  $(, $others: DescriptorSet + DescriptorSetDesc)*
+    ($first:ident $(, $others:ident)+) => (
+        unsafe impl<$first$(, $others)+> DescriptorSetsCollection for ($first, $($others),+)
+            where $first: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static
+                  $(, $others: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static)*
         {
             #[inline]
-            fn num_sets(&self) -> usize {
-                #![allow(non_snake_case)]
-                1 $( + {let $others=0;1})*
-            }
-
-            #[inline]
-            fn descriptor_set(&self, mut set: usize) -> Option<&UnsafeDescriptorSet> {
-                #![allow(non_snake_case)]
-                #![allow(unused_mut)]       // For the `set` parameter.
-
-                if set == 0 {
-                    return Some(self.0.inner());
-                }
-
-                let &(_, $(ref $others,)*) = self;
-
-                $(
-                    set -= 1;
-                    if set == 0 {
-                        return Some($others.inner());
-                    }
-                )*
-
-                None
+            fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+                let mut list = self.1.into_vec();
+                list.insert(0, Box::new(self.0) as Box<_>);
+                list
             }
 
             #[inline]
@@ -219,10 +180,10 @@ macro_rules! impl_collection {
             }
         }
 
-        impl_collection!($($others),*);
+        impl_collection!($($others),+);
     );
 
-    () => ();
+    ($i:ident) => ();
 }
 
 impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);

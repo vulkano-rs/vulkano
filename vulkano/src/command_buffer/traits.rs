@@ -15,16 +15,14 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use buffer::BufferAccess;
-use command_buffer::cb::UnsafeCommandBuffer;
-use command_buffer::pool::CommandPool;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitCommandBufferBuilder;
+use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageLayout;
 use image::ImageAccess;
-use instance::QueueFamily;
 use sync::now;
 use sync::AccessError;
 use sync::AccessCheckError;
@@ -38,16 +36,18 @@ use VulkanObject;
 
 pub unsafe trait CommandBuffer: DeviceOwned {
     /// The command pool of the command buffer.
-    type Pool: CommandPool;
+    type PoolAlloc;
 
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool>;
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::PoolAlloc>;
 
-    /// Returns the queue family of the command buffer.
+    /*/// Returns the queue family of the command buffer.
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
+    fn queue_family(&self) -> QueueFamily
+        where Self::PoolAlloc: CommandPoolAlloc
+    {
         self.inner().queue_family()
-    }
+    }*/
 
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue.
@@ -154,10 +154,10 @@ pub unsafe trait CommandBufferBuild {
 }
 
 unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer {
-    type Pool = <T::Target as CommandBuffer>::Pool;
+    type PoolAlloc = <T::Target as CommandBuffer>::PoolAlloc;
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::Pool> {
+    fn inner(&self) -> &UnsafeCommandBuffer<Self::PoolAlloc> {
         (**self).inner()
     }
 

@@ -13,8 +13,7 @@ use std::marker::PhantomData;
 use std::ptr;
 use smallvec::SmallVec;
 
-use command_buffer::cb::UnsafeCommandBuffer;
-use command_buffer::pool::CommandPool;
+use command_buffer::sys::UnsafeCommandBuffer;
 use device::Queue;
 use sync::Fence;
 use sync::PipelineStages;
@@ -167,9 +166,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// TODO: more here
     ///
     #[inline]
-    pub unsafe fn add_command_buffer<P>(&mut self, command_buffer: &'a UnsafeCommandBuffer<P>)
-        where P: CommandPool
-    {
+    pub unsafe fn add_command_buffer<P>(&mut self, command_buffer: &'a UnsafeCommandBuffer<P>) {
         self.command_buffers.push(command_buffer.internal_object());
     }
 

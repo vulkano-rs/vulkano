@@ -75,9 +75,9 @@
 //! information.
 
 pub use self::auto::AutoCommandBufferBuilder;
-pub use self::builder::CommandAddError;
-pub use self::builder::CommandBufferBuilder;
-pub use self::builder::CommandBufferBuilderError;
+pub use self::auto::AutoCommandBuffer;
+pub use self::state_cacher::StateCacher;
+pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferBuild;
 pub use self::traits::CommandBufferExecError;
@@ -86,14 +86,14 @@ pub use self::traits::CommandBufferExecFuture;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
 
-pub mod cb;
-pub mod commands_extra;
-pub mod commands_raw;
 pub mod pool;
 pub mod submit;
+pub mod synced;
+pub mod sys;
+pub mod validity;
 
 mod auto;
-mod builder;
+mod state_cacher;
 mod traits;
 
 #[repr(C)]
@@ -124,11 +124,13 @@ pub struct DispatchIndirectCommand {
 }
 
 /// The dynamic state to use for a draw command.
+// TODO: probably not the right location
 #[derive(Debug, Clone)]
 pub struct DynamicState {
     pub line_width: Option<f32>,
     pub viewports: Option<Vec<Viewport>>,
     pub scissors: Option<Vec<Scissor>>,
+    // TODO: missing fields
 }
 
 impl DynamicState {
