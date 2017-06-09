@@ -22,7 +22,7 @@
 //! - Once you have chosen a physical device to use, you can create a
 //!   [`Device`](device/index.html) object from it. The `Device` is the most important
 //!   object of Vulkan, as it represents an open channel of communicaton with a physical device.
-//!   You always need to have one before you can do something interesting things with Vulkan.
+//!   You always need to have one before you can do interesting things with Vulkan.
 //!
 //! - [*Buffers*](buffer/index.html) and [*images*](image/index.html) can be used to store data on
 //!   memory accessible by the GPU (or more generally by the Vulkan implementation). Buffers are
