@@ -206,6 +206,7 @@ pub use self::capabilities::SupportedSurfaceTransforms;
 pub use self::capabilities::SupportedSurfaceTransformsIter;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
+pub use self::surface::CapabilitiesError;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
