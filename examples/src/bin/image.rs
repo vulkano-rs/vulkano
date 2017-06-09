@@ -20,6 +20,7 @@ extern crate vulkano_win;
 use vulkano_win::VkSurfaceBuild;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::sync::GpuFuture;
+use vulkano::instance::debug::{self, DebugCallback};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,8 +29,29 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    let extensions = vulkano_win::required_extensions();
-    let instance = vulkano::instance::Instance::new(None, &extensions, &[]).expect("failed to create instance");
+    let extensions = vulkano::instance::InstanceExtensions {
+        ext_debug_report: true,
+        ..vulkano_win::required_extensions()
+    };
+    let instance = vulkano::instance::Instance::new(None, &extensions, &["VK_LAYER_LUNARG_standard_validation"])
+        .expect("failed to create instance");
+
+    let debug_callback = DebugCallback::new(&instance, debug::MessageTypes {
+        error: true,
+        warning: true,
+        performance_warning: true,
+        information: false,
+        debug: false,
+    }, move |msg| {
+        let level = if msg.ty.error {
+            "ERROR"
+        } else if msg.ty.warning || msg.ty.performance_warning {
+            "WARNING"
+        } else {
+            unreachable!();
+        };
+        println!("{}: {}: {}", level, msg.layer_prefix, msg.description);
+    }).expect("failed to create debug callback");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
