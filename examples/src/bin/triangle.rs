@@ -47,6 +47,7 @@ use vulkano::device::Device;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
 use vulkano::instance::Instance;
+use vulkano::instance::debug::{self, DebugCallback};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineParams;
 use vulkano::pipeline::blend::Blend;
@@ -70,15 +71,41 @@ fn main() {
     // The first step of any vulkan program is to create an instance.
     let instance = {
         // When we create an instance, we have to pass a list of extensions that we want to enable.
-        //
-        // All the window-drawing functionalities are part of non-core extensions that we need
-        // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
-        // required to draw to a window.
-        let extensions = vulkano_win::required_extensions();
+        let extensions = vulkano::instance::InstanceExtensions {
+            // Enable support for reporting detailed diagnostics.
+            ext_debug_report: true,
+            // All the window-drawing functionalities are part of non-core extensions that we need
+            // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
+            // required to draw to a window.
+            ..vulkano_win::required_extensions()
+        };
 
         // Now creating the instance.
-        Instance::new(None, &extensions, None).expect("failed to create Vulkan instance")
+        //
+        // We enable the VK_LAYER_LUNARG_standard_validation layer and later set up a debug callback
+        // so that the vulkan implementation can, for example, notify us of bugs or suboptimalities
+        // in our code. This reduces performance, but is a good trade during development.
+        Instance::new(None, &extensions, &["VK_LAYER_LUNARG_standard_validation"])
+            .expect("failed to create Vulkan instance")
     };
+
+    // Display warnings and errors reported by the vulkan implementation
+    let debug_callback = DebugCallback::new(&instance, debug::MessageTypes {
+        error: true,
+        warning: true,
+        performance_warning: true,
+        information: false,
+        debug: false,
+    }, move |msg| {
+        let level = if msg.ty.error {
+            "ERROR"
+        } else if msg.ty.warning || msg.ty.performance_warning {
+            "WARNING"
+        } else {
+            unreachable!();
+        };
+        println!("{}: {}: {}", level, msg.layer_prefix, msg.description);
+    }).expect("failed to create debug callback");
 
     // We then choose which physical device to use.
     //
