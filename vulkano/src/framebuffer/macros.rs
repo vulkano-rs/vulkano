@@ -276,7 +276,7 @@ macro_rules! ordered_passes_renderpass {
                             if initial_layout.is_none() {
                                 initial_layout = Some(ImageLayout::ColorAttachmentOptimal);
                             }
-                            final_layout = Some(ImageLayout::ColorAttachmentOptimal);
+                            final_layout = Some(ImageLayout::PresentSrc);
                         }
                     )*
 
