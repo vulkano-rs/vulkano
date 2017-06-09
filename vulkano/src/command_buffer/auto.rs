@@ -171,3 +171,4 @@ pass_through!((), commands_raw::CmdNextSubpass);
 pass_through!((Pc, Pl), commands_raw::CmdPushConstants<Pc, Pl>);
 pass_through!((), commands_raw::CmdSetState);
 pass_through!((B, D), commands_raw::CmdUpdateBuffer<B, D>);
+pass_through!((), commands_raw::CmdDispatchRaw);
