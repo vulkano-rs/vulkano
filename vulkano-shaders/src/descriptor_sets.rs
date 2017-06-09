@@ -120,7 +120,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     let push_constants_range_body = format!(r#"
         if num != 0 || {pc_size} == 0 {{ return None; }}
         Some(PipelineLayoutDescPcRange {{
-            offset: 0,
+            offset: 0,                      // FIXME: not necessarily true
             size: {pc_size},
             stages: ShaderStages::all(),     // FIXME: wrong
         }})

@@ -19,7 +19,8 @@ pub fn write_structs(doc: &parse::Spirv) -> String {
     for instruction in &doc.instructions {
         match *instruction {
             parse::Instruction::TypeStruct { result_id, ref member_types } => {
-                result.push_str(&write_struct(doc, result_id, member_types));
+                let (s, _) = write_struct(doc, result_id, member_types);
+                result.push_str(&s);
                 result.push_str("\n");
             },
             _ => ()
@@ -49,8 +50,8 @@ impl Member {
     }
 }
 
-/// Writes a single struct.
-fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
+/// Analyzes a single struct, returns a string containing its Rust definition, plus its size.
+fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> (String, Option<usize>) {
     let name = ::name_from_id(doc, struct_id);
 
     // The members of this struct.
@@ -71,7 +72,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
         // Ignore the whole struct is a member is built in, which includes
         // `gl_Position` for example.
         if is_builtin_member(doc, struct_id, num as u32) {
-            return String::new();
+            return (String::new(), None);       // TODO: is this correct? shouldn't it return a correct struct but with a flag or something?
         }
 
         // Finding offset of the current member, as requested by the SPIR-V code.
@@ -94,7 +95,7 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
         // variables only. Ignoring these.
         let spirv_offset = match spirv_offset {
             Some(o) => o as usize,
-            None => return String::new()
+            None => return (String::new(), None)        // TODO: shouldn't we return and let the caller ignore it instead?
         };
 
         // We need to add a dummy field if necessary.
@@ -185,10 +186,11 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> String {
         ("".to_owned(), "")
     };
 
-    format!("#[repr(C)]{derive_text}\npub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
+    let s = format!("#[repr(C)]{derive_text}\npub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
             name = name,
             members = rust_members.iter().map(Member::declaration_text).collect::<Vec<_>>().join(",\n"),
-            t = spirv_req_total_size, impl_text = impl_text, derive_text = derive_text)
+            t = spirv_req_total_size, impl_text = impl_text, derive_text = derive_text);
+    (s, spirv_req_total_size.map(|sz| sz as usize).or(current_rust_offset))
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on a struct member.
@@ -307,9 +309,9 @@ pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>
             &parse::Instruction::TypeStruct { result_id, ref member_types } if result_id == searched => {
                 // TODO: take the Offset member decorate into account?
                 let name = ::name_from_id(doc, result_id);
-                let size = member_types.iter().filter_map(|&t| type_from_id(doc, t).1).fold(0, |a,b|a+b);
+                let (_, size) = write_struct(doc, result_id, member_types);
                 let align = member_types.iter().map(|&t| type_from_id(doc, t).2).max().unwrap_or(1);
-                return (name, Some(size), align);
+                return (name, size, align);
             },
             _ => ()
         }
