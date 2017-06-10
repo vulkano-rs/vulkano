@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The vulkano developers
+// Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT
@@ -6,6 +6,10 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
+
+// TODO: graphics pipeline params are deprecated, but are still the primary implementation in order
+// to avoid duplicating code, so we hide the warnings for now
+#![allow(deprecated)]
 
 use std::error;
 use std::fmt;
@@ -69,15 +73,20 @@ use pipeline::shader::TessControlShaderEntryPoint;
 use pipeline::shader::TessEvaluationShaderEntryPoint;
 use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::FragmentShaderEntryPoint;
+use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::vertex::VertexSource;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::viewport::ViewportsState;
 
+pub use self::builder::GraphicsPipelineBuilder;
+
+mod builder;
 // FIXME: restore
 //mod tests;
 
 /// Description of a `GraphicsPipeline`.
+#[deprecated = "Use the GraphicsPipelineBuilder instead"]
 pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
 {
@@ -131,6 +140,7 @@ pub struct GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl,
 }
 
 /// Additional parameters if you use tessellation.
+#[deprecated = "Use the GraphicsPipelineBuilder instead"]
 pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel> {
     /// The entry point of the tessellation control shader.
     pub tessellation_control_shader: TessControlShaderEntryPoint<'a, Tcs, Tci, Tco, Tcl>,
@@ -169,6 +179,17 @@ struct Inner {
     device: Arc<Device>,
 }
 
+impl GraphicsPipeline<(), (), ()> {
+    /// Starts the building process of a graphics pipeline. Returns a builder object that you can
+    /// fill with the various parameters.
+    pub fn start<'a>() -> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (),
+                                                  (), (), (), (), (), (), (), (), (), (), (), (),
+                                                  (), (), (), (), ()>
+    {
+        GraphicsPipelineBuilder::new()
+    }
+}
+
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     where Rp: RenderPassAbstract
 {
@@ -180,6 +201,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will only use a vertex shader and a fragment shader. See
     /// the other constructors for other possibilities.
     #[inline]
+    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
     pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
               (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
@@ -215,6 +237,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will use a vertex shader, a geometry shader and a fragment
     /// shader. See the other constructors for other possibilities.
     #[inline]
+    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
     pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
               (device: Arc<Device>,
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
@@ -263,6 +286,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// tessellation evaluation shader and a fragment shader. See the other constructors for other
     /// possibilities.
     #[inline]
+    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
     pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
                             Fo, Fl>
               (device: Arc<Device>,
@@ -319,6 +343,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// tessellation evaluation shader, a geometry shader and a fragment shader. See the other
     /// constructors for other possibilities.
     #[inline]
+    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
     pub fn with_tessellation_and_geometry<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi,
                              Go, Gl, Fs, Fi, Fo, Fl>
               (device: Arc<Device>,
