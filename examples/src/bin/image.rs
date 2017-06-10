@@ -125,32 +125,19 @@ fn main() {
                                                  vulkano::sampler::SamplerAddressMode::Repeat,
                                                  0.0, 1.0, 0.0, 0.0).unwrap();
 
-    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(device.clone(), vulkano::pipeline::GraphicsPipelineParams {
-        vertex_input: vulkano::pipeline::vertex::SingleBufferDefinition::new(),
-        vertex_shader: vs.main_entry_point(),
-        input_assembly: vulkano::pipeline::input_assembly::InputAssembly {
-            topology: vulkano::pipeline::input_assembly::PrimitiveTopology::TriangleStrip,
-            primitive_restart_enable: false,
-        },
-        tessellation: None,
-        geometry_shader: None,
-        viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
-            data: vec![(
-                vulkano::pipeline::viewport::Viewport {
-                    origin: [0.0, 0.0],
-                    depth_range: 0.0 .. 1.0,
-                    dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-                },
-                vulkano::pipeline::viewport::Scissor::irrelevant()
-            )],
-        },
-        raster: Default::default(),
-        multisample: vulkano::pipeline::multisample::Multisample::disabled(),
-        fragment_shader: fs.main_entry_point(),
-        depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::disabled(),
-        blend: vulkano::pipeline::blend::Blend::pass_through(),
-        render_pass: vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap(),
-    }).unwrap());
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.main_entry_point())
+        .triangle_strip()
+        .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            depth_range: 0.0 .. 1.0,
+            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+        }))
+        .fragment_shader(fs.main_entry_point())
+        .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap());
 
     let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
         tex: (texture.clone(), sampler.clone())
