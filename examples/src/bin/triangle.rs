@@ -37,26 +37,15 @@ use vulkano_win::VkSurfaceBuild;
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
-use vulkano::descriptor::pipeline_layout::PipelineLayout;
-use vulkano::descriptor::pipeline_layout::EmptyPipelineDesc;
 use vulkano::device::Device;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
 use vulkano::instance::Instance;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineParams;
-use vulkano::pipeline::blend::Blend;
-use vulkano::pipeline::depth_stencil::DepthStencil;
-use vulkano::pipeline::input_assembly::InputAssembly;
-use vulkano::pipeline::multisample::Multisample;
-use vulkano::pipeline::vertex::SingleBufferDefinition;
-use vulkano::pipeline::viewport::ViewportsState;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
@@ -284,16 +273,28 @@ void main() {
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = Arc::new(GraphicsPipeline::start()
+        // We need to indicate the layout of the vertices.
+        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
+        // to the type of each vertex. But in this code it is automatically inferred.
         .vertex_input_single_buffer()
+        // A Vulkan shader can in theory contain multiple entry points, so we have to specify
+        // which one. The `main` word of `main_entry_point` actually corresponds to the name of
+        // the entry point.
         .vertex_shader(vs.main_entry_point())
+        // The content of the vertex buffer describes a list of triangles.
         .triangle_list()
+        // TODO: switch to dynamic viewports and explain how it works
         .viewports(iter::once(Viewport {
             origin: [0.0, 0.0],
             depth_range: 0.0 .. 1.0,
             dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
         }))
+        // See `vertex_shader`.
         .fragment_shader(fs.main_entry_point())
+        // We have to indicate which subpass of which render pass this pipeline is going to be used
+        // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap());
 

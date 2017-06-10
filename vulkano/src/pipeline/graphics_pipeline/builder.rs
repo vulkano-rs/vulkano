@@ -13,10 +13,8 @@
 
 use std::sync::Arc;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
-use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
-use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use device::Device;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassSubpassInterface;
