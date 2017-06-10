@@ -63,6 +63,7 @@ use vulkano::swapchain::Swapchain;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
+use std::iter;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -282,63 +283,19 @@ void main() {
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = Arc::new(GraphicsPipeline::new(device.clone(), GraphicsPipelineParams {
-        // We need to indicate the layout of the vertices.
-        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
-        // to the type of each vertex. But in this code it is automatically inferred.
-        vertex_input: SingleBufferDefinition::new(),
-
-        // A Vulkan shader can in theory contain multiple entry points, so we have to specify
-        // which one. The `main` word of `main_entry_point` actually corresponds to the name of
-        // the entry point.
-        vertex_shader: vs.main_entry_point(),
-
-        // `InputAssembly::triangle_list()` is a shortcut to build a `InputAssembly` struct that
-        // describes a list of triangles.
-        input_assembly: InputAssembly::triangle_list(),
-
-        // No tessellation shader.
-        tessellation: None,
-
-        // No geometry shader.
-        geometry_shader: None,
-
-        // TODO: switch to dynamic viewports and explain how it works
-        viewport: ViewportsState::Fixed {
-            data: vec![(
-                Viewport {
-                    origin: [0.0, 0.0],
-                    depth_range: 0.0 .. 1.0,
-                    dimensions: [images[0].dimensions()[0] as f32,
-                                 images[0].dimensions()[1] as f32],
-                },
-                Scissor::irrelevant()
-            )],
-        },
-
-        // The `Raster` struct can be used to customize parameters such as polygon mode or backface
-        // culling.
-        raster: Default::default(),
-
-        // If we use multisampling, we can pass additional configuration.
-        multisample: Multisample::disabled(),
-
-        // See `vertex_shader`.
-        fragment_shader: fs.main_entry_point(),
-
-        // `DepthStencil::disabled()` is a shortcut to build a `DepthStencil` struct that describes
-        // the fact that depth and stencil testing are disabled.
-        depth_stencil: DepthStencil::disabled(),
-
-        // `Blend::pass_through()` is a shortcut to build a `Blend` struct that describes the fact
-        // that colors must be directly transferred from the fragment shader output to the
-        // attachments without any change.
-        blend: Blend::pass_through(),
-
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
-        render_pass: Subpass::from(render_pass.clone(), 0).unwrap(),
-    }).unwrap());
+    let pipeline = Arc::new(GraphicsPipeline::start()
+        .vertex_input_single_buffer()
+        .vertex_shader(vs.main_entry_point())
+        .triangle_list()
+        .viewports(iter::once(Viewport {
+            origin: [0.0, 0.0],
+            depth_range: 0.0 .. 1.0,
+            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+        }))
+        .fragment_shader(fs.main_entry_point())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap());
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.

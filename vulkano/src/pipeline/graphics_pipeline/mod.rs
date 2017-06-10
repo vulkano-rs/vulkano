@@ -65,6 +65,7 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
+use pipeline::shader::EmptyShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::ShaderInterfaceMismatchError;
@@ -183,8 +184,13 @@ impl GraphicsPipeline<(), (), ()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     pub fn start<'a>() -> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (),
-                                                  (), (), (), (), (), (), (), (), (), (), (), (),
-                                                  (), (), (), (), ()>
+                                                  (), EmptyShaderInterfaceDef,
+                                                  EmptyShaderInterfaceDef, EmptyPipelineDesc, (),
+                                                  EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
+                                                  EmptyPipelineDesc, (), EmptyShaderInterfaceDef,
+                                                  EmptyShaderInterfaceDef, EmptyPipelineDesc, (),
+                                                  EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
+                                                  EmptyPipelineDesc, ()>
     {
         GraphicsPipelineBuilder::new()
     }
@@ -342,6 +348,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will use a vertex shader, a tessellation control shader, a
     /// tessellation evaluation shader, a geometry shader and a fragment shader. See the other
     /// constructors for other possibilities.
+    // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     #[inline]
     #[deprecated = "Use the GraphicsPipelineBuilder instead"]
     pub fn with_tessellation_and_geometry<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gsp, Gi,
@@ -350,16 +357,16 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
                                               Tei, Teo, Tel, Gsp, Gi, Go, Gl, Fs, Fi,
                                               Fo, Fl, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>, Gl>>, Rp>, GraphicsPipelineCreationError>
+              -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>, GraphicsPipelineCreationError>
         where Vdef: VertexDefinition<Vi>,
-              Vl: PipelineLayoutDescNames + Clone,
-              Fl: PipelineLayoutDescNames + Clone,
-              Tcl: PipelineLayoutDescNames + Clone,
-              Tel: PipelineLayoutDescNames + Clone,
-              Gl: PipelineLayoutDescNames + Clone,
+              Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
+              Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
+              Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
+              Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
+              Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
               Tci: ShaderInterfaceDefMatch<Vo>,
               Tei: ShaderInterfaceDefMatch<Tco>,
-              Gi: ShaderInterfaceDefMatch<Teo>,
+              Gi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
               Vo: ShaderInterfaceDef,
               Tco: ShaderInterfaceDef,
               Teo: ShaderInterfaceDef,
@@ -368,8 +375,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
               Fo: ShaderInterfaceDef,
               Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
     {
-        assert!(params.tessellation.is_some());     // TODO:
-        assert!(params.geometry_shader.is_some());     // TODO:
+        let pl;
 
         if let Some(ref tess) = params.tessellation {
             if let Some(ref gs) = params.geometry_shader {
@@ -386,20 +392,55 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
                     return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
                 }
 
-            } else {
-                unreachable!()
-            }
-
-        } else {
-            unreachable!()
-        }
-
-        let pl = params.vertex_shader.layout().clone()
+                pl = Box::new(params.vertex_shader.layout().clone()
                     .union(params.fragment_shader.layout().clone())
                     .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
                     .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
-                    .build(device.clone()).unwrap();      // TODO: error
+                    .build(device.clone()).unwrap()) as Box<_>;      // TODO: error
+
+            } else {
+                if let Err(err) = tess.tessellation_control_shader.input().matches(params.vertex_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                }
+                if let Err(err) = tess.tessellation_evaluation_shader.input().matches(tess.tessellation_control_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                }
+                if let Err(err) = params.fragment_shader.input().matches(tess.tessellation_evaluation_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
+                }
+
+                pl = Box::new(params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
+                    .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap()) as Box<_>;      // TODO: error
+            }
+
+        } else {
+            if let Some(ref geometry_shader) = params.geometry_shader {
+                if let Err(err) = geometry_shader.input().matches(params.vertex_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(err));
+                }
+                if let Err(err) = params.fragment_shader.input().matches(geometry_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                }
+
+                pl = Box::new(params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap()) as Box<_>;      // TODO: error
+
+            } else {
+                if let Err(err) = params.fragment_shader.input().matches(params.vertex_shader.output()) {
+                    return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+                }
+
+                pl = Box::new(params.vertex_shader.layout().clone()
+                    .union(params.fragment_shader.layout().clone())
+                    .build(device.clone()).unwrap()) as Box<_>;      // TODO: error
+            }
+        }
 
         GraphicsPipeline::new_inner(device, params, pl)
     }

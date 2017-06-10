@@ -12,7 +12,9 @@
 #![allow(deprecated)]
 
 use std::sync::Arc;
+use descriptor::pipeline_layout::EmptyPipelineDesc;
 use descriptor::pipeline_layout::PipelineLayout;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use device::Device;
@@ -35,6 +37,7 @@ use pipeline::raster::CullMode;
 use pipeline::raster::FrontFace;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
+use pipeline::shader::EmptyShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::VertexShaderEntryPoint;
@@ -66,8 +69,13 @@ pub struct GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl
     render_pass: Option<Subpass<Rp>>,
 }
 
-impl<'a> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (), (), (), (), (),
-                                 (), (), (), (), (), (), (), (), (), (), (), (), ()>
+impl<'a> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (), (),
+                                 EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
+                                 EmptyPipelineDesc, (), EmptyShaderInterfaceDef,
+                                 EmptyShaderInterfaceDef, EmptyPipelineDesc, (),
+                                 EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
+                                 EmptyPipelineDesc, (), EmptyShaderInterfaceDef,
+                                 EmptyShaderInterfaceDef, EmptyPipelineDesc, ()>
 {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
@@ -93,14 +101,14 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                             Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
     where Vdef: VertexDefinition<Vi>,
-          Vl: PipelineLayoutDescNames + Clone,
-          Fl: PipelineLayoutDescNames + Clone,
-          Tcl: PipelineLayoutDescNames + Clone,
-          Tel: PipelineLayoutDescNames + Clone,
-          Gl: PipelineLayoutDescNames + Clone,
+          Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
           Tci: ShaderInterfaceDefMatch<Vo>,
           Tei: ShaderInterfaceDefMatch<Tco>,
-          Gi: ShaderInterfaceDefMatch<Teo>,
+          Gi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
           Vo: ShaderInterfaceDef,
           Tco: ShaderInterfaceDef,
           Teo: ShaderInterfaceDef,
@@ -110,7 +118,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
           Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
 {
     /// Builds the graphics pipeline.
-    pub fn build(self, device: Arc<Device>) -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>, Gl>>, Rp>, GraphicsPipelineCreationError> {
+    // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
+    pub fn build(self, device: Arc<Device>) -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
         GraphicsPipeline::with_tessellation_and_geometry(device, GraphicsPipelineParams {
             vertex_input: self.vertex_input,
@@ -365,6 +374,15 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn geometry_shader_disabled(mut self) -> Self {
         self.geometry_shader = None;
         self
+    }
+
+    /// Sets the viewports to some value, and the scissor boxes to boxes that always cover the
+    /// whole viewport.
+    #[inline]
+    pub fn viewports<I>(self, viewports: I) -> Self
+        where I: IntoIterator<Item = Viewport>
+    {
+        self.viewports_scissors(viewports.into_iter().map(|v| (v, Scissor::irrelevant())))
     }
 
     /// Sets the characteristics of viewports and scissor boxes in advance.
