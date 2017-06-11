@@ -57,14 +57,13 @@ fn main() {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
-        let present = caps.present_modes.iter().next().unwrap();
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
         vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            vulkano::swapchain::CompositeAlpha::Opaque,
-                                           present, true, None).expect("failed to create swapchain")
+                                           vulkano::swapchain::PresentMode::Fifo, true, None).expect("failed to create swapchain")
     };
 
 
