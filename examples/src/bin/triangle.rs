@@ -58,6 +58,7 @@ use vulkano::pipeline::viewport::ViewportsState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::viewport::Scissor;
 use vulkano::swapchain;
+use vulkano::swapchain::PresentMode;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 use vulkano::sync::now;
@@ -176,11 +177,6 @@ fn main() {
         // by the dimensions of the swapchain, in which case we just use a default value.
         let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
 
-        // The present mode determines the way the images will be presented on the screen. This
-        // includes things such as vsync and will affect the framerate of your application. We just
-        // use the first supported value, but you probably want to leave that choice to the user.
-        let present = caps.present_modes.iter().next().unwrap();
-
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
@@ -189,9 +185,10 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
-                       caps.supported_usage_flags, &queue, SurfaceTransform::Identity, alpha,
-                       present, true, None).expect("failed to create swapchain")
+        Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format,
+                       dimensions, 1, caps.supported_usage_flags, &queue,
+                       SurfaceTransform::Identity, alpha, PresentMode::Fifo, true,
+                       None).expect("failed to create swapchain")
     };
 
     // We now create a buffer that will store the shape of our triangle.
