@@ -89,6 +89,17 @@ macro_rules! features {
                     )+
                 }
             }
+
+            /// Builds a `Features` that is the difference of another `Features` object from `self`.
+            ///
+            /// The result's field will be true if it is true in `self` but not `other`.
+            pub fn difference(&self, other: &Features) -> Features {
+                Features {
+                    $(
+                        $name: self.$name && !other.$name,
+                    )+
+                }
+            }
         }
 
         #[doc(hidden)]
