@@ -61,6 +61,17 @@ macro_rules! extensions {
                     _unbuildable: Unbuildable(())
                 }
             }
+
+            /// Returns the difference of another list from this list.
+            #[inline]
+            pub fn difference(&self, other: &$sname) -> $sname {
+                $sname {
+                    $(
+                        $ext: self.$ext && !other.$ext,
+                    )*
+                    _unbuildable: Unbuildable(())
+                }
+            }
         }
 
         impl fmt::Debug for $sname {
@@ -108,6 +119,11 @@ macro_rules! extensions {
             /// Returns the intersection of this set and another.
             pub fn intersection(&self, other: &Self) -> Self {
                 $rawname(self.0.intersection(&other.0).cloned().collect())
+            }
+
+            /// Returns the difference of another set from this one.
+            pub fn difference(&self, other: &Self) -> Self {
+                $rawname(self.0.difference(&other.0).cloned().collect())
             }
 
             // TODO: impl Iterator
