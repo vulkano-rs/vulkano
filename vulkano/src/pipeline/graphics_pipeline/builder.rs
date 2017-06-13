@@ -134,6 +134,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
             render_pass: self.render_pass.expect("Render pass not specified in the builder"),
         })
     }
+    
+    // TODO: add build_with_cache method
 }
 
 impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
@@ -141,6 +143,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
                             Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
 {
+    // TODO: add pipeline derivate system
+
     /// Sets the vertex input.
     #[inline]
     pub fn vertex_input<T>(self, vertex_input: T)
