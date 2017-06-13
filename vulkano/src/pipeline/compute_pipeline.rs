@@ -33,7 +33,6 @@ use Error;
 use OomError;
 use SafeDeref;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

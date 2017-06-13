@@ -23,7 +23,6 @@ use descriptor::pipeline_layout::PipelineLayoutSetsCompatible;
 use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that binds descriptor sets to the command buffer.

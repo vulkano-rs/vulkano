@@ -23,7 +23,6 @@ use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use SynchronizedVulkanObject;
 
 /// Prototype for a submission that presents a swapchain on the screen.

@@ -116,7 +116,6 @@ use Error;
 use OomError;
 use SynchronizedVulkanObject;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 
@@ -300,6 +299,12 @@ impl Device {
         Ok((device, output_queues))
     }
 
+    /// Grants access to the pointers to the Vulkan functions of the device.
+    #[inline]
+    pub(crate) fn pointers(&self) -> &vk::DevicePointers {
+        &self.vk
+    }
+
     /// Waits until all work on this device has finished. You should never need to call
     /// this function, but it can be useful for debugging or benchmarking purposes.
     ///
@@ -410,15 +415,6 @@ unsafe impl VulkanObject for Device {
     #[inline]
     fn internal_object(&self) -> vk::Device {
         self.device
-    }
-}
-
-impl VulkanPointers for Device {
-    type Pointers = vk::DevicePointers;
-
-    #[inline]
-    fn pointers(&self) -> &vk::DevicePointers {
-        &self.vk
     }
 }
 

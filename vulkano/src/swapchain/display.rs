@@ -41,7 +41,6 @@ use swapchain::SupportedSurfaceTransforms;
 use check_errors;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 // TODO: extract this to a `display` module and solve the visibility problems

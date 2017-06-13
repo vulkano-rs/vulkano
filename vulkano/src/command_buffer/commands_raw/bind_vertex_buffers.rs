@@ -18,7 +18,6 @@ use device::Device;
 use device::DeviceOwned;
 use pipeline::vertex::VertexSource;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that binds vertex buffers to a command buffer.

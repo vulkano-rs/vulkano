@@ -15,7 +15,6 @@ use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that clears framebuffer attachments of the current render pass.

@@ -25,7 +25,6 @@ use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use SynchronizedVulkanObject;
 
 /// Prototype for a submission that executes command buffers.

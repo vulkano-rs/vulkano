@@ -30,7 +30,6 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Represents a surface on the screen.

@@ -19,7 +19,6 @@ use device::Device;
 use device::DeviceOwned;
 use image::ImageAccess;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that copies from a buffer to an image.

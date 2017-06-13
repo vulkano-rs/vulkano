@@ -24,7 +24,6 @@ use OomError;
 use SafeDeref;
 use Success;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

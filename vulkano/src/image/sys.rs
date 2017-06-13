@@ -35,7 +35,6 @@ use sync::Sharing;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

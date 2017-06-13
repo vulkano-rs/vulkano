@@ -23,7 +23,6 @@ use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that sets the content of a buffer to some data.

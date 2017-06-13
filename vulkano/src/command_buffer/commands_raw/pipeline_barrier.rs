@@ -26,7 +26,6 @@ use sync::PipelineStages;
 
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that adds a pipeline barrier to a command buffer builder.

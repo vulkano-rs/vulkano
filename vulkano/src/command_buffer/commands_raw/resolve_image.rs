@@ -17,7 +17,6 @@ use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that resolves a multisample image into a non-multisample one.

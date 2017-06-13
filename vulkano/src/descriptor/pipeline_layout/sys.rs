@@ -18,7 +18,6 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 use descriptor::descriptor::DescriptorDesc;

@@ -52,7 +52,6 @@ use Error;
 use OomError;
 use Success;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Tries to take ownership of an image in order to draw on it.
