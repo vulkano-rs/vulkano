@@ -127,14 +127,14 @@ fn main() {
 
     let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point())
+        .vertex_shader(vs.main_entry_point(), ())
         .triangle_strip()
         .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
             origin: [0.0, 0.0],
             depth_range: 0.0 .. 1.0,
             dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
         }))
-        .fragment_shader(fs.main_entry_point())
+        .fragment_shader(fs.main_entry_point(), ())
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap());

@@ -176,9 +176,11 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     }
 
     /// Sets the vertex shader to use.
+    // TODO: correct specialization constants
     #[inline]
-    pub fn vertex_shader<Vsp2, Vi2, Vo2, Vl2>(self, shader: VertexShaderEntryPoint<'a, Vsp2, Vi2, Vo2, Vl2>)
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp2, Vi2, Vo2, Vl2, Tcs, Tci, Tco,
+    pub fn vertex_shader<Vi2, Vo2, Vl2>(self, shader: VertexShaderEntryPoint<'a, (), Vi2, Vo2, Vl2>,
+                                        specialization_constants: ())
+        -> GraphicsPipelineBuilder<'a, Vdef, (), Vi2, Vo2, Vl2, Tcs, Tci, Tco,
                                    Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
     {
         GraphicsPipelineBuilder {
@@ -312,12 +314,15 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     }
 
     /// Sets the tessellation shaders to use.
+    // TODO: correct specialization constants
     #[inline]
-    pub fn tessellation_shaders<Tcs2, Tci2, Tco2, Tcl2, Tes2, Tei2, Teo2, Tel2>(self,
-        tessellation_control_shader: TessControlShaderEntryPoint<'a, Tcs2, Tci2, Tco2, Tcl2>,
-        tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, Tes2, Tei2, Teo2, Tel2>)
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs2, Tci2, Tco2,
-                                   Tcl2, Tes2, Tei2, Teo2, Tel2, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
+    pub fn tessellation_shaders<Tci2, Tco2, Tcl2, Tei2, Teo2, Tel2>(self,
+        tessellation_control_shader: TessControlShaderEntryPoint<'a, (), Tci2, Tco2, Tcl2>,
+        tessellation_control_shader_spec_constants: (),
+        tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, (), Tei2, Teo2, Tel2>,
+        tessellation_evaluation_shader_spec_constants: ())
+        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, (), Tci2, Tco2,
+                                   Tcl2, (), Tei2, Teo2, Tel2, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -346,10 +351,12 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     }
 
     /// Sets the geometry shader to use.
+    // TODO: correct specialization constants
     #[inline]
-    pub fn geometry_shader<Gs2, Gi2, Go2, Gl2>(self, shader: GeometryShaderEntryPoint<'a, Gs2, Gi2, Go2, Gl2>)
+    pub fn geometry_shader<Gi2, Go2, Gl2>(self, shader: GeometryShaderEntryPoint<'a, (), Gi2, Go2, Gl2>,
+                                          specialization_constants: ())
         -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs2, Gi2, Go2, Gl2, Fs, Fi, Fo, Fl, Rp>
+                                   Tcl, Tes, Tei, Teo, Tel, (), Gi2, Go2, Gl2, Fs, Fi, Fo, Fl, Rp>
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -549,10 +556,12 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// Sets the fragment shader to use.
     ///
     /// The fragment shader is run once for each pixel that is covered by each primitive.
+    // TODO: correct specialization constants
     #[inline]
-    pub fn fragment_shader<Fs2, Fi2, Fo2, Fl2>(self, shader: FragmentShaderEntryPoint<'a, Fs2, Fi2, Fo2, Fl2>)
+    pub fn fragment_shader<Fi2, Fo2, Fl2>(self, shader: FragmentShaderEntryPoint<'a, (), Fi2, Fo2, Fl2>,
+                                          specialization_constants: ())
         -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs2, Fi2, Fo2, Fl2, Rp>
+                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, (), Fi2, Fo2, Fl2, Rp>
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
