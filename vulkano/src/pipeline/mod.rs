@@ -71,12 +71,17 @@
 //!
 //! TODO: add an example
 
+// TODO: graphics pipeline params are deprecated, but are still the primary implementation in order
+// to avoid duplicating code, so we hide the warnings for now
+#![allow(deprecated)]
+
 pub use self::compute_pipeline::ComputePipeline;
 pub use self::compute_pipeline::ComputePipelineAbstract;
 pub use self::compute_pipeline::ComputePipelineCreationError;
 pub use self::compute_pipeline::ComputePipelineSys;
 pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineAbstract;
+pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipelineParams;
 pub use self::graphics_pipeline::GraphicsPipelineParamsTess;

@@ -122,29 +122,20 @@ fn main() {
         ).unwrap()
     );
 
-    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::new(device.clone(), vulkano::pipeline::GraphicsPipelineParams {
-        vertex_input: vulkano::pipeline::vertex::TwoBuffersDefinition::new(),
-        vertex_shader: vs.main_entry_point(),
-        input_assembly: vulkano::pipeline::input_assembly::InputAssembly::triangle_list(),
-        tessellation: None,
-        geometry_shader: None,
-        viewport: vulkano::pipeline::viewport::ViewportsState::Fixed {
-            data: vec![(
-                vulkano::pipeline::viewport::Viewport {
-                    origin: [0.0, 0.0],
-                    depth_range: 0.0 .. 1.0,
-                    dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-                },
-                vulkano::pipeline::viewport::Scissor::irrelevant()
-            )],
-        },
-        raster: Default::default(),
-        multisample: vulkano::pipeline::multisample::Multisample::disabled(),
-        fragment_shader: fs.main_entry_point(),
-        depth_stencil: vulkano::pipeline::depth_stencil::DepthStencil::simple_depth_test(),
-        blend: vulkano::pipeline::blend::Blend::pass_through(),
-        render_pass: vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap(),
-    }).unwrap());
+    let pipeline = Arc::new(vulkano::pipeline::GraphicsPipeline::start()
+        .vertex_input(vulkano::pipeline::vertex::TwoBuffersDefinition::new())
+        .vertex_shader(vs.main_entry_point(), ())
+        .triangle_list()
+        .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            depth_range: 0.0 .. 1.0,
+            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+        }))
+        .fragment_shader(fs.main_entry_point(), ())
+        .depth_stencil_simple_depth()
+        .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap());
 
     let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
         uniforms: uniform_buffer.clone()
