@@ -26,7 +26,6 @@ use Error;
 use OomError;
 use SafeDeref;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 pub struct UnsafeQueryPool<P = Arc<Device>> where P: SafeDeref<Target = Device> {

@@ -51,7 +51,6 @@ use instance::Instance;
 use check_errors;
 use Error;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Registration of a callback called by validation layers.

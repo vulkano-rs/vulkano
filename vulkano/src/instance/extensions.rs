@@ -17,7 +17,6 @@ use std::collections::HashSet;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use instance::PhysicalDevice;
 use instance::loader;
 use instance::loader::LoadingError;

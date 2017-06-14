@@ -13,7 +13,6 @@ use command_buffer::cb::UnsafeCommandBufferBuilder;
 use command_buffer::pool::CommandPool;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 
 /// Command that exits the current render pass.
 #[derive(Debug, Copy, Clone)]

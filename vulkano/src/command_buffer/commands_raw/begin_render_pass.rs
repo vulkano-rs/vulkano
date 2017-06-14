@@ -23,7 +23,6 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassAbstract;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that makes the command buffer enter a render pass.

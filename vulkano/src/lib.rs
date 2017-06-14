@@ -122,15 +122,6 @@ pub unsafe trait SynchronizedVulkanObject {
     fn internal_object_guard(&self) -> MutexGuard<Self::Object>;
 }
 
-/// Gives access to the Vulkan function pointers stored in this object.
-trait VulkanPointers {
-    /// The struct that provides access to the function pointers.
-    type Pointers;
-
-    // Returns a reference to the pointers.
-    fn pointers(&self) -> &Self::Pointers;
-}
-
 /// Error type returned by most Vulkan functions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OomError {

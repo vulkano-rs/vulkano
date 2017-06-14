@@ -30,7 +30,6 @@ use sampler::Sampler;
 use check_errors;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// A pool from which descriptor sets can be allocated.

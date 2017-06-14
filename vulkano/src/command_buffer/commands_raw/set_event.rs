@@ -16,7 +16,6 @@ use device::Device;
 use device::DeviceOwned;
 use sync::Event;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that sets or resets an event.

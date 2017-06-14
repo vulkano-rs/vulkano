@@ -24,7 +24,6 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 use features::Features;
@@ -359,6 +358,12 @@ impl Instance {
         unimplemented!()
     }*/
 
+    /// Grants access to the Vulkan functions of the instance.
+    #[inline]
+    pub(crate) fn pointers(&self) -> &vk::InstancePointers {
+        &self.vk
+    }
+
     /// Returns the list of extensions that have been loaded.
     ///
     /// This list is equal to what was passed to `Instance::new()`.
@@ -399,15 +404,6 @@ unsafe impl VulkanObject for Instance {
     #[inline]
     fn internal_object(&self) -> vk::Instance {
         self.instance
-    }
-}
-
-impl VulkanPointers for Instance {
-    type Pointers = vk::InstancePointers;
-
-    #[inline]
-    fn pointers(&self) -> &vk::InstancePointers {
-        &self.vk
     }
 }
 

@@ -22,7 +22,6 @@ use device::DeviceOwned;
 use memory::Content;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

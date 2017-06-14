@@ -19,7 +19,6 @@ use device::Device;
 use device::DeviceOwned;
 use pipeline::input_assembly::Index;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that binds an index buffer to a command buffer.

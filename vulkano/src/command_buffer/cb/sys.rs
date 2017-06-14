@@ -37,7 +37,6 @@ use sync::PipelineStages;
 use sync::GpuFuture;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

@@ -18,7 +18,6 @@ use command_buffer::pool::CommandPool;
 use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 
 /// Command that sets the state of the pipeline to the given one.
 ///

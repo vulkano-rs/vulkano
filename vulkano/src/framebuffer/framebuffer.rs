@@ -36,7 +36,6 @@ use image::ImageViewAccess;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 

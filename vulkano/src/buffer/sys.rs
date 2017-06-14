@@ -43,7 +43,6 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Data storage in a GPU-accessible location.

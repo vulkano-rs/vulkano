@@ -19,7 +19,6 @@ use device::DeviceOwned;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Command that binds a pipeline to a command buffer.

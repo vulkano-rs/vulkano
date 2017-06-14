@@ -20,7 +20,6 @@ use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 use device::Device;
 use device::DeviceOwned;
 use VulkanObject;
-use VulkanPointers;
 
 /// Command that sets the current push constants.
 pub struct CmdPushConstants<Pc, Pl> {
