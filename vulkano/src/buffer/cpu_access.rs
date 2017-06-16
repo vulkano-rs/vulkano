@@ -132,7 +132,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
               T: Content + 'static,
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
-        assert_neq!(data.len(), 0, "Tried to create buffer from empty iterator.");
+        assert_ne!(data.len(), 0, "Tried to create buffer from empty iterator.");
 
         unsafe {
             let uninitialized = try!(
