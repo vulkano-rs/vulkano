@@ -58,18 +58,53 @@ impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
     pub fn new<Css, Csl>(device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
                          specialization: &Css) 
-                         -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
+                      -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
+        unsafe {
+            let pipeline_layout = shader.layout().clone().build(device.clone())?;
+            ComputePipeline::with_unchecked_pipeline_layout(device, shader, specialization,
+                                                            pipeline_layout)
+        }
+    }
+}
+
+impl<Pl> ComputePipeline<Pl> {
+    /// Builds a new `ComputePipeline` with a specific pipeline layout.
+    ///
+    /// An error will be returned if the pipeline layout isn't a superset of what the shader
+    /// uses.
+    pub fn with_pipeline_layout<Css, Csl>(device: Arc<Device>,
+                                          shader: &ComputeShaderEntryPoint<Css, Csl>,
+                                          specialization: &Css,
+                                          pipeline_layout: Pl) 
+                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+        where Csl: PipelineLayoutDescNames + Clone,
+              Css: SpecializationConstants,
+              Pl: PipelineLayoutAbstract,
+    {
+        unsafe {
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout, shader.layout())?;
+            ComputePipeline::with_unchecked_pipeline_layout(device, shader, specialization,
+                                                            pipeline_layout)
+        }
+    }
+
+    /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
+    /// superset of what the shader expects.
+    pub unsafe fn with_unchecked_pipeline_layout<Css, Csl>(device: Arc<Device>,
+                                                           shader: &ComputeShaderEntryPoint<Css, Csl>,
+                                                           specialization: &Css,
+                                                           pipeline_layout: Pl) 
+                                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+        where Csl: PipelineLayoutDescNames + Clone,
+              Css: SpecializationConstants,
+              Pl: PipelineLayoutAbstract,
+    {
         let vk = device.pointers();
 
-        let pipeline_layout = shader.layout().clone().build(device.clone())?;
-
-        debug_assert!(PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
-                                                                 shader.layout()).is_ok());
-
-        let pipeline = unsafe {
+        let pipeline = {
             let spec_descriptors = <Css as SpecializationConstants>::descriptors();
             let specialization = vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
