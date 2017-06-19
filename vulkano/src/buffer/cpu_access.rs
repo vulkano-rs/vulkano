@@ -124,17 +124,18 @@ impl<T> CpuAccessibleBuffer<T> {
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
-    /// # Panics
-    /// Panics if the initial data is empty.
     pub fn from_iter<'a, I, Q>(device: Arc<Device>, usage: BufferUsage, queue_families: Q, data: I)
                                -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static,
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
-        assert_ne!(data.len(), 0, "Tried to create buffer from empty iterator.");
-
         unsafe {
+            // To avoid panicking on empty input data, create a 1-byte uninitialized buffer.
+            if data.len() == 0 {
+                return CpuAccessibleBuffer::uninitialized_array(device, 1, usage, queue_families);
+            };
+
             let uninitialized = try!(
                 CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
             );
