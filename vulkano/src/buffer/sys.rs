@@ -70,6 +70,14 @@ impl UnsafeBuffer {
     {
         let vk = device.pointers();
 
+        // Ensure we're not trying to create an empty buffer.
+        let size = if size == 0 {
+            // To avoid panicking when allocating 0 bytes, use a 1-byte buffer.
+            1
+        } else {
+            size
+        };
+
         let usage_bits = usage_to_bits(usage);
 
         // Checking sparse features.
@@ -453,6 +461,15 @@ mod tests {
                 Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled) => (),
                 _ => panic!()
             }
+        };
+    }
+
+    #[test]
+    fn create_empty_buffer() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        unsafe {
+            UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none())
         };
     }
 }
