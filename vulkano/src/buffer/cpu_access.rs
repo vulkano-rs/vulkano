@@ -131,11 +131,6 @@ impl<T> CpuAccessibleBuffer<[T]> {
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
-            // To avoid panicking on empty input data, create a 1-byte uninitialized buffer.
-            if data.len() == 0 {
-                return CpuAccessibleBuffer::uninitialized_array(device, 1, usage, queue_families);
-            };
-
             let uninitialized = try!(
                 CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
             );
