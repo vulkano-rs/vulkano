@@ -18,6 +18,7 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
@@ -63,9 +64,10 @@ impl ComputePipeline<()> {
     {
         let vk = device.pointers();
 
-        let pipeline_layout = shader.layout().clone().build(device.clone()).unwrap();     // TODO: error
+        let pipeline_layout = shader.layout().clone().build(device.clone())?;
 
-        PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(), shader.layout())?;
+        debug_assert!(PipelineLayoutSuperset::ensure_superset_of(pipeline_layout.desc(),
+                                                                 shader.layout()).is_ok());
 
         let pipeline = unsafe {
             let spec_descriptors = <Css as SpecializationConstants>::descriptors();
@@ -253,6 +255,8 @@ impl Drop for Inner {
 pub enum ComputePipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
+    /// Error while creating the pipeline layout object.
+    PipelineLayoutCreationError(PipelineLayoutCreationError),
     /// The pipeline layout is not compatible with what the shader expects.
     IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 }
@@ -262,6 +266,9 @@ impl error::Error for ComputePipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             ComputePipelineCreationError::OomError(_) => "not enough memory available",
+            ComputePipelineCreationError::PipelineLayoutCreationError(_) => "error while creating \
+                                                                             the pipeline layout \
+                                                                             object",
             ComputePipelineCreationError::IncompatiblePipelineLayout(_) => "the pipeline layout is \
                                                                             not compatible with what \
                                                                             the shader expects",
@@ -272,6 +279,7 @@ impl error::Error for ComputePipelineCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
+            ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),
             ComputePipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
         }
     }
@@ -288,6 +296,13 @@ impl From<OomError> for ComputePipelineCreationError {
     #[inline]
     fn from(err: OomError) -> ComputePipelineCreationError {
         ComputePipelineCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutCreationError> for ComputePipelineCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutCreationError) -> ComputePipelineCreationError {
+        ComputePipelineCreationError::PipelineLayoutCreationError(err)
     }
 }
 
