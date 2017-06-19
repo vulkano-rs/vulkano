@@ -740,6 +740,7 @@ impl fmt::Debug for UnsafeDescriptorSet {
 ///
 /// Use the various constructors to build a `DescriptorWrite`. While it is safe to build a
 /// `DescriptorWrite`, it is unsafe to actually use it to write to a descriptor set.
+// TODO: allow binding whole arrays at once
 pub struct DescriptorWrite {
     binding: u32,
     first_array_element: u32,

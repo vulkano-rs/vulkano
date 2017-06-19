@@ -41,6 +41,12 @@ use descriptor::descriptor::DescriptorDesc;
 use image::ImageAccess;
 
 pub use self::collection::DescriptorSetsCollection;
+pub use self::persistent::PersistentDescriptorSet;
+pub use self::persistent::PersistentDescriptorSetBuilder;
+pub use self::persistent::PersistentDescriptorSetBuilderArray;
+pub use self::persistent::PersistentDescriptorSetBuf;
+pub use self::persistent::PersistentDescriptorSetBufView;
+pub use self::persistent::PersistentDescriptorSetImg;
 pub use self::simple::*;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;
@@ -56,6 +62,7 @@ pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
 
+mod persistent;
 mod simple;
 mod std_pool;
 mod sys;
