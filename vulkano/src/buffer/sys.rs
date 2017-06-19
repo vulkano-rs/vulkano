@@ -464,12 +464,12 @@ mod tests {
         };
     }
 
-	#[test]
-	fn create_empty_buffer() {
-		let (device, _) = gfx_dev_and_queue!();
+    #[test]
+    fn create_empty_buffer() {
+        let (device, _) = gfx_dev_and_queue!();
 
-		unsafe {
+        unsafe {
             UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none())
         };
-	}
+    }
 }
