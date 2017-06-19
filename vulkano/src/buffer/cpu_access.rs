@@ -434,3 +434,17 @@ impl<'a, T: ?Sized + 'a> DerefMut for WriteLock<'a, T> {
         self.inner.deref_mut()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use buffer::{CpuAccessibleBuffer, BufferUsage};
+
+    #[test]
+    fn create_empty_buffer() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+
+        CpuAccessibleBuffer::from_data(device, BufferUsage::all(), Some(queue.family()), EMPTY.iter());
+    }
+}
