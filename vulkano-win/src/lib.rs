@@ -10,6 +10,7 @@ extern crate metal_rs as metal;
 
 use std::error;
 use std::fmt;
+#[cfg(target_os = "windows")]
 use std::ptr;
 use std::sync::Arc;
 
@@ -29,6 +30,7 @@ use cocoa::appkit::{NSWindow, NSView};
 #[cfg(target_os = "macos")]
 use metal::*;
 
+#[cfg(target_os = "macos")]
 use std::mem;
 
 pub fn required_extensions() -> InstanceExtensions {
