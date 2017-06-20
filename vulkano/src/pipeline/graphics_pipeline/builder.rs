@@ -583,6 +583,13 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
         }
     }
 
+    /// Sets the depth/stencil configuration. This function may be removed in the future.
+    #[inline]
+    pub fn depth_stencil(mut self, depth_stencil: DepthStencil) -> Self {
+        self.depth_stencil = depth_stencil;
+        self
+    }
+
     /// Sets the depth/stencil tests as disabled.
     ///
     /// > **Note**: This is a shortcut for all the other `depth_*` and `depth_stencil_*` methods
