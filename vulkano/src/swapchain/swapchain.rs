@@ -230,16 +230,7 @@ impl Swapchain {
                  -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
     {
         // Checking that the requested parameters match the capabilities.
-        use swapchain::CapabilitiesError;
-        let capabilities = match surface.capabilities(device.physical_device()) {
-            Ok(caps) => caps,
-            Err(err) => match err {
-                CapabilitiesError::OomError(oom_err) => return Err(oom_err),
-                // TODO: this is what the old code did, while using the deprecated function.
-                // There should probably be a change to the API, to return a CapabilitiesError instead.
-                CapabilitiesError::SurfaceLost => panic!("Surface lost while creating swapchain")
-            }
-        };
+        let capabilities = try!(surface.get_capabilities(&device.physical_device()));
         // TODO: return errors instead
         assert!(num_images >= capabilities.min_image_count);
         if let Some(c) = capabilities.max_image_count { assert!(num_images <= c) };
