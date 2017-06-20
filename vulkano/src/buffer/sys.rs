@@ -469,7 +469,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         unsafe {
-            let _ = UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none())
+            let _ = UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none());
         };
     }
 }
