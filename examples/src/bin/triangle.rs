@@ -17,6 +17,8 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 
+// For the purpose of this example all unused code is allowed.
+#![allow(dead_code)]
 
 // The `vulkano` crate is the main crate that you must use to use Vulkan.
 #[macro_use]

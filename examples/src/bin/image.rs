@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// For the purpose of this example all unused code is allowed.
+#![allow(dead_code)]
+
 extern crate cgmath;
 extern crate image;
 extern crate winit;
