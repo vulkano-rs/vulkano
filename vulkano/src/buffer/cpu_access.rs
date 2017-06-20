@@ -445,6 +445,6 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        CpuAccessibleBuffer::from_data(device, BufferUsage::all(), Some(queue.family()), EMPTY.iter());
+        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), Some(queue.family()), EMPTY.iter());
     }
 }

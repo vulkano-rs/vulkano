@@ -659,7 +659,7 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        ImmutableBuffer::from_data((), BufferUsage::all(), Some(queue.family()), queue.clone());
+        let _ = ImmutableBuffer::from_data((), BufferUsage::all(), Some(queue.family()), queue.clone());
     }
 
     // TODO: write tons of tests that try to exploit loopholes
