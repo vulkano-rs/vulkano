@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// For the purpose of this example all unused code is allowed.
+#![allow(dead_code)]
+
 extern crate examples;
 extern crate cgmath;
 extern crate winit;
@@ -21,7 +24,6 @@ extern crate vulkano_win;
 use vulkano_win::VkSurfaceBuild;
 use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::sync::GpuFuture;
-use vulkano::image::ImageView;
 
 use std::sync::Arc;
 
