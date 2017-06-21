@@ -3,6 +3,9 @@ rust:
     - nightly
     - stable
 
+cache:
+  cargo
+
 install:
   - export CXX="g++-4.8"
 
