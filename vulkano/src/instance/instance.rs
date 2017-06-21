@@ -918,11 +918,16 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
-    // TODO: graphics and compute queues support transfer operations as well, so this function
-    //       is confusing
+    ///
+    /// > **Note**: Queues that support graphics or compute operations also always support transfer
+    /// > operations. As of writing this, this function will always return true. The purpose of
+    /// > this function is to be future-proofed in case queues that don't support transfer
+    /// > operations are ever added to Vulkan.
     #[inline]
     pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 ||
+            self.supports_graphics() ||
+            self.supports_compute()
     }
 
     /// Returns true if queues of this family can execute sparse resources binding operations.
