@@ -465,36 +465,38 @@ impl Default for SurfaceTransform {
 #[repr(u32)]
 pub enum ColorSpace {
     SrgbNonLinear = vk::COLOR_SPACE_SRGB_NONLINEAR_KHR,
-    DisplayP3Linear = vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT,
     DisplayP3NonLinear = vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT,
-    ScrgbLinear = vk::COLOR_SPACE_SCRGB_LINEAR_EXT,
-    ScrgbNonLinear = vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT,
+    ExtendedSrgbLinear = vk::COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT,
     DciP3Linear = vk::COLOR_SPACE_DCI_P3_LINEAR_EXT,
     DciP3NonLinear = vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT,
     Bt709Linear = vk::COLOR_SPACE_BT709_LINEAR_EXT,
     Bt709NonLinear = vk::COLOR_SPACE_BT709_NONLINEAR_EXT,
     Bt2020Linear = vk::COLOR_SPACE_BT2020_LINEAR_EXT,
-    Bt2020NonLinear = vk::COLOR_SPACE_BT2020_NONLINEAR_EXT,
+    Hdr10St2084 = vk::COLOR_SPACE_HDR10_ST2084_EXT,
+    DolbyVision = vk::COLOR_SPACE_DOLBYVISION_EXT,
+    Hdr10Hlg = vk::COLOR_SPACE_HDR10_HLG_EXT,
     AdobeRgbLinear = vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT,
     AdobeRgbNonLinear = vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT,
+    PassThrough = vk::COLOR_SPACE_PASS_THROUGH_EXT,
 }
 
 #[inline]
 pub fn color_space_from_num(val: u32) -> ColorSpace {
     match val {
         vk::COLOR_SPACE_SRGB_NONLINEAR_KHR => ColorSpace::SrgbNonLinear,
-        vk::COLOR_SPACE_DISPLAY_P3_LINEAR_EXT => ColorSpace::DisplayP3Linear,
         vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
-        vk::COLOR_SPACE_SCRGB_LINEAR_EXT => ColorSpace::ScrgbLinear,
-        vk::COLOR_SPACE_SCRGB_NONLINEAR_EXT => ColorSpace::ScrgbNonLinear,
+        vk::COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT => ColorSpace::ExtendedSrgbLinear,
         vk::COLOR_SPACE_DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
         vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
         vk::COLOR_SPACE_BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
         vk::COLOR_SPACE_BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
         vk::COLOR_SPACE_BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
-        vk::COLOR_SPACE_BT2020_NONLINEAR_EXT => ColorSpace::Bt2020NonLinear,
+        vk::COLOR_SPACE_HDR10_ST2084_EXT => ColorSpace::Hdr10St2084,
+        vk::COLOR_SPACE_DOLBYVISION_EXT => ColorSpace::DolbyVision,
+        vk::COLOR_SPACE_HDR10_HLG_EXT => ColorSpace::Hdr10Hlg,
         vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
         vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
+        vk::COLOR_SPACE_PASS_THROUGH_EXT => ColorSpace::PassThrough,
         _ => panic!("Wrong value for color space enum")
     }
 }
