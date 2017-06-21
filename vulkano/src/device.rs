@@ -169,7 +169,7 @@ impl Device {
         let queue_families = queue_families.into_iter();
 
         if !phys.supported_features().superset_of(&requested_features) {
-            return Err(DeviceCreationError::UnsupportedFeatures);
+            return Err(DeviceCreationError::FeatureNotPresent);
         }
 
         let vk_i = phys.instance().pointers();
@@ -489,32 +489,45 @@ impl ExactSizeIterator for QueuesIter {}
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DeviceCreationError {
+    /// Failed to create the device for an implementation-specific reason.
+    InitializationFailed,
+    /// You have reached the limit to the number of devices that can be created from the same
+    /// physical device.
+    TooManyObjects,
+    /// Failed to connect to the device.
+    DeviceLost,
+    /// Some of the requested features are unsupported by the physical device.
+    FeatureNotPresent,
+    /// Some of the requested device extensions are not supported by the physical device.
+    ExtensionNotPresent,
+    /// Tried to create too many queues for a given family.
+    TooManyQueuesForFamily,
+    /// The priority of one of the queues is out of the [0.0; 1.0] range.
+    PriorityOutOfRange,
     /// There is no memory available on the host (ie. the CPU, RAM, etc.).
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
-    /// Tried to create too many queues for a given family.
-    TooManyQueuesForFamily,
-    /// Some of the requested features are unsupported by the physical device.
-    UnsupportedFeatures,
-    /// The priority of one of the queues is out of the [0.0; 1.0] range.
-    PriorityOutOfRange,
-    /// Some of the requested device extensions are not supported by the physical device.
-    ExtensionNotPresent,
 }
 
 impl error::Error for DeviceCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            DeviceCreationError::InitializationFailed => {
+                "failed to create the device for an implementation-specific reason"
+            },
             DeviceCreationError::OutOfHostMemory => "no memory available on the host",
             DeviceCreationError::OutOfDeviceMemory => {
                 "no memory available on the graphical device"
             },
+            DeviceCreationError::DeviceLost => {
+                "failed to connecgt to the device"
+            },
             DeviceCreationError::TooManyQueuesForFamily => {
                 "tried to create too many queues for a given family"
             },
-            DeviceCreationError::UnsupportedFeatures => {
+            DeviceCreationError::FeatureNotPresent => {
                 "some of the requested features are unsupported by the physical device"
             },
             DeviceCreationError::PriorityOutOfRange => {
@@ -522,7 +535,11 @@ impl error::Error for DeviceCreationError {
             },
             DeviceCreationError::ExtensionNotPresent => {
                 "some of the requested device extensions are not supported by the physical device"
-            }
+            },
+            DeviceCreationError::TooManyObjects => {
+                "you have reached the limit to the number of devices that can be created from the
+                 same physical device"
+            },
         }
     }
 }
@@ -538,9 +555,13 @@ impl From<Error> for DeviceCreationError {
     #[inline]
     fn from(err: Error) -> DeviceCreationError {
         match err {
+            Error::InitializationFailed => DeviceCreationError::InitializationFailed,
             Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
             Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
+            Error::DeviceLost => DeviceCreationError::DeviceLost,
             Error::ExtensionNotPresent => DeviceCreationError::ExtensionNotPresent,
+            Error::FeatureNotPresent => DeviceCreationError::FeatureNotPresent,
+            Error::TooManyObjects => DeviceCreationError::TooManyObjects,
             _ => panic!("Unexpected error value: {}", err as i32)
         }
     }
@@ -655,7 +676,7 @@ mod tests {
         }
 
         match Device::new(&physical, &features, &DeviceExtensions::none(), Some((family, 1.0))) {
-            Err(DeviceCreationError::UnsupportedFeatures) => return,     // Success
+            Err(DeviceCreationError::FeatureNotPresent) => return,     // Success
             _ => panic!()
         };
     }
