@@ -708,6 +708,12 @@ unsafe impl<P> GpuFuture for PresentFuture<P> where P: GpuFuture {
                 builder.add_swapchain(&self.swapchain, self.image_id as u32);
                 SubmitAnyBuilder::QueuePresent(builder)
             },
+            SubmitAnyBuilder::BindSparse(cb) => {
+                try!(cb.submit(&queue.unwrap()));        // FIXME: wrong because build_submission can be called multiple times
+                let mut builder = SubmitPresentBuilder::new();
+                builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                SubmitAnyBuilder::QueuePresent(builder)
+            },
             SubmitAnyBuilder::QueuePresent(present) => {
                 unimplemented!()        // TODO:
                 /*present.submit();

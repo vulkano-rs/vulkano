@@ -237,6 +237,13 @@ impl<F> FenceSignalFuture<F> where F: GpuFuture {
                     cb_builder.set_fence_signal(&fence);
                     cb_builder.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
                 },
+                SubmitAnyBuilder::BindSparse(mut sparse) => {
+                    debug_assert!(!partially_flushed);
+                    // Same remark as `CommandBuffer`.
+                    assert!(!sparse.has_fence());
+                    sparse.set_fence_signal(&fence);
+                    sparse.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
+                },
                 SubmitAnyBuilder::QueuePresent(present) => {
                     let intermediary_result = if partially_flushed {
                         Ok(())
