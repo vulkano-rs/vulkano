@@ -20,11 +20,11 @@
 //! provides high-level wrappers around that type that are specialized depending on the way you
 //! are going to use it:
 //!
-//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be directly
+//! - `CpuAccessibleBuffer` designates a buffer located in RAM and whose content can be directly
 //!   written by your application.
 //! - `DeviceLocalBuffer` designates a buffer located in video memory and whose content can't be
 //!   written by your application. Accessing this buffer from the GPU is usually faster than the
-//!   `CpuAccessBuffer`.
+//!   `CpuAccessibleBuffer`.
 //! - `ImmutableBuffer` designates a buffer in video memory and whose content can only be
 //!   written once. Compared to `DeviceLocalBuffer`, this buffer requires less processing on the
 //!   CPU because we don't need to keep track of the reads and writes.
