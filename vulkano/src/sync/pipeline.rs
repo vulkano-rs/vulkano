@@ -12,7 +12,7 @@ use vk;
 
 macro_rules! pipeline_stages {
     ($($elem:ident => $val:expr,)+) => (
-        #[derive(Debug, Copy, Clone)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         #[allow(missing_docs)]
         pub struct PipelineStages {
             $(

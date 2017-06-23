@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 use std::iter;
 use std::mem;
+use std::slice;
 use std::sync::Arc;
 
 use buffer::Buffer;
@@ -404,10 +405,13 @@ unsafe fn push_constants<P, Pl, Pc>(dest: &mut SyncCommandBufferBuilder<P>, pipe
         debug_assert_eq!(range.offset % 4, 0);
         debug_assert_eq!(range.size % 4, 0);
 
-        dest.push_constants(pipeline.clone(), range.stages,
-                            range.offset as u32, range.size as u32,
-                            &*((&push_constants as *const Pc as *const u8)
-                            .offset(range.offset as isize)));
+        let data = slice::from_raw_parts((&push_constants as *const Pc as *const u8)
+                                            .offset(range.offset as isize),
+                                         range.size as usize);
+
+        dest.push_constants::<_, [u8]>(pipeline.clone(), range.stages,
+                                       range.offset as u32, range.size as u32,
+                                       data);
     }
 }
 

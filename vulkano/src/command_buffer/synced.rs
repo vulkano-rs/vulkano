@@ -11,6 +11,8 @@ use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::mem;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use fnv::FnvHashMap;
@@ -1186,25 +1188,24 @@ impl<P> SyncCommandBufferBuilder<P> {
     /// Calls `vkCmdPushConstants` on the builder.
     #[inline]
     pub unsafe fn push_constants<Pl, D>(&mut self, pipeline_layout: Pl, stages: ShaderStages,
-                                        offset: u32, size: u32, data: D)
+                                        offset: u32, size: u32, data: &D)
         where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
-              D: Send + Sync + 'static
+              D: ?Sized + Send + Sync + 'static
     {
-        struct Cmd<Pl, D> {
+        struct Cmd<Pl> {
             pipeline_layout: Pl,
             stages: ShaderStages,
             offset: u32,
             size: u32,
-            data: D,
+            data: Box<[u8]>,
         }
 
-        impl<P, Pl, D> Command<P> for Cmd<Pl, D>
+        impl<P, Pl> Command<P> for Cmd<Pl>
             where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
-                  D: Send + Sync + 'static
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.push_constants(&self.pipeline_layout, self.stages, self.offset, self.size,
-                                   &self.data);
+                out.push_constants::<_, [u8]>(&self.pipeline_layout, self.stages, self.offset,
+                                              self.size, &self.data);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
@@ -1217,8 +1218,14 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
+        debug_assert!(mem::size_of_val(data) >= size as usize);
+
+        let mut out = Vec::with_capacity(size as usize);
+        ptr::copy::<u8>(data as *const D as *const u8, out.as_mut_ptr(), size as usize);
+        out.set_len(size as usize);
+
         self.commands.lock().unwrap().commands.push(Box::new(Cmd { pipeline_layout, stages, offset,
-                                                                   size, data }));
+                                                                   size, data: out.into() }));
     }
 
     /// Calls `vkCmdResetEvent` on the builder.

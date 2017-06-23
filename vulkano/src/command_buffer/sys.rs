@@ -724,8 +724,8 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
 
-        debug_assert_ne!(command.src_stage_mask, PipelineStages::none());
-        debug_assert_ne!(command.dst_stage_mask, PipelineStages::none());
+        debug_assert_ne!(command.src_stage_mask, 0);
+        debug_assert_ne!(command.dst_stage_mask, 0);
 
         vk.CmdPipelineBarrier(cmd, command.src_stage_mask, command.dst_stage_mask,
                               command.dependency_flags, command.memory_barriers.len() as u32,
@@ -764,7 +764,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let cmd = self.internal_object();
 
         debug_assert!(!stages.host);
-        debug_assert_ne!(!stages, PipelineStages::none());
+        debug_assert_ne!(stages, PipelineStages::none());
 
         vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
     }
@@ -803,7 +803,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let cmd = self.internal_object();
 
         debug_assert!(!stages.host);
-        debug_assert_ne!(!stages, PipelineStages::none());
+        debug_assert_ne!(stages, PipelineStages::none());
 
         vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
     }
