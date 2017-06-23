@@ -375,11 +375,6 @@ impl<P> SyncCommandBufferBuilder<P> {
                 // Find out if we have a collision with the pending commands.
                 if exclusive || entry.exclusive || entry.current_layout != start_layout {
                     // Collision found.
-                    entry.stages = stages;
-                    entry.access = access;
-                    entry.exclusive_any = true;
-                    entry.exclusive = exclusive;
-                    entry.current_layout = end_layout;
 
                     // We now want to modify the current pipeline barrier in order to include the
                     // transition. But since the pipeline barrier is going to be submitted before
@@ -402,8 +397,39 @@ impl<P> SyncCommandBufferBuilder<P> {
                     }
 
                     // Modify the pipeline barrier to include the transition.
-                    // TODO:
-                    //self.pending_barrier.;
+                    unsafe {
+                        let commands_lock = self.commands.lock().unwrap();
+                        match resource_ty {
+                            KeyTy::Buffer => {
+                                let buf = commands_lock.commands[latest_command_id]
+                                    .buffer(resource_index);
+
+                                let b = &mut self.pending_barrier;
+                                b.add_buffer_memory_barrier(buf, entry.stages, entry.access,
+                                                            stages, access, true, None,
+                                                            0, buf.size());
+                            },
+
+                            KeyTy::Image => {
+                                let img = commands_lock.commands[latest_command_id]
+                                    .image(resource_index);
+
+                                let b = &mut self.pending_barrier;
+                                b.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                                                           0 .. img.dimensions().array_layers(),
+                                                           entry.stages, entry.access, stages,
+                                                           access, true, None,
+                                                           entry.current_layout, start_layout);
+                            },
+                        };
+                    }
+
+                    // Update state.
+                    entry.stages = stages;
+                    entry.access = access;
+                    entry.exclusive_any = true;
+                    entry.exclusive = exclusive;
+                    entry.current_layout = end_layout;
 
                 } else {
                     entry.stages = entry.stages | stages;
