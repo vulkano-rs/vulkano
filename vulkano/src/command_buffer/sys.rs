@@ -1092,6 +1092,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                                      source_access: AccessFlagBits, dest_stage: PipelineStages,
                                      dest_access: AccessFlagBits, by_region: bool)
     {
+        debug_assert!(source_access.is_compatible_with(&source_stage));
+        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         self.memory_barriers.push(vk::MemoryBarrier {
@@ -1124,6 +1127,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                    queue_transfer: Option<(u32, u32)>, offset: usize, size: usize)
         where B: ?Sized + BufferAccess
     {
+        debug_assert!(source_access.is_compatible_with(&source_stage));
+        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         debug_assert!(size <= buffer.size());
@@ -1172,6 +1178,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                   queue_transfer: Option<(u32, u32)>, current_layout: ImageLayout, new_layout: ImageLayout)
         where I: ?Sized + ImageAccess
     {
+        debug_assert!(source_access.is_compatible_with(&source_stage));
+        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         debug_assert!(mipmaps.start < mipmaps.end);

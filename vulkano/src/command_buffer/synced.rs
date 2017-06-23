@@ -345,6 +345,9 @@ impl<P> SyncCommandBufferBuilder<P> {
         // true.
         debug_assert!(exclusive || start_layout == end_layout);
 
+        // Other minor check.
+        debug_assert!(access.is_compatible_with(&stages));
+
         let (first_unflushed, latest_command_id) = {
             let commands_lock = self.commands.lock().unwrap();
             debug_assert!(commands_lock.commands.len() >= 1);

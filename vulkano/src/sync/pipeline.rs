@@ -172,3 +172,59 @@ access_flags!{
     memory_read => vk::ACCESS_MEMORY_READ_BIT,
     memory_write => vk::ACCESS_MEMORY_WRITE_BIT,
 }
+
+impl AccessFlagBits {
+    /// Returns true if the access flags can be used with the given pipeline stages.
+    ///
+    /// Corresponds to `Table 4. Supported access types` in section `6.1.3. Access Types` of the
+    /// Vulkan specs.
+    pub fn is_compatible_with(&self, stages: &PipelineStages) -> bool {
+        if stages.all_commands {
+            return true;
+        }
+
+        if self.indirect_command_read && !stages.draw_indirect && !stages.all_graphics {
+            return false;
+        }
+
+        if (self.index_read || self.vertex_attribute_read) && !stages.vertex_input &&
+            !stages.all_graphics
+        {
+            return false;
+        }
+
+        if (self.uniform_read || self.shader_read || self.shader_write) &&
+            !stages.vertex_shader && !stages.tessellation_control_shader &&
+            !stages.tessellation_evaluation_shader && !stages.geometry_shader &&
+            !stages.fragment_shader && !stages.compute_shader && !stages.all_graphics
+        {
+            return false;
+        }
+
+        if self.input_attachment_read && !stages.fragment_shader && !stages.all_graphics {
+            return false;
+        }
+
+        if (self.color_attachment_read || self.color_attachment_write) &&
+            !stages.color_attachment_output && !stages.all_graphics
+        {
+            return false;
+        }
+
+        if (self.depth_stencil_attachment_read || self.depth_stencil_attachment_write) &&
+            !stages.early_fragment_tests && !stages.late_fragment_tests && !stages.all_graphics
+        {
+            return false;
+        }
+
+        if (self.transfer_read || self.transfer_write) && !stages.transfer {
+            return false;
+        }
+
+        if (self.host_read || self.host_write) && !stages.host {
+            return false;
+        }
+
+        true
+    }
+}
