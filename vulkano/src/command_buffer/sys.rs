@@ -1175,13 +1175,17 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     pub unsafe fn add_image_memory_barrier<I>(&mut self, image: &I, mipmaps: Range<u32>,
                   layers: Range<u32>, source_stage: PipelineStages, source_access: AccessFlagBits,
                   dest_stage: PipelineStages, dest_access: AccessFlagBits, by_region: bool,
-                  queue_transfer: Option<(u32, u32)>, current_layout: ImageLayout, new_layout: ImageLayout)
+                  queue_transfer: Option<(u32, u32)>, current_layout: ImageLayout,
+                  new_layout: ImageLayout)
         where I: ?Sized + ImageAccess
     {
         debug_assert!(source_access.is_compatible_with(&source_stage));
         debug_assert!(dest_access.is_compatible_with(&dest_stage));
 
         self.add_execution_dependency(source_stage, dest_stage, by_region);
+
+        debug_assert_ne!(new_layout, ImageLayout::Undefined);
+        debug_assert_ne!(new_layout, ImageLayout::Preinitialized);
 
         debug_assert!(mipmaps.start < mipmaps.end);
         debug_assert!(mipmaps.end <= image.mipmap_levels());

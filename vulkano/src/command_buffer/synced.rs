@@ -347,6 +347,8 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         // Other minor check.
         debug_assert!(access.is_compatible_with(&stages));
+        debug_assert!(resource_ty != KeyTy::Image || end_layout != ImageLayout::Undefined);
+        debug_assert_ne!(end_layout, ImageLayout::Preinitialized);
 
         let (first_unflushed, latest_command_id) = {
             let commands_lock = self.commands.lock().unwrap();
