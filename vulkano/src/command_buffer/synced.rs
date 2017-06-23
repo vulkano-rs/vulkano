@@ -444,6 +444,8 @@ impl<P> SyncCommandBufferBuilder<P> {
             },
 
             Entry::Vacant(entry) => {
+                let mut actually_exclusive = exclusive;
+
                 // Handle the case when the initial layout requirement of the image is different
                 // from the first layout usage.
                 if resource_ty == KeyTy::Image && start_layout != ImageLayout::Undefined &&
@@ -453,6 +455,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
 
                     if img.initial_layout_requirement() != start_layout {
+                        actually_exclusive = true;
+
                         unsafe {
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
@@ -470,8 +474,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                 entry.insert(ResourceState {
                     stages: stages,
                     access: access,
-                    exclusive_any: exclusive,
-                    exclusive: exclusive,
+                    exclusive_any: actually_exclusive,
+                    exclusive: actually_exclusive,
                     initial_layout: start_layout,
                     current_layout: end_layout,     // TODO: what if we reach the end with Undefined? that's not correct?
                 });
@@ -501,7 +505,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         unsafe {
             let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
 
-            for (key, state) in &self.resources {
+            for (key, mut state) in &mut self.resources {
                 if key.resource_ty != KeyTy::Image {
                     continue;
                 }
@@ -511,6 +515,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     continue;
                 }
 
+                state.exclusive_any = true;
                 barrier.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
                                                  0 .. img.dimensions().array_layers(),
                                                  state.stages, state.access,
