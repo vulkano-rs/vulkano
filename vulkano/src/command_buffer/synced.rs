@@ -412,7 +412,29 @@ impl<P> SyncCommandBufferBuilder<P> {
             },
 
             Entry::Vacant(entry) => {
-                // FIXME: handle start_layout different from the image expected layout
+                // Handle the case when the initial layout requirement of the image is different
+                // from the first layout usage.
+                if resource_ty == KeyTy::Image && start_layout != ImageLayout::Undefined &&
+                    start_layout != ImageLayout::Preinitialized
+                {
+                    let commands_lock = self.commands.lock().unwrap();
+                    let img = commands_lock.commands[latest_command_id].image(resource_index);
+
+                    if img.initial_layout_requirement() != start_layout {
+                        unsafe {
+                            let b = &mut self.pending_barrier;
+                            b.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                                                       0 .. img.dimensions().array_layers(),
+                                                       PipelineStages { bottom_of_pipe: true, .. PipelineStages::none() },      // TODO:?
+                                                       AccessFlagBits::none(),        // TODO: ?
+                                                       stages, access,
+                                                       true, None,
+                                                       img.initial_layout_requirement(),
+                                                       start_layout);
+                        }
+                    }
+                }
+
                 entry.insert(ResourceState {
                     stages: stages,
                     access: access,
