@@ -114,6 +114,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     {
         unsafe {
             let clear_values = framebuffer.convert_clear_values(clear_values);
+            let clear_values = clear_values.collect::<Vec<_>>().into_iter();        // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             self.inner.begin_render_pass(framebuffer, secondary, clear_values);
             Ok(self)
         }
@@ -309,18 +310,18 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
     /// buffer is larger than `data`, only the start of the buffer is written.
     #[inline]
-    pub fn update_buffer<B, D>(mut self, buffer: B, data: &D)
+    pub fn update_buffer<B, D>(mut self, buffer: B, data: D)
                                -> Result<Self, validity::CheckUpdateBufferError>
         where B: Buffer,
               B::Access: Send + Sync + 'static,
-              D: ?Sized
+              D: Send + Sync + 'static
     {
         unsafe {
             // TODO: check that we're not in a render pass
             let buffer = buffer.access();
-            validity::check_update_buffer(self.device(), &buffer, data)?;
+            validity::check_update_buffer(self.device(), &buffer, &data)?;
 
-            let size_of_data = mem::size_of_val(data);
+            let size_of_data = mem::size_of_val(&data);
             if buffer.size() > size_of_data {
                 self.inner.update_buffer(buffer, data);
             } else {
@@ -368,11 +369,11 @@ unsafe fn set_state<P>(dest: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicS
     }
 
     if let Some(ref viewports) = dynamic.viewports {
-        dest.set_viewport(0, viewports.iter().cloned());
+        dest.set_viewport(0, viewports.iter().cloned().collect::<Vec<_>>().into_iter());        // TODO: don't collect
     }
 
     if let Some(ref scissors) = dynamic.scissors {
-        dest.set_scissor(0, scissors.iter().cloned());
+        dest.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter());      // TODO: don't collect
     }
 }
 
