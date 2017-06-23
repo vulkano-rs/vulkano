@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::fmt;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
@@ -130,6 +131,13 @@ pub struct UnsafeCommandBufferBuilder<P> {
     // Flags that were used at creation.
     // TODO: necessary?
     flags: Flags,
+}
+
+impl<P> fmt::Debug for UnsafeCommandBufferBuilder<P> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<Vulkan command buffer builder #{}>", self.cmd_raw)
+    }
 }
 
 impl<P> UnsafeCommandBufferBuilder<P> {
