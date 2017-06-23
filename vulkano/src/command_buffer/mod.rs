@@ -49,7 +49,6 @@
 //!
 //! ```
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
-//! use vulkano::command_buffer::CommandBufferBuilder;
 //! use vulkano::command_buffer::CommandBuffer;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
