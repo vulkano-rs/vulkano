@@ -516,6 +516,8 @@ impl<P> SyncCommandBufferBuilder<P> {
 
     /// Calls `vkBeginRenderPass` on the builder.
     // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already
+    // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
+    //       returned if conflict
     #[inline]
     pub unsafe fn begin_render_pass<F, I>(&mut self, framebuffer: F, secondary: bool,
                                           clear_values: I)
