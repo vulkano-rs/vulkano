@@ -22,7 +22,6 @@ extern crate vulkano_shader_derive;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::instance::Instance;

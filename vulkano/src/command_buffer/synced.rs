@@ -9,8 +9,6 @@
 
 use std::collections::hash_map::Entry;
 use std::hash::{Hash, Hasher};
-use std::mem;
-use std::ops::DerefMut;
 use std::sync::Arc;
 use std::sync::Mutex;
 use fnv::FnvHashMap;
@@ -30,13 +28,10 @@ use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use descriptor::descriptor_set::DescriptorSet;
-use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use format::ClearValue;
-use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use image::ImageLayout;
 use image::ImageAccess;
@@ -47,7 +42,6 @@ use device::Queue;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
-use pipeline::vertex::VertexSource;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use sync::AccessCheckError;
@@ -135,16 +129,16 @@ impl<P> BuilderKey<P> {
 
     #[inline]
     fn conflicts_buffer_all(&self, buf: &BufferAccess) -> bool {
-        let mut commands_lock = self.commands.lock().unwrap();
+        let commands_lock = self.commands.lock().unwrap();
 
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.buffer(self.resource_index).conflicts_buffer_all(buf)
             },
             KeyTy::Image => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.image(self.resource_index).conflicts_buffer_all(buf)
             },
         }
@@ -152,16 +146,16 @@ impl<P> BuilderKey<P> {
 
     #[inline]
     fn conflicts_image_all(&self, img: &ImageAccess) -> bool {
-        let mut commands_lock = self.commands.lock().unwrap();
+        let commands_lock = self.commands.lock().unwrap();
 
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.buffer(self.resource_index).conflicts_image_all(img)
             },
             KeyTy::Image => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.image(self.resource_index).conflicts_image_all(img)
             },
         }
@@ -172,15 +166,15 @@ impl<P> PartialEq for BuilderKey<P> {
     #[inline]
     fn eq(&self, other: &BuilderKey<P>) -> bool {
         debug_assert!(Arc::ptr_eq(&self.commands, &other.commands));
-        let mut commands_lock = self.commands.lock().unwrap();
+        let commands_lock = self.commands.lock().unwrap();
 
         match other.resource_ty {
             KeyTy::Buffer => {
-                let mut c = &commands_lock.commands[other.command_id];
+                let c = &commands_lock.commands[other.command_id];
                 self.conflicts_buffer_all(c.buffer(other.resource_index))
             },
             KeyTy::Image => {
-                let mut c = &commands_lock.commands[other.command_id];
+                let c = &commands_lock.commands[other.command_id];
                 self.conflicts_image_all(c.image(other.resource_index))
             },
         }
@@ -193,15 +187,15 @@ impl<P> Eq for BuilderKey<P> {
 impl<P> Hash for BuilderKey<P> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let mut commands_lock = self.commands.lock().unwrap();
+        let commands_lock = self.commands.lock().unwrap();
 
         match self.resource_ty {
             KeyTy::Buffer => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.buffer(self.resource_index).conflict_key_all()
             },
             KeyTy::Image => {
-                let mut c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_id];
                 c.image(self.resource_index).conflict_key_all()
             },
         }.hash(state)
@@ -282,7 +276,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         debug_assert!(exclusive || start_layout == end_layout);
 
         let (first_unflushed, latest_command_id) = {
-            let mut commands_lock = self.commands.lock().unwrap();
+            let commands_lock = self.commands.lock().unwrap();
             debug_assert!(commands_lock.commands.len() >= 1);
             (commands_lock.first_unflushed, commands_lock.commands.len() - 1)
         };
@@ -1465,16 +1459,16 @@ impl<'a> CbKey<'a> {
     fn conflicts_buffer_all(&self, buf: &BufferAccess) -> bool {
         match *self {
             CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let mut commands_lock = commands.lock().unwrap();
+                let commands_lock = commands.lock().unwrap();
 
                 // TODO: put the conflicts_* methods directly on the FinalCommand trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.buffer(resource_index).conflicts_buffer_all(buf)
                     },
                     KeyTy::Image => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.image(resource_index).conflicts_buffer_all(buf)
                     },
                 }
@@ -1489,16 +1483,16 @@ impl<'a> CbKey<'a> {
     fn conflicts_image_all(&self, img: &ImageAccess) -> bool {
         match *self {
             CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let mut commands_lock = commands.lock().unwrap();
+                let commands_lock = commands.lock().unwrap();
 
                 // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.buffer(resource_index).conflicts_image_all(img)
                     },
                     KeyTy::Image => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.image(resource_index).conflicts_image_all(img)
                     },
                 }
@@ -1521,15 +1515,15 @@ impl<'a> PartialEq for CbKey<'a> {
                 other.conflicts_image_all(a)
             },
             CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let mut commands_lock = commands.lock().unwrap();
+                let commands_lock = commands.lock().unwrap();
 
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         other.conflicts_buffer_all(c.buffer(resource_index))
                     },
                     KeyTy::Image => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         other.conflicts_image_all(c.image(resource_index))
                     },
                 }
@@ -1564,15 +1558,15 @@ impl<'a> Hash for CbKey<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match *self {
             CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let mut commands_lock = commands.lock().unwrap();
+                let commands_lock = commands.lock().unwrap();
 
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.buffer(resource_index).conflict_key_all().hash(state)
                     },
                     KeyTy::Image => {
-                        let mut c = &commands_lock[command_id];
+                        let c = &commands_lock[command_id];
                         c.image(resource_index).conflict_key_all().hash(state)
                     },
                 }
@@ -1603,11 +1597,11 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
                 _ => unreachable!()
             };
 
-            let mut commands_lock = commands.lock().unwrap();
+            let commands_lock = commands.lock().unwrap();
 
             match resource_ty {
                 KeyTy::Buffer => {
-                    let mut cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_id];
                     let buf = cmd.buffer(resource_index);
 
                     let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
@@ -1625,7 +1619,7 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
                     }
                 },
                 KeyTy::Image => {
-                    let mut cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_id];
                     let img = cmd.image(resource_index);
 
                     let prev_err = match future.check_image_access(img, entry.initial_layout,

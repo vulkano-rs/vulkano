@@ -12,7 +12,6 @@ use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
-use descriptor::descriptor_set::UnsafeDescriptorSet;
 use image::ImageAccess;
 
 /// A collection of descriptor set objects.

@@ -17,17 +17,14 @@ use smallvec::SmallVec;
 use buffer::BufferAccess;
 use buffer::BufferInner;
 use command_buffer::CommandBuffer;
-use command_buffer::CommandBufferExecError;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolBuilderAlloc;
 use command_buffer::pool::CommandPoolAlloc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use device::Device;
 use device::DeviceOwned;
-use device::Queue;
 use format::ClearValue;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
@@ -43,10 +40,8 @@ use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
-use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
-use sync::GpuFuture;
 use sync::Event;
 use OomError;
 use VulkanObject;
@@ -715,18 +710,16 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             return;
         }
 
-        unsafe {
-            let vk = self.device().pointers();
-            let cmd = self.internal_object();
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
 
-            vk.CmdPipelineBarrier(cmd, command.src_stage_mask, command.dst_stage_mask,
-                                  command.dependency_flags, command.memory_barriers.len() as u32,
-                                  command.memory_barriers.as_ptr(),
-                                  command.buffer_barriers.len() as u32,
-                                  command.buffer_barriers.as_ptr(),
-                                  command.image_barriers.len() as u32,
-                                  command.image_barriers.as_ptr());
-        }
+        vk.CmdPipelineBarrier(cmd, command.src_stage_mask, command.dst_stage_mask,
+                              command.dependency_flags, command.memory_barriers.len() as u32,
+                              command.memory_barriers.as_ptr(),
+                              command.buffer_barriers.len() as u32,
+                              command.buffer_barriers.as_ptr(),
+                              command.image_barriers.len() as u32,
+                              command.image_barriers.as_ptr());
     }
 
     /// Calls `vkCmdPushConstants` on the builder.

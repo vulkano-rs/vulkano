@@ -10,12 +10,8 @@
 use std::error;
 use std::fmt;
 
-use buffer::BufferAccess;
 use command_buffer::DynamicState;
-use device::Device;
-use device::DeviceOwned;
 use pipeline::GraphicsPipelineAbstract;
-use VulkanObject;
 
 /// Checks whether states that are about to be set are correct.
 pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)

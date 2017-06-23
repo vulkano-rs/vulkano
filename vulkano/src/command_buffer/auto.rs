@@ -198,6 +198,27 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
+    pub fn dispatch<Cp, S, Pc>(mut self, dimensions: [u32; 3], pipeline: Cp, sets: S, constants: Pc)
+                               -> Result<Self, AutoCommandBufferBuilderContextError>
+        where Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone,    // TODO: meh for Clone
+              S: DescriptorSetsCollection,
+    {
+        unsafe {
+            // TODO: missing checks
+
+            if let StateCacherOutcome::NeedChange = self.state_cacher.bind_compute_pipeline(&pipeline) {
+                self.inner.bind_pipeline_compute(pipeline.clone());
+            }
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            descriptor_sets(&mut self.inner, false, pipeline.clone(), sets);
+
+            self.inner.dispatch(dimensions);
+            Ok(self)
+        }
+    }
+
+    #[inline]
     pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
                               constants: Pc) -> Result<Self, AutoCommandBufferBuilderContextError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone,    // TODO: meh for Clone
