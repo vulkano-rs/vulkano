@@ -724,6 +724,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
 
+        debug_assert_ne!(command.src_stage_mask, PipelineStages::none());
+        debug_assert_ne!(command.dst_stage_mask, PipelineStages::none());
+
         vk.CmdPipelineBarrier(cmd, command.src_stage_mask, command.dst_stage_mask,
                               command.dependency_flags, command.memory_barriers.len() as u32,
                               command.memory_barriers.as_ptr(),
@@ -743,6 +746,12 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
 
+        debug_assert!(stages != ShaderStages::none());
+        debug_assert!(size > 0);
+        debug_assert_eq!(size % 4, 0);
+        debug_assert_eq!(offset % 4, 0);
+        debug_assert!(mem::size_of_val(data) >= size as usize);
+
         vk.CmdPushConstants(cmd, pipeline_layout.sys().internal_object(),
                             stages.into(), offset as u32, size as u32,
                             data as *const D as *const _);
@@ -753,7 +762,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn reset_event(&mut self, event: &Event, stages: PipelineStages) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
+
         debug_assert!(!stages.host);
+        debug_assert_ne!(!stages, PipelineStages::none());
+
         vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
     }
 
@@ -789,7 +801,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
+
         debug_assert!(!stages.host);
+        debug_assert_ne!(!stages, PipelineStages::none());
+
         vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
     }
 
@@ -1078,6 +1093,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         if !by_region {
             self.dependency_flags = 0;
         }
+
+        debug_assert_ne!(source, PipelineStages::none());
+        debug_assert_ne!(dest, PipelineStages::none());
 
         self.src_stage_mask |= Into::<vk::PipelineStageFlags>::into(source);
         self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(dest);
