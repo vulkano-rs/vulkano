@@ -299,7 +299,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
             vertex_buffers(&mut self.inner, &pipeline, vertices);
 
-            self.inner.draw_indirect(indirect_buffer, draw_count, 0);
+            self.inner.draw_indirect(indirect_buffer, draw_count,
+                                     mem::size_of::<DrawIndirectCommand>() as u32);
             Ok(self)
         }
     }

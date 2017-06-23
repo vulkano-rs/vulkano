@@ -626,6 +626,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
+
+        debug_assert!(draw_count == 0 || ((stride % 4) == 0) &&
+                      stride as usize >= mem::size_of::<vk::DrawIndirectCommand>());
         
         let inner = buffer.inner();
         debug_assert!(inner.offset < buffer.size());
