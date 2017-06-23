@@ -18,8 +18,6 @@
 //! The buffer will be stored in device-local memory if possible
 //!
 
-use std::error;
-use std::fmt;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -437,59 +435,6 @@ impl<T: ?Sized, A> Drop for ImmutableBufferInitialization<T, A> {
     }
 }
 
-// TODO:
-/*/// Error that can happen when creating a `CmdCopyBuffer`.
-#[derive(Debug, Copy, Clone)]
-pub enum ImmutableBufferFromBufferWithBuilderError {
-    /// Out of memory.
-    OomError(OomError),
-    /// Error while adding the command to the builder.
-    CommandBufferBuilderError(CommandBufferBuilderError<CmdCopyBufferError>),
-}
-
-impl error::Error for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            ImmutableBufferFromBufferWithBuilderError::OomError(_) => {
-                "out of memory"
-            },
-            ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(_) => {
-                "error while adding the command to the builder"
-            },
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            ImmutableBufferFromBufferWithBuilderError::OomError(ref err) => Some(err),
-            ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(ref err) => Some(err),
-        }
-    }
-}
-
-impl fmt::Display for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
-    }
-}
-
-impl From<OomError> for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn from(err: OomError) -> ImmutableBufferFromBufferWithBuilderError {
-        ImmutableBufferFromBufferWithBuilderError::OomError(err)
-    }
-}
-
-impl From<CommandBufferBuilderError<CmdCopyBufferError>> for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn from(err: CommandBufferBuilderError<CmdCopyBufferError>) -> ImmutableBufferFromBufferWithBuilderError {
-        ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(err)
-    }
-}*/
-
 #[cfg(test)]
 mod tests {
     use std::iter;
@@ -498,7 +443,6 @@ mod tests {
     use buffer::BufferUsage;
     use command_buffer::AutoCommandBufferBuilder;
     use command_buffer::CommandBuffer;
-    use command_buffer::CommandBufferBuilder;
     use sync::GpuFuture;
 
     #[test]
