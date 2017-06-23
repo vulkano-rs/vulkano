@@ -750,6 +750,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn reset_event(&mut self, event: &Event, stages: PipelineStages) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
+        debug_assert!(!stages.host);
         vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
     }
 
@@ -785,6 +786,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
+        debug_assert!(!stages.host);
         vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
     }
 

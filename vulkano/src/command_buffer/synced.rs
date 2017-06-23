@@ -341,13 +341,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                          start_layout: ImageLayout, end_layout: ImageLayout)
                          -> Result<(), SyncCommandBufferBuilderError>
     {
-        // Minor check. If the start and end layout aren't the same, exclusive should really be
-        // true.
         debug_assert!(exclusive || start_layout == end_layout);
-
-        // Other minor check.
         debug_assert!(access.is_compatible_with(&stages));
         debug_assert!(resource_ty != KeyTy::Image || end_layout != ImageLayout::Undefined);
+        debug_assert!(resource_ty != KeyTy::Buffer || start_layout == ImageLayout::Undefined);
+        debug_assert!(resource_ty != KeyTy::Buffer || end_layout == ImageLayout::Undefined);
         debug_assert_ne!(end_layout, ImageLayout::Preinitialized);
 
         let (first_unflushed, latest_command_id) = {
@@ -430,7 +428,12 @@ impl<P> SyncCommandBufferBuilder<P> {
                     entry.access = access;
                     entry.exclusive_any = true;
                     entry.exclusive = exclusive;
-                    entry.current_layout = end_layout;
+                    if exclusive {
+                        // Only modify the layout in case of a write, because buffer operations
+                        // pass `Undefined` for the layout. While a buffer write *must* set the
+                        // layout to `Undefined`, a buffer read must not touch it.
+                        entry.current_layout = end_layout;
+                    }
 
                 } else {
                     entry.stages = entry.stages | stages;
@@ -509,9 +512,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                 barrier.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
                                                  0 .. img.dimensions().array_layers(),
                                                  state.stages, state.access,
-                                                 PipelineStages { top_of_pipe: true, .. PipelineStages::none() },      // TODO:?
-                                                 AccessFlagBits::none(),        // TODO: ?
-                                                 true, None, state.current_layout,
+                                                 PipelineStages { bottom_of_pipe: true, .. PipelineStages::none() },      // TODO:?
+                                                 AccessFlagBits::none(), true, None,        // TODO: access?
+                                                 state.current_layout,
                                                  img.final_layout_requirement());
             }
 
