@@ -406,7 +406,6 @@ impl<P> SyncCommandBufferBuilder<P> {
                     //self.pending_barrier.;
 
                 } else {
-                    // TODO: simplify the stages?
                     entry.stages = entry.stages | stages;
                     entry.access = entry.access | access;
                 }
@@ -444,7 +443,31 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        // FIXME: transition images to their desired final layout
+        // Transition images to their desired final layout.
+        unsafe {
+            let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
+
+            for (key, state) in &self.resources {
+                if key.resource_ty != KeyTy::Image {
+                    continue;
+                }
+
+                let img = commands_lock.commands[key.command_id].image(key.resource_index);
+                if img.final_layout_requirement() == state.current_layout {
+                    continue;
+                }
+
+                barrier.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                                                 0 .. img.dimensions().array_layers(),
+                                                 state.stages, state.access,
+                                                 PipelineStages { top_of_pipe: true, .. PipelineStages::none() },      // TODO:?
+                                                 AccessFlagBits::none(),        // TODO: ?
+                                                 true, None, state.current_layout,
+                                                 img.final_layout_requirement());
+            }
+
+            self.inner.pipeline_barrier(&barrier);
+        }
 
         // Fill the `commands` list.
         let final_commands = {

@@ -1175,7 +1175,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.add_execution_dependency(source_stage, dest_stage, by_region);
 
         debug_assert!(mipmaps.start < mipmaps.end);
-        // TODO: debug_assert!(mipmaps.end <= image.mipmap_levels());
+        debug_assert!(mipmaps.end <= image.mipmap_levels());
         debug_assert!(layers.start < layers.end);
         debug_assert!(layers.end <= image.dimensions().array_layers());
 
@@ -1183,6 +1183,18 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             (src_queue, dest_queue)
         } else {
             (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+        };
+
+        let aspect_mask = if image.has_color() {
+            vk::IMAGE_ASPECT_COLOR_BIT
+        } else if image.has_depth() && image.has_stencil() {
+            vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT
+        } else if image.has_depth() {
+            vk::IMAGE_ASPECT_DEPTH_BIT
+        } else if image.has_stencil() {
+            vk::IMAGE_ASPECT_STENCIL_BIT
+        } else {
+            unreachable!()
         };
 
         self.image_barriers.push(vk::ImageMemoryBarrier {
@@ -1196,7 +1208,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             dstQueueFamilyIndex: dest_queue,
             image: image.inner().internal_object(),
             subresourceRange: vk::ImageSubresourceRange {
-                aspectMask: 1 | 2 | 4 | 8,      // FIXME: wrong
+                aspectMask: aspect_mask,
                 baseMipLevel: mipmaps.start,
                 levelCount: mipmaps.end - mipmaps.start,
                 baseArrayLayer: layers.start,
