@@ -18,6 +18,7 @@ use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
+use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
@@ -274,8 +275,34 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
-    // TODO: draw_indirect
-    // TODO: dispatch
+    #[inline]
+    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: DynamicState,
+                                           vertices: V, indirect_buffer: Ib, sets: S,
+                                           constants: Pc) -> Result<Self, AutoCommandBufferBuilderContextError>
+        where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone,    // TODO: meh for Clone
+              S: DescriptorSetsCollection,
+              Ib: Buffer,
+              Ib::Access: TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
+    {
+        unsafe {
+            // TODO: missing checks
+
+            let indirect_buffer = indirect_buffer.access();
+            let draw_count = indirect_buffer.len() as u32;
+
+            if let StateCacherOutcome::NeedChange = self.state_cacher.bind_graphics_pipeline(&pipeline) {
+                self.inner.bind_pipeline_graphics(pipeline.clone());
+            }
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            set_state(&mut self.inner, dynamic);
+            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
+            vertex_buffers(&mut self.inner, &pipeline, vertices);
+
+            self.inner.draw_indirect(indirect_buffer, draw_count, 0);
+            Ok(self)
+        }
+    }
 
     /// Adds a command that ends the current render pass.
     ///
