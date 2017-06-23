@@ -366,7 +366,7 @@ pub struct CpuAccessibleBufferFinished {
     write: bool,
 }
 
-/// Object that can be used to read or write the content of a `CpuAccessBuffer`.
+/// Object that can be used to read or write the content of a `CpuAccessibleBuffer`.
 ///
 /// Note that this object holds a rwlock read guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
@@ -397,7 +397,7 @@ impl<'a, T: ?Sized + 'a> Deref for ReadLock<'a, T> {
     }
 }
 
-/// Object that can be used to read or write the content of a `CpuAccessBuffer`.
+/// Object that can be used to read or write the content of a `CpuAccessibleBuffer`.
 ///
 /// Note that this object holds a rwlock write guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
