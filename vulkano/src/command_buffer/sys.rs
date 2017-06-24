@@ -485,18 +485,6 @@ impl<P> UnsafeCommandBufferBuilder<P> {
               D: ?Sized + BufferAccess,
               R: Iterator<Item = (usize, usize, usize)>
     {
-        let regions: SmallVec<[_; 8]> = regions.map(|(sr, de, sz)| {
-            vk::BufferCopy {
-                srcOffset: sr as vk::DeviceSize,
-                dstOffset: de as vk::DeviceSize,
-                size: sz as vk::DeviceSize,
-            }
-        }).collect();
-
-        if regions.is_empty() {
-            return;
-        }
-
         // TODO: debug assert that there's no overlap in the destinations?
 
         let source = source.inner();
@@ -506,6 +494,18 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage_transfer_dest());
+
+        let regions: SmallVec<[_; 8]> = regions.map(|(sr, de, sz)| {
+            vk::BufferCopy {
+                srcOffset: (sr + source.offset) as vk::DeviceSize,
+                dstOffset: (de + destination.offset) as vk::DeviceSize,
+                size: sz as vk::DeviceSize,
+            }
+        }).collect();
+
+        if regions.is_empty() {
+            return;
+        }
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
@@ -530,7 +530,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         let regions: SmallVec<[_; 8]> = regions.map(|copy| {
             vk::BufferImageCopy {
-                bufferOffset: source.offset as vk::DeviceSize + copy.buffer_offset as vk::DeviceSize,
+                bufferOffset: (source.offset + copy.buffer_offset) as vk::DeviceSize,
                 bufferRowLength: copy.buffer_row_length,
                 bufferImageHeight: copy.buffer_image_height,
                 imageSubresource: vk::ImageSubresourceLayers {
