@@ -31,6 +31,7 @@ script:
     - cargo test --no-run -j 1 -v --manifest-path vulkano/Cargo.toml
     - cargo test --doc -j 1 -v --manifest-path vulkano/Cargo.toml
     - cargo build -j 1 --manifest-path examples/Cargo.toml
+    - cargo test --manifest-path www/Cargo.toml
 
 after_success:
     - |

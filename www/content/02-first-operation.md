@@ -1,8 +1,3 @@
----
-layout: page
-title: "Tutorial 2: the first operation"
----
-
 # The first operation
 
 Now that we have chosen a physical device, it is time to ask it to do something.
@@ -23,17 +18,15 @@ we are going to use.
 A `Device` object is an open channel of communication with a physical device. It is probably the
 most important object of the Vulkan API.
 
-{% highlight rust %}
-let (device, mut queues) = {
-    let device_ext = DeviceExtensions {
-        khr_swapchain: true,
-        .. DeviceExtensions::none()
+    let (device, mut queues) = {
+        let device_ext = DeviceExtensions {
+            khr_swapchain: true,
+            .. DeviceExtensions::none()
+        };
+         
+        Device::new(&physical, physical.supported_features(), &device_ext, None,
+                    [(queue, 0.5)].iter().cloned()).expect("failed to create device")
     };
-
-    Device::new(&physical, physical.supported_features(), &device_ext, None,
-                [(queue, 0.5)].iter().cloned()).expect("failed to create device")
-};
-{% endhighlight %}
 
 We now have an open channel of communication with a Vulkan device!
 
@@ -46,12 +39,10 @@ to it early.
 To do so, let's create two buffers first: one source and one destination. There are multiple
 ways to create a buffer in vulkano, but for now we're going to use a `CpuAccessibleBuffer`.
 
-{% highlight rust %}
-let source = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
-                                    .expect("failed to create buffer");
-let destination = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
-                                    .expect("failed to create buffer");
-{% endhighlight %}
+    let source = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
+                                        .expect("failed to create buffer");
+    let destination = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
+                                        .expect("failed to create buffer");
 
 Creating a buffer in Vulkan requires passing several informations.
 
@@ -75,16 +66,12 @@ which contains one or more commands, and then submit the command buffer.
 
 That sounds complicated, but it is not:
 
-{% highlight rust %}
-let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
-{% endhighlight %}
+    let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
 
 We now have our command buffer! It is ready to be executed. The last thing we need to do is
 submit it to a queue for execution.
 
-{% highlight rust %}
-
-{% endhighlight %}
+    
 
 Note: there are several things that we can do in a more optimal way.
 

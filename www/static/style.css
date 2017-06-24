@@ -1,0 +1,52 @@
+/*
+ * General
+ */
+@import url('https://fonts.googleapis.com/css?family=Muli');
+
+body {
+    background-color: #222;
+    color: white;
+    font-family: 'Muli', Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 1.1em;
+    margin: 0;
+    padding: 0;
+}
+
+a {
+    color: white;
+}
+
+/*
+ * Header
+ */
+header {
+    background-color: #854f00;
+    margin: 0;
+    padding: 0;
+}
+
+header h1 {
+    font-size: 3em;
+    margin: 0;
+    padding: 2em 0;
+    text-align: center;
+}
+
+/*
+ * Body
+ */
+#body-main {
+    margin: 2em auto;
+    width: 80%;
+}
+
+#body-main h2 {
+    margin-top: 1.5em;
+}
+
+#body-main pre {
+    background-color: #111;
+    border: 1px dashed #888;
+    border-radius: 2px;
+    padding: 0.7em 1.5em;
+}

@@ -1,8 +1,3 @@
----
-layout: page
-title: "Tutorial 5: the first triangle"
----
-
 # The first triangle
 
 Vulkan doesn't provide any function to easily draw shapes. There is no draw_rectangle, draw_cube
@@ -37,14 +32,12 @@ create a struct named `Vertex` (the actual name doesn't matter) whose purpose is
 individual vertex. Our collection of vertices can later be represented by a collection of `Vertex`
 objects.
 
-{% highlight rust %}
-#[derive(Copy, Clone)]
-struct Vertex {
-    position: [f32; 2],
-}
-
-impl_vertex!(Vertex, position);
-{% endhighlight %}
+    #[derive(Copy, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+     
+    impl_vertex!(Vertex, position);
 
 In order for the struct to be processed by vulkano, it must implement the `Vertex` trait provided
 by vulkano. This can be done automatically by calling the `impl_vertex!` macro whose parameters
@@ -65,26 +58,22 @@ TODO: Finding the coordinates of our triangle
 
 Which translates into this code:
 
-{% highlight rust %}
-let vertex1 = Vertex { position: [-0.5,  0.5] };
-let vertex2 = Vertex { position: [ 0.0, -0.5] };
-let vertex3 = Vertex { position: [ 0.5,  0.25] };
-{% endhighlight %}
+    let vertex1 = Vertex { position: [-0.5,  0.5] };
+    let vertex2 = Vertex { position: [ 0.0, -0.5] };
+    let vertex3 = Vertex { position: [ 0.5,  0.25] };
 
 But since this data is going to be read by the video card, we have to put it in a buffer. This is
 done in the same way as we did earlier.
 
-{% highlight rust %}
-let shape = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
-                                    .expect("failed to create buffer");
-
-{
-    let mut content = shape.write(Duration::new(0, 0)).unwrap();
-    content[0] = Vertex { position: [-0.5,  0.5] };
-    content[1] = Vertex { position: [ 0.0, -0.5] };
-    content[2] = Vertex { position: [ 0.5,  0.25] };
-}
-{% endhighlight %}
+    let shape = CpuAccessibleBuffer::array(&device, 3, &BufferUsage::all(), Some(queue.family()))
+                                        .expect("failed to create buffer");
+                                         
+    {
+        let mut content = shape.write(Duration::new(0, 0)).unwrap();
+        content[0] = Vertex { position: [-0.5,  0.5] };
+        content[1] = Vertex { position: [ 0.0, -0.5] };
+        content[2] = Vertex { position: [ 0.5,  0.25] };
+    }
 
 ## The graphics pipeline
 
@@ -117,15 +106,13 @@ SPIR-V, which GLSL can compile to. Teaching you GLSL would be a bit too complica
 I will just give you the source codes. Here is the source code that we will use for the vertex
 shader:
 
-{% highlight glsl %}
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}
-{% endhighlight %}
+    #version 450
+     
+    layout(location = 0) in vec2 position;
+     
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
 
 When we defined the `Vertex` struct in our shape, we created a field named position which
 contains the position of our vertex. But contrary to what I let you think, this struct doesn't
@@ -144,15 +131,13 @@ but four-dimensional coordinates (the reason for this will be covered in a later
 
 The second shader is called the fragment shader (sometimes also named pixel shader in other APIs).
 
-{% highlight glsl %}
-#version 450
-
-layout(location = 0) out vec4 color;
-
-void main() {
-    color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-{% endhighlight %}
+    #version 450
+     
+    layout(location = 0) out vec4 color;
+     
+    void main() {
+        color = vec4(1.0, 0.0, 0.0, 1.0);
+    }
 
 This source code is very similar to our vertex shader above. This time the `main` function is
 executed once per pixel and has to return the color of this pixel, which we do with the
@@ -168,30 +153,24 @@ This can be done through yet-another crate named `vulkano-shaders`.
 
 To use it, we have to tweak our Cargo.toml:
 
-{% highlight toml %}
-[build-dependencies]
-vulkano-shaders = "0.1"
-{% endhighlight %}
+    [build-dependencies]
+    vulkano-shaders = "0.1"
 
 Note that this is not a regular dependency, but a *build dependency*. We are not going to use
 the vulkano-shaders crate in the example itself, but in the *build script* of the example.
 
-{% highlight toml %}
-build = "build.rs"
-{% endhighlight %}
+    build = "build.rs"
 
 Let's create a file named `build.rs` which will contain our build script.
 
-{% highlight rust %}
-extern crate vulkano_shaders;
-
-fn main() {
-    vulkano_shaders::build_glsl_shaders([
-        ("src/vs.glsl", vulkano_shaders::ShaderType::Vertex),
-        ("src/fs.glsl", vulkano_shaders::ShaderType::Fragment),
-    ].iter().cloned());
-}
-{% endhighlight %}
+    extern crate vulkano_shaders;
+     
+    fn main() {
+        vulkano_shaders::build_glsl_shaders([
+            ("src/vs.glsl", vulkano_shaders::ShaderType::Vertex),
+            ("src/fs.glsl", vulkano_shaders::ShaderType::Fragment),
+        ].iter().cloned());
+    }
 
 This code will be compiled and executed before our real code, and will compile the `vs.glsl` and
 `fs.glsl` files into SPIR-V and put the result in the `target` directory of Cargo.
@@ -202,10 +181,8 @@ the shaders. The consequence of this, is that the files generated by vulkano-sha
 not raw SPIR-V, but Rust code. In order to import them, we have to use the standard `include!`
 macro:
 
-{% highlight rust %}
-mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/vs.glsl")} }
-mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/fs.glsl")} }
-{% endhighlight %}
+    mod vs { include!{concat!(env!("OUT_DIR"), "/shaders/src/vs.glsl")} }
+    mod fs { include!{concat!(env!("OUT_DIR"), "/shaders/src/fs.glsl")} }
 
 The paths are the same as what we passed (including the extension), except that they are
 prefixed with `/shaders/`.
@@ -215,10 +192,8 @@ For better isolation, we put the code inside modules.
 The Rust code generated for each shader always contains a struct named `Shader` with a `load`
 function. This is the glue between vulkano-shaders and vulkano.
 
-{% highlight rust %}
-let vs = vs::Shader::load(&device).expect("failed to create shader module");
-let fs = fs::Shader::load(&device).expect("failed to create shader module");
-{% endhighlight %}
+    let vs = vs::Shader::load(&device).expect("failed to create shader module");
+    let fs = fs::Shader::load(&device).expect("failed to create shader module");
 
 We now have a `vs` variable that represents our vertex shader, and a `fs` variable that represents
 our fragment shader.
@@ -233,48 +208,46 @@ But the shaders are not enough. Before we can draw, we also need to build a pipe
 contains our two shaders but also a lot of additional parameters that describe how the rendering
 process will need to be performed.
 
-{% highlight rust %}
-use vulkano::descriptor::pipeline_layout::EmptyPipeline;
-use vulkano::framebuffer::Subpass;
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineParams;
-use vulkano::pipeline::blend::Blend;
-use vulkano::pipeline::depth_stencil::DepthStencil;
-use vulkano::pipeline::input_assembly::InputAssembly;
-use vulkano::pipeline::multisample::Multisample;
-use vulkano::pipeline::vertex::SingleBufferDefinition;
-use vulkano::pipeline::viewport::ViewportsState;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::viewport::Scissor;
-
-let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
-    vertex_input: SingleBufferDefinition::new(),
-    vertex_shader: vs.main_entry_point(),
-    input_assembly: InputAssembly::triangle_list(),
-    tessellation: None,
-    geometry_shader: None,
-
-    viewport: ViewportsState::Fixed {
-        data: vec![(
-            Viewport {
-                origin: [0.0, 0.0],
-                depth_range: 0.0 .. 1.0,
-                dimensions: [images[0].dimensions()[0] as f32,
-                             images[0].dimensions()[1] as f32],
-            },
-            Scissor::irrelevant()
-        )],
-    },
-
-    raster: Default::default(),
-    multisample: Multisample::disabled(),
-    fragment_shader: fs.main_entry_point(),
-    depth_stencil: DepthStencil::disabled(),
-    blend: Blend::pass_through(),
-    layout: &EmptyPipeline::new(&device).unwrap(),
-    render_pass: Subpass::from(&render_pass, 0).unwrap(),
-}).unwrap();
-{% endhighlight %}
+    use vulkano::descriptor::pipeline_layout::EmptyPipeline;
+    use vulkano::framebuffer::Subpass;
+    use vulkano::pipeline::GraphicsPipeline;
+    use vulkano::pipeline::GraphicsPipelineParams;
+    use vulkano::pipeline::blend::Blend;
+    use vulkano::pipeline::depth_stencil::DepthStencil;
+    use vulkano::pipeline::input_assembly::InputAssembly;
+    use vulkano::pipeline::multisample::Multisample;
+    use vulkano::pipeline::vertex::SingleBufferDefinition;
+    use vulkano::pipeline::viewport::ViewportsState;
+    use vulkano::pipeline::viewport::Viewport;
+    use vulkano::pipeline::viewport::Scissor;
+     
+    let pipeline = GraphicsPipeline::new(&device, GraphicsPipelineParams {
+        vertex_input: SingleBufferDefinition::new(),
+        vertex_shader: vs.main_entry_point(),
+        input_assembly: InputAssembly::triangle_list(),
+        tessellation: None,
+        geometry_shader: None,
+         
+        viewport: ViewportsState::Fixed {
+            data: vec![(
+                Viewport {
+                    origin: [0.0, 0.0],
+                    depth_range: 0.0 .. 1.0,
+                    dimensions: [images[0].dimensions()[0] as f32,
+                                images[0].dimensions()[1] as f32],
+                },
+                Scissor::irrelevant()
+            )],
+        },
+         
+        raster: Default::default(),
+        multisample: Multisample::disabled(),
+        fragment_shader: fs.main_entry_point(),
+        depth_stencil: DepthStencil::disabled(),
+        blend: Blend::pass_through(),
+        layout: &EmptyPipeline::new(&device).unwrap(),
+        render_pass: Subpass::from(&render_pass, 0).unwrap(),
+    }).unwrap();
 
 A few noteworthy elements:
 
@@ -309,12 +282,10 @@ for our pipeline object (like the viewport dimensions if you pass `Dynamic`), an
 that contain the external resources to pass to the shaders. We will cover everything later. For
 now only the first two parameters are relevant.
 
-{% highlight rust %}
-let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
-    .draw_inline(&render_pass, &framebuffer, render_pass::ClearValues {
-        color: [0.0, 0.0, 1.0, 1.0]
-    })
-    .draw(&pipeline, &vertex_buffer, &DynamicState::none(), (), &())
-    .draw_end()
-    .build();
-{% endhighlight %}
+    let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
+        .draw_inline(&render_pass, &framebuffer, render_pass::ClearValues {
+            color: [0.0, 0.0, 1.0, 1.0]
+        })
+        .draw(&pipeline, &vertex_buffer, &DynamicState::none(), (), &())
+        .draw_end()
+        .build();
