@@ -73,7 +73,7 @@ pub struct BufferView<F, B> where B: BufferAccess {
 impl<F, B> BufferView<F, B> where B: BufferAccess {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<P>(buffer: P, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+    pub fn new<P>(buffer: P, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
         where P: TypedBuffer<Content = [F::Pixel]> + Buffer<Access = B>,
               B: BufferAccess,
               F: StrongStorage + 'static
@@ -85,7 +85,7 @@ impl<F, B> BufferView<F, B> where B: BufferAccess {
 
     /// Builds a new buffer view from a `BufferAccess` object.
     #[inline]
-    pub fn from_access(buffer: B, format: F) -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+    pub fn from_access(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
         where B: TypedBufferAccess<Content = [F::Pixel]>, F: StrongStorage + 'static
     {
         unsafe {
@@ -95,7 +95,7 @@ impl<F, B> BufferView<F, B> where B: BufferAccess {
 
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(org_buffer: B, format: F)
-                            -> Result<Arc<BufferView<F, B>>, BufferViewCreationError>
+                            -> Result<BufferView<F, B>, BufferViewCreationError>
         where B: BufferAccess, F: FormatDesc + 'static
     {
         let (view, format_props) = {
@@ -156,13 +156,13 @@ impl<F, B> BufferView<F, B> where B: BufferAccess {
             (output, format_props)
         };
 
-        Ok(Arc::new(BufferView {
+        Ok(BufferView {
             view: view,
             buffer: org_buffer,
             marker: PhantomData,
             atomic_accesses: (format_props &
                               vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
-        }))
+        })
     }
 
     /// Returns the buffer associated to this view.
