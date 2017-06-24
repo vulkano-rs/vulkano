@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::BufferAccess;
-use buffer::BufferInner;
 use buffer::TypedBufferAccess;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::vertex::AttributeInfo;
@@ -81,19 +80,20 @@ unsafe impl<V> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for SingleBuff
     where V: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, mut source: Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         // FIXME: safety
         assert_eq!(source.len(), 1);
         let len = source[0].size() / mem::size_of::<V>();
-        (vec![source[0].inner()], len, 1)
+        (vec![Box::new(source.remove(0))], len, 1)
     }
 }
 
 unsafe impl<'a, B, V> VertexSource<B> for SingleBufferDefinition<V>
-    where B: TypedBufferAccess<Content = [V]>, V: Vertex
+    where B: TypedBufferAccess<Content = [V]> + Send + Sync + 'static, V: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l B) -> (Vec<BufferInner<'l>>, usize, usize) {
-        (vec![source.inner()], source.len(), 1)
+    fn decode(&self, source: B) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+        let len = source.len();
+        (vec![Box::new(source) as Box<_>], len, 1)
     }
 }

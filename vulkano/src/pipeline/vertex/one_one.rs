@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::BufferAccess;
-use buffer::BufferInner;
 use buffer::TypedBufferAccess;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::vertex::AttributeInfo;
@@ -88,21 +87,25 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for OneVert
     where T: Vertex, U: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, mut source: Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         // FIXME: safety
         assert_eq!(source.len(), 2);
         let len = source[0].size() / mem::size_of::<T>();
         let inst = source[0].size() / mem::size_of::<U>();
-        (vec![source[0].inner(), source[1].inner()], len, inst)
+        let s0 = source.remove(0);
+        let s1 = source.remove(0);
+        (vec![Box::new(s0) as Box<_>, Box::new(s1) as Box<_>], len, inst)
     }
 }
 
 unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for OneVertexOneInstanceDefinition<T, U>
-    where T: Vertex, Bt: TypedBufferAccess<Content = [T]>,
-          U: Vertex, Bu: TypedBufferAccess<Content = [U]>
+    where T: Vertex, Bt: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+          U: Vertex, Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
-        (vec![source.0.inner(), source.1.inner()], source.0.len(), source.1.len())
+    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+        let s1l = source.0.len();
+        let s2l = source.1.len();
+        (vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>], s1l, s2l)
     }
 }

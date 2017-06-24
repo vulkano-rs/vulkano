@@ -18,8 +18,6 @@
 //! The buffer will be stored in device-local memory if possible
 //!
 
-use std::error;
-use std::fmt;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -38,13 +36,9 @@ use buffer::traits::BufferInner;
 use buffer::traits::Buffer;
 use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
-use command_buffer::cb::AddCommand;
-use command_buffer::commands_raw::CmdCopyBuffer;
-use command_buffer::commands_raw::CmdCopyBufferError;
 use command_buffer::AutoCommandBufferBuilder;
+use command_buffer::AutoCommandBuffer;
 use command_buffer::CommandBuffer;
-use command_buffer::CommandBufferBuilder;
-use command_buffer::CommandBufferBuilderError;
 use command_buffer::CommandBufferExecFuture;
 use device::Device;
 use device::DeviceOwned;
@@ -81,7 +75,7 @@ pub struct ImmutableBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
 }
 
 // TODO: make this prettier
-type ImmutableBufferFromBufferFuture = CommandBufferExecFuture<NowFuture, ::command_buffer::cb::SubmitSyncLayer<::command_buffer::cb::AbstractStorageLayer<::command_buffer::cb::UnsafeCommandBuffer<Arc<::command_buffer::pool::standard::StandardCommandPool>>>>>;
+type ImmutableBufferFromBufferFuture = CommandBufferExecFuture<NowFuture, AutoCommandBuffer>;
 
 impl<T: ?Sized> ImmutableBuffer<T> {
     /// Builds an `ImmutableBuffer` from some data.
@@ -117,38 +111,6 @@ impl<T: ?Sized> ImmutableBuffer<T> {
               I: IntoIterator<Item = QueueFamily<'a>>,
               T: 'static + Send + Sync,
     {
-        let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?;
-
-        let (buf, cb) = match ImmutableBuffer::from_buffer_with_builder(source, usage,
-                                                                        queue_families, cb)
-        {
-            Ok(v) => v,
-            Err(ImmutableBufferFromBufferWithBuilderError::OomError(err)) => return Err(err),
-            Err(ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(_)) => {
-                // Example errors that can trigger this: forbidden while inside render pass,
-                // ranges overlapping between buffers, missing usage in one of the buffers, etc.
-                // None of them can actually happen.
-                unreachable!()
-            },
-        };
-
-        let future = match cb.build()?.execute(queue) {
-            Ok(f) => f,
-            Err(_) => unreachable!()
-        };
-
-        Ok((buf, future))
-    }
-
-    /// Builds an `ImmutableBuffer` that copies its data from another buffer.
-    pub fn from_buffer_with_builder<'a, B, I, Cb, O>(source: B, usage: BufferUsage, queue_families: I,
-                                                     builder: Cb)
-                -> Result<(Arc<ImmutableBuffer<T>>, O), ImmutableBufferFromBufferWithBuilderError>
-        where B: Buffer + TypedBuffer<Content = T> + DeviceOwned,      // TODO: remove + DeviceOwned once Buffer requires it
-              I: IntoIterator<Item = QueueFamily<'a>>,
-              Cb: CommandBufferBuilder +
-                  AddCommand<CmdCopyBuffer<B::Access, ImmutableBufferInitialization<T>>, Out = O>,
-    {
         unsafe {
             // We automatically set `transfer_dest` to true in order to avoid annoying errors.
             let actual_usage = BufferUsage {
@@ -157,10 +119,18 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             };
 
             let (buffer, init) = ImmutableBuffer::raw(source.device().clone(), source.size(),
-                                                      actual_usage, queue_families)?;
+                                                    actual_usage, queue_families)?;
 
-            let builder = builder.copy_buffer(source, init)?;
-            Ok((buffer, builder))
+            let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
+                .copy_buffer(source, init).unwrap()     // TODO: return error?
+                .build()?;
+
+            let future = match cb.execute(queue) {
+                Ok(f) => f,
+                Err(_) => unreachable!()
+            };
+
+            Ok((buffer, future))
         }
     }
 }
@@ -465,58 +435,6 @@ impl<T: ?Sized, A> Drop for ImmutableBufferInitialization<T, A> {
     }
 }
 
-/// Error that can happen when creating a `CmdCopyBuffer`.
-#[derive(Debug, Copy, Clone)]
-pub enum ImmutableBufferFromBufferWithBuilderError {
-    /// Out of memory.
-    OomError(OomError),
-    /// Error while adding the command to the builder.
-    CommandBufferBuilderError(CommandBufferBuilderError<CmdCopyBufferError>),
-}
-
-impl error::Error for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            ImmutableBufferFromBufferWithBuilderError::OomError(_) => {
-                "out of memory"
-            },
-            ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(_) => {
-                "error while adding the command to the builder"
-            },
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            ImmutableBufferFromBufferWithBuilderError::OomError(ref err) => Some(err),
-            ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(ref err) => Some(err),
-        }
-    }
-}
-
-impl fmt::Display for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
-    }
-}
-
-impl From<OomError> for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn from(err: OomError) -> ImmutableBufferFromBufferWithBuilderError {
-        ImmutableBufferFromBufferWithBuilderError::OomError(err)
-    }
-}
-
-impl From<CommandBufferBuilderError<CmdCopyBufferError>> for ImmutableBufferFromBufferWithBuilderError {
-    #[inline]
-    fn from(err: CommandBufferBuilderError<CmdCopyBufferError>) -> ImmutableBufferFromBufferWithBuilderError {
-        ImmutableBufferFromBufferWithBuilderError::CommandBufferBuilderError(err)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter;
@@ -525,7 +443,6 @@ mod tests {
     use buffer::BufferUsage;
     use command_buffer::AutoCommandBufferBuilder;
     use command_buffer::CommandBuffer;
-    use command_buffer::CommandBufferBuilder;
     use sync::GpuFuture;
 
     #[test]

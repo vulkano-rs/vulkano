@@ -21,7 +21,6 @@ extern crate vulkano_shader_derive;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
-use vulkano::command_buffer::CommandBufferBuilder;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;

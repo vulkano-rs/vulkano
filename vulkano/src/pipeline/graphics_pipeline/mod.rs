@@ -21,7 +21,6 @@ use std::u32;
 use smallvec::SmallVec;
 
 use buffer::BufferAccess;
-use buffer::BufferInner;
 use device::Device;
 use device::DeviceOwned;
 use descriptor::PipelineLayoutAbstract;
@@ -1324,7 +1323,7 @@ unsafe impl<Mv, L, Rp, S> VertexSource<S> for GraphicsPipeline<Mv, L, Rp>
     where Mv: VertexSource<S>
 {
     #[inline]
-    fn decode<'l>(&self, s: &'l S) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, s: S) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         self.vertex_definition.decode(s)
     }
 }

@@ -12,7 +12,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
-use buffer::BufferInner;
 use format::Format;
 use pipeline::vertex::VertexMemberTy;
 use SafeDeref;
@@ -109,12 +108,12 @@ pub unsafe trait VertexSource<L> {
     // TODO: return error if problem
     // TODO: better than a Vec
     // TODO: return a struct instead
-    fn decode<'l>(&self, &'l L) -> (Vec<BufferInner<'l>>, usize, usize);
+    fn decode(&self, L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize);
 }
 
 unsafe impl<L, T> VertexSource<L> for T where T: SafeDeref, T::Target: VertexSource<L> {
     #[inline]
-    fn decode<'l>(&self, list: &'l L) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, list: L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         (**self).decode(list)
     }
 }

@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
 use buffer::BufferAccess;
-use buffer::BufferInner;
 use buffer::TypedBufferAccess;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::vertex::AttributeInfo;
@@ -88,18 +87,18 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for TwoBuff
     where T: Vertex, U: Vertex
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, source: Vec<Arc<BufferAccess + Send + Sync>>) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         unimplemented!()        // FIXME: implement
     }
 }
 
 unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for TwoBuffersDefinition<T, U>
-    where T: Vertex, Bt: TypedBufferAccess<Content = [T]>,
-          U: Vertex, Bu: TypedBufferAccess<Content = [U]>
+    where T: Vertex, Bt: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+          U: Vertex, Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static
 {
     #[inline]
-    fn decode<'l>(&self, source: &'l (Bt, Bu)) -> (Vec<BufferInner<'l>>, usize, usize) {
+    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         let vertices = [source.0.len(), source.1.len()].iter().cloned().min().unwrap();
-        (vec![source.0.inner(), source.1.inner()], vertices, 1)
+        (vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>], vertices, 1)
     }
 }
