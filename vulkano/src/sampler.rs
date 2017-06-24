@@ -336,7 +336,7 @@ impl Sampler {
                 addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,       // unused by the impl
                 mipLodBias: 0.0,
                 anisotropyEnable: vk::FALSE,
-                maxAnisotropy: 0.0,
+                maxAnisotropy: 1.0,
                 compareEnable: vk::FALSE,
                 compareOp: vk::COMPARE_OP_NEVER,
                 minLod: 0.0,
