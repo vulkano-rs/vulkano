@@ -210,6 +210,7 @@ pub use self::surface::CapabilitiesError;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
+pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::SwapchainAcquireFuture;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::present;
