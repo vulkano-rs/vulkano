@@ -16,6 +16,13 @@ a {
     color: white;
 }
 
+pre {
+    background-color: #111;
+    border: 1px dashed #888;
+    border-radius: 2px;
+    padding: 0.7em 1.5em;
+}
+
 /*
  * Header
  */
@@ -28,25 +35,88 @@ header {
 header h1 {
     font-size: 3em;
     margin: 0;
-    padding: 2em 0;
+    padding: 2em 0 0.4em;
     text-align: center;
 }
 
+header h2 {
+    font-size: 1.4em;
+    margin: 0;
+    margin-bottom: 2em;
+    padding: 0;
+    text-align: center;
+}
+
+header ul {
+    display: block;
+    margin: 0;
+    padding: 0.5em 0;
+    text-align: center;
+}
+
+header ul li {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+header ul li:first-child::before {
+    content: "";
+}
+
+header ul li::before {
+    content: " - ";
+}
+
+header ul li a {
+    text-decoration: none;
+}
+
+header ul li a:hover {
+    text-decoration: underline;
+}
+
 /*
- * Body
+ * Guides
  */
-#body-main {
-    margin: 2em auto;
-    width: 80%;
+#guides {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
 }
 
-#body-main h2 {
-    margin-top: 1.5em;
+#guides > nav {
+    background-color: #444;
+    padding: 1em 5em 1em 3em;
+    flex: 0.2;
+    min-width: 10vw;
 }
 
-#body-main pre {
-    background-color: #111;
-    border: 1px dashed #888;
-    border-radius: 2px;
-    padding: 0.7em 1.5em;
+#guides > nav a {
+    text-decoration: none;
+}
+
+#guides > nav a:hover {
+    color: #ddd;
+    text-decoration: underline;
+}
+
+#guides > nav h2:first-child {
+    margin-top: 0.5em;
+}
+
+#guides > nav ul {
+    list-style-type: decimal;
+    margin: 0;
+    padding: 0;
+}
+
+#guides > nav ul li {
+    margin: 0;
+    padding: 0.1em 0;
+}
+
+#guides > div {
+    flex: 1;
+    padding: 1em 2em;
 }
