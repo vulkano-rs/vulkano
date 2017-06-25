@@ -6,6 +6,10 @@ rust:
 cache:
   cargo
 
+before_install:
+  - openssl aes-256-cbc -K $encrypted_68b8d7c1b5be_key -iv $encrypted_68b8d7c1b5be_iv
+        -in ./www/deploy.enc -out www-deploy-key -d
+
 install:
   - export CXX="g++-4.8"
 
@@ -58,3 +62,8 @@ after_success:
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
+    - |
+        chmod 600 www-deploy-key &&
+        mv www-deploy-key ~/.ssh/id_rsa &&
+        git remote add deploy &&
+        git subtree push --prefix www deploy master
