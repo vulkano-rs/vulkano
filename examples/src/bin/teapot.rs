@@ -166,7 +166,7 @@ fn main() {
             buffer_content.world = cgmath::Matrix4::from(rotation).into();
         }
 
-        let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), std::time::Duration::new(1, 0)).unwrap();
+        let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
             .begin_render_pass(

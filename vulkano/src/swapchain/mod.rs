@@ -136,7 +136,7 @@
 //!
 //! TODO: add example here
 //! loop {
-//!     let index = swapchain::acquire_next_image(Duration::from_millis(500)).unwrap();
+//!     let index = swapchain::acquire_next_image(None).unwrap();
 //!     draw(images[index]);
 //!     swapchain::present(queue, index).unwrap();
 //! }
@@ -173,7 +173,7 @@
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), Duration::from_millis(500)) {
+//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)

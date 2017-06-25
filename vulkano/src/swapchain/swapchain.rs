@@ -64,8 +64,7 @@ use vk;
 /// behavior may change).
 // TODO: has to make sure vkQueuePresent is called, because calling acquire_next_image many
 // times in a row is an error
-// TODO: change timeout to `Option<Duration>`.
-pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Duration)
+pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
                           -> Result<(usize, SwapchainAcquireFuture), AcquireError>
 {
     unsafe {
@@ -81,8 +80,12 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Duration)
 
         let semaphore = try!(Semaphore::new(swapchain.device.clone()));
 
-        let timeout_ns = timeout.as_secs().saturating_mul(1_000_000_000)
-                                          .saturating_add(timeout.subsec_nanos() as u64);
+        let timeout_ns = if let Some(timeout) = timeout {
+            timeout.as_secs().saturating_mul(1_000_000_000)
+                                .saturating_add(timeout.subsec_nanos() as u64)
+        } else {
+            u64::max_value()
+        };
 
         let mut out = mem::uninitialized();
         let r = try!(check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
