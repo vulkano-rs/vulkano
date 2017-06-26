@@ -341,6 +341,10 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+    }
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for ImmutableBuffer<T, A> {
@@ -384,6 +388,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         debug_assert!(self.used.load(Ordering::Relaxed));
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.buffer.initialized.store(true, Ordering::Relaxed);
     }
 }
 

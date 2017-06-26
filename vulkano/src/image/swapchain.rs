@@ -118,6 +118,10 @@ unsafe impl ImageAccess for SwapchainImage {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+    }
 }
 
 unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage

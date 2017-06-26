@@ -223,6 +223,11 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
         /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);*/
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        // TODO:
+    }
 }
 
 unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>

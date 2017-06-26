@@ -29,6 +29,7 @@ use SafeDeref;
 use VulkanObject;
 
 /// Trait for types that represent images.
+// TODO: is there still a point in having this trait since ImageAccess has unlock()?
 pub unsafe trait Image {
     /// Object that represents a GPU access to the image.
     type Access: ImageAccess;
@@ -216,6 +217,15 @@ pub unsafe trait ImageAccess {
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// Usually has the same effect as the destructor of the object.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
@@ -249,6 +259,11 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 
@@ -298,6 +313,11 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     unsafe fn increase_gpu_lock(&self) {
         self.image.increase_gpu_lock()
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.image.unlock()
+    }
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
@@ -313,6 +333,7 @@ pub unsafe trait ImageContent<P>: ImageAccess {
 }
 
 /// Trait for types that represent image views.
+// TODO: is there still a point in having this trait since ImageAccess has unlock()?
 pub unsafe trait ImageView {
     /// Object that represents a GPU access to the image view.
     type Access: ImageViewAccess;

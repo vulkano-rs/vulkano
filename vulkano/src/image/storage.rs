@@ -221,6 +221,11 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + S
         let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>

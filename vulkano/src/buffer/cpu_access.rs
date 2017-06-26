@@ -334,6 +334,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     unsafe fn increase_gpu_lock(&self) {
         // FIXME:
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        // TODO:
+    }
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>

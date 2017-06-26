@@ -458,6 +458,18 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
         debug_assert!(num_usages >= 1);
         debug_assert!(num_usages <= in_use.num_cpu_accesses.load(Ordering::SeqCst));
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
+        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(prev_val >= 1);
+
+        if self.gpu_locked.load(Ordering::SeqCst) {
+            let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
+            debug_assert!(was_in_use >= 1);
+        }
+    }
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
@@ -480,13 +492,8 @@ impl<T: ?Sized, A> Drop for CpuBufferPoolSubbuffer<T, A>
 {
     #[inline]
     fn drop(&mut self) {
-        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
-        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
-        debug_assert!(prev_val >= 1);
-
-        if self.gpu_locked.load(Ordering::SeqCst) {
-            let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
-            debug_assert!(was_in_use >= 1);
+        unsafe {
+            self.unlock();
         }
     }
 }

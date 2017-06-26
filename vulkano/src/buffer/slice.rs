@@ -250,6 +250,11 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     unsafe fn increase_gpu_lock(&self) {
         self.resource.increase_gpu_lock()
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.resource.unlock()
+    }
 }
 
 unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess,  {

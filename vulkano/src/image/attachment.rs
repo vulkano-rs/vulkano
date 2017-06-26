@@ -305,6 +305,11 @@ unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
         let val = self.img.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);*/
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        // TODO:
+    }
 }
 
 impl<F, A> Drop for AttachmentImageAccess<F, A> {

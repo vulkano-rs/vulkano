@@ -24,6 +24,7 @@ use VulkanObject;
 ///
 /// See also `TypedBuffer`.
 // TODO: require `DeviceOwned`
+// TODO: is there still a point in having this trait since BufferAccess has unlock()?
 pub unsafe trait Buffer {
     /// Object that represents a GPU access to the buffer.
     type Access: BufferAccess;
@@ -254,6 +255,15 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// Usually has the same effect as the destructor of the object.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 /// Inner information about a buffer.
@@ -297,6 +307,11 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 

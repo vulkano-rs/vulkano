@@ -197,6 +197,11 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A> where F: 'static + Send +
     unsafe fn increase_gpu_lock(&self) {
         // FIXME:
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        // TODO:
+    }
 }
 
 unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
