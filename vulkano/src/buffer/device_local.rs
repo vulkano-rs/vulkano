@@ -25,8 +25,6 @@ use buffer::sys::UnsafeBuffer;
 use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -157,61 +155,40 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
     }
 }
 
-/// Access to a device local buffer.
-// FIXME: add destructor
-#[derive(Debug, Copy, Clone)]
-pub struct DeviceLocalBufferAccess<P>(P);
-
-unsafe impl<T: ?Sized, A> Buffer for Arc<DeviceLocalBuffer<T, A>>
-    where T: 'static + Send + Sync,
-          A: MemoryPool + 'static
+unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A>
+    where A: MemoryPool
 {
-    type Access = DeviceLocalBufferAccess<Arc<DeviceLocalBuffer<T, A>>>;
-
     #[inline]
-    fn access(self) -> Self::Access {
-        DeviceLocalBufferAccess(self)
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.inner.size()
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for Arc<DeviceLocalBuffer<T, A>>
+unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     where T: 'static + Send + Sync,
-          A: MemoryPool + 'static
-{
-    type Content = T;
-}
-
-unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
-    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
-          T: 'static + Send + Sync,
           A: MemoryPool + 'static
 {
     #[inline]
     fn inner(&self) -> BufferInner {
         BufferInner {
-            buffer: &self.0.inner,
+            buffer: &self.inner,
             offset: 0,
         }
     }
 
     #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
-        self.0.inner.key()
+        self.inner.key()
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         // FIXME: not implemented correctly
-        /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        /*let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
         if val == 1 {
             true
         } else {
-            self.0.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             false
         }*/
         Ok(())
@@ -220,7 +197,7 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         // FIXME: not implemented correctly
-        /*let val = self.0.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        /*let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
         debug_assert!(val >= 1);*/
     }
 
@@ -230,21 +207,9 @@ unsafe impl<P, T: ?Sized, A> BufferAccess for DeviceLocalBufferAccess<P>
     }
 }
 
-unsafe impl<P, T: ?Sized, A> TypedBufferAccess for DeviceLocalBufferAccess<P>
-    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
-          T: 'static + Send + Sync,
+unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync,
           A: MemoryPool + 'static
 {
     type Content = T;
-}
-
-unsafe impl<P, T: ?Sized, A> DeviceOwned for DeviceLocalBufferAccess<P>
-    where P: SafeDeref<Target = DeviceLocalBuffer<T, A>>,
-          T: 'static + Send + Sync,
-          A: MemoryPool + 'static
-{
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.0.inner.device()
-    }
 }

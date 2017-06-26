@@ -54,8 +54,6 @@ pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
 pub use self::traits::ImageAccess;
 pub use self::traits::ImageViewAccess;
-pub use self::traits::Image;
-pub use self::traits::ImageView;
 pub use self::usage::ImageUsage;
 
 pub mod attachment;     // TODO: make private

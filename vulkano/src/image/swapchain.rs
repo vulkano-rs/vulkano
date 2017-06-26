@@ -20,8 +20,6 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::traits::Image;
-use image::traits::ImageView;
 use image::ImageLayout;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -179,69 +177,5 @@ unsafe impl ImageViewAccess for SwapchainImage {
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
-    }
-}
-
-unsafe impl Image for SwapchainImage {
-    type Access = SwapchainImage;
-
-    #[inline]
-    fn access(self) -> Self::Access {
-        self
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        self.my_image().format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.my_image().samples()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.my_image().dimensions()
-    }
-}
-
-unsafe impl ImageView for SwapchainImage {
-    type Access = SwapchainImage;
-
-    fn access(self) -> Self::Access {
-        self
-    }
-}
-
-unsafe impl Image for Arc<SwapchainImage> {
-    type Access = Arc<SwapchainImage>;
-
-    #[inline]
-    fn access(self) -> Self::Access {
-        self
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        self.my_image().format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.my_image().samples()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.my_image().dimensions()
-    }
-}
-
-unsafe impl ImageView for Arc<SwapchainImage> {
-    type Access = Arc<SwapchainImage>;
-
-    fn access(self) -> Self::Access {
-        self
     }
 }

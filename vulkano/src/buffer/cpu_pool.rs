@@ -24,8 +24,6 @@ use buffer::sys::UnsafeBuffer;
 use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -371,28 +369,6 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuBufferPool<T, A>
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
-}
-
-unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    type Content = T;
 }
 
 impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {

@@ -25,8 +25,6 @@ use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::traits::Image;
-use image::traits::ImageView;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
@@ -125,45 +123,6 @@ impl<F, A> ImmutableImage<F, A> where A: MemoryPool {
     #[inline]
     pub fn mipmap_levels(&self) -> u32 {
         self.image.mipmap_levels()
-    }
-}
-
-// FIXME: wrong
-unsafe impl<F, A> Image for Arc<ImmutableImage<F, A>>
-    where F: 'static + Send + Sync, A: MemoryPool
-{
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        self.image.format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.image.samples()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.image.dimensions()
-    }
-}
-
-// FIXME: wrong
-unsafe impl<F, A> ImageView for Arc<ImmutableImage<F, A>>
-    where F: 'static + Send + Sync, A: MemoryPool
-{
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
     }
 }
 

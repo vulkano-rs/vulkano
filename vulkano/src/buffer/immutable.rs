@@ -33,8 +33,6 @@ use buffer::sys::UnsafeBuffer;
 use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use command_buffer::AutoCommandBufferBuilder;
 use command_buffer::AutoCommandBuffer;
@@ -106,8 +104,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// be finished before submitting your own operation.
     pub fn from_buffer<'a, B, I>(source: B, usage: BufferUsage, queue_families: I, queue: Arc<Queue>)
                 -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), OomError>
-        where B: Buffer + TypedBuffer<Content = T> + DeviceOwned,      // TODO: remove + DeviceOwned once Buffer requires it
-              B::Access: 'static + Clone + Send + Sync,
+        where B: BufferAccess + TypedBufferAccess<Content = T> + 'static + Clone + Send + Sync,
               I: IntoIterator<Item = QueueFamily<'a>>,
               T: 'static + Send + Sync,
     {
@@ -293,24 +290,6 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> {
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for Arc<ImmutableBuffer<T, A>> {
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.inner.size()
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for Arc<ImmutableBuffer<T, A>> {
-    type Content = T;
-}
-
 unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -401,24 +380,6 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for ImmutableBufferInitialization<T, A> {
-    type Content = T;
-}
-
-unsafe impl<T: ?Sized, A> Buffer for ImmutableBufferInitialization<T, A> {
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.buffer.inner.size()
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for ImmutableBufferInitialization<T, A> {
     type Content = T;
 }
 
