@@ -30,7 +30,6 @@ use device::Device;
 
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 
@@ -76,13 +75,13 @@ impl PipelineCache {
     ///
     /// let cache = if let Some(data) = data {
     ///     // This is unsafe because there is no way to be sure that the file contains valid data.
-    ///     unsafe { PipelineCache::with_data(&device, &data).unwrap() }
+    ///     unsafe { PipelineCache::with_data(device.clone(), &data).unwrap() }
     /// } else {
-    ///     PipelineCache::empty(&device).unwrap()
+    ///     PipelineCache::empty(device.clone()).unwrap()
     /// };
     /// ```
     #[inline]
-    pub unsafe fn with_data(device: &Arc<Device>, initial_data: &[u8])
+    pub unsafe fn with_data(device: Arc<Device>, initial_data: &[u8])
                             -> Result<Arc<PipelineCache>, OomError>
     {
         PipelineCache::new_impl(device, Some(initial_data))
@@ -97,15 +96,15 @@ impl PipelineCache {
     /// # use vulkano::device::Device;
     /// use vulkano::pipeline::cache::PipelineCache;
     /// # let device: Arc<Device> = return;
-    /// let cache = PipelineCache::empty(&device).unwrap();
+    /// let cache = PipelineCache::empty(device.clone()).unwrap();
     /// ```
     #[inline]
-    pub fn empty(device: &Arc<Device>) -> Result<Arc<PipelineCache>, OomError> {
+    pub fn empty(device: Arc<Device>) -> Result<Arc<PipelineCache>, OomError> {
         unsafe { PipelineCache::new_impl(device, None) }
     }
 
     // Actual implementation of the constructor.
-    unsafe fn new_impl(device: &Arc<Device>, initial_data: Option<&[u8]>)
+    unsafe fn new_impl(device: Arc<Device>, initial_data: Option<&[u8]>)
                        -> Result<Arc<PipelineCache>, OomError>
     {
         let vk = device.pointers();
@@ -232,7 +231,7 @@ mod tests {
     #[should_panic]
     fn merge_self_forbidden() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pipeline = PipelineCache::empty(&device).unwrap();
+        let pipeline = PipelineCache::empty(device).unwrap();
         pipeline.merge(&[&pipeline]).unwrap();
     }
 }

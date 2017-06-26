@@ -24,12 +24,11 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 use features::Features;
 use version::Version;
-use instance::InstanceExtensions;
+use instance::{InstanceExtensions, RawInstanceExtensions};
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -115,18 +114,19 @@ impl Instance {
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L>(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
-                      layers: L) -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>
+    pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext,
+                           layers: L) -> Result<Arc<Instance>, InstanceCreationError>
+        where L: IntoIterator<Item = &'a &'a str>,
+              Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers.into_iter().map(|&layer| {
             CString::new(layer).unwrap()
         }).collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos, extensions, layers)
+        Instance::new_inner(app_infos, extensions.into(), layers)
     }
 
-    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: &InstanceExtensions,
+    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>) -> Result<Arc<Instance>, InstanceCreationError>
     {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
@@ -169,8 +169,7 @@ impl Instance {
             layer.as_ptr()
         }).collect::<SmallVec<[_; 16]>>();
 
-        let extensions_list = extensions.build_extensions_list();
-        let extensions_list = extensions_list.iter().map(|extension| {
+        let extensions_list = extensions.iter().map(|extension| {
             extension.as_ptr()
         }).collect::<SmallVec<[_; 32]>>();
 
@@ -218,49 +217,15 @@ impl Instance {
             devices
         };
 
+        // TODO: should be Into
+        let extensions: InstanceExtensions = (&extensions).into();
+
         // Getting the properties of all physical devices.
-        let physical_devices = {
-            let mut output = Vec::with_capacity(physical_devices.len());
-
-            for device in physical_devices.into_iter() {
-                let properties: vk::PhysicalDeviceProperties = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceProperties(device, &mut output);
-                    output
-                };
-
-                let queue_families = unsafe {
-                    let mut num = 0;
-                    vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
-
-                    let mut families = Vec::with_capacity(num as usize);
-                    vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num,
-                                                              families.as_mut_ptr());
-                    families.set_len(num as usize);
-                    families
-                };
-
-                let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
-                    output
-                };
-
-                let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                    let mut output = mem::uninitialized();
-                    vk.GetPhysicalDeviceFeatures(device, &mut output);
-                    output
-                };
-
-                output.push(PhysicalDeviceInfos {
-                    device: device,
-                    properties: properties,
-                    memory: memory,
-                    queue_families: queue_families,
-                    available_features: Features::from(available_features),
-                });
-            }
-            output
+        // If possible, we use VK_KHR_get_physical_device_properties2.
+        let physical_devices = if extensions.khr_get_physical_device_properties2 {
+            Instance::init_physical_devices2(&vk, physical_devices, &extensions)
+        } else {
+            Instance::init_physical_devices(&vk, physical_devices)
         };
 
         Ok(Arc::new(Instance {
@@ -268,9 +233,121 @@ impl Instance {
             //alloc: None,
             physical_devices: physical_devices,
             vk: vk,
-            extensions: extensions.clone(),
+            extensions: extensions,
             layers: layers,
         }))
+    }
+
+    /// Initialize all physical devices
+    fn init_physical_devices(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>)
+                             -> Vec<PhysicalDeviceInfos> {
+        let mut output = Vec::with_capacity(physical_devices.len());
+
+        for device in physical_devices.into_iter() {
+            let properties: vk::PhysicalDeviceProperties = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceProperties(device, &mut output);
+                output
+            };
+
+            let queue_families = unsafe {
+                let mut num = 0;
+                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
+
+                let mut families = Vec::with_capacity(num as usize);
+                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num,
+                                                          families.as_mut_ptr());
+                families.set_len(num as usize);
+                families
+            };
+
+            let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
+                output
+            };
+
+            let available_features: vk::PhysicalDeviceFeatures = unsafe {
+                let mut output = mem::uninitialized();
+                vk.GetPhysicalDeviceFeatures(device, &mut output);
+                output
+            };
+
+            output.push(PhysicalDeviceInfos {
+                device: device,
+                properties: properties,
+                memory: memory,
+                queue_families: queue_families,
+                available_features: Features::from(available_features),
+            });
+        }
+        output
+    }
+
+    /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
+    /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
+    fn init_physical_devices2(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>,
+                              extensions: &InstanceExtensions) -> Vec<PhysicalDeviceInfos> {
+        let mut output = Vec::with_capacity(physical_devices.len());
+
+        for device in physical_devices.into_iter() {
+            let properties: vk::PhysicalDeviceProperties = unsafe {
+                let mut output = vk::PhysicalDeviceProperties2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    properties: mem::uninitialized(),
+                };
+
+                vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
+                output.properties
+            };
+
+            let queue_families = unsafe {
+                let mut num = 0;
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num, ptr::null_mut());
+
+                let mut families = (0 .. num).map(|_| {
+                    vk::QueueFamilyProperties2KHR {
+                        sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
+                        pNext: ptr::null_mut(),
+                        queueFamilyProperties: mem::uninitialized(),
+                    }
+                }).collect::<Vec<_>>();
+
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num,
+                                                              families.as_mut_ptr());
+                families.into_iter().map(|family| family.queueFamilyProperties).collect()
+            };
+
+            let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = vk::PhysicalDeviceMemoryProperties2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    memoryProperties: mem::uninitialized(),
+                };
+                vk.GetPhysicalDeviceMemoryProperties2KHR(device, &mut output);
+                output.memoryProperties
+            };
+
+            let available_features: vk::PhysicalDeviceFeatures = unsafe {
+                let mut output = vk::PhysicalDeviceFeatures2KHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
+                    pNext: ptr::null_mut(),
+                    features: mem::uninitialized(),
+                };
+                vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
+                output.features
+            };
+
+            output.push(PhysicalDeviceInfos {
+                device: device,
+                properties: properties,
+                memory: memory,
+                queue_families: queue_families,
+                available_features: Features::from(available_features),
+            });
+        }
+        output
     }
 
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
@@ -280,6 +357,12 @@ impl Instance {
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/
+
+    /// Grants access to the Vulkan functions of the instance.
+    #[inline]
+    pub(crate) fn pointers(&self) -> &vk::InstancePointers {
+        &self.vk
+    }
 
     /// Returns the list of extensions that have been loaded.
     ///
@@ -311,7 +394,7 @@ impl Instance {
 impl fmt::Debug for Instance {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan instance>")
+        write!(fmt, "<Vulkan instance {:?}>", self.instance)
     }
 }
 
@@ -321,15 +404,6 @@ unsafe impl VulkanObject for Instance {
     #[inline]
     fn internal_object(&self) -> vk::Instance {
         self.instance
-    }
-}
-
-impl VulkanPointers for Instance {
-    type Pointers = vk::InstancePointers;
-
-    #[inline]
-    fn pointers(&self) -> &vk::InstancePointers {
-        &self.vk
     }
 }
 
@@ -558,7 +632,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// fn do_something(physical_device: PhysicalDevice) {
     ///     let _loaded_extensions = physical_device.instance().loaded_extensions();
-    ///     // ... 
+    ///     // ...
     /// }
     /// ```
     #[inline]
@@ -844,11 +918,16 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
-    // TODO: graphics and compute queues support transfer operations as well, so this function
-    //       is confusing
+    ///
+    /// > **Note**: Queues that support graphics or compute operations also always support transfer
+    /// > operations. As of writing this, this function will always return true. The purpose of
+    /// > this function is to be future-proofed in case queues that don't support transfer
+    /// > operations are ever added to Vulkan.
     #[inline]
     pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 ||
+            self.supports_graphics() ||
+            self.supports_compute()
     }
 
     /// Returns true if queues of this family can execute sparse resources binding operations.

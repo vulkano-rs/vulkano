@@ -3,6 +3,9 @@ rust:
     - nightly
     - stable
 
+cache:
+  cargo
+
 install:
   - export CXX="g++-4.8"
 
@@ -21,6 +24,7 @@ addons:
 script:
     - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
+    - cargo test -v --manifest-path vulkano-shader-derive/Cargo.toml
     # We run the projects that depend on vulkano with `-j 1` or we have a
     # chance to reach travis' memory limit
     - cargo test -j 1 --manifest-path vulkano-win/Cargo.toml
@@ -49,3 +53,7 @@ after_success:
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml

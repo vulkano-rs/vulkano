@@ -35,7 +35,6 @@ use pipeline::input_assembly::PrimitiveTopology;
 use device::Device;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use SafeDeref;
 use check_errors;
 use vk;

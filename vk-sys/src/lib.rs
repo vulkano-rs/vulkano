@@ -18,6 +18,7 @@ use std::fmt;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::os::raw::c_ulong;
+use std::os::raw::c_double;
 
 pub type Flags = u32;
 pub type Bool32 = u32;
@@ -55,6 +56,7 @@ pub type SwapchainKHR = u64;
 pub type DisplayKHR = u64;
 pub type DisplayModeKHR = u64;
 pub type DebugReportCallbackEXT = u64;
+pub type DescriptorUpdateTemplateKHR = u64;
 
 pub const LOD_CLAMP_NONE: f32 = 1000.0;
 pub const REMAINING_MIP_LEVELS: u32 = 0xffffffff;
@@ -99,6 +101,7 @@ pub const SUBOPTIMAL_KHR: u32 = 1000001003;
 pub const ERROR_OUT_OF_DATE_KHR: u32 = -1000001004i32 as u32;
 pub const ERROR_INCOMPATIBLE_DISPLAY_KHR: u32 = -1000003001i32 as u32;
 pub const ERROR_VALIDATION_FAILED_EXT: u32 = -1000011001i32 as u32;
+pub const ERROR_OUT_OF_POOL_MEMORY_KHR: u32 = -1000069000i32 as u32;
 
 pub type StructureType = u32;
 pub const STRUCTURE_TYPE_APPLICATION_INFO: u32 = 0;
@@ -162,6 +165,20 @@ pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (52 * 1000);
+pub const STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (53 * 1000);
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR: u32 = 1000059001;
+pub const STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059002;
+pub const STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059003;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059004;
+pub const STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR: u32 = 1000059005;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR: u32 = 1000059006;
+pub const STRUCTURE_TYPE_SPARSE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059007;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059008;
+pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: u32 = 1000080000;
+pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -595,6 +612,8 @@ pub const FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT: u32 = 0x00000200;
 pub const FORMAT_FEATURE_BLIT_SRC_BIT: u32 = 0x00000400;
 pub const FORMAT_FEATURE_BLIT_DST_BIT: u32 = 0x00000800;
 pub const FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT: u32 = 0x00001000;
+pub const FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR: u32 = 0x00004000;
+pub const FORMAT_FEATURE_TRANSFER_DST_BIT_KHR: u32 = 0x00008000;
 pub type FormatFeatureFlags = Flags;
 
 
@@ -616,6 +635,7 @@ pub const IMAGE_CREATE_SPARSE_RESIDENCY_BIT: u32 = 0x00000002;
 pub const IMAGE_CREATE_SPARSE_ALIASED_BIT: u32 = 0x00000004;
 pub const IMAGE_CREATE_MUTABLE_FORMAT_BIT: u32 = 0x00000008;
 pub const IMAGE_CREATE_CUBE_COMPATIBLE_BIT: u32 = 0x00000010;
+pub const IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR: u32 = 0x00000020;
 pub type ImageCreateFlags = Flags;
 
 
@@ -850,6 +870,9 @@ pub const COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT: u32 = 0x00000001;
 pub type CommandPoolResetFlags = Flags;
 
 
+pub type CommandPoolTrimFlagsKHR = Flags;
+
+
 pub type CommandBufferUsageFlagBits = u32;
 pub const COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: u32 = 0x00000001;
 pub const COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT: u32 = 0x00000002;
@@ -886,7 +909,28 @@ pub type DisplaySurfaceCreateFlagsKHR = Flags;
 pub type ColorSpaceKHR = u32;
 #[deprecated = "Renamed to COLOR_SPACE_SRGB_NONLINEAR_KHR"]
 pub const COLORSPACE_SRGB_NONLINEAR_KHR: u32 = 0;
+#[deprecated = "Magically disappeared from the Vulkan specs"]
+pub const COLOR_SPACE_DISPLAY_P3_LINEAR_EXT: u32 = 1000104001;
+#[deprecated = "Magically disappeared from the Vulkan specs"]
+pub const COLOR_SPACE_SCRGB_LINEAR_EXT: u32 = 1000104003;
+#[deprecated = "Magically disappeared from the Vulkan specs"]
+pub const COLOR_SPACE_SCRGB_NONLINEAR_EXT: u32 = 1000104004;
+#[deprecated = "Magically disappeared from the Vulkan specs"]
+pub const COLOR_SPACE_BT2020_NONLINEAR_EXT: u32 = 1000104010;
 pub const COLOR_SPACE_SRGB_NONLINEAR_KHR: u32 = 0;
+pub const COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT: u32 = 1000104001;
+pub const COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT: u32 = 1000104002;
+pub const COLOR_SPACE_DCI_P3_LINEAR_EXT: u32 = 1000104003;
+pub const COLOR_SPACE_DCI_P3_NONLINEAR_EXT: u32 = 1000104004;
+pub const COLOR_SPACE_BT709_LINEAR_EXT: u32 = 1000104005;
+pub const COLOR_SPACE_BT709_NONLINEAR_EXT: u32 = 1000104006;
+pub const COLOR_SPACE_BT2020_LINEAR_EXT: u32 = 1000104007;
+pub const COLOR_SPACE_HDR10_ST2084_EXT: u32 = 1000104008;
+pub const COLOR_SPACE_DOLBYVISION_EXT: u32 = 1000104009;
+pub const COLOR_SPACE_HDR10_HLG_EXT: u32 = 1000104010;
+pub const COLOR_SPACE_ADOBERGB_LINEAR_EXT: u32 = 1000104011;
+pub const COLOR_SPACE_ADOBERGB_NONLINEAR_EXT: u32 = 1000104012;
+pub const COLOR_SPACE_PASS_THROUGH_EXT: u32 = 1000104013;
 
 pub type PresentModeKHR = u32;
 pub const PRESENT_MODE_IMMEDIATE_KHR: u32 = 0;
@@ -956,6 +1000,20 @@ pub const DEBUG_REPORT_ERROR_BIT_EXT: u32 = 0x00000008;
 pub const DEBUG_REPORT_DEBUG_BIT_EXT: u32 = 0x00000010;
 pub type DebugReportFlagsEXT = Flags;
 
+pub type MacOSSurfaceCreateFlagsMVK = u32;
+
+pub type IOSSurfaceCreateFlagsMVK = u32;
+
+pub type DescriptorSetLayoutCreateFlagBits = u32;
+pub const DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR: u32 = 0x00000001;
+
+pub type DescriptorUpdateTemplateTypeKHR = u32;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR: u32 = 0;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR: u32 = 1;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_BEGIN_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_END_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_RANGE_SIZE_KHR: u32 = (DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR - DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR + 1);
+pub type DescriptorUpdateTemplateCreateFlagsKHR = Flags;
 
 pub type PFN_vkAllocationFunction = extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
 pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
@@ -2368,11 +2426,169 @@ pub struct DebugReportCallbackCreateInfoEXT {
     pub pUserData: *mut c_void,
 }
 
+#[repr(C)]
+pub struct IOSSurfaceCreateInfoMVK {
+	pub sType: StructureType,
+	pub pNext: *const c_void,
+	pub flags: IOSSurfaceCreateFlagsMVK,
+	pub pView: *const c_void,
+}
+
+#[repr(C)]
+pub struct MacOSSurfaceCreateInfoMVK {
+	pub sType: StructureType,
+	pub pNext: *const c_void,
+	pub flags: MacOSSurfaceCreateFlagsMVK,
+	pub pView: *const c_void,
+}
+
+#[repr(C)]
+pub struct MVKDeviceConfiguration {
+    pub supportDisplayContentsScale: Bool32,
+    pub imageFlipY: Bool32,
+    pub shaderConversionFlipFragmentY: Bool32,
+    pub shaderConversionFlipVertexY: Bool32,
+    pub shaderConversionLogging: Bool32,
+    pub performanceTracking: Bool32,
+    pub performanceLoggingFrameCount: u32,
+}
+
+#[repr(C)]
+pub struct MVKPhysicalDeviceMetalFeatures {
+	pub depthClipMode: Bool32,
+	pub indirectDrawing: Bool32,
+	pub baseVertexInstanceDrawing: Bool32,
+	pub maxVertexBufferCount: u32,
+	pub maxFragmentBufferCount: u32,
+    pub bufferAlignment: DeviceSize,
+    pub pushConstantsAlignment: DeviceSize,
+}
+
+#[repr(C)]
+pub struct MVKSwapchainPerformance {
+    pub lastFrameInterval: c_double,
+    pub averageFrameInterval: c_double,
+    pub averageFramesPerSecond: c_double,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceFeatures2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub features: PhysicalDeviceFeatures,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub properties: PhysicalDeviceProperties,
+}
+
+#[repr(C)]
+pub struct FormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub formatProperties: FormatProperties,
+}
+
+#[repr(C)]
+pub struct ImageFormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub imageFormatProperties: ImageFormatProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceImageFormatInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub format: Format,
+    pub imageType: ImageType,
+    pub tiling: ImageTiling,
+    pub usage: ImageUsageFlags,
+    pub flags: ImageCreateFlags,
+}
+
+#[repr(C)]
+pub struct QueueFamilyProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub queueFamilyProperties: QueueFamilyProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceMemoryProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub memoryProperties: PhysicalDeviceMemoryProperties,
+}
+
+#[repr(C)]
+pub struct SparseImageFormatProperties2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub properties: SparseImageFormatProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceSparseImageFormatInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub format: Format,
+    pub imageType: ImageType,
+    pub samples: SampleCountFlagBits,
+    pub usage: ImageUsageFlags,
+    pub tiling: ImageTiling,
+}
+
+pub type ViSurfaceCreateFlagsNN = Flags;
+
+#[repr(C)]
+pub struct ViSurfaceCreateInfoNN {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: ViSurfaceCreateFlagsNN,
+    pub window: *const c_void,
+}
+
+#[repr(C)]
+pub struct PhysicalDevicePushDescriptorPropertiesKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub maxPushDescriptors: u32,
+}
+
+#[repr(C)]
+pub struct DescriptorUpdateTemplateEntryKHR {
+    pub dstBinding: u32,
+    pub dstArrayElement: u32,
+    pub descriptorCount: u32,
+    pub descriptorType: DescriptorType,
+    pub offset: usize,
+    pub stride: usize,
+}
+
+#[repr(C)]
+pub struct DescriptorUpdateTemplateCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: DescriptorUpdateTemplateCreateFlagsKHR,
+    pub descriptorUpdateEntryCount: u32,
+    pub pDescriptorUpdateEntries: *const DescriptorUpdateTemplateEntryKHR,
+    pub templateType: DescriptorUpdateTemplateTypeKHR,
+    pub descriptorSetLayout: DescriptorSetLayout,
+    pub pipelineBindPoint: PipelineBindPoint,
+    pub pipelineLayout: PipelineLayout,
+    pub set: u32,
+}
+
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
             $(
-                $name: extern "system" fn($($param_ty),*) -> $ret,
+                pub $name: extern "system" fn($($param_ty),*) -> $ret,
             )+
         }
 
@@ -2463,6 +2679,22 @@ ptrs!(InstancePointers, {
     CreateDebugReportCallbackEXT => (instance: Instance, pCreateInfo: *const DebugReportCallbackCreateInfoEXT, pAllocator: *const AllocationCallbacks, pCallback: *mut DebugReportCallbackEXT) -> Result,
     DestroyDebugReportCallbackEXT => (instance: Instance, callback: DebugReportCallbackEXT, pAllocator: *const AllocationCallbacks) -> (),
     DebugReportMessageEXT => (instance: Instance, flags: DebugReportFlagsEXT, objectType: DebugReportObjectTypeEXT, object: u64, location: usize, messageCode: i32, pLayerPrefix: *const c_char, pMessage: *const c_char) -> (),
+    CreateIOSSurfaceMVK => (instance: Instance, pCreateInfo: *const IOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    CreateMacOSSurfaceMVK => (instance: Instance, pCreateInfo: *const MacOSSurfaceCreateInfoMVK, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    ActivateMoltenVKLicenseMVK => (licenseID: *const c_char, licenseKey: *const c_char, acceptLicenseTermsAndConditions: Bool32) -> Result,
+    ActivateMoltenVKLicensesMVK => () -> Result,
+    GetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    SetMoltenVKDeviceConfigurationMVK => (device: Device, pConfiguration: *mut MVKDeviceConfiguration) -> Result,
+    GetPhysicalDeviceMetalFeaturesMVK => (physicalDevice: PhysicalDevice, pMetalFeatures: *mut MVKPhysicalDeviceMetalFeatures) -> Result,
+    GetSwapchainPerformanceMVK => (device: Device, swapchain: SwapchainKHR, pSwapchainPerf: *mut MVKSwapchainPerformance) -> Result,
+    CreateViSurfaceNN => (instance: Instance, pCreateInfo: *const ViSurfaceCreateInfoNN, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    GetPhysicalDeviceFeatures2KHR => (physicalDevice: PhysicalDevice, pFeatures: *mut PhysicalDeviceFeatures2KHR) -> (),
+    GetPhysicalDeviceProperties2KHR => (physicalDevice: PhysicalDevice, pProperties: *mut PhysicalDeviceProperties2KHR) -> (),
+    GetPhysicalDeviceFormatProperties2KHR => (physicalDevice: PhysicalDevice, pFormatProperties: *mut FormatProperties2KHR) -> (),
+    GetPhysicalDeviceImageFormatProperties2KHR => (physicalDevice: PhysicalDevice, pImageFormatInfo: *const PhysicalDeviceImageFormatInfo2KHR, pImageFormatProperties: *mut ImageFormatProperties2KHR) -> Result,
+    GetPhysicalDeviceQueueFamilyProperties2KHR => (physicalDevice: PhysicalDevice, pQueueFamilyPropertiesCount: *mut u32, pQueueFamilyProperties: *mut QueueFamilyProperties2KHR) -> (),
+    GetPhysicalDeviceMemoryProperties2KHR => (physicalDevice: PhysicalDevice, pMemoryProperties: *mut PhysicalDeviceMemoryProperties2KHR) -> (),
+    GetPhysicalDeviceSparseImageFormatProperties2KHR => (physicalDevice: PhysicalDevice, pFormatInfo: *const PhysicalDeviceSparseImageFormatInfo2KHR, pPropertyCount: *mut u32, pProperties: *mut SparseImageFormatProperties2KHR) -> (),
 });
 
 ptrs!(DevicePointers, {
@@ -2537,6 +2769,7 @@ ptrs!(DevicePointers, {
     CreateCommandPool => (device: Device, pCreateInfo: *const CommandPoolCreateInfo, pAllocator: *const AllocationCallbacks, pCommandPool: *mut CommandPool) -> Result,
     DestroyCommandPool => (device: Device, commandPool: CommandPool, pAllocator: *const AllocationCallbacks) -> (),
     ResetCommandPool => (device: Device, commandPool: CommandPool, flags: CommandPoolResetFlags) -> Result,
+    TrimCommandPoolKHR => (device: Device, commandPool: CommandPool, flags: CommandPoolTrimFlagsKHR) -> (),
     AllocateCommandBuffers => (device: Device, pAllocateInfo: *const CommandBufferAllocateInfo, pCommandBuffers: *mut CommandBuffer) -> Result,
     FreeCommandBuffers => (device: Device, commandPool: CommandPool, commandBufferCount: u32, pCommandBuffers: *const CommandBuffer) -> (),
     BeginCommandBuffer => (commandBuffer: CommandBuffer, pBeginInfo: *const CommandBufferBeginInfo) -> Result,
@@ -2592,4 +2825,9 @@ ptrs!(DevicePointers, {
     AcquireNextImageKHR => (device: Device, swapchain: SwapchainKHR, timeout: u64, semaphore: Semaphore, fence: Fence, pImageIndex: *mut u32) -> Result,
     QueuePresentKHR => (queue: Queue, pPresentInfo: *const PresentInfoKHR) -> Result,
     CreateSharedSwapchainsKHR => (device: Device, swapchainCount: u32, pCreateInfos: *const SwapchainCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSwapchains: *mut SwapchainKHR) -> Result,
+    CmdPushDescriptorSetKHR => (commandBuffer: CommandBuffer, pipelineBindPoint: PipelineBindPoint, layout: PipelineLayout, set: u32, descriptorWriteCount: u32, pDescriptorWrites: *const WriteDescriptorSet) -> (),
+    CreateDescriptorUpdateTemplateKHR => (device: Device, pCreateInfo: *const DescriptorUpdateTemplateCreateInfoKHR, pAllocator: *const AllocationCallbacks, pDescriptorUpdateTemplate: *mut DescriptorUpdateTemplateKHR) -> Result,
+    DestroyDescriptorUpdateTemplateKHR => (device: Device, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pAllocator: *const AllocationCallbacks) -> (),
+    UpdateDescriptorSetWithTemplateKHR => (device: Device, descriptorSet: DescriptorSet, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pData: *const c_void) -> (),
+    CmdPushDescriptorSetWithTemplateKHR => (commandBuffer: CommandBuffer, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, layout: PipelineLayout, set: u32, pData: *const c_void) -> (),
 });

@@ -32,8 +32,13 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
     let dest = env::var("OUT_DIR").unwrap();
     let dest = Path::new(&dest);
 
-    for (shader, ty) in shaders {
+    let shaders = shaders.into_iter().collect::<Vec<_>>();
+    for &(shader, _) in &shaders {
+        // Run this first so that a panic won't interfere with rerun
         println!("cargo:rerun-if-changed={}", shader);
+    }
+
+    for (shader, ty) in shaders {
         let shader = Path::new(shader);
 
         let shader_content = {
@@ -65,9 +70,6 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
     // now parsing the document
     let doc = try!(parse::parse_spirv(&data));
 
-    // TODO: remove
-    println!("{:#?}", doc);
-
     let mut output = String::new();
     output.push_str(r#"
         #[allow(unused_imports)]
@@ -83,6 +85,8 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         use vulkano::descriptor::descriptor::DescriptorDescTy;
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorBufferContentDesc;
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDesc;
         #[allow(unused_imports)]
@@ -102,7 +106,9 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::UnsafePipelineLayout;
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescNames;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     "#);
 
     {

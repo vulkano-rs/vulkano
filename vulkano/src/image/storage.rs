@@ -7,37 +7,37 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
 use std::iter::Empty;
-use std::ops::Range;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 
-use command_buffer::Submission;
 use device::Device;
+use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
+use format::Format;
 use image::Dimensions;
+use image::ImageDimensions;
 use image::sys::ImageCreationError;
-use image::sys::Layout;
+use image::ImageLayout;
+use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::sys::Usage;
-use image::traits::AccessRange;
-use image::traits::GpuAccessResult;
-use image::traits::Image;
+use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
+use image::traits::ImageViewAccess;
+use image::traits::Image;
 use image::traits::ImageView;
-use image::traits::Transition;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use sync::AccessError;
 use sync::Sharing;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -62,25 +62,13 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>> where A: MemoryPool {
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
 
-    // Additional info behind a mutex.
-    guarded: Mutex<Guarded>,
-}
-
-#[derive(Debug)]
-struct Guarded {
-    // If false, the image is still in the undefined layout.
-    correct_layout: bool,
-
-    // The latest submissions that read from this image.
-    read_submissions: SmallVec<[Weak<Submission>; 4]>,
-
-    // The latest submission that writes to this image.
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
+    // Number of times this image is locked on the GPU side.
+    gpu_lock: AtomicUsize,
 }
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
-    pub fn new<'a, I>(device: &Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
                  I: IntoIterator<Item = QueueFamily<'a>>
@@ -93,7 +81,7 @@ impl<F> StorageImage<F> {
             _ => false
         };
 
-        let usage = Usage {
+        let usage = ImageUsage {
             transfer_source: true,
             transfer_dest: true,
             sampled: true,
@@ -114,7 +102,7 @@ impl<F> StorageImage<F> {
                 Sharing::Exclusive
             };
 
-            try!(UnsafeImage::new(device, &usage, format.format(), dimensions.to_image_dimensions(),
+            try!(UnsafeImage::new(device.clone(), usage, format.format(), dimensions.to_image_dimensions(),
                                   1, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
         };
 
@@ -127,7 +115,7 @@ impl<F> StorageImage<F> {
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
+        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
                                          mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
@@ -144,11 +132,7 @@ impl<F> StorageImage<F> {
             dimensions: dimensions,
             format: format,
             queue_families: queue_families,
-            guarded: Mutex::new(Guarded {
-                correct_layout: false,
-                read_submissions: SmallVec::new(),
-                write_submission: None,
-            }),
+            gpu_lock: AtomicUsize::new(0),
         }))
     }
 }
@@ -161,96 +145,81 @@ impl<F, A> StorageImage<F, A> where A: MemoryPool {
     }
 }
 
-unsafe impl<F, A> Image for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
+// FIXME: wrong
+unsafe impl<F, A> Image for Arc<StorageImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Access = Self;
+
+    #[inline]
+    fn access(self) -> Self {
+        self
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.image.format()
+    }
+
+    #[inline]
+    fn samples(&self) -> u32 {
+        self.image.samples()
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.dimensions()
+    }
+}
+
+// FIXME: wrong
+unsafe impl<F, A> ImageView for Arc<StorageImage<F, A>>
+    where F: 'static + Send + Sync, A: MemoryPool
+{
+    type Access = Self;
+
+    #[inline]
+    fn access(self) -> Self {
+        self
+    }
+}
+
+unsafe impl<F, A> ImageAccess for StorageImage<F, A> where F: 'static + Send + Sync, A: MemoryPool {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         &self.image
     }
 
     #[inline]
-    fn blocks(&self, _: Range<u32>, _: Range<u32>) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn block_mipmap_levels_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn block_array_layers_range(&self, block: (u32, u32)) -> Range<u32> {
-        0 .. 1
+    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+        self.image.key()
     }
 
     #[inline]
-    fn initial_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::General, false, false)
-    }
-
-    #[inline]
-    fn final_layout(&self, _: (u32, u32), _: Layout) -> (Layout, bool, bool) {
-        (Layout::General, false, false)
-    }
-
-    fn needs_fence(&self, access: &mut Iterator<Item = AccessRange>) -> Option<bool> {
-        Some(false)
-    }
-
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
-                   queue_id, self.queue_families);
-        }
-
-        let mut guarded = self.guarded.lock().unwrap();
-
-        let is_written = {
-            let mut written = false;
-            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
-            written
-        };
-
-        let dependencies = if is_written {
-            let write_dep = mem::replace(&mut guarded.write_submission,
-                                         Some(Arc::downgrade(submission)));
-
-            let read_submissions = mem::replace(&mut guarded.read_submissions,
-                                                SmallVec::new());
-
-            // We use a temporary variable to bypass a lifetime error in rustc.
-            let list = read_submissions.into_iter()
-                                       .chain(write_dep.into_iter())
-                                       .filter_map(|s| s.upgrade())
-                                       .collect::<Vec<_>>();
-            list
-
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        if val == 1 {
+            Ok(())
         } else {
-            guarded.read_submissions.push(Arc::downgrade(submission));
-            guarded.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
-        };
-
-        let transition = if !guarded.correct_layout {
-            vec![Transition {
-                block: (0, 0),
-                from: Layout::Undefined,
-                to: Layout::General,
-            }]
-        } else {
-            vec![]
-        };
-
-        guarded.correct_layout = true;
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-            before_transitions: transition,
-            after_transitions: vec![],
+            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+            Err(AccessError::AlreadyInUse)
         }
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);
     }
 }
 
@@ -272,17 +241,12 @@ unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
     }
 }
 
-unsafe impl<F, A> ImageView for StorageImage<F, A>
+unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     where F: 'static + Send + Sync, A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &Image {
+    fn parent(&self) -> &ImageAccess {
         self
-    }
-
-    #[inline]
-    fn parent_arc(me: &Arc<Self>) -> Arc<Image> where Self: Sized {
-        me.clone() as Arc<_>
     }
 
     #[inline]
@@ -291,33 +255,28 @@ unsafe impl<F, A> ImageView for StorageImage<F, A>
     }
 
     #[inline]
-    fn blocks(&self) -> Vec<(u32, u32)> {
-        vec![(0, 0)]
-    }
-
-    #[inline]
     fn inner(&self) -> &UnsafeImageView {
         &self.view
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> Layout {
-        Layout::General
+    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
@@ -335,7 +294,7 @@ mod tests {
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _img = StorageImage::new(&device, Dimensions::Dim2d { width: 32, height: 32 },
+        let _img = StorageImage::new(device, Dimensions::Dim2d { width: 32, height: 32 },
                                      Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
     }
 }

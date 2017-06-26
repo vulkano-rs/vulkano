@@ -8,7 +8,7 @@
 // according to those terms.
 
 //! Low-level implementation of images and images views.
-//! 
+//!
 //! This module contains low-level wrappers around the Vulkan image and image view types. All
 //! other image or image view types of this library, and all custom image or image view types
 //! that you create must wrap around the types in this module.
@@ -25,6 +25,7 @@ use device::Device;
 use format::Format;
 use format::FormatTy;
 use image::ImageDimensions;
+use image::ImageUsage;
 use image::MipmapsCount;
 use image::ViewType;
 use memory::DeviceMemory;
@@ -34,7 +35,6 @@ use sync::Sharing;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
 use vk;
 
@@ -51,7 +51,6 @@ use vk;
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitionned.
 ///
-#[derive(Debug)]
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
@@ -79,7 +78,7 @@ impl UnsafeImage {
     /// - Panics if the number of samples is 0.
     ///
     #[inline]
-    pub unsafe fn new<'a, Mi, I>(device: &Arc<Device>, usage: &Usage, format: Format,
+    pub unsafe fn new<'a, Mi, I>(device: Arc<Device>, usage: ImageUsage, format: Format,
                                  dimensions: ImageDimensions, num_samples: u32, mipmaps: Mi,
                                  sharing: Sharing<I>, linear_tiling: bool,
                                  preinitialized_layout: bool)
@@ -96,7 +95,7 @@ impl UnsafeImage {
     }
 
     // Non-templated version to avoid inlining and improve compile times.
-    unsafe fn new_impl(device: &Arc<Device>, usage: &Usage, format: Format,
+    unsafe fn new_impl(device: Arc<Device>, usage: ImageUsage, format: Format,
                        dimensions: ImageDimensions, num_samples: u32, mipmaps: MipmapsCount,
                        (sh_mode, sh_indices): (vk::SharingMode, SmallVec<[u32; 8]>),
                        linear_tiling: bool, preinitialized_layout: bool)
@@ -139,6 +138,14 @@ impl UnsafeImage {
             if usage.input_attachment && (features & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0) {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
+            if device.loaded_extensions().khr_maintenance1 {
+                if usage.transfer_source && (features & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
+                if usage.transfer_dest && (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0) {
+                    return Err(ImageCreationError::UnsupportedUsage);
+                }
+            }
 
             features
         };
@@ -146,7 +153,7 @@ impl UnsafeImage {
         // If `transient_attachment` is true, then only `color_attachment`,
         // `depth_stencil_attachment` and `input_attachment` can be true as well.
         if usage.transient_attachment {
-            let u = Usage {
+            let u = ImageUsage {
                 transient_attachment: false,
                 color_attachment: false,
                 depth_stencil_attachment: false,
@@ -154,7 +161,7 @@ impl UnsafeImage {
                 .. usage.clone()
             };
 
-            if u != Usage::none() {
+            if u != ImageUsage::none() {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
         }
@@ -444,7 +451,7 @@ impl UnsafeImage {
     /// Creates an image from a raw handle. The image won't be destroyed.
     ///
     /// This function is for example used at the swapchain's initialization.
-    pub unsafe fn from_raw(device: &Arc<Device>, handle: u64, usage: u32, format: Format,
+    pub unsafe fn from_raw(device: Arc<Device>, handle: u64, usage: u32, format: Format,
                            dimensions: ImageDimensions, samples: u32, mipmaps: u32)
                            -> UnsafeImage
     {
@@ -514,6 +521,12 @@ impl UnsafeImage {
         self.samples
     }
 
+    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.image
+    }
+
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.
     ///
     /// This function is only valid for images with a color format. See the other similar functions
@@ -522,7 +535,7 @@ impl UnsafeImage {
     /// The layout is invariant for each image. However it is not cached, as this would waste
     /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
     /// somewhere in order to avoid calling this semi-expensive function at every single memory
-    /// access. 
+    /// access.
     ///
     /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
     /// you can easily calculate the position of any layer.
@@ -609,6 +622,52 @@ impl UnsafeImage {
     pub fn supports_blit_destination(&self) -> bool {
         (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
     }
+
+    /// Returns true if the image can be sampled with a linear filtering.
+    #[inline]
+    pub fn supports_linear_filtering(&self) -> bool {
+        (self.format_features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_src(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transfer_dest(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_sampled(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_storage(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_color_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_depth_stencil_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transient_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
+    }
+
+    #[inline]
+    pub fn usage_input_attachment(&self) -> bool {
+        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    }
 }
 
 unsafe impl VulkanObject for UnsafeImage {
@@ -617,6 +676,13 @@ unsafe impl VulkanObject for UnsafeImage {
     #[inline]
     fn internal_object(&self) -> vk::Image {
         self.image
+    }
+}
+
+impl fmt::Debug for UnsafeImage {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image {:?}>", self.image)
     }
 }
 
@@ -733,7 +799,6 @@ pub struct LinearLayout {
     pub depth_pitch: usize,
 }
 
-#[derive(Debug)]
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
@@ -812,7 +877,7 @@ impl UnsafeImageView {
             format: image.format,
         })
     }
-    
+
     /// Creates a new view from an image.
     ///
     /// Note that you must create the view with identity swizzling if you want to use this view
@@ -890,6 +955,13 @@ unsafe impl VulkanObject for UnsafeImageView {
     }
 }
 
+impl fmt::Debug for UnsafeImageView {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image view {:?}>", self.view)
+    }
+}
+
 impl Drop for UnsafeImageView {
     #[inline]
     fn drop(&mut self) {
@@ -900,135 +972,6 @@ impl Drop for UnsafeImageView {
     }
 }
 
-/// Describes how an image is going to be used. This is **not** an optimization.
-///
-/// If you try to use an image in a way that you didn't declare, a panic will happen.
-///
-/// If `transient_attachment` is true, then only `color_attachment`, `depth_stencil_attachment`
-/// and `input_attachment` can be true as well. The rest must be false or an error will be returned
-/// when creating the image.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Usage {
-    /// Can be used a source for transfers. Includes blits.
-    pub transfer_source: bool,
-
-    /// Can be used a destination for transfers. Includes blits.
-    pub transfer_dest: bool,
-
-    /// Can be sampled from a shader.
-    pub sampled: bool,
-
-    /// Can be used as an image storage in a shader.
-    pub storage: bool,
-
-    /// Can be attached as a color attachment to a framebuffer.
-    pub color_attachment: bool,
-
-    /// Can be attached as a depth, stencil or depth-stencil attachment to a framebuffer.
-    pub depth_stencil_attachment: bool,
-
-    /// Indicates that this image will only ever be used as a temporary framebuffer attachment.
-    /// As soon as you leave a render pass, the content of transient images becomes undefined.
-    ///
-    /// This is a hint to the Vulkan implementation that it may not need allocate any memory for
-    /// this image if the image can live entirely in some cache.
-    pub transient_attachment: bool,
-
-    /// Can be used as an input attachment. In other words, you can draw to it in a subpass then
-    /// read from it in a following pass.
-    pub input_attachment: bool,
-}
-
-impl Usage {
-    /// Builds a `Usage` with all values set to true. Note that using the returned value will
-    /// produce an error because of `transient_attachment` being true.
-    #[inline]
-    pub fn all() -> Usage {
-        Usage {
-            transfer_source: true,
-            transfer_dest: true,
-            sampled: true,
-            storage: true,
-            color_attachment: true,
-            depth_stencil_attachment: true,
-            transient_attachment: true,
-            input_attachment: true,
-        }
-    }
-
-    /// Builds a `Usage` with all values set to false. Useful as a default value.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::image::Usage as ImageUsage;
-    ///
-    /// let _usage = ImageUsage {
-    ///     transfer_dest: true,
-    ///     sampled: true,
-    ///     .. ImageUsage::none()
-    /// };
-    /// ```
-    #[inline]
-    pub fn none() -> Usage {
-        Usage {
-            transfer_source: false,
-            transfer_dest: false,
-            sampled: false,
-            storage: false,
-            color_attachment: false,
-            depth_stencil_attachment: false,
-            transient_attachment: false,
-            input_attachment: false,
-        }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
-        let mut result = 0;
-        if self.transfer_source { result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT; }
-        if self.transfer_dest { result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT; }
-        if self.sampled { result |= vk::IMAGE_USAGE_SAMPLED_BIT; }
-        if self.storage { result |= vk::IMAGE_USAGE_STORAGE_BIT; }
-        if self.color_attachment { result |= vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT; }
-        if self.depth_stencil_attachment { result |= vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; }
-        if self.transient_attachment { result |= vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT; }
-        if self.input_attachment { result |= vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT; }
-        result
-    }
-
-    #[inline]
-    #[doc(hidden)]
-    pub fn from_bits(val: u32) -> Usage {
-        Usage {
-            transfer_source: (val & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0,
-            transfer_dest: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,
-            sampled: (val & vk::IMAGE_USAGE_SAMPLED_BIT) != 0,
-            storage: (val & vk::IMAGE_USAGE_STORAGE_BIT) != 0,
-            color_attachment: (val & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0,
-            depth_stencil_attachment: (val & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0,
-            transient_attachment: (val & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0,
-            input_attachment: (val & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
-pub enum Layout {
-    Undefined = vk::IMAGE_LAYOUT_UNDEFINED,
-    General = vk::IMAGE_LAYOUT_GENERAL,
-    ColorAttachmentOptimal = vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    DepthStencilAttachmentOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    DepthStencilReadOnlyOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    ShaderReadOnlyOptimal = vk::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    TransferSrcOptimal = vk::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    TransferDstOptimal = vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    Preinitialized = vk::IMAGE_LAYOUT_PREINITIALIZED,
-    PresentSrc = vk::IMAGE_LAYOUT_PRESENT_SRC_KHR,
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter::Empty;
@@ -1036,7 +979,7 @@ mod tests {
 
     use super::ImageCreationError;
     use super::UnsafeImage;
-    use super::Usage;
+    use super::ImageUsage;
 
     use image::ImageDimensions;
     use format::Format;
@@ -1046,13 +989,13 @@ mod tests {
     fn create_sampled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let (_img, _) = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1063,14 +1006,14 @@ mod tests {
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             transient_attachment: true,
             color_attachment: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let (_img, _) = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1081,13 +1024,13 @@ mod tests {
     fn zero_sample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 0, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1103,13 +1046,13 @@ mod tests {
     fn non_po2_sample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 5, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1125,13 +1068,13 @@ mod tests {
     fn zero_mipmap() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 0,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1148,13 +1091,13 @@ mod tests {
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1173,13 +1116,13 @@ mod tests {
     fn shader_storage_image_multisample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             storage: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 2, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1196,13 +1139,13 @@ mod tests {
     fn compressed_not_color_attachment() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             color_attachment: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::ASTC_5x4UnormBlock,
+            UnsafeImage::new(device, usage, Format::ASTC_5x4UnormBlock,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, u32::MAX,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1219,14 +1162,14 @@ mod tests {
     fn transient_forbidden_with_some_usages() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             transient_attachment: true,
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 32, array_layers: 1,
                                                       cubemap_compatible: false }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)
@@ -1242,13 +1185,13 @@ mod tests {
     fn cubecompatible_dims_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let usage = Usage {
+        let usage = ImageUsage {
             sampled: true,
-            .. Usage::none()
+            .. ImageUsage::none()
         };
 
         let res = unsafe {
-            UnsafeImage::new(&device, &usage, Format::R8G8B8A8Unorm,
+            UnsafeImage::new(device, usage, Format::R8G8B8A8Unorm,
                              ImageDimensions::Dim2d { width: 32, height: 64, array_layers: 1,
                                                       cubemap_compatible: true }, 1, 1,
                              Sharing::Exclusive::<Empty<_>>, false, false)

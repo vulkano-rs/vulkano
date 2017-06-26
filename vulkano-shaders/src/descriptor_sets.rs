@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashSet;
+use std::cmp;
 
 use enums;
 use parse;
@@ -18,9 +18,11 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
+        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
+        array_count: u64,
         readonly: bool,
     }
 
@@ -49,68 +51,127 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         }).next().expect(&format!("Uniform `{}` is missing a binding", name));
 
         // Find informations about the kind of binding for this descriptor.
-        let (desc_ty, readonly) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
+        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
 
         descriptors.push(Descriptor {
+            name: name,
             desc_ty: desc_ty,
             set: descriptor_set,
             binding: binding,
+            array_count: array_count,
             readonly: readonly,
         });
     }
 
-    // Sorting descriptors by binding in order to make sure we're in the right order.
-    descriptors.sort_by(|a, b| a.binding.cmp(&b.binding));
+    // Looping to find all the push constant structs.
+    let mut push_constants_size = 0;
+    for instruction in doc.instructions.iter() {
+        let type_id = match instruction {
+            &parse::Instruction::TypePointer { type_id, storage_class: enums::StorageClass::StorageClassPushConstant, .. } => {
+                type_id
+            },
+            _ => continue
+        };
 
-    // Computing the list of sets that are needed.
-    let sets_list = descriptors.iter().map(|d| d.set).collect::<HashSet<u32>>();
-
-    let mut output = String::new();
-
-    // Iterate once per set.
-    for &set in sets_list.iter() {
-        let descr = descriptors.iter().enumerate().filter(|&(_, d)| d.set == set)
-                               .map(|(_, d)| {
-                                   format!("DescriptorDesc {{
-                                                binding: {binding},
-                                                ty: {desc_ty},
-                                                array_count: 1,
-                                                stages: stages.clone(),
-                                                readonly: {readonly},
-                                            }}", binding = d.binding, desc_ty = d.desc_ty,
-                                                 readonly = if d.readonly { "true" } else { "false" })
-                               })
-                               .collect::<Vec<_>>();
-
-        output.push_str(&format!(r#"
-            fn set{set}_layout(stages: ShaderStages) -> VecIntoIter<DescriptorDesc> {{
-                vec![
-                    {descr}
-                ].into_iter()
-            }}
-        "#, set = set, descr = descr.join(",")));
+        let (_, size, _) = ::structs::type_from_id(doc, type_id);
+        let size = size.expect("Found runtime-sized push constants");
+        push_constants_size = cmp::max(push_constants_size, size);
     }
 
-    let max_set = sets_list.iter().cloned().max().map(|v| v + 1).unwrap_or(0);
+    // Writing the body of the `descriptor` method.
+    let descriptor_body = descriptors.iter().map(|d| {
+        format!("({set}, {binding}) => Some(DescriptorDesc {{
+            ty: {desc_ty},
+            array_count: {array_count},
+            stages: self.0.clone(),
+            readonly: {readonly},
+        }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty, array_count = d.array_count,
+               readonly = if d.readonly { "true" } else { "false" })
 
-    output.push_str(&format!(r#"
+    }).collect::<Vec<_>>().concat();
+
+    let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
+
+    // Writing the body of the `num_bindings_in_set` method.
+    let num_bindings_in_set_body = {
+        (0 .. num_sets).map(|set| {
+            let num = 1 + descriptors.iter().filter(|d| d.set == set)
+                                     .fold(0, |s, d| cmp::max(s, d.binding));
+            format!("{set} => Some({num}),", set = set, num = num)
+        }).collect::<Vec<_>>().concat()
+    };
+
+    // Writing the body of the `descriptor_by_name_body` method.
+    let descriptor_by_name_body = descriptors.iter().map(|d| {
+        format!(r#"{name:?} => Some(({set}, {binding})),"#,
+                name = d.name, set = d.set, binding = d.binding)
+    }).collect::<Vec<_>>().concat();
+
+    // Writing the body of the `num_push_constants_ranges` method.
+    let num_push_constants_ranges_body = {
+        if push_constants_size == 0 {
+            "0"
+        } else {
+            "1"
+        }
+    };
+
+    // Writing the body of the `push_constants_range` method.
+    let push_constants_range_body = format!(r#"
+        if num != 0 || {pc_size} == 0 {{ return None; }}
+        Some(PipelineLayoutDescPcRange {{
+            offset: 0,                      // FIXME: not necessarily true
+            size: {pc_size},
+            stages: ShaderStages::all(),     // FIXME: wrong
+        }})
+    "#, pc_size = push_constants_size);
+
+    format!(r#"
+        #[derive(Debug, Clone)]
         pub struct Layout(ShaderStages);
 
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
-            type SetsIter = VecIntoIter<Self::DescIter>;
-            type DescIter = VecIntoIter<DescriptorDesc>;
+            fn num_sets(&self) -> usize {{
+                {num_sets}
+            }}
 
-            fn descriptors_desc(&self) -> Self::SetsIter {{
-                vec![
-                    {layouts}
-                ].into_iter()
+            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {{
+                match set {{
+                    {num_bindings_in_set_body}
+                    _ => None
+                }}
+            }}
+
+            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {{
+                match (set, binding) {{
+                    {descriptor_body}
+                    _ => None
+                }}
+            }}
+
+            fn num_push_constants_ranges(&self) -> usize {{
+                {num_push_constants_ranges_body}
+            }}
+
+            fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {{
+                {push_constants_range_body}
             }}
         }}
 
-        "#, layouts = (0 .. max_set).map(|n| format!("set{}_layout(self.0)", n)).collect::<Vec<_>>().join(",")));
-
-    output
+        #[allow(unsafe_code)]
+        unsafe impl PipelineLayoutDescNames for Layout {{
+            fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {{
+                match name {{
+                    {descriptor_by_name_body}
+                    _ => None
+                }}
+            }}
+        }}
+        "#, num_sets = num_sets, num_bindings_in_set_body = num_bindings_in_set_body,
+            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body,
+            num_push_constants_ranges_body = num_push_constants_ranges_body,
+            push_constants_range_body = push_constants_range_body)
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
@@ -135,12 +196,12 @@ fn pointer_variable_ty(doc: &parse::Spirv, variable: u32) -> u32 {
     }).next().unwrap()
 }
 
-/// Returns a `DescriptorDescTy` constructor and a bool indicating whether the descriptor is
-/// read-only.
+/// Returns a `DescriptorDescTy` constructor, a bool indicating whether the descriptor is
+/// read-only, and the number of array elements.
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
 fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sampled: bool)
-                    -> Option<(String, bool)>
+                    -> Option<(String, bool, u64)>
 {
     doc.instructions.iter().filter_map(|i| {
         match i {
@@ -170,10 +231,11 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
 
                 let desc = format!("DescriptorDescTy::Buffer(DescriptorBufferDesc {{
                     dynamic: Some(false),
-                    storage: {}
+                    storage: {},
+                    content: DescriptorBufferContentDesc::F32,      // FIXME: wrong
                 }})", if is_ssbo { "true" } else { "false "});
 
-                Some((desc, true))
+                Some((desc, true, 1))
             },
 
             &parse::Instruction::TypeImage { result_id, ref dim, arrayed, ms, sampled,
@@ -203,7 +265,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                                             array_layers: {}
                                         }}", ms, arrayed);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
 
                 } else if let &enums::Dim::DimBuffer = dim {
                     // We are a texel buffer.
@@ -212,7 +274,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                         format: None,       // TODO: specify format if known
                     }}", !sampled);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
 
                 } else {
                     // We are a sampled or storage image.
@@ -236,7 +298,7 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                         array_layers: {},
                     }})", ty, sampled, dim, ms, arrayed);
 
-                    Some((desc, true))
+                    Some((desc, true, 1))
                 }
             },
 
@@ -248,7 +310,20 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
 
             &parse::Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
                 let desc = format!("DescriptorDescTy::Sampler");
-                Some((desc, true))
+                Some((desc, true, 1))
+            },
+
+            &parse::Instruction::TypeArray { result_id, type_id, length_id } if result_id == pointed_ty => {
+                let (desc, readonly, arr) = match descriptor_infos(doc, type_id, false) {
+                    None => return None,
+                    Some(v) => v,
+                };
+                assert_eq!(arr, 1);     // TODO: implement?
+                let len = doc.instructions.iter().filter_map(|e| {
+                    match e { &parse::Instruction::Constant { result_id, ref data, .. } if result_id == length_id => Some(data.clone()), _ => None }
+                }).next().expect("failed to find array length");
+                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
+                Some((desc, readonly, len))
             },
 
             _ => None,      // TODO: other types

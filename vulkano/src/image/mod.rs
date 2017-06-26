@@ -48,20 +48,24 @@
 
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
+pub use self::layout::ImageLayout;
 pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
-pub use self::sys::Layout;
-pub use self::sys::Usage;
+pub use self::traits::ImageAccess;
+pub use self::traits::ImageViewAccess;
 pub use self::traits::Image;
 pub use self::traits::ImageView;
+pub use self::usage::ImageUsage;
 
 pub mod attachment;     // TODO: make private
 pub mod immutable;      // TODO: make private
+mod layout;
 mod storage;
 pub mod swapchain;      // TODO: make private
 pub mod sys;
 pub mod traits;
+mod usage;
 
 /// Specifies how many mipmaps must be allocated.
 ///
@@ -194,6 +198,11 @@ impl Dimensions {
     }
 
     #[inline]
+    pub fn width_height_depth(&self) -> [u32; 3] {
+        [self.width(), self.height(), self.depth()]
+    }
+
+    #[inline]
     pub fn array_layers(&self) -> u32 {
         match *self {
             Dimensions::Dim1d { .. } => 1,
@@ -315,6 +324,11 @@ impl ImageDimensions {
             ImageDimensions::Dim2d { .. } => 1,
             ImageDimensions::Dim3d { depth, .. }  => depth,
         }
+    }
+
+    #[inline]
+    pub fn width_height_depth(&self) -> [u32; 3] {
+        [self.width(), self.height(), self.depth()]
     }
 
     #[inline]

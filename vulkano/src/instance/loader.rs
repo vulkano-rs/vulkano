@@ -16,40 +16,67 @@ use std::ptr;
 use shared_library;
 use vk;
 
-lazy_static! {
-    static ref VK_LIB: Result<shared_library::dynamic_library::DynamicLibrary, LoadingError> = {
-        #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
-        #[cfg(all(unix, not(target_os = "android")))] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
-        #[cfg(target_os = "android")] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
-        let path = get_path();
-        shared_library::dynamic_library::DynamicLibrary::open(Some(path))
-                                    .map_err(|err| LoadingError::LibraryLoadFailure(err))
-    };
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn load_static() -> Result<vk::Static, LoadingError> {
+    use std::os::raw::c_char;
 
-    static ref VK_STATIC: Result<vk::Static, LoadingError> = {
-        match *VK_LIB {
-            Ok(ref lib) => {
-                let mut err = None;
-                let result = vk::Static::load(|name| unsafe {
-                    let name = name.to_str().unwrap();
-                    match lib.symbol(name) {
-                        Ok(s) => s,
-                        Err(_) => {     // TODO: return error?
-                            err = Some(LoadingError::MissingEntryPoint(name.to_owned()));
-                            ptr::null()
-                        }
-                    }
-                });
+    extern {
+        fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
+                                 -> vk::PFN_vkVoidFunction;
+    }
 
-                if let Some(err) = err {
-                    Err(err)
-                } else {
-                    Ok(result)
-                }
-            },
-            Err(ref err) => Err(err.clone()),
+    extern "system" fn wrapper(instance: vk::Instance, pName: *const c_char)
+                               -> vk::PFN_vkVoidFunction
+    {
+        unsafe {
+            vkGetInstanceProcAddr(instance, pName)
         }
-    };
+    }
+
+    Ok(vk::Static {
+        GetInstanceProcAddr: wrapper,
+    })
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn load_static() -> Result<vk::Static, LoadingError> {
+    lazy_static! {
+        static ref VK_LIB: Result<shared_library::dynamic_library::DynamicLibrary, LoadingError> = {
+            #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
+            #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))] fn get_path() -> &'static Path { Path::new("libvulkan.so.1") }
+            #[cfg(target_os = "android")] fn get_path() -> &'static Path { Path::new("libvulkan.so") }
+            let path = get_path();
+            shared_library::dynamic_library::DynamicLibrary::open(Some(path))
+                                        .map_err(|err| LoadingError::LibraryLoadFailure(err))
+        };
+    }
+
+    match *VK_LIB {
+        Ok(ref lib) => {
+            let mut err = None;
+            let result = vk::Static::load(|name| unsafe {
+                let name = name.to_str().unwrap();
+                match lib.symbol(name) {
+                    Ok(s) => s,
+                    Err(_) => {     // TODO: return error?
+                        err = Some(LoadingError::MissingEntryPoint(name.to_owned()));
+                        ptr::null()
+                    }
+                }
+            });
+
+            if let Some(err) = err {
+                Err(err)
+            } else {
+                Ok(result)
+            }
+        },
+        Err(ref err) => Err(err.clone()),
+    }
+}
+
+lazy_static! {
+    static ref VK_STATIC: Result<vk::Static, LoadingError> = load_static();
 
     static ref VK_ENTRY: Result<vk::EntryPoints, LoadingError> = {
         match *VK_STATIC {

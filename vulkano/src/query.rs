@@ -26,7 +26,6 @@ use Error;
 use OomError;
 use SafeDeref;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 pub struct UnsafeQueryPool<P = Arc<Device>> where P: SafeDeref<Target = Device> {
@@ -241,11 +240,11 @@ pub struct OcclusionQueriesPool {
 
 impl OcclusionQueriesPool {
     /// See the docs of new().
-    pub fn raw(device: &Arc<Device>, num_slots: u32)
+    pub fn raw(device: Arc<Device>, num_slots: u32)
                -> Result<OcclusionQueriesPool, OomError>
     {
         Ok(OcclusionQueriesPool {
-            inner: match UnsafeQueryPool::new(device.clone(), QueryType::Occlusion, num_slots) {
+            inner: match UnsafeQueryPool::new(device, QueryType::Occlusion, num_slots) {
                 Ok(q) => q,
                 Err(QueryPoolCreationError::OomError(err)) => return Err(err),
                 Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
@@ -262,7 +261,7 @@ impl OcclusionQueriesPool {
     /// - Panics if the device or host ran out of memory.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, num_slots: u32)
+    pub fn new(device: Arc<Device>, num_slots: u32)
                -> Arc<OcclusionQueriesPool>
     {
        Arc::new(OcclusionQueriesPool::raw(device, num_slots).unwrap())
@@ -292,7 +291,7 @@ mod tests {
     #[test]
     fn occlusion_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = OcclusionQueriesPool::new(&device, 256);
+        let _ = OcclusionQueriesPool::new(device, 256);
     }
 
     #[test]

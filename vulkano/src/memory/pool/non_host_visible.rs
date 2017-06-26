@@ -35,7 +35,7 @@ impl StdNonHostVisibleMemoryTypePool {
     /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
     ///
     #[inline]
-    pub fn new(device: &Arc<Device>, memory_type: MemoryType)
+    pub fn new(device: Arc<Device>, memory_type: MemoryType)
                -> Arc<StdNonHostVisibleMemoryTypePool>
     {
         assert_eq!(&**device.physical_device().instance() as *const Instance,
@@ -102,7 +102,7 @@ impl StdNonHostVisibleMemoryTypePool {
         let new_block = {
             const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024;      // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block = try!(DeviceMemory::alloc(&me.device, me.memory_type(), to_alloc));
+            let new_block = try!(DeviceMemory::alloc(me.device.clone(), me.memory_type(), to_alloc));
             Arc::new(new_block)
         };
 

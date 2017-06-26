@@ -31,7 +31,10 @@ use std::ptr;
 use std::sync::Arc;
 use smallvec::SmallVec;
 
+use buffer::BufferUsage;
+use buffer::usage::usage_to_bits;
 use device::Device;
+use device::DeviceOwned;
 use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
@@ -40,11 +43,9 @@ use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use vk;
 
 /// Data storage in a GPU-accessible location.
-#[derive(Debug)]
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
     device: Arc<Device>,
@@ -62,14 +63,22 @@ impl UnsafeBuffer {
     /// Panics if `sparse.sparse` is false and `sparse.sparse_residency` or
     /// `sparse.sparse_aliased` is true.
     ///
-    pub unsafe fn new<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, sharing: Sharing<I>,
-                             sparse: SparseLevel)
+    pub unsafe fn new<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
+                             sharing: Sharing<I>, sparse: SparseLevel)
                              -> Result<(UnsafeBuffer, MemoryRequirements), BufferCreationError>
         where I: Iterator<Item = u32>
     {
         let vk = device.pointers();
 
-        let usage_bits = usage.to_usage_bits();
+        // Ensure we're not trying to create an empty buffer.
+        let size = if size == 0 {
+            // To avoid panicking when allocating 0 bytes, use a 1-byte buffer.
+            1
+        } else {
+            size
+        };
+
+        let usage_bits = usage_to_bits(usage);
 
         // Checking sparse features.
         assert!(sparse.sparse || !sparse.sparse_residency, "Can't enable sparse residency without \
@@ -183,12 +192,6 @@ impl UnsafeBuffer {
         Ok(())
     }
 
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
     /// Returns the size of the buffer in bytes.
     #[inline]
     pub fn size(&self) -> usize {
@@ -239,6 +242,12 @@ impl UnsafeBuffer {
     pub fn usage_indirect_buffer(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
+
+    /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.buffer
+    }
 }
 
 unsafe impl VulkanObject for UnsafeBuffer {
@@ -247,6 +256,20 @@ unsafe impl VulkanObject for UnsafeBuffer {
     #[inline]
     fn internal_object(&self) -> vk::Buffer {
         self.buffer
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeBuffer {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl fmt::Debug for UnsafeBuffer {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan buffer {:?}>", self.buffer)
     }
 }
 
@@ -283,170 +306,6 @@ impl SparseLevel {
         if self.sparse { result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT; }
         if self.sparse_residency { result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT; }
         if self.sparse_aliased { result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT; }
-        result
-    }
-}
-
-/// Describes how a buffer is going to be used. This is **not** an optimization.
-///
-/// If you try to use a buffer in a way that you didn't declare, a panic will happen.
-///
-/// Some methods are provided to build `Usage` structs for some common situations. However
-/// there is no restriction in the combination of usages that can be enabled.
-#[derive(Debug, Copy, Clone)]
-pub struct Usage {
-    pub transfer_source: bool,
-    pub transfer_dest: bool,
-    pub uniform_texel_buffer: bool,
-    pub storage_texel_buffer: bool,
-    pub uniform_buffer: bool,
-    pub storage_buffer: bool,
-    pub index_buffer: bool,
-    pub vertex_buffer: bool,
-    pub indirect_buffer: bool,
-}
-
-impl Usage {
-    /// Builds a `Usage` with all values set to false.
-    #[inline]
-    pub fn none() -> Usage {
-        Usage {
-            transfer_source: false,
-            transfer_dest: false,
-            uniform_texel_buffer: false,
-            storage_texel_buffer: false,
-            uniform_buffer: false,
-            storage_buffer: false,
-            index_buffer: false,
-            vertex_buffer: false,
-            indirect_buffer: false,
-        }
-    }
-
-    /// Builds a `Usage` with all values set to true. Can be used for quick prototyping.
-    #[inline]
-    pub fn all() -> Usage {
-        Usage {
-            transfer_source: true,
-            transfer_dest: true,
-            uniform_texel_buffer: true,
-            storage_texel_buffer: true,
-            uniform_buffer: true,
-            storage_buffer: true,
-            index_buffer: true,
-            vertex_buffer: true,
-            indirect_buffer: true,
-        }
-    }
-
-    /// Builds a `Usage` with `transfer_source` set to true and the rest to false.
-    #[inline]
-    pub fn transfer_source() -> Usage {
-        Usage {
-            transfer_source: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `transfer_dest` set to true and the rest to false.
-    #[inline]
-    pub fn transfer_dest() -> Usage {
-        Usage {
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `vertex_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn vertex_buffer() -> Usage {
-        Usage {
-            vertex_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `vertex_buffer` and `transfer_dest` set to true and the rest to false.
-    #[inline]
-    pub fn vertex_buffer_transfer_dest() -> Usage {
-        Usage {
-            vertex_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `index_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn index_buffer() -> Usage {
-        Usage {
-            index_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `index_buffer` and `transfer_dest` set to true and the rest to false.
-    #[inline]
-    pub fn index_buffer_transfer_dest() -> Usage {
-        Usage {
-            index_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `uniform_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn uniform_buffer() -> Usage {
-        Usage {
-            uniform_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `uniform_buffer` and `transfer_dest` set to true and the rest
-    /// to false.
-    #[inline]
-    pub fn uniform_buffer_transfer_dest() -> Usage {
-        Usage {
-            uniform_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `indirect_buffer` set to true and the rest to false.
-    #[inline]
-    pub fn indirect_buffer() -> Usage {
-        Usage {
-            indirect_buffer: true,
-            .. Usage::none()
-        }
-    }
-
-    /// Builds a `Usage` with `indirect_buffer` and `transfer_dest` set to true and the rest
-    /// to false.
-    #[inline]
-    pub fn indirect_buffer_transfer_dest() -> Usage {
-        Usage {
-            indirect_buffer: true,
-            transfer_dest: true,
-            .. Usage::none()
-        }
-    }
-
-    #[inline]
-    fn to_usage_bits(&self) -> vk::BufferUsageFlagBits {
-        let mut result = 0;
-        if self.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
-        if self.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
-        if self.uniform_texel_buffer { result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT; }
-        if self.storage_texel_buffer { result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT; }
-        if self.uniform_buffer { result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT; }
-        if self.storage_buffer { result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT; }
-        if self.index_buffer { result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT; }
-        if self.vertex_buffer { result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT; }
-        if self.indirect_buffer { result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT; }
         result
     }
 }
@@ -522,16 +381,17 @@ mod tests {
     use super::BufferCreationError;
     use super::SparseLevel;
     use super::UnsafeBuffer;
-    use super::Usage;
+    use super::BufferUsage;
 
     use device::Device;
+    use device::DeviceOwned;
     use sync::Sharing;
 
     #[test]
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let (buf, reqs) = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device.clone(), 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                               SparseLevel::none())
         }.unwrap();
 
@@ -541,23 +401,23 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse residency without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse residency without enabling sparse binding as well")]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: true, sparse_aliased: false };
         let _ = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
 
     #[test]
-    #[should_panic = "Can't enable sparse aliasing without enabling sparse binding as well"]
+    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse binding as well")]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: false, sparse_residency: false, sparse_aliased: true };
         let _ = unsafe {
-            UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
@@ -567,7 +427,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: false };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                                     sparse)
             {
                 Err(BufferCreationError::SparseBindingFeatureNotEnabled) => (),
@@ -581,7 +441,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
         let sparse = SparseLevel { sparse: true, sparse_residency: true, sparse_aliased: false };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                                     sparse)
             {
                 Err(BufferCreationError::SparseResidencyBufferFeatureNotEnabled) => (),
@@ -595,12 +455,21 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
         let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: true };
         unsafe {
-            match UnsafeBuffer::new(&device, 128, &Usage::all(), Sharing::Exclusive::<Empty<_>>,
+            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
                                     sparse)
             {
                 Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled) => (),
                 _ => panic!()
             }
+        };
+    }
+
+    #[test]
+    fn create_empty_buffer() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        unsafe {
+            let _ = UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none());
         };
     }
 }

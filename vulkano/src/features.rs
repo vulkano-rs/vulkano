@@ -19,8 +19,8 @@ macro_rules! features {
         ///
         /// # Example
         ///
-        /// ```no_run
-        /// # let physical_device: vulkano::instance::PhysicalDevice = unsafe { ::std::mem::uninitialized() };
+        /// ```
+        /// # let physical_device: vulkano::instance::PhysicalDevice = return;
         /// let minimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     .. vulkano::instance::Features::none()
@@ -86,6 +86,17 @@ macro_rules! features {
                 Features {
                     $(
                         $name: self.$name && other.$name,
+                    )+
+                }
+            }
+
+            /// Builds a `Features` that is the difference of another `Features` object from `self`.
+            ///
+            /// The result's field will be true if it is true in `self` but not `other`.
+            pub fn difference(&self, other: &Features) -> Features {
+                Features {
+                    $(
+                        $name: self.$name && !other.$name,
                     )+
                 }
             }

@@ -16,106 +16,88 @@
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
-use std::sync::Arc;
-
 use instance::QueueFamily;
 
-use device::Device;
+use device::DeviceOwned;
 use OomError;
-use VulkanObject;
-use vk;
 
 pub use self::standard::StandardCommandPool;
-pub use self::standard::StandardCommandPoolFinished;
 pub use self::sys::UnsafeCommandPool;
+pub use self::sys::UnsafeCommandPoolAlloc;
 pub use self::sys::UnsafeCommandPoolAllocIter;
+pub use self::sys::CommandPoolTrimError;
 
-mod standard;
+pub mod standard;
 mod sys;
 
 /// Types that manage the memory of command buffers.
-pub unsafe trait CommandPool {
+///
+/// # Safety
+///
+/// A Vulkan command pool must be externally synchronized as if it owned the command buffers that
+/// were allocated from it. This includes allocating from the pool, freeing from the pool,
+/// resetting the pool or individual command buffers, and most importantly recording commands to
+/// command buffers.
+///
+/// The implementation of `CommandPool` is expected to manage this. For as long as a `Builder`
+/// is alive, the trait implementation is expected to lock the pool that allocated the `Builder`
+/// for the current thread.
+///
+/// > **Note**: This may be modified in the future to allow different implementation strategies.
+///
+/// The destructors of the `CommandPoolBuilderAlloc` and the `CommandPoolAlloc` are expected to
+/// free the command buffer, reset the command buffer, or add it to a pool so that it gets reused.
+/// If the implementation frees or resets the command buffer, it must not forget that this
+/// operation must lock the pool.
+///
+pub unsafe trait CommandPool: DeviceOwned {
     /// See `alloc()`.
-    type Iter: Iterator<Item = AllocatedCommandBuffer>;
-    /// See `lock()`.
-    type Lock;
-    /// See `finish()`.
-    type Finished: CommandPoolFinished;
+    type Iter: Iterator<Item = Self::Builder>;
+    /// Represents a command buffer that has been allocated and that is currently being built.
+    type Builder: CommandPoolBuilderAlloc<Alloc = Self::Alloc>;
+    /// Represents a command buffer that has been allocated and that is pending execution or is
+    /// being executed.
+    type Alloc: CommandPoolAlloc;
 
     /// Allocates command buffers from this pool.
+    ///
+    /// Returns an iterator that contains an bunch of allocated command buffers.
     fn alloc(&self, secondary: bool, count: u32) -> Result<Self::Iter, OomError>;
 
-    /// Frees command buffers from this pool.
-    ///
-    /// # Safety
-    ///
-    /// - The command buffers must have been allocated from this pool.
-    /// - `secondary` must have the same value as what was passed to `alloc`.
-    ///
-    unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>;
-
-    /// Once a command buffer has finished being built, it should call this method in order to
-    /// produce a `Finished` object.
-    ///
-    /// The `Finished` object must hold the pool alive.
-    ///
-    /// The point of this object is to change the Send/Sync strategy after a command buffer has
-    /// finished being built compared to before.
-    fn finish(self) -> Self::Finished;
-
-    /// Before any command buffer allocated from this pool can be modified, the pool itself must
-    /// be locked by calling this method.
-    ///
-    /// All the operations are atomic at the thread level, so the point of this lock is to
-    /// prevent the pool from being accessed from multiple threads in parallel.
-    fn lock(&self) -> Self::Lock;
-
-    /// Returns true if command buffers can be reset individually. In other words, if the pool
-    /// was created with `reset_cb` set to true.
-    fn can_reset_invidual_command_buffers(&self) -> bool;
-
-    /// Returns the device used to create this pool.
-    fn device(&self) -> &Arc<Device>;
-
     /// Returns the queue family that this pool targets.
     fn queue_family(&self) -> QueueFamily;
 }
 
-/// See `CommandPool::finish()`.
-pub unsafe trait CommandPoolFinished {
-    /// Frees command buffers.
-    ///
-    /// # Safety
-    ///
-    /// - The command buffers must have been allocated from this pool.
-    /// - `secondary` must have the same value as what was passed to `alloc`.
-    ///
-    unsafe fn free<I>(&self, secondary: bool, command_buffers: I)
-        where I: Iterator<Item = AllocatedCommandBuffer>;
+/// A command buffer allocated from a pool and that can be recorded.
+///
+/// # Safety
+///
+/// See `CommandPool` for information about safety.
+///
+pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
+    /// Return type of `into_alloc`.
+    type Alloc: CommandPoolAlloc;
 
-    /// Returns the device used to create this pool.
-    fn device(&self) -> &Arc<Device>;
+    /// Returns the internal object that contains the command buffer.
+    fn inner(&self) -> &UnsafeCommandPoolAlloc;
 
-    /// Returns the queue family that this pool targets.
+    /// Turns this builder into a command buffer that is pending execution.
+    fn into_alloc(self) -> Self::Alloc;
+
+    /// Returns the queue family that the pool targets.
     fn queue_family(&self) -> QueueFamily;
 }
 
-/// Opaque type that represents a command buffer allocated from a pool.
-pub struct AllocatedCommandBuffer(vk::CommandBuffer);
+/// A command buffer allocated from a pool that has finished being recorded.
+///
+/// # Safety
+///
+/// See `CommandPool` for information about safety.
+///
+pub unsafe trait CommandPoolAlloc: DeviceOwned {
+    /// Returns the internal object that contains the command buffer.
+    fn inner(&self) -> &UnsafeCommandPoolAlloc;
 
-impl From<vk::CommandBuffer> for AllocatedCommandBuffer {
-    #[inline]
-    fn from(cmd: vk::CommandBuffer) -> AllocatedCommandBuffer {
-        AllocatedCommandBuffer(cmd)
-    }
-}
-
-unsafe impl VulkanObject for AllocatedCommandBuffer {
-    type Object = vk::CommandBuffer;
-
-    #[inline]
-    fn internal_object(&self) -> vk::CommandBuffer {
-        self.0
-    }
+    /// Returns the queue family that the pool targets.
+    fn queue_family(&self) -> QueueFamily;
 }
