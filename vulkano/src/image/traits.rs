@@ -210,12 +210,20 @@ pub unsafe trait ImageAccess {
     /// The only way to know that the GPU has stopped accessing a queue is when the image object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.

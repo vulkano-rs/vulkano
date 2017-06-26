@@ -378,6 +378,10 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
 
     #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        if self.buffer.initialized.load(Ordering::Relaxed) {
+            return Err(AccessError::AlreadyInUse);
+        }
+
         if !self.used.compare_and_swap(false, true, Ordering::Relaxed) {
             Ok(())
         } else {
@@ -431,15 +435,6 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
         ImmutableBufferInitialization {
             buffer: self.buffer.clone(),
             used: self.used.clone(),
-        }
-    }
-}
-
-impl<T: ?Sized, A> Drop for ImmutableBufferInitialization<T, A> {
-    #[inline]
-    fn drop(&mut self) {
-        if self.used.load(Ordering::Relaxed) {
-            self.buffer.initialized.store(true, Ordering::Relaxed);
         }
     }
 }
