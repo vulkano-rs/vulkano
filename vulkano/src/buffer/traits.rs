@@ -258,8 +258,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
-    /// Usually has the same effect as the destructor of the object.
-    ///
     /// # Safety
     ///
     /// Must only be called once per previous lock.
