@@ -154,7 +154,7 @@ fn main() {
     loop {
         previous_frame_end.cleanup_finished();
 
-        let (image_num, future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), Duration::new(10, 0)).unwrap();
+        let (image_num, future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
         let cb = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
