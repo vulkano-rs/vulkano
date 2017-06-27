@@ -14,16 +14,15 @@ extern crate mustache;
 #[macro_use]
 extern crate rouille;
 
+use rouille::Response;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::io;
 use std::net::ToSocketAddrs;
 use std::sync::Mutex;
-use rouille::Response;
 
 pub fn start<A>(addr: A)
-where
-    A: ToSocketAddrs,
+    where A: ToSocketAddrs
 {
     rouille::start_server(addr, move |request| {
         rouille::content_encoding::apply(
@@ -32,10 +31,8 @@ where
                 {
                     let mut r = rouille::match_assets(request, "./static");
                     if r.is_success() {
-                        r.headers.push((
-                            "Cache-Control".into(),
-                            format!("max-age={}", 2 * 60 * 60).into(),
-                        ));
+                        r.headers.push(("Cache-Control".into(),
+                                        format!("max-age={}", 2 * 60 * 60).into()));
                         return r;
                     }
                 }
@@ -60,10 +57,14 @@ where
                         guide_template_markdown(include_str!("../content/guide-compute-intro.md"))
                     },
                     (GET) (/guide/render-pass-framebuffer) => {
-                        guide_template_markdown(include_str!("../content/guide-render-pass-framebuffer.md"))
+                        guide_template_markdown({
+                            include_str!("../content/guide-render-pass-framebuffer.md")
+                        })
                     },
                     (GET) (/guide/swapchain-creation) => {
-                        guide_template_markdown(include_str!("../content/guide-swapchain-creation.md"))
+                        guide_template_markdown({
+                            include_str!("../content/guide-swapchain-creation.md")
+                        })
                     },
                     _ => {
                         main_template(include_str!("../content/404.html"))
@@ -99,7 +100,7 @@ fn main_template<S>(body: S) -> Response
             let mut out = Vec::new();
             MAIN_TEMPLATE.render_data(&mut out, &data).unwrap();
             e.insert(String::from_utf8(out).unwrap())
-        }
+        },
     };
 
     Response::html(html.clone())
@@ -129,7 +130,7 @@ fn guide_template<S>(body: S) -> Response
             let mut out = Vec::new();
             GUIDE_TEMPLATE.render_data(&mut out, &data).unwrap();
             e.insert(String::from_utf8(out).unwrap())
-        }
+        },
     };
 
     main_template(html.clone())
