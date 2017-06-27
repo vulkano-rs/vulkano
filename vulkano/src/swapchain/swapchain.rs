@@ -32,6 +32,7 @@ use image::ImageLayout;
 use image::ImageUsage;
 use image::sys::UnsafeImage;
 use image::swapchain::SwapchainImage;
+use swapchain::CapabilitiesError;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
@@ -195,7 +196,7 @@ impl Swapchain {
     /// # Panic
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
-    /// - Panics if `color_attachment` is false in `usage`.
+    /// - Panics if `usage` is empty.
     ///
     // TODO: remove `old_swapchain` parameter and add another function `with_old_swapchain`.
     // TODO: add `ColorSpace` parameter
@@ -205,7 +206,7 @@ impl Swapchain {
                      dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
                      transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
                      clipped: bool, old_swapchain: Option<&Arc<Swapchain>>)
-                     -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+                     -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError>
         where F: FormatDesc, S: Into<SharingMode>
     {
         Swapchain::new_inner(device, surface, num_images, format.format(),
@@ -215,7 +216,8 @@ impl Swapchain {
 
      /// Recreates the swapchain with new dimensions.
     pub fn recreate_with_dimension(&self, dimensions: [u32; 2])
-                                   -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+                                   -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>),
+                                             SwapchainCreationError>
     {
         Swapchain::new_inner(self.device.clone(), self.surface.clone(), self.num_images,
                              self.format, self.color_space, dimensions, self.layers, self.usage,
@@ -227,46 +229,77 @@ impl Swapchain {
                  color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
-                 -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), OomError>
+                 -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError>
     {
+        assert_eq!(device.instance().internal_object(),
+                   surface.instance().internal_object());
+
         // Checking that the requested parameters match the capabilities.
-        let capabilities = try!(surface.get_capabilities(&device.physical_device()));
-        // TODO: return errors instead
-        assert!(num_images >= capabilities.min_image_count);
-        if let Some(c) = capabilities.max_image_count { assert!(num_images <= c) };
-        assert!(capabilities.supported_formats.iter().any(|&(f, c)| f == format && c == color_space));
-        assert!(dimensions[0] >= capabilities.min_image_extent[0]);
-        assert!(dimensions[1] >= capabilities.min_image_extent[1]);
-        assert!(dimensions[0] <= capabilities.max_image_extent[0]);
-        assert!(dimensions[1] <= capabilities.max_image_extent[1]);
-        assert!(layers >= 1 && layers <= capabilities.max_image_array_layers);
-        assert!((usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) == usage.to_usage_bits());
-        assert!(capabilities.supported_transforms.supports(transform));
-        assert!(capabilities.supported_composite_alpha.supports(alpha));
-        assert!(capabilities.present_modes.supports(mode));
+        let capabilities = surface.capabilities(device.physical_device())?;
+        if num_images < capabilities.min_image_count {
+            return Err(SwapchainCreationError::UnsupportedMinImagesCount);
+        }
+        if let Some(c) = capabilities.max_image_count {
+            if num_images > c {
+                return Err(SwapchainCreationError::UnsupportedMaxImagesCount);
+            }
+        }
+        if !capabilities.supported_formats.iter().any(|&(f, c)| f == format && c == color_space) {
+            return Err(SwapchainCreationError::UnsupportedFormat);
+        }
+        if dimensions[0] < capabilities.min_image_extent[0] {
+            return Err(SwapchainCreationError::UnsupportedDimensions);
+        }
+        if dimensions[1] < capabilities.min_image_extent[1] {
+            return Err(SwapchainCreationError::UnsupportedDimensions);
+        }
+        if dimensions[0] > capabilities.max_image_extent[0] {
+            return Err(SwapchainCreationError::UnsupportedDimensions);
+        }
+        if dimensions[1] > capabilities.max_image_extent[1] {
+            return Err(SwapchainCreationError::UnsupportedDimensions);
+        }
+        if layers < 1 && layers > capabilities.max_image_array_layers {
+            return Err(SwapchainCreationError::UnsupportedArrayLayers);
+        }
+        if (usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) != usage.to_usage_bits() {
+            return Err(SwapchainCreationError::UnsupportedUsageFlags);
+        }
+        if !capabilities.supported_transforms.supports(transform) {
+            return Err(SwapchainCreationError::UnsupportedSurfaceTransform);
+        }
+        if !capabilities.supported_composite_alpha.supports(alpha) {
+            return Err(SwapchainCreationError::UnsupportedCompositeAlpha);
+        }
+        if !capabilities.present_modes.supports(mode) {
+            return Err(SwapchainCreationError::UnsupportedPresentMode);
+        }
 
         // If we recreate a swapchain, make sure that the surface is the same.
         if let Some(sc) = old_swapchain {
-            assert_eq!(surface.internal_object(), sc.surface.internal_object(),
-                       "Surface mismatch between old and new swapchain");
+            if surface.internal_object() != sc.surface.internal_object() {
+                return Err(SwapchainCreationError::OldSwapchainSurfaceMismatch);
+             }
         }
 
         // Checking that the surface doesn't already have a swapchain.
         if old_swapchain.is_none() {
-            // TODO: return proper error instead of panicking
             let has_already = surface.flag().swap(true, Ordering::AcqRel);
-            if has_already { panic!("The surface already has a swapchain alive"); }
+            if has_already { return Err(SwapchainCreationError::SurfaceInUse); }
         }
 
-        // FIXME: check that the device and the surface belong to the same instance
-        let vk = device.pointers();
-        assert!(device.loaded_extensions().khr_swapchain);     // TODO: return error instead
+        if !device.loaded_extensions().khr_swapchain {
+            return Err(SwapchainCreationError::MissingExtension);
+        }
 
-        assert!(usage.color_attachment);
+        // Required by the specs.
+        assert_ne!(usage, ImageUsage::none());
 
         if let Some(ref old_swapchain) = old_swapchain {
             *old_swapchain.stale.lock().unwrap() = false;
         }
+
+        let vk = device.pointers();
 
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
@@ -356,11 +389,13 @@ impl Swapchain {
             clipped: clipped,
         });
 
-        let swapchain_images = (0 .. swapchain.images.len()).map(|n| {
-            unsafe {
-                SwapchainImage::from_raw(swapchain.clone(), n).unwrap()       // TODO: propagate error
+        let swapchain_images = unsafe {
+            let mut swapchain_images = Vec::with_capacity(swapchain.images.len());
+            for n in 0 .. swapchain.images.len() {
+                swapchain_images.push(SwapchainImage::from_raw(swapchain.clone(), n)?);
             }
-        }).collect();
+            swapchain_images
+        };
 
         Ok((swapchain, swapchain_images))
     }
@@ -459,6 +494,155 @@ impl Drop for Swapchain {
             let vk = self.device.pointers();
             vk.DestroySwapchainKHR(self.device.internal_object(), self.swapchain, ptr::null());
             self.surface.flag().store(false, Ordering::Release);
+        }
+    }
+}
+
+/// Error that can happen when creation a swapchain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SwapchainCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+    /// The device was lost.
+    DeviceLost,
+    /// The surface was lost.
+    SurfaceLost,
+    /// The surface is already used by another swapchain.
+    SurfaceInUse,
+    /// The window is already in use by another API.
+    NativeWindowInUse,
+    /// The `VK_KHR_swapchain` extension was not enabled.
+    MissingExtension,
+    /// Surface mismatch between old and new swapchain.
+    OldSwapchainSurfaceMismatch,
+    /// The requested number of swapchain images is not supported by the surface.
+    UnsupportedMinImagesCount,
+    /// The requested number of swapchain images is not supported by the surface.
+    UnsupportedMaxImagesCount,
+    /// The requested image format is not supported by the surface.
+    UnsupportedFormat,
+    /// The requested dimensions are not supported by the surface.
+    UnsupportedDimensions,
+    /// The requested array layers count is not supported by the surface.
+    UnsupportedArrayLayers,
+    /// The requested image usage is not supported by the surface.
+    UnsupportedUsageFlags,
+    /// The requested surface transform is not supported by the surface.
+    UnsupportedSurfaceTransform,
+    /// The requested composite alpha is not supported by the surface.
+    UnsupportedCompositeAlpha,
+    /// The requested present mode is not supported by the surface.
+    UnsupportedPresentMode,
+}
+
+impl error::Error for SwapchainCreationError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            SwapchainCreationError::OomError(_) => {
+                "not enough memory available"
+            },
+            SwapchainCreationError::DeviceLost => {
+                "the device was lost"
+            },
+            SwapchainCreationError::SurfaceLost => {
+                "the surface was lost"
+            },
+            SwapchainCreationError::SurfaceInUse => {
+                "the surface is already used by another swapchain"
+            },
+            SwapchainCreationError::NativeWindowInUse => {
+                "the window is already in use by another API"
+            },
+            SwapchainCreationError::MissingExtension => {
+                "the `VK_KHR_swapchain` extension was not enabled"
+            },
+            SwapchainCreationError::OldSwapchainSurfaceMismatch => {
+                "surface mismatch between old and new swapchain"
+            },
+            SwapchainCreationError::UnsupportedMinImagesCount => {
+                "the requested number of swapchain images is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedMaxImagesCount => {
+                "the requested number of swapchain images is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedFormat => {
+                "the requested image format is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedDimensions => {
+                "the requested dimensions are not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedArrayLayers => {
+                "the requested array layers count is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedUsageFlags => {
+                "the requested image usage is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedSurfaceTransform => {
+                "the requested surface transform is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedCompositeAlpha => {
+                "the requested composite alpha is not supported by the surface"
+            },
+            SwapchainCreationError::UnsupportedPresentMode => {
+                "the requested present mode is not supported by the surface"
+            },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            SwapchainCreationError::OomError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for SwapchainCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for SwapchainCreationError {
+    #[inline]
+    fn from(err: Error) -> SwapchainCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                SwapchainCreationError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                SwapchainCreationError::OomError(OomError::from(err))
+            },
+            err @ Error::DeviceLost => {
+                SwapchainCreationError::DeviceLost
+            },
+            err @ Error::SurfaceLost => {
+                SwapchainCreationError::SurfaceLost
+            },
+            err @ Error::NativeWindowInUse => {
+                SwapchainCreationError::NativeWindowInUse
+            },
+            _ => panic!("unexpected error: {:?}", err)
+        }
+    }
+}
+
+impl From<OomError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: OomError) -> SwapchainCreationError {
+        SwapchainCreationError::OomError(err)
+    }
+}
+
+impl From<CapabilitiesError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: CapabilitiesError) -> SwapchainCreationError {
+        match err {
+            CapabilitiesError::OomError(err) => SwapchainCreationError::OomError(err),
+            CapabilitiesError::SurfaceLost => SwapchainCreationError::SurfaceLost,
         }
     }
 }

@@ -548,6 +548,12 @@ impl Surface {
             })
         }
     }
+
+    /// Returns the instance this surface was created with.
+    #[inline]
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
+    }
 }
 
 unsafe impl SurfaceSwapchainLock for Surface {
