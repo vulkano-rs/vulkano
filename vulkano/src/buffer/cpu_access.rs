@@ -315,6 +315,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+
+    #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         self.inner.key()
     }
