@@ -46,6 +46,7 @@ use device::Queue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
+use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
@@ -111,8 +112,10 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
+            let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
+                           else { SubpassContents::Inline };
             self.inner
-                .begin_render_pass(framebuffer, secondary, clear_values);
+                .begin_render_pass(framebuffer, contents, clear_values);
             Ok(self)
         }
     }
@@ -348,7 +351,9 @@ impl<P> AutoCommandBufferBuilder<P> {
                         -> Result<Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             // TODO: check
-            self.inner.next_subpass(secondary);
+            let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
+                           else { SubpassContents::Inline };
+            self.inner.next_subpass(contents);
             Ok(self)
         }
     }
