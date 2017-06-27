@@ -44,24 +44,30 @@ where
                     (GET) (/) => {
                         main_template(include_str!("../content/home.html"))
                     },
+                    (GET) (/guide/introduction) => {
+                        guide_template_markdown(include_str!("../content/guide-introduction.md"))
+                    },
+                    (GET) (/guide/initialization) => {
+                        guide_template_markdown(include_str!("../content/guide-initialization.md"))
+                    },
+                    (GET) (/guide/device-creation) => {
+                        guide_template_markdown(include_str!("../content/guide-device-creation.md"))
+                    },
+                    (GET) (/guide/buffer-creation) => {
+                        guide_template_markdown(include_str!("../content/guide-buffer-creation.md"))
+                    },
+                    (GET) (/guide/compute-intro) => {
+                        guide_template_markdown(include_str!("../content/guide-compute-intro.md"))
+                    },
+                    (GET) (/guide/render-pass-framebuffer) => {
+                        guide_template_markdown(include_str!("../content/guide-render-pass-framebuffer.md"))
+                    },
+                    (GET) (/guide/swapchain-creation) => {
+                        guide_template_markdown(include_str!("../content/guide-swapchain-creation.md"))
+                    },
                     _ => {
-                        if let Some(request) = request.remove_prefix("/guides") {
-                            if request.raw_url().starts_with("/01") {
-                                guide_template_markdown(include_str!("../content/01-getting-started.md"))
-                            } else if request.raw_url().starts_with("/02") {
-                                guide_template_markdown(include_str!("../content/02-first-operation.md"))
-                            } else if request.raw_url().starts_with("/03") {
-                                guide_template_markdown(include_str!("../content/03-window-swapchain.md"))
-                            } else if request.raw_url().starts_with("/04") {
-                                guide_template_markdown(include_str!("../content/04-render-pass.md"))
-                            } else if request.raw_url().starts_with("/05") {
-                                guide_template_markdown(include_str!("../content/05-first-triangle.md"))
-                            } else {
-                                Response::empty_404()
-                            }
-                        } else {
-                            Response::empty_404()
-                        }
+                        main_template(include_str!("../content/404.html"))
+                            .with_status_code(404)
                     }
                 )
             }),

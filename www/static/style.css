@@ -1,7 +1,7 @@
 /*
  * General
  */
-@import url('https://fonts.googleapis.com/css?family=Muli');
+@import url('https://fonts.googleapis.com/css?family=Muli|Acme');
 
 body {
     background-color: #222;
@@ -20,7 +20,8 @@ pre {
     background-color: #111;
     border: 1px dashed #888;
     border-radius: 2px;
-    padding: 0.7em 1.5em;
+    box-shadow: 2px 2px 1px black;
+    padding: 0.9em 1.5em;
 }
 
 /*
@@ -28,21 +29,26 @@ pre {
  */
 header {
     background-color: #854f00;
+    background-image: url(/header_bg.png);
+    background-repeat: no-repeat;
+    background-size: auto 80%;
+    background-position: 5% 70%;
     margin: 0;
     padding: 0;
 }
 
 header h1 {
+    font-family: 'Acme', Verdana, sans-serif;
     font-size: 3em;
     margin: 0;
-    padding: 2em 0 0.4em;
+    padding: 1em 0 0.4em;
     text-align: center;
 }
 
 header h2 {
     font-size: 1.4em;
     margin: 0;
-    margin-bottom: 2em;
+    margin-bottom: 1em;
     padding: 0;
     text-align: center;
 }
@@ -50,7 +56,7 @@ header h2 {
 header ul {
     display: block;
     margin: 0;
-    padding: 0.5em 0;
+    padding: 0.9em 0;
     text-align: center;
 }
 
@@ -58,6 +64,7 @@ header ul li {
     display: inline;
     margin: 0;
     padding: 0;
+    text-transform: lowercase;
 }
 
 header ul li:first-child::before {
@@ -87,6 +94,7 @@ header ul li a:hover {
 
 #guides > nav {
     background-color: #444;
+    font-size: 0.95em;
     padding: 1em 5em 1em 3em;
     flex: 0.2;
     min-width: 10vw;
@@ -106,14 +114,16 @@ header ul li a:hover {
 }
 
 #guides > nav ul {
-    list-style-type: decimal;
-    margin: 0;
+    list-style-type: none;
+    margin: 1.7em 0 0;
     padding: 0;
 }
 
 #guides > nav ul li {
+    border-left: 2px solid rgba(255, 255, 255, 0.1);
     margin: 0;
     padding: 0.1em 0;
+    padding-left: 0.7em;
 }
 
 #guides > div {
