@@ -14,13 +14,21 @@ fn main() {
     let path = if target.contains("windows") {
         // TODO: check the hash of the file to make sure that it is not altered
         Path::new("build/glslangValidator.exe").to_owned()
-
     } else {
-        // Try to initialize submodules. Don't care if it fails, since this code also runs for
-        // the crates.io package.
-        let _ = Command::new("git").arg("submodule").arg("update").arg("--init").status();
-        cmake::build("glslang");
-        Path::new(&env::var("OUT_DIR").unwrap()).join("bin").join("glslangValidator")
+        // Try to find `glslangValidator` in `PATH`
+        let paths = env::var("PATH").unwrap_or("".to_string());
+        env::split_paths(&paths)
+            .flat_map(|path| {
+                let full = path.join("glslangValidator");
+                if full.is_file() { Some(full) } else { None }
+            }).next()
+            .unwrap_or_else(|| {
+                // Try to initialize submodules. Don't care if it fails, since this code also runs for
+                // the crates.io package.
+                let _ = Command::new("git").arg("submodule").arg("update").arg("--init").status();
+                cmake::build("glslang");
+                Path::new(&env::var("OUT_DIR").unwrap()).join("bin").join("glslangValidator")
+            })
     };
 
     if let Err(_) = fs::hard_link(&path, &out_file) {
