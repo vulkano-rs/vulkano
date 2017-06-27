@@ -195,18 +195,14 @@ pub unsafe trait ImageAccess {
         self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
     }
 
-    /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
-    /// This function implementation should remember that it has been called and return `false` if
-    /// it gets called a second time.
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
     ///
-    /// The only way to know that the GPU has stopped accessing a queue is when the image object
-    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
-    /// to a lock) in order to represent a GPU access.
-    ///
-    /// If you call this function, you should call `unlock()` afterwards once the resource is no
-    /// longer in use. As a consequence, the implementation is not expected to automatically
-    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
@@ -214,9 +210,9 @@ pub unsafe trait ImageAccess {
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
     ///
-    /// If you call this function, you should call `unlock()` afterwards once the resource is no
-    /// longer in use. As a consequence, the implementation is not expected to automatically
-    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
