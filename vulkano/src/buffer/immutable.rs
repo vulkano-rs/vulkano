@@ -323,6 +323,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+
+    #[inline]
     fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
         self.inner.key()
     }
@@ -371,6 +376,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn inner(&self) -> BufferInner {
         self.buffer.inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.buffer.size()
     }
 
     #[inline]
