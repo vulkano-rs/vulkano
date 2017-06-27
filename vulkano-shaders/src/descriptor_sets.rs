@@ -29,10 +29,14 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Looping to find all the elements that have the `DescriptorSet` decoration.
     for instruction in doc.instructions.iter() {
         let (variable_id, descriptor_set) = match instruction {
-            &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationDescriptorSet, ref params } => {
+            &parse::Instruction::Decorate {
+                target_id,
+                decoration: enums::Decoration::DecorationDescriptorSet,
+                ref params,
+            } => {
                 (target_id, params[0])
             },
-            _ => continue
+            _ => continue,
         };
 
         // Find which type is pointed to by this variable.
@@ -41,36 +45,52 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         let name = ::name_from_id(doc, variable_id);
 
         // Find the binding point of this descriptor.
-        let binding = doc.instructions.iter().filter_map(|i| {
-            match i {
-                &parse::Instruction::Decorate { target_id, decoration: enums::Decoration::DecorationBinding, ref params } if target_id == variable_id => {
-                    Some(params[0])
-                },
-                _ => None,      // TODO: other types
-            }
-        }).next().expect(&format!("Uniform `{}` is missing a binding", name));
+        let binding = doc.instructions
+            .iter()
+            .filter_map(|i| {
+                match i {
+                    &parse::Instruction::Decorate {
+                        target_id,
+                        decoration: enums::Decoration::DecorationBinding,
+                        ref params,
+                    } if target_id == variable_id => {
+                        Some(params[0])
+                    },
+                    _ => None,      // TODO: other types
+                }
+            })
+            .next()
+            .expect(&format!("Uniform `{}` is missing a binding", name));
 
         // Find informations about the kind of binding for this descriptor.
-        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false).expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)", name, pointed_ty));
+        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false)
+            .expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe \
+                              unimplemented)",
+                             name,
+                             pointed_ty));
 
         descriptors.push(Descriptor {
-            name: name,
-            desc_ty: desc_ty,
-            set: descriptor_set,
-            binding: binding,
-            array_count: array_count,
-            readonly: readonly,
-        });
+                             name: name,
+                             desc_ty: desc_ty,
+                             set: descriptor_set,
+                             binding: binding,
+                             array_count: array_count,
+                             readonly: readonly,
+                         });
     }
 
     // Looping to find all the push constant structs.
     let mut push_constants_size = 0;
     for instruction in doc.instructions.iter() {
         let type_id = match instruction {
-            &parse::Instruction::TypePointer { type_id, storage_class: enums::StorageClass::StorageClassPushConstant, .. } => {
+            &parse::Instruction::TypePointer {
+                type_id,
+                storage_class: enums::StorageClass::StorageClassPushConstant,
+                ..
+            } => {
                 type_id
             },
-            _ => continue
+            _ => continue,
         };
 
         let (_, size, _) = ::structs::type_from_id(doc, type_id);
@@ -79,54 +99,76 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     }
 
     // Writing the body of the `descriptor` method.
-    let descriptor_body = descriptors.iter().map(|d| {
-        format!("({set}, {binding}) => Some(DescriptorDesc {{
+    let descriptor_body = descriptors
+        .iter()
+        .map(|d| {
+            format!(
+                "({set}, {binding}) => Some(DescriptorDesc {{
             ty: {desc_ty},
             array_count: {array_count},
             stages: self.0.clone(),
             readonly: {readonly},
-        }}),", set = d.set, binding = d.binding, desc_ty = d.desc_ty, array_count = d.array_count,
-               readonly = if d.readonly { "true" } else { "false" })
+        }}),",
+                set = d.set,
+                binding = d.binding,
+                desc_ty = d.desc_ty,
+                array_count = d.array_count,
+                readonly = if d.readonly { "true" } else { "false" }
+            )
 
-    }).collect::<Vec<_>>().concat();
+        })
+        .collect::<Vec<_>>()
+        .concat();
 
     let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
 
     // Writing the body of the `num_bindings_in_set` method.
     let num_bindings_in_set_body = {
-        (0 .. num_sets).map(|set| {
-            let num = 1 + descriptors.iter().filter(|d| d.set == set)
-                                     .fold(0, |s, d| cmp::max(s, d.binding));
-            format!("{set} => Some({num}),", set = set, num = num)
-        }).collect::<Vec<_>>().concat()
+        (0 .. num_sets)
+            .map(|set| {
+                     let num = 1 +
+                         descriptors
+                             .iter()
+                             .filter(|d| d.set == set)
+                             .fold(0, |s, d| cmp::max(s, d.binding));
+                     format!("{set} => Some({num}),", set = set, num = num)
+                 })
+            .collect::<Vec<_>>()
+            .concat()
     };
 
     // Writing the body of the `descriptor_by_name_body` method.
-    let descriptor_by_name_body = descriptors.iter().map(|d| {
-        format!(r#"{name:?} => Some(({set}, {binding})),"#,
-                name = d.name, set = d.set, binding = d.binding)
-    }).collect::<Vec<_>>().concat();
+    let descriptor_by_name_body = descriptors
+        .iter()
+        .map(|d| {
+                 format!(r#"{name:?} => Some(({set}, {binding})),"#,
+                         name = d.name,
+                         set = d.set,
+                         binding = d.binding)
+             })
+        .collect::<Vec<_>>()
+        .concat();
 
     // Writing the body of the `num_push_constants_ranges` method.
     let num_push_constants_ranges_body = {
-        if push_constants_size == 0 {
-            "0"
-        } else {
-            "1"
-        }
+        if push_constants_size == 0 { "0" } else { "1" }
     };
 
     // Writing the body of the `push_constants_range` method.
-    let push_constants_range_body = format!(r#"
+    let push_constants_range_body = format!(
+        r#"
         if num != 0 || {pc_size} == 0 {{ return None; }}
         Some(PipelineLayoutDescPcRange {{
             offset: 0,                      // FIXME: not necessarily true
             size: {pc_size},
             stages: ShaderStages::all(),     // FIXME: wrong
         }})
-    "#, pc_size = push_constants_size);
+    "#,
+        pc_size = push_constants_size
+    );
 
-    format!(r#"
+    format!(
+        r#"
         #[derive(Debug, Clone)]
         pub struct Layout(ShaderStages);
 
@@ -168,32 +210,45 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 }}
             }}
         }}
-        "#, num_sets = num_sets, num_bindings_in_set_body = num_bindings_in_set_body,
-            descriptor_by_name_body = descriptor_by_name_body, descriptor_body = descriptor_body,
-            num_push_constants_ranges_body = num_push_constants_ranges_body,
-            push_constants_range_body = push_constants_range_body)
+        "#,
+        num_sets = num_sets,
+        num_bindings_in_set_body = num_bindings_in_set_body,
+        descriptor_by_name_body = descriptor_by_name_body,
+        descriptor_body = descriptor_body,
+        num_push_constants_ranges_body = num_push_constants_ranges_body,
+        push_constants_range_body = push_constants_range_body
+    )
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
 /// type.
 fn pointer_variable_ty(doc: &parse::Spirv, variable: u32) -> u32 {
-    let var_ty = doc.instructions.iter().filter_map(|i| {
-        match i {
-            &parse::Instruction::Variable { result_type_id, result_id, .. } if result_id == variable => {
-                Some(result_type_id)
-            },
-            _ => None
-        }
-    }).next().unwrap();
+    let var_ty = doc.instructions
+        .iter()
+        .filter_map(|i| match i {
+                        &parse::Instruction::Variable {
+                            result_type_id,
+                            result_id,
+                            ..
+                        } if result_id == variable => {
+                            Some(result_type_id)
+                        },
+                        _ => None,
+                    })
+        .next()
+        .unwrap();
 
-    doc.instructions.iter().filter_map(|i| {
-        match i {
-            &parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == var_ty => {
-                Some(type_id)
-            },
-            _ => None
-        }
-    }).next().unwrap()
+    doc.instructions
+        .iter()
+        .filter_map(|i| match i {
+                        &parse::Instruction::TypePointer { result_id, type_id, .. }
+                            if result_id == var_ty => {
+                            Some(type_id)
+                        },
+                        _ => None,
+                    })
+        .next()
+        .unwrap()
 }
 
 /// Returns a `DescriptorDescTy` constructor, a bool indicating whether the descriptor is
@@ -201,8 +256,7 @@ fn pointer_variable_ty(doc: &parse::Spirv, variable: u32) -> u32 {
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
 fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sampled: bool)
-                    -> Option<(String, bool, u64)>
-{
+                    -> Option<(String, bool, u64)> {
     doc.instructions.iter().filter_map(|i| {
         match i {
             &parse::Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {

@@ -42,7 +42,7 @@
 //! graphics pipeline as parameter.
 //!
 //! # Custom pipeline layouts
-//! 
+//!
 //! In some situations, it is better (as in, faster) to share the same descriptor set or sets
 //! between multiple pipelines that each use different descriptors. To do so, you have to create a
 //! pipeline layout object in advance and pass it when you create the pipelines.
@@ -57,10 +57,10 @@ pub use self::traits::PipelineLayoutAbstract;
 pub use self::traits::PipelineLayoutDesc;
 pub use self::traits::PipelineLayoutDescNames;
 pub use self::traits::PipelineLayoutDescPcRange;
-pub use self::traits::PipelineLayoutSuperset;
 pub use self::traits::PipelineLayoutNotSupersetError;
-pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
+pub use self::traits::PipelineLayoutSetsCompatible;
+pub use self::traits::PipelineLayoutSuperset;
 pub use self::union::PipelineLayoutDescUnion;
 
 mod empty;

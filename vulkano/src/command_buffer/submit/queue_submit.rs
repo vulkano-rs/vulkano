@@ -7,11 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ptr;
-use smallvec::SmallVec;
 
 use command_buffer::sys::UnsafeCommandBuffer;
 use device::Queue;
@@ -19,12 +19,12 @@ use sync::Fence;
 use sync::PipelineStages;
 use sync::Semaphore;
 
-use check_errors;
-use vk;
 use Error;
 use OomError;
-use VulkanObject;
 use SynchronizedVulkanObject;
+use VulkanObject;
+use check_errors;
+use vk;
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
@@ -219,7 +219,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
                 pSignalSemaphores: self.signal_semaphores.as_ptr(),
             };
 
-            try!(check_errors(vk.QueueSubmit(*queue, 1, &batch, self.fence)));
+            check_errors(vk.QueueSubmit(*queue, 1, &batch, self.fence))?;
             Ok(())
         }
     }
@@ -232,10 +232,10 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     // TODO: create multiple batches instead
     pub fn merge(mut self, other: Self) -> Self {
         assert!(self.fence == 0 || other.fence == 0,
-               "Can't merge two queue submits that both have a fence");
+                "Can't merge two queue submits that both have a fence");
 
         self.wait_semaphores.extend(other.wait_semaphores);
-        self.dest_stages.extend(other.dest_stages);     // TODO: meh? will be solved if we submit multiple batches
+        self.dest_stages.extend(other.dest_stages); // TODO: meh? will be solved if we submit multiple batches
         self.signal_semaphores.extend(other.signal_semaphores);
         self.command_buffers.extend(other.command_buffers);
 
@@ -271,7 +271,7 @@ impl error::Error for SubmitCommandBufferError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             SubmitCommandBufferError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -288,17 +288,18 @@ impl From<Error> for SubmitCommandBufferError {
     fn from(err: Error) -> SubmitCommandBufferError {
         match err {
             err @ Error::OutOfHostMemory => SubmitCommandBufferError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SubmitCommandBufferError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory =>
+                SubmitCommandBufferError::OomError(OomError::from(err)),
             Error::DeviceLost => SubmitCommandBufferError::DeviceLost,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
     use super::*;
+    use std::time::Duration;
     use sync::Fence;
 
     #[test]

@@ -10,16 +10,16 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use device::Device;
-use device::DeviceOwned;
-use descriptor::descriptor_set::DescriptorsCount;
+use OomError;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
 use descriptor::descriptor_set::DescriptorPoolAllocError;
+use descriptor::descriptor_set::DescriptorsCount;
 use descriptor::descriptor_set::UnsafeDescriptorPool;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use OomError;
+use device::Device;
+use device::DeviceOwned;
 
 /// Standard implementation of a descriptor pool.
 ///
@@ -61,8 +61,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
 
     // TODO: eventually use a lock-free algorithm?
     fn alloc(&self, layout: &UnsafeDescriptorSetLayout)
-             -> Result<StdDescriptorPoolAlloc, OomError>
-    {
+             -> Result<StdDescriptorPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
         // Try find an existing pool with some free space.
@@ -94,10 +93,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
             };
 
             return Ok(StdDescriptorPoolAlloc {
-                pool: pool_arc.clone(),
-                set: Some(alloc),
-                descriptors: *layout.descriptors_count(),
-            });
+                          pool: pool_arc.clone(),
+                          set: Some(alloc),
+                          descriptors: *layout.descriptors_count(),
+                      });
         }
 
         // No existing pool can be used. Create a new one.
@@ -105,7 +104,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         let count = layout.descriptors_count().clone() * 40;
         // Failure to allocate a new pool results in an error for the whole function because
         // there's no way we can recover from that.
-        let mut new_pool = try!(UnsafeDescriptorPool::new(self.device.clone(), &count, 40, true));
+        let mut new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count, 40, true)?;
 
         let alloc = unsafe {
             match new_pool.alloc(Some(layout)) {
@@ -124,18 +123,19 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         };
 
         let pool_obj = Arc::new(Mutex::new(Pool {
-            pool: new_pool,
-            remaining_capacity: count - *layout.descriptors_count(),
-            remaining_sets_count: 40 - 1,
-        }));
+                                               pool: new_pool,
+                                               remaining_capacity: count -
+                                                   *layout.descriptors_count(),
+                                               remaining_sets_count: 40 - 1,
+                                           }));
 
         pools.push(pool_obj.clone());
 
         Ok(StdDescriptorPoolAlloc {
-            pool: pool_obj,
-            set: Some(alloc),
-            descriptors: *layout.descriptors_count(),
-        })
+               pool: pool_obj,
+               set: Some(alloc),
+               descriptors: *layout.descriptors_count(),
+           })
     }
 }
 

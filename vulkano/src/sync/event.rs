@@ -11,12 +11,12 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use device::DeviceOwned;
 use OomError;
 use Success;
 use VulkanObject;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
 use vk;
 
 /// Used to block the GPU execution until an event on the CPU occurs.
@@ -42,22 +42,24 @@ impl Event {
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
                 sType: vk::STRUCTURE_TYPE_EVENT_CREATE_INFO,
                 pNext: 0 as *const _, //ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
             };
 
             let mut output = mem::uninitialized();
             let vk = device.pointers();
-            try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
-                                             ptr::null(), &mut output)));
+            check_errors(vk.CreateEvent(device.internal_object(),
+                                        &INFOS,
+                                        ptr::null(),
+                                        &mut output))?;
             output
         };
 
         Ok(Event {
-            device: device,
-            event: event,
-        })
+               device: device,
+               event: event,
+           })
     }
-    
+
     /// Builds a new event.
     ///
     /// # Panic
@@ -74,12 +76,12 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             self.event)));
+            let result = check_errors(vk.GetEventStatus(self.device.internal_object(),
+                                                        self.event))?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }
@@ -89,7 +91,7 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.SetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.SetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }
@@ -112,7 +114,7 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.ResetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }

@@ -66,13 +66,13 @@
 //!
 //! ```
 //! use vulkano::memory::DeviceMemory;
-//! 
+//!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! // Taking the first memory type for the sake of this example.
 //! let ty = device.physical_device().memory_types().next().unwrap();
-//! 
+//!
 //! let alloc = DeviceMemory::alloc(device.clone(), ty, 1024).expect("Failed to allocate memory");
-//! 
+//!
 //! // The memory is automatically free'd when `alloc` is destroyed.
 //! ```
 //!

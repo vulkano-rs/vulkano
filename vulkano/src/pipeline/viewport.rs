@@ -47,6 +47,7 @@
 //!
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
+
 use std::ops::Range;
 use vk;
 
@@ -121,7 +122,7 @@ impl ViewportsState {
 /// State of a single viewport.
 // FIXME: check that:
 //        x + width must be less than or equal to viewportBoundsRange[0]
-//        y + height must be less than or equal to viewportBoundsRange[1] 
+//        y + height must be less than or equal to viewportBoundsRange[1]
 #[derive(Debug, Clone)]
 pub struct Viewport {
     /// Coordinates in pixels of the top-left hand corner of the viewport.
@@ -158,7 +159,7 @@ impl Into<vk::Viewport> for Viewport {
 /// State of a single scissor box.
 // FIXME: add a check:
 //      Evaluation of (offset.x + extent.width) must not cause a signed integer addition overflow
-//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow 
+//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow
 #[derive(Debug, Copy, Clone)]
 pub struct Scissor {
     /// Coordinates in pixels of the top-left hand corner of the box.

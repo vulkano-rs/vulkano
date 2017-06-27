@@ -51,7 +51,7 @@ pub struct Capabilities {
     pub supported_usage_flags: ImageUsage,
 
     /// List of formats supported for the swapchain.
-    pub supported_formats: Vec<(Format, ColorSpace)>,       // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
+    pub supported_formats: Vec<(Format, ColorSpace)>, // TODO: https://github.com/KhronosGroup/Vulkan-Docs/issues/207
 
     /// List of present modes that are supported. `Fifo` is always guaranteed to be supported.
     pub present_modes: SupportedPresentModes,
@@ -103,7 +103,7 @@ pub fn supported_present_modes_from_list<I>(elem: I) -> SupportedPresentModes
             vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
             vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
             vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
-            _ => panic!("Wrong value for vk::PresentModeKHR")
+            _ => panic!("Wrong value for vk::PresentModeKHR"),
         }
     }
     result
@@ -148,10 +148,22 @@ impl Iterator for SupportedPresentModesIter {
 
     #[inline]
     fn next(&mut self) -> Option<PresentMode> {
-        if self.0.immediate { self.0.immediate = false; return Some(PresentMode::Immediate); }
-        if self.0.mailbox { self.0.mailbox = false; return Some(PresentMode::Mailbox); }
-        if self.0.fifo { self.0.fifo = false; return Some(PresentMode::Fifo); }
-        if self.0.relaxed { self.0.relaxed = false; return Some(PresentMode::Relaxed); }
+        if self.0.immediate {
+            self.0.immediate = false;
+            return Some(PresentMode::Immediate);
+        }
+        if self.0.mailbox {
+            self.0.mailbox = false;
+            return Some(PresentMode::Mailbox);
+        }
+        if self.0.fifo {
+            self.0.fifo = false;
+            return Some(PresentMode::Fifo);
+        }
+        if self.0.relaxed {
+            self.0.relaxed = false;
+            return Some(PresentMode::Relaxed);
+        }
         None
     }
 }
@@ -214,10 +226,18 @@ pub struct SupportedCompositeAlpha {
 
 pub fn supported_composite_alpha_from_bits(val: u32) -> SupportedCompositeAlpha {
     let mut result = SupportedCompositeAlpha::none();
-    if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 { result.opaque = true; }
-    if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 { result.pre_multiplied = true; }
-    if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 { result.post_multiplied = true; }
-    if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 { result.inherit = true; }
+    if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 {
+        result.opaque = true;
+    }
+    if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 {
+        result.pre_multiplied = true;
+    }
+    if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 {
+        result.post_multiplied = true;
+    }
+    if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 {
+        result.inherit = true;
+    }
     result
 }
 
@@ -260,10 +280,22 @@ impl Iterator for SupportedCompositeAlphaIter {
 
     #[inline]
     fn next(&mut self) -> Option<CompositeAlpha> {
-        if self.0.opaque { self.0.opaque = false; return Some(CompositeAlpha::Opaque); }
-        if self.0.pre_multiplied { self.0.pre_multiplied = false; return Some(CompositeAlpha::PreMultiplied); }
-        if self.0.post_multiplied { self.0.post_multiplied = false; return Some(CompositeAlpha::PostMultiplied); }
-        if self.0.inherit { self.0.inherit = false; return Some(CompositeAlpha::Inherit); }
+        if self.0.opaque {
+            self.0.opaque = false;
+            return Some(CompositeAlpha::Opaque);
+        }
+        if self.0.pre_multiplied {
+            self.0.pre_multiplied = false;
+            return Some(CompositeAlpha::PreMultiplied);
+        }
+        if self.0.post_multiplied {
+            self.0.post_multiplied = false;
+            return Some(CompositeAlpha::PostMultiplied);
+        }
+        if self.0.inherit {
+            self.0.inherit = false;
+            return Some(CompositeAlpha::Inherit);
+        }
         None
     }
 }
@@ -282,7 +314,8 @@ pub struct SupportedSurfaceTransforms {
     pub inherit: bool,
 }
 
-pub fn surface_transforms_from_bits(val: vk::SurfaceTransformFlagsKHR) -> SupportedSurfaceTransforms {
+pub fn surface_transforms_from_bits(val: vk::SurfaceTransformFlagsKHR)
+                                    -> SupportedSurfaceTransforms {
     macro_rules! v {
         ($val:expr, $out:ident, $e:expr, $f:ident) => (
             if ($val & $e) != 0 { $out.$f = true; }
@@ -290,17 +323,38 @@ pub fn surface_transforms_from_bits(val: vk::SurfaceTransformFlagsKHR) -> Suppor
     }
 
     let mut result = SupportedSurfaceTransforms::none();
-    v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, identity);
-    v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, rotate90);
-    v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, rotate180);
-    v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, rotate270);
-    v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, horizontal_mirror);
-    v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-                    horizontal_mirror_rotate90);
-    v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-                    horizontal_mirror_rotate180);
-    v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-                    horizontal_mirror_rotate270);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+       identity);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+       rotate90);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
+       rotate180);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
+       rotate270);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
+       horizontal_mirror);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
+       horizontal_mirror_rotate90);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
+       horizontal_mirror_rotate180);
+    v!(val,
+       result,
+       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+       horizontal_mirror_rotate270);
     v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
     result
 }
@@ -354,15 +408,42 @@ impl Iterator for SupportedSurfaceTransformsIter {
 
     #[inline]
     fn next(&mut self) -> Option<SurfaceTransform> {
-        if self.0.identity { self.0.identity = false; return Some(SurfaceTransform::Identity); }
-        if self.0.rotate90 { self.0.rotate90 = false; return Some(SurfaceTransform::Rotate90); }
-        if self.0.rotate180 { self.0.rotate180 = false; return Some(SurfaceTransform::Rotate180); }
-        if self.0.rotate270 { self.0.rotate270 = false; return Some(SurfaceTransform::Rotate270); }
-        if self.0.horizontal_mirror { self.0.horizontal_mirror = false; return Some(SurfaceTransform::HorizontalMirror); }
-        if self.0.horizontal_mirror_rotate90 { self.0.horizontal_mirror_rotate90 = false; return Some(SurfaceTransform::HorizontalMirrorRotate90); }
-        if self.0.horizontal_mirror_rotate180 { self.0.horizontal_mirror_rotate180 = false; return Some(SurfaceTransform::HorizontalMirrorRotate180); }
-        if self.0.horizontal_mirror_rotate270 { self.0.horizontal_mirror_rotate270 = false; return Some(SurfaceTransform::HorizontalMirrorRotate270); }
-        if self.0.inherit { self.0.inherit = false; return Some(SurfaceTransform::Inherit); }
+        if self.0.identity {
+            self.0.identity = false;
+            return Some(SurfaceTransform::Identity);
+        }
+        if self.0.rotate90 {
+            self.0.rotate90 = false;
+            return Some(SurfaceTransform::Rotate90);
+        }
+        if self.0.rotate180 {
+            self.0.rotate180 = false;
+            return Some(SurfaceTransform::Rotate180);
+        }
+        if self.0.rotate270 {
+            self.0.rotate270 = false;
+            return Some(SurfaceTransform::Rotate270);
+        }
+        if self.0.horizontal_mirror {
+            self.0.horizontal_mirror = false;
+            return Some(SurfaceTransform::HorizontalMirror);
+        }
+        if self.0.horizontal_mirror_rotate90 {
+            self.0.horizontal_mirror_rotate90 = false;
+            return Some(SurfaceTransform::HorizontalMirrorRotate90);
+        }
+        if self.0.horizontal_mirror_rotate180 {
+            self.0.horizontal_mirror_rotate180 = false;
+            return Some(SurfaceTransform::HorizontalMirrorRotate180);
+        }
+        if self.0.horizontal_mirror_rotate270 {
+            self.0.horizontal_mirror_rotate270 = false;
+            return Some(SurfaceTransform::HorizontalMirrorRotate270);
+        }
+        if self.0.inherit {
+            self.0.inherit = false;
+            return Some(SurfaceTransform::Inherit);
+        }
         None
     }
 }
@@ -497,6 +578,6 @@ pub fn color_space_from_num(val: u32) -> ColorSpace {
         vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
         vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
         vk::COLOR_SPACE_PASS_THROUGH_EXT => ColorSpace::PassThrough,
-        _ => panic!("Wrong value for color space enum")
+        _ => panic!("Wrong value for color space enum"),
     }
 }

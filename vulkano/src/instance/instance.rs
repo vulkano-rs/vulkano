@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
@@ -16,19 +17,18 @@ use std::mem;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
-use instance::loader;
-use instance::loader::LoadingError;
-use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
+use check_errors;
+use instance::loader;
+use instance::loader::LoadingError;
 use vk;
 
 use features::Features;
-use version::Version;
 use instance::{InstanceExtensions, RawInstanceExtensions};
+use version::Version;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -114,36 +114,41 @@ impl Instance {
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext,
-                           layers: L) -> Result<Arc<Instance>, InstanceCreationError>
+    pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
+                           -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>,
-              Ext: Into<RawInstanceExtensions>,
+              Ext: Into<RawInstanceExtensions>
     {
-        let layers = layers.into_iter().map(|&layer| {
-            CString::new(layer).unwrap()
-        }).collect::<SmallVec<[_; 16]>>();
+        let layers = layers
+            .into_iter()
+            .map(|&layer| CString::new(layer).unwrap())
+            .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos, extensions.into(), layers)
     }
 
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
-                 layers: SmallVec<[CString; 16]>) -> Result<Arc<Instance>, InstanceCreationError>
-    {
+                 layers: SmallVec<[CString; 16]>)
+                 -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
         let def = Default::default();
         let app_infos = match app_infos {
             Some(a) => Some(a),
-            None => Some(&def)
+            None => Some(&def),
         };
 
         // Building the CStrings from the `str`s within `app_infos`.
         // They need to be created ahead of time, since we pass pointers to them.
         let app_infos_strings = if let Some(app_infos) = app_infos {
-            Some((
-                app_infos.application_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
-                app_infos.engine_name.clone().map(|n| CString::new(n.as_bytes().to_owned()).unwrap())
-            ))
+            Some((app_infos
+                      .application_name
+                      .clone()
+                      .map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
+                  app_infos
+                      .engine_name
+                      .clone()
+                      .map(|n| CString::new(n.as_bytes().to_owned()).unwrap())))
         } else {
             None
         };
@@ -153,11 +158,33 @@ impl Instance {
             Some(vk::ApplicationInfo {
                 sType: vk::STRUCTURE_TYPE_APPLICATION_INFO,
                 pNext: ptr::null(),
-                pApplicationName: app_infos_strings.as_ref().unwrap().0.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
-                applicationVersion: app_infos.application_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
-                pEngineName: app_infos_strings.as_ref().unwrap().1.as_ref().map(|s| s.as_ptr()).unwrap_or(ptr::null()),
-                engineVersion: app_infos.engine_version.map(|v| v.into_vulkan_version()).unwrap_or(0),
-                apiVersion: Version { major: 1, minor: 0, patch: 0 }.into_vulkan_version(),      // TODO:
+                pApplicationName: app_infos_strings
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .as_ref()
+                    .map(|s| s.as_ptr())
+                    .unwrap_or(ptr::null()),
+                applicationVersion: app_infos
+                    .application_version
+                    .map(|v| v.into_vulkan_version())
+                    .unwrap_or(0),
+                pEngineName: app_infos_strings
+                    .as_ref()
+                    .unwrap()
+                    .1
+                    .as_ref()
+                    .map(|s| s.as_ptr())
+                    .unwrap_or(ptr::null()),
+                engineVersion: app_infos
+                    .engine_version
+                    .map(|v| v.into_vulkan_version())
+                    .unwrap_or(0),
+                apiVersion: Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                }.into_vulkan_version(), // TODO:
             })
 
         } else {
@@ -165,15 +192,17 @@ impl Instance {
         };
 
         // FIXME: check whether each layer is supported
-        let layers_ptr = layers.iter().map(|layer| {
-            layer.as_ptr()
-        }).collect::<SmallVec<[_; 16]>>();
+        let layers_ptr = layers
+            .iter()
+            .map(|layer| layer.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
 
-        let extensions_list = extensions.iter().map(|extension| {
-            extension.as_ptr()
-        }).collect::<SmallVec<[_; 32]>>();
+        let extensions_list = extensions
+            .iter()
+            .map(|extension| extension.as_ptr())
+            .collect::<SmallVec<[_; 32]>>();
 
-        let entry_points = try!(loader::entry_points());
+        let entry_points = loader::entry_points()?;
 
         // Creating the Vulkan instance.
         let instance = unsafe {
@@ -193,26 +222,26 @@ impl Instance {
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
-            try!(check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output)));
+            check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
             output
         };
 
         // Loading the function pointers of the newly-created instance.
         let vk = {
-            let f = loader::static_functions().unwrap();        // TODO: return proper error
+            let f = loader::static_functions().unwrap(); // TODO: return proper error
             vk::InstancePointers::load(|name| unsafe {
-                mem::transmute(f.GetInstanceProcAddr(instance, name.as_ptr()))
-            })
+                                           mem::transmute(f.GetInstanceProcAddr(instance,
+                                                                                name.as_ptr()))
+                                       })
         };
 
         // Enumerating all physical devices.
         let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut())));
+            check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut()))?;
 
             let mut devices = Vec::with_capacity(num as usize);
-            try!(check_errors(vk.EnumeratePhysicalDevices(instance, &mut num,
-                                                          devices.as_mut_ptr())));
+            check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, devices.as_mut_ptr()))?;
             devices.set_len(num as usize);
             devices
         };
@@ -229,13 +258,13 @@ impl Instance {
         };
 
         Ok(Arc::new(Instance {
-            instance: instance,
-            //alloc: None,
-            physical_devices: physical_devices,
-            vk: vk,
-            extensions: extensions,
-            layers: layers,
-        }))
+                        instance: instance,
+                        //alloc: None,
+                        physical_devices: physical_devices,
+                        vk: vk,
+                        extensions: extensions,
+                        layers: layers,
+                    }))
     }
 
     /// Initialize all physical devices
@@ -255,8 +284,7 @@ impl Instance {
                 vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, ptr::null_mut());
 
                 let mut families = Vec::with_capacity(num as usize);
-                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num,
-                                                          families.as_mut_ptr());
+                vk.GetPhysicalDeviceQueueFamilyProperties(device, &mut num, families.as_mut_ptr());
                 families.set_len(num as usize);
                 families
             };
@@ -274,20 +302,22 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                device: device,
-                properties: properties,
-                memory: memory,
-                queue_families: queue_families,
-                available_features: Features::from(available_features),
-            });
+                            device: device,
+                            properties: properties,
+                            memory: memory,
+                            queue_families: queue_families,
+                            available_features: Features::from(available_features),
+                        });
         }
         output
     }
 
     /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
     /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
-    fn init_physical_devices2(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>,
-                              extensions: &InstanceExtensions) -> Vec<PhysicalDeviceInfos> {
+    fn init_physical_devices2(vk: &vk::InstancePointers,
+                              physical_devices: Vec<vk::PhysicalDevice>,
+                              extensions: &InstanceExtensions)
+                              -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
@@ -306,17 +336,23 @@ impl Instance {
                 let mut num = 0;
                 vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num, ptr::null_mut());
 
-                let mut families = (0 .. num).map(|_| {
-                    vk::QueueFamilyProperties2KHR {
-                        sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
-                        pNext: ptr::null_mut(),
-                        queueFamilyProperties: mem::uninitialized(),
-                    }
-                }).collect::<Vec<_>>();
+                let mut families = (0 .. num)
+                    .map(|_| {
+                             vk::QueueFamilyProperties2KHR {
+                                 sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
+                                 pNext: ptr::null_mut(),
+                                 queueFamilyProperties: mem::uninitialized(),
+                             }
+                         })
+                    .collect::<Vec<_>>();
 
-                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num,
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device,
+                                                              &mut num,
                                                               families.as_mut_ptr());
-                families.into_iter().map(|family| family.queueFamilyProperties).collect()
+                families
+                    .into_iter()
+                    .map(|family| family.queueFamilyProperties)
+                    .collect()
             };
 
             let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
@@ -340,12 +376,12 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                device: device,
-                properties: properties,
-                memory: memory,
-                queue_families: queue_families,
-                available_features: Features::from(available_features),
-            });
+                            device: device,
+                            properties: properties,
+                            memory: memory,
+                            queue_families: queue_families,
+                            available_features: Features::from(available_features),
+                        });
         }
         output
     }
@@ -498,7 +534,7 @@ impl error::Error for InstanceCreationError {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -534,7 +570,7 @@ impl From<Error> for InstanceCreationError {
             Error::LayerNotPresent => InstanceCreationError::LayerNotPresent,
             Error::ExtensionNotPresent => InstanceCreationError::ExtensionNotPresent,
             Error::IncompatibleDriver => InstanceCreationError::IncompatibleDriver,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -615,9 +651,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
             Some(PhysicalDevice {
-                instance: instance,
-                device: index,
-            })
+                     instance: instance,
+                     device: index,
+                 })
         } else {
             None
         }
@@ -651,11 +687,14 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the human-readable name of the device.
     #[inline]
-    pub fn name(&self) -> String {  // FIXME: for some reason this panics if you use a `&str`
+    pub fn name(&self) -> String {
+        // FIXME: for some reason this panics if you use a `&str`
         unsafe {
             let val = self.infos().properties.deviceName;
             let val = CStr::from_ptr(val.as_ptr());
-            val.to_str().expect("physical device name contained non-UTF8 characters").to_owned()
+            val.to_str()
+                .expect("physical device name contained non-UTF8 characters")
+                .to_owned()
         }
     }
 
@@ -676,13 +715,15 @@ impl<'a> PhysicalDevice<'a> {
     /// ```
     #[inline]
     pub fn ty(&self) -> PhysicalDeviceType {
-        match self.instance.physical_devices[self.device].properties.deviceType {
+        match self.instance.physical_devices[self.device]
+            .properties
+            .deviceType {
             vk::PHYSICAL_DEVICE_TYPE_OTHER => PhysicalDeviceType::Other,
             vk::PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU => PhysicalDeviceType::IntegratedGpu,
             vk::PHYSICAL_DEVICE_TYPE_DISCRETE_GPU => PhysicalDeviceType::DiscreteGpu,
             vk::PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU => PhysicalDeviceType::VirtualGpu,
             vk::PHYSICAL_DEVICE_TYPE_CPU => PhysicalDeviceType::Cpu,
-            _ => panic!("Unrecognized Vulkan device type")
+            _ => panic!("Unrecognized Vulkan device type"),
         }
     }
 
@@ -713,9 +754,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn queue_family_by_id(&self, id: u32) -> Option<QueueFamily<'a>> {
         if (id as usize) < self.infos().queue_families.len() {
             Some(QueueFamily {
-                physical_device: *self,
-                id: id,
-            })
+                     physical_device: *self,
+                     id: id,
+                 })
 
         } else {
             None
@@ -736,9 +777,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType<'a>> {
         if id < self.infos().memory.memoryTypeCount {
             Some(MemoryType {
-                physical_device: *self,
-                id: id,
-            })
+                     physical_device: *self,
+                     id: id,
+                 })
 
         } else {
             None
@@ -759,9 +800,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap<'a>> {
         if id < self.infos().memory.memoryHeapCount {
             Some(MemoryHeap {
-                physical_device: *self,
-                id: id,
-            })
+                     physical_device: *self,
+                     id: id,
+                 })
 
         } else {
             None
@@ -803,7 +844,8 @@ impl<'a> PhysicalDevice<'a> {
     /// Can be stored in a configuration file, so that you can retrieve the device again the next
     /// time the program is run.
     #[inline]
-    pub fn uuid(&self) -> &[u8; 16] {   // must be equal to vk::UUID_SIZE
+    pub fn uuid(&self) -> &[u8; 16] {
+        // must be equal to vk::UUID_SIZE
         &self.infos().properties.pipelineCacheUUID
     }
 
@@ -925,8 +967,7 @@ impl<'a> QueueFamily<'a> {
     /// > operations are ever added to Vulkan.
     #[inline]
     pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 ||
-            self.supports_graphics() ||
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 || self.supports_graphics() ||
             self.supports_compute()
     }
 
@@ -976,7 +1017,8 @@ impl<'a> Iterator for QueueFamiliesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for QueueFamiliesIter<'a> {}
+impl<'a> ExactSizeIterator for QueueFamiliesIter<'a> {
+}
 
 /// Represents a memory type in a physical device.
 #[derive(Debug, Copy, Clone)]
@@ -1002,7 +1044,10 @@ impl<'a> MemoryType<'a> {
     #[inline]
     pub fn heap(&self) -> MemoryHeap<'a> {
         let heap_id = self.physical_device.infos().memory.memoryTypes[self.id as usize].heapIndex;
-        MemoryHeap { physical_device: self.physical_device, id: heap_id }
+        MemoryHeap {
+            physical_device: self.physical_device,
+            id: heap_id,
+        }
     }
 
     /// Returns true if the memory type is located on the device, which means that it's the most
@@ -1087,7 +1132,8 @@ impl<'a> Iterator for MemoryTypesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for MemoryTypesIter<'a> {}
+impl<'a> ExactSizeIterator for MemoryTypesIter<'a> {
+}
 
 /// Represents a memory heap in a physical device.
 #[derive(Debug, Copy, Clone)]
@@ -1156,7 +1202,8 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
+impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {
+}
 
 /// Limits of a physical device.
 pub struct Limits<'a> {
@@ -1300,12 +1347,12 @@ mod tests {
 
         let phys = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let queue_family = match phys.queue_families().next() {
             Some(q) => q,
-            None => return
+            None => return,
         };
 
         let by_id = phys.queue_family_by_id(queue_family.id()).unwrap();

@@ -12,10 +12,10 @@ use std::error;
 use std::fmt;
 use std::mem;
 
+use VulkanObject;
 use buffer::BufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use VulkanObject;
 
 /// Checks whether an update buffer command is valid.
 ///
@@ -28,7 +28,8 @@ pub fn check_update_buffer<B, D>(device: &Device, buffer: &B, data: &D)
     where B: ?Sized + BufferAccess,
           D: ?Sized
 {
-    assert_eq!(buffer.inner().buffer.device().internal_object(), device.internal_object());
+    assert_eq!(buffer.inner().buffer.device().internal_object(),
+               device.internal_object());
 
     if !buffer.inner().buffer.usage_transfer_dest() {
         return Err(CheckUpdateBufferError::BufferMissingUsage);

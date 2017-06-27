@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
 use image::ImageAccess;
+use std::iter;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -74,7 +74,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
         match set {
             0 => Some(self.num_bindings()),
-            _ => None
+            _ => None,
         }
     }
 
@@ -82,7 +82,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         match set {
             0 => self.descriptor(binding),
-            _ => None
+            _ => None,
         }
     }
 
@@ -185,4 +185,29 @@ macro_rules! impl_collection {
     ($i:ident) => ();
 }
 
-impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
+impl_collection!(Z,
+                 Y,
+                 X,
+                 W,
+                 V,
+                 U,
+                 T,
+                 S,
+                 R,
+                 Q,
+                 P,
+                 O,
+                 N,
+                 M,
+                 L,
+                 K,
+                 J,
+                 I,
+                 H,
+                 G,
+                 F,
+                 E,
+                 D,
+                 C,
+                 B,
+                 A);

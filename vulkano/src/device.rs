@@ -89,10 +89,12 @@
 //!
 //! TODO: write
 
+use fnv::FnvHasher;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::fmt;
 use std::error;
+use std::fmt;
 use std::hash::BuildHasherDefault;
 use std::mem;
 use std::ops::Deref;
@@ -101,8 +103,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
-use smallvec::SmallVec;
-use fnv::FnvHasher;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
@@ -129,15 +129,18 @@ pub struct Device {
     vk: vk::DevicePointers,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
-    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
+    standard_command_pools:
+        Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
 }
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
 // them for the device itself.
-unsafe impl Send for Device {}
-unsafe impl Sync for Device {}
+unsafe impl Send for Device {
+}
+unsafe impl Sync for Device {
+}
 
 impl Device {
     /// Builds a new Vulkan device for the given physical device.
@@ -161,10 +164,10 @@ impl Device {
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
     pub fn new<'a, I, Ext>(phys: &'a PhysicalDevice, requested_features: &Features,
-                               extensions: Ext, queue_families: I)
+                           extensions: Ext, queue_families: I)
                            -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
-              Ext: Into<RawDeviceExtensions>,
+              Ext: Into<RawDeviceExtensions>
     {
         let queue_families = queue_families.into_iter();
 
@@ -186,14 +189,16 @@ impl Device {
         // Because there's no way to query the list of layers enabled for an instance, we need
         // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
         // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = phys.instance().loaded_layers().map(|layer| {
-            layer.as_ptr()
-        }).collect::<SmallVec<[_; 16]>>();
+        let layers_ptr = phys.instance()
+            .loaded_layers()
+            .map(|layer| layer.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
 
         let extensions = extensions.into();
-        let extensions_list = extensions.iter().map(|extension| {
-            extension.as_ptr()
-        }).collect::<SmallVec<[_; 16]>>();
+        let extensions_list = extensions
+            .iter()
+            .map(|extension| extension.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
 
         // device creation
         let device = unsafe {
@@ -223,16 +228,19 @@ impl Device {
             }
 
             // turning `queues` into an array of `vkDeviceQueueCreateInfo` suitable for Vulkan
-            let queues = queues.iter().map(|&(queue_id, ref priorities)| {
-                vk::DeviceQueueCreateInfo {
-                    sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    pNext: ptr::null(),
-                    flags: 0,   // reserved
-                    queueFamilyIndex: queue_id,
-                    queueCount: priorities.len() as u32,
-                    pQueuePriorities: priorities.as_ptr()
-                }
-            }).collect::<SmallVec<[_; 16]>>();
+            let queues = queues
+                .iter()
+                .map(|&(queue_id, ref priorities)| {
+                    vk::DeviceQueueCreateInfo {
+                        sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                        pNext: ptr::null(),
+                        flags: 0, // reserved
+                        queueFamilyIndex: queue_id,
+                        queueCount: priorities.len() as u32,
+                        pQueuePriorities: priorities.as_ptr(),
+                    }
+                })
+                .collect::<SmallVec<[_; 16]>>();
 
             // TODO: The plan regarding `robustBufferAccess` is to check the shaders' code to see
             //       if they can possibly perform out-of-bounds reads and writes. If the user tries
@@ -256,7 +264,7 @@ impl Device {
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
                 enabledLayerCount: layers_ptr.len() as u32,
@@ -267,27 +275,30 @@ impl Device {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk_i.CreateDevice(phys.internal_object(), &infos,
-                                                ptr::null(), &mut output)));
+            check_errors(vk_i.CreateDevice(phys.internal_object(),
+                                           &infos,
+                                           ptr::null(),
+                                           &mut output))?;
             output
         };
 
         // loading the function pointers of the newly-created device
-        let vk = vk::DevicePointers::load(|name| {
-            unsafe { vk_i.GetDeviceProcAddr(device, name.as_ptr()) as *const _ }
-        });
+        let vk = vk::DevicePointers::load(|name| unsafe {
+                                              vk_i.GetDeviceProcAddr(device, name.as_ptr()) as
+                                                  *const _
+                                          });
 
         let device = Arc::new(Device {
-            instance: phys.instance().clone(),
-            physical_device: phys.index(),
-            device: device,
-            vk: vk,
-            standard_pool: Mutex::new(Weak::new()),
-            standard_descriptor_pool: Mutex::new(Weak::new()),
-            standard_command_pools: Mutex::new(Default::default()),
-            features: requested_features.clone(),
-            extensions: (&extensions).into(),
-        });
+                                  instance: phys.instance().clone(),
+                                  physical_device: phys.index(),
+                                  device: device,
+                                  vk: vk,
+                                  standard_pool: Mutex::new(Weak::new()),
+                                  standard_descriptor_pool: Mutex::new(Weak::new()),
+                                  standard_command_pools: Mutex::new(Default::default()),
+                                  features: requested_features.clone(),
+                                  extensions: (&extensions).into(),
+                              });
 
         // Iterator for the produced queues.
         let output_queues = QueuesIter {
@@ -317,7 +328,7 @@ impl Device {
     /// while this function is waiting.
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
-        try!(check_errors(self.vk.DeviceWaitIdle(self.device)));
+        check_errors(self.vk.DeviceWaitIdle(self.device))?;
         Ok(())
     }
 
@@ -397,7 +408,7 @@ impl Device {
                 let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 entry.insert(Arc::downgrade(&new_pool));
                 new_pool
-            }
+            },
         }
     }
 }
@@ -439,7 +450,10 @@ pub unsafe trait DeviceOwned {
     fn device(&self) -> &Arc<Device>;
 }
 
-unsafe impl<T> DeviceOwned for T where T: Deref, T::Target: DeviceOwned {
+unsafe impl<T> DeviceOwned for T
+    where T: Deref,
+          T::Target: DeviceOwned
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         (**self).device()
@@ -460,20 +474,22 @@ impl Iterator for QueuesIter {
         unsafe {
             let &(family, id) = match self.families_and_ids.get(self.next_queue) {
                 Some(a) => a,
-                None => return None
+                None => return None,
             };
 
             self.next_queue += 1;
 
             let mut output = mem::uninitialized();
-            self.device.vk.GetDeviceQueue(self.device.device, family, id, &mut output);
+            self.device
+                .vk
+                .GetDeviceQueue(self.device.device, family, id, &mut output);
 
             Some(Arc::new(Queue {
-                queue: Mutex::new(output),
-                device: self.device.clone(),
-                family: family,
-                id: id,
-            }))
+                              queue: Mutex::new(output),
+                              device: self.device.clone(),
+                              family: family,
+                              id: id,
+                          }))
         }
     }
 
@@ -484,7 +500,8 @@ impl Iterator for QueuesIter {
     }
 }
 
-impl ExactSizeIterator for QueuesIter {}
+impl ExactSizeIterator for QueuesIter {
+}
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -562,7 +579,7 @@ impl From<Error> for DeviceCreationError {
             Error::ExtensionNotPresent => DeviceCreationError::ExtensionNotPresent,
             Error::FeatureNotPresent => DeviceCreationError::FeatureNotPresent,
             Error::TooManyObjects => DeviceCreationError::TooManyObjects,
-            _ => panic!("Unexpected error value: {}", err as i32)
+            _ => panic!("Unexpected error value: {}", err as i32),
         }
     }
 }
@@ -574,7 +591,7 @@ pub struct Queue {
     queue: Mutex<vk::Queue>,
     device: Arc<Device>,
     family: u32,
-    id: u32,    // id within family
+    id: u32, // id within family
 }
 
 impl Queue {
@@ -587,15 +604,17 @@ impl Queue {
     /// Returns true if this is the same queue as another one.
     #[inline]
     pub fn is_same(&self, other: &Queue) -> bool {
-        self.id == other.id &&
-            self.family == other.family &&
+        self.id == other.id && self.family == other.family &&
             self.device.internal_object() == other.device.internal_object()
     }
 
     /// Returns the family this queue belongs to.
     #[inline]
     pub fn family(&self) -> QueueFamily {
-        self.device.physical_device().queue_family_by_id(self.family).unwrap()
+        self.device
+            .physical_device()
+            .queue_family_by_id(self.family)
+            .unwrap()
     }
 
     /// Returns the index of this queue within its family.
@@ -612,7 +631,7 @@ impl Queue {
         unsafe {
             let vk = self.device.pointers();
             let queue = self.queue.lock().unwrap();
-            try!(check_errors(vk.QueueWaitIdle(*queue)));
+            check_errors(vk.QueueWaitIdle(*queue))?;
             Ok(())
         }
     }
@@ -629,12 +648,12 @@ unsafe impl SynchronizedVulkanObject for Queue {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use device::Device;
     use device::DeviceCreationError;
     use device::DeviceExtensions;
     use features::Features;
     use instance;
+    use std::sync::Arc;
 
     #[test]
     fn one_ref() {
@@ -647,15 +666,18 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
         let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
 
-        match Device::new(&physical, &Features::none(), &DeviceExtensions::none(), queues) {
+        match Device::new(&physical,
+                            &Features::none(),
+                            &DeviceExtensions::none(),
+                            queues) {
             Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 
@@ -664,7 +686,7 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
@@ -675,9 +697,12 @@ mod tests {
             return;
         }
 
-        match Device::new(&physical, &features, &DeviceExtensions::none(), Some((family, 1.0))) {
+        match Device::new(&physical,
+                            &features,
+                            &DeviceExtensions::none(),
+                            Some((family, 1.0))) {
             Err(DeviceCreationError::FeatureNotPresent) => return,     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 
@@ -686,23 +711,25 @@ mod tests {
         let instance = instance!();
         let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
-            None => return
+            None => return,
         };
 
         let family = physical.queue_families().next().unwrap();
 
-        match Device::new(&physical, &Features::none(),
-                          &DeviceExtensions::none(), Some((family, 1.4)))
-        {
+        match Device::new(&physical,
+                            &Features::none(),
+                            &DeviceExtensions::none(),
+                            Some((family, 1.4))) {
             Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
-            _ => panic!()
+            _ => panic!(),
         };
 
-        match Device::new(&physical, &Features::none(),
-                          &DeviceExtensions::none(), Some((family, -0.2)))
-        {
+        match Device::new(&physical,
+                            &Features::none(),
+                            &DeviceExtensions::none(),
+                            Some((family, -0.2))) {
             Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
-            _ => panic!()
+            _ => panic!(),
         };
     }
 }

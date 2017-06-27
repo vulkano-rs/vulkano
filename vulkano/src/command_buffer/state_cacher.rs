@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use VulkanObject;
 use command_buffer::DynamicState;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
-use VulkanObject;
 use vk;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects

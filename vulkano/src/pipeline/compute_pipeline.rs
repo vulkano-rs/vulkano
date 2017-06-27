@@ -17,24 +17,24 @@ use std::sync::Arc;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayout;
-use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use descriptor::pipeline_layout::PipelineLayoutSuperset;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
+use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use descriptor::pipeline_layout::PipelineLayoutSys;
 use pipeline::shader::ComputeShaderEntryPoint;
 use pipeline::shader::SpecializationConstants;
 
-use device::Device;
-use device::DeviceOwned;
 use Error;
 use OomError;
 use SafeDeref;
 use VulkanObject;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
 use vk;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
@@ -56,15 +56,17 @@ struct Inner {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>,
-                         specialization: &Css) 
-                      -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
+    pub fn new<Css, Csl>(
+        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css)
+        -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants
     {
         unsafe {
             let pipeline_layout = shader.layout().clone().build(device.clone())?;
-            ComputePipeline::with_unchecked_pipeline_layout(device, shader, specialization,
+            ComputePipeline::with_unchecked_pipeline_layout(device,
+                                                            shader,
+                                                            specialization,
                                                             pipeline_layout)
         }
     }
@@ -75,32 +77,32 @@ impl<Pl> ComputePipeline<Pl> {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Css, Csl>(device: Arc<Device>,
-                                          shader: &ComputeShaderEntryPoint<Css, Csl>,
-                                          specialization: &Css,
-                                          pipeline_layout: Pl) 
-                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    pub fn with_pipeline_layout<Css, Csl>(
+        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
+        pipeline_layout: Pl)
+        -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants,
-              Pl: PipelineLayoutAbstract,
+              Pl: PipelineLayoutAbstract
     {
         unsafe {
             PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout, shader.layout())?;
-            ComputePipeline::with_unchecked_pipeline_layout(device, shader, specialization,
+            ComputePipeline::with_unchecked_pipeline_layout(device,
+                                                            shader,
+                                                            specialization,
                                                             pipeline_layout)
         }
     }
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
-    pub unsafe fn with_unchecked_pipeline_layout<Css, Csl>(device: Arc<Device>,
-                                                           shader: &ComputeShaderEntryPoint<Css, Csl>,
-                                                           specialization: &Css,
-                                                           pipeline_layout: Pl) 
-                                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    pub unsafe fn with_unchecked_pipeline_layout<Css, Csl>(
+        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
+        pipeline_layout: Pl)
+        -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
         where Csl: PipelineLayoutDescNames + Clone,
               Css: SpecializationConstants,
-              Pl: PipelineLayoutAbstract,
+              Pl: PipelineLayoutAbstract
     {
         let vk = device.pointers();
 
@@ -138,18 +140,22 @@ impl<Pl> ComputePipeline<Pl> {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateComputePipelines(device.internal_object(), 0,
-                                                        1, &infos, ptr::null(), &mut output)));
+            check_errors(vk.CreateComputePipelines(device.internal_object(),
+                                                   0,
+                                                   1,
+                                                   &infos,
+                                                   ptr::null(),
+                                                   &mut output))?;
             output
         };
 
         Ok(ComputePipeline {
-            inner: Inner {
-                device: device.clone(),
-                pipeline: pipeline,
-            },
-            pipeline_layout: pipeline_layout,
-        })
+               inner: Inner {
+                   device: device.clone(),
+                   pipeline: pipeline,
+               },
+               pipeline_layout: pipeline_layout,
+           })
     }
 }
 
@@ -190,7 +196,8 @@ unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
 }
 
 unsafe impl<T> ComputePipelineAbstract for T
-    where T: SafeDeref, T::Target: ComputePipelineAbstract
+    where T: SafeDeref,
+          T::Target: ComputePipelineAbstract
 {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
@@ -212,7 +219,9 @@ unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     }
 }
 
-unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: PipelineLayoutAbstract {
+unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl>
+    where Pl: PipelineLayoutAbstract
+{
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
         self.layout().sys()
@@ -224,7 +233,9 @@ unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl> where Pl: Pipelin
     }
 }
 
-unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl> where Pl: PipelineLayoutDesc {
+unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
+    where Pl: PipelineLayoutDesc
+{
     #[inline]
     fn num_sets(&self) -> usize {
         self.pipeline_layout.num_sets()
@@ -251,7 +262,9 @@ unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl> where Pl: PipelineLay
     }
 }
 
-unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl> where Pl: PipelineLayoutDescNames {
+unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl>
+    where Pl: PipelineLayoutDescNames
+{
     #[inline]
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
         self.pipeline_layout.descriptor_by_name(name)
@@ -301,12 +314,10 @@ impl error::Error for ComputePipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             ComputePipelineCreationError::OomError(_) => "not enough memory available",
-            ComputePipelineCreationError::PipelineLayoutCreationError(_) => "error while creating \
-                                                                             the pipeline layout \
-                                                                             object",
-            ComputePipelineCreationError::IncompatiblePipelineLayout(_) => "the pipeline layout is \
-                                                                            not compatible with what \
-                                                                            the shader expects",
+            ComputePipelineCreationError::PipelineLayoutCreationError(_) =>
+                "error while creating the pipeline layout object",
+            ComputePipelineCreationError::IncompatiblePipelineLayout(_) =>
+                "the pipeline layout is not compatible with what the shader expects",
         }
     }
 
@@ -358,7 +369,7 @@ impl From<Error> for ComputePipelineCreationError {
             err @ Error::OutOfDeviceMemory => {
                 ComputePipelineCreationError::OomError(OomError::from(err))
             },
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
-use check_errors;
 use OomError;
 use VulkanObject;
+use check_errors;
 use vk;
 
 use descriptor::descriptor::DescriptorDesc;
@@ -49,26 +49,30 @@ impl UnsafeDescriptorSetLayout {
     {
         let mut descriptors_count = DescriptorsCount::zero();
 
-        let bindings = descriptors.into_iter().enumerate().filter_map(|(binding, desc)| {
-            let desc = match desc {
-                Some(d) => d,
-                None => return None
-            };
+        let bindings = descriptors
+            .into_iter()
+            .enumerate()
+            .filter_map(|(binding, desc)| {
+                let desc = match desc {
+                    Some(d) => d,
+                    None => return None,
+                };
 
-            // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
-            //        doesn't have tess shaders enabled
+                // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
+                //        doesn't have tess shaders enabled
 
-            let ty = desc.ty.ty().unwrap();     // TODO: shouldn't panic
-            descriptors_count.add_one(ty);
+                let ty = desc.ty.ty().unwrap(); // TODO: shouldn't panic
+                descriptors_count.add_one(ty);
 
-            Some(vk::DescriptorSetLayoutBinding {
-                binding: binding as u32,
-                descriptorType: ty as u32,
-                descriptorCount: desc.array_count,
-                stageFlags: desc.stages.into(),
-                pImmutableSamplers: ptr::null(),        // FIXME: not yet implemented
+                Some(vk::DescriptorSetLayoutBinding {
+                         binding: binding as u32,
+                         descriptorType: ty as u32,
+                         descriptorCount: desc.array_count,
+                         stageFlags: desc.stages.into(),
+                         pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
+                     })
             })
-        }).collect::<SmallVec<[_; 32]>>();
+            .collect::<SmallVec<[_; 32]>>();
 
         // Note that it seems legal to have no descriptor at all in the set.
 
@@ -76,23 +80,25 @@ impl UnsafeDescriptorSetLayout {
             let infos = vk::DescriptorSetLayoutCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 bindingCount: bindings.len() as u32,
                 pBindings: bindings.as_ptr(),
             };
 
             let mut output = mem::uninitialized();
             let vk = device.pointers();
-            try!(check_errors(vk.CreateDescriptorSetLayout(device.internal_object(), &infos,
-                                                           ptr::null(), &mut output)));
+            check_errors(vk.CreateDescriptorSetLayout(device.internal_object(),
+                                                      &infos,
+                                                      ptr::null(),
+                                                      &mut output))?;
             output
         };
 
         Ok(UnsafeDescriptorSetLayout {
-            layout: layout,
-            device: device,
-            descriptors_count: descriptors_count,
-        })
+               layout: layout,
+               device: device,
+               descriptors_count: descriptors_count,
+           })
     }
 
     /// Returns the number of descriptors of each type.
@@ -132,22 +138,21 @@ impl Drop for UnsafeDescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             let vk = self.device.pointers();
-            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout,
-                                          ptr::null());
+            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
+    use descriptor::descriptor::DescriptorBufferContentDesc;
+    use descriptor::descriptor::DescriptorBufferDesc;
     use descriptor::descriptor::DescriptorDesc;
     use descriptor::descriptor::DescriptorDescTy;
-    use descriptor::descriptor::DescriptorBufferDesc;
-    use descriptor::descriptor::DescriptorBufferContentDesc;
     use descriptor::descriptor::ShaderStages;
     use descriptor::descriptor_set::DescriptorsCount;
     use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use std::iter;
 
     #[test]
     fn empty() {
@@ -161,10 +166,10 @@ mod tests {
 
         let layout = DescriptorDesc {
             ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(false),
-                storage: false,
-                content: DescriptorBufferContentDesc::F32,
-            }),
+                                             dynamic: Some(false),
+                                             storage: false,
+                                             content: DescriptorBufferContentDesc::F32,
+                                         }),
             array_count: 1,
             stages: ShaderStages::all_graphics(),
             readonly: true,
@@ -172,9 +177,10 @@ mod tests {
 
         let sl = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
 
-        assert_eq!(sl.descriptors_count(), &DescriptorsCount {
-            uniform_buffer: 1,
-            .. DescriptorsCount::zero()
-        });
+        assert_eq!(sl.descriptors_count(),
+                   &DescriptorsCount {
+                       uniform_buffer: 1,
+                       ..DescriptorsCount::zero()
+                   });
     }
 }

@@ -25,7 +25,7 @@
 //!   write pixels to a framebuffer).
 //!
 //! # Creating a compute pipeline.
-//! 
+//!
 //! In order to create a compute pipeline, you first need a *shader entry point*.
 //!
 //! TODO: write the rest

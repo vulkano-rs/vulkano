@@ -13,16 +13,16 @@ use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
-use image::ImageDimensions;
 use image::Dimensions;
+use image::ImageDimensions;
+use image::ImageLayout;
 use image::ViewType;
+use image::sys::UnsafeImage;
+use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::ImageLayout;
-use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use swapchain::Swapchain;
 use sync::AccessError;
 
@@ -53,16 +53,15 @@ impl SwapchainImage {
     ///
     /// This is an internal method that you shouldn't call.
     pub unsafe fn from_raw(swapchain: Arc<Swapchain>, id: usize)
-                           -> Result<Arc<SwapchainImage>, OomError>
-    {
+                           -> Result<Arc<SwapchainImage>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1));
+        let view = UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1)?;
 
         Ok(Arc::new(SwapchainImage {
-            swapchain: swapchain.clone(),
-            image_offset: id,
-            view: view,
-        }))
+                        swapchain: swapchain.clone(),
+                        image_offset: id,
+                        view: view,
+                    }))
     }
 
     /// Returns the dimensions of the image.
@@ -122,8 +121,7 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 }
 
-unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage
-{
+unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage {
     #[inline]
     fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
         Some(self.swapchain.format().decode_clear_value(value))
@@ -133,7 +131,7 @@ unsafe impl ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainIma
 unsafe impl<P> ImageContent<P> for SwapchainImage {
     #[inline]
     fn matches_format(&self) -> bool {
-        true        // FIXME:
+        true // FIXME:
     }
 }
 
@@ -146,7 +144,10 @@ unsafe impl ImageViewAccess for SwapchainImage {
     #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.swapchain.dimensions();
-        Dimensions::Dim2d { width: dims[0], height: dims[1] }
+        Dimensions::Dim2d {
+            width: dims[0],
+            height: dims[1],
+        }
     }
 
     #[inline]

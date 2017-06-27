@@ -11,14 +11,15 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use SafeDeref;
 use buffer::BufferAccess;
 use format::Format;
 use pipeline::vertex::VertexMemberTy;
-use SafeDeref;
 use vk;
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait VertexDefinition<I>: VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
+pub unsafe trait VertexDefinition<I>
+    : VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.
@@ -26,18 +27,22 @@ pub unsafe trait VertexDefinition<I>: VertexSource<Vec<Arc<BufferAccess + Send +
 
     /// Builds the vertex definition to use to link this definition to a vertex shader's input
     /// interface.
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>;
+    fn definition(
+        &self, interface: &I)
+        -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError>;
 }
 
-unsafe impl<I, T> VertexDefinition<I> for T where T: SafeDeref, T::Target: VertexDefinition<I> {
+unsafe impl<I, T> VertexDefinition<I> for T
+    where T: SafeDeref,
+          T::Target: VertexDefinition<I>
+{
     type BuffersIter = <T::Target as VertexDefinition<I>>::BuffersIter;
     type AttribsIter = <T::Target as VertexDefinition<I>>::AttribsIter;
 
     #[inline]
-    fn definition(&self, interface: &I) -> Result<(Self::BuffersIter, Self::AttribsIter),
-                                                  IncompatibleVertexDefinitionError>
-    {
+    fn definition(
+        &self, interface: &I)
+        -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         (**self).definition(interface)
     }
 }
@@ -111,7 +116,10 @@ pub unsafe trait VertexSource<L> {
     fn decode(&self, L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize);
 }
 
-unsafe impl<L, T> VertexSource<L> for T where T: SafeDeref, T::Target: VertexSource<L> {
+unsafe impl<L, T> VertexSource<L> for T
+    where T: SafeDeref,
+          T::Target: VertexSource<L>
+{
     #[inline]
     fn decode(&self, list: L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         (**self).decode(list)

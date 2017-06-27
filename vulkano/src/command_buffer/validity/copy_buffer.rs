@@ -11,10 +11,10 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
+use VulkanObject;
 use buffer::BufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use VulkanObject;
 
 /// Checks whether a copy buffer command is valid.
 ///
@@ -28,8 +28,10 @@ pub fn check_copy_buffer<S, D>(device: &Device, source: &S, destination: &D)
     where S: ?Sized + BufferAccess,
           D: ?Sized + BufferAccess
 {
-    assert_eq!(source.inner().buffer.device().internal_object(), device.internal_object());
-    assert_eq!(destination.inner().buffer.device().internal_object(), device.internal_object());
+    assert_eq!(source.inner().buffer.device().internal_object(),
+               device.internal_object());
+    assert_eq!(destination.inner().buffer.device().internal_object(),
+               device.internal_object());
 
     if !source.inner().buffer.usage_transfer_src() {
         return Err(CheckCopyBufferError::SourceMissingTransferUsage);

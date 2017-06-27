@@ -9,10 +9,10 @@
 
 //! Functions that check the validity of commands.
 
-pub use self::copy_buffer::{check_copy_buffer, CheckCopyBufferError};
-pub use self::dynamic_state::{check_dynamic_state_validity, CheckDynamicStateValidityError};
-pub use self::fill_buffer::{check_fill_buffer, CheckFillBufferError};
-pub use self::update_buffer::{check_update_buffer, CheckUpdateBufferError};
+pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer};
+pub use self::dynamic_state::{CheckDynamicStateValidityError, check_dynamic_state_validity};
+pub use self::fill_buffer::{CheckFillBufferError, check_fill_buffer};
+pub use self::update_buffer::{CheckUpdateBufferError, check_update_buffer};
 
 mod copy_buffer;
 mod dynamic_state;

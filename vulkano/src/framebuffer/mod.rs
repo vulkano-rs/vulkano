@@ -8,11 +8,11 @@
 // according to those terms.
 
 //! Targets on which your draw commands are executed.
-//! 
+//!
 //! # Render passes and framebuffers
 //!
 //! There are two concepts in Vulkan:
-//! 
+//!
 //! - A *render pass* describes the target which you are going to render to. It is a collection
 //!   of descriptions of one or more attachments (ie. image that are rendered to), and of one or
 //!   multiples subpasses. The render pass contains the format and number of samples of each
@@ -91,17 +91,17 @@
 //!
 
 pub use self::attachments_list::AttachmentsList;
-pub use self::compat_atch::ensure_image_view_compatible;
 pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
+pub use self::compat_atch::ensure_image_view_compatible;
 pub use self::desc::LayoutAttachmentDescription;
-pub use self::desc::LayoutPassDescription;
 pub use self::desc::LayoutPassDependencyDescription;
+pub use self::desc::LayoutPassDescription;
+pub use self::desc::LoadOp;
 pub use self::desc::RenderPassDesc;
 pub use self::desc::RenderPassDescAttachments;
-pub use self::desc::RenderPassDescSubpasses;
 pub use self::desc::RenderPassDescDependencies;
+pub use self::desc::RenderPassDescSubpasses;
 pub use self::desc::StoreOp;
-pub use self::desc::LoadOp;
 pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferBuilder;
@@ -111,9 +111,9 @@ pub use self::sys::RenderPass;
 pub use self::sys::RenderPassCreationError;
 pub use self::sys::RenderPassSys;
 pub use self::traits::FramebufferAbstract;
-pub use self::traits::RenderPassDescClearValues;
-pub use self::traits::RenderPassCompatible;
 pub use self::traits::RenderPassAbstract;
+pub use self::traits::RenderPassCompatible;
+pub use self::traits::RenderPassDescClearValues;
 pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::Subpass;
 

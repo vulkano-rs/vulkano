@@ -58,8 +58,8 @@
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
-#![allow(dead_code)]            // TODO: remove
-#![allow(unused_variables)]     // TODO: remove
+#![allow(dead_code)] // TODO: remove
+#![allow(unused_variables)] // TODO: remove
 
 extern crate crossbeam;
 extern crate fnv;
@@ -99,9 +99,12 @@ use std::sync::MutexGuard;
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
-unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
-unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
-unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
+unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {
+}
+unsafe impl<T: ?Sized> SafeDeref for Arc<T> {
+}
+unsafe impl<T: ?Sized> SafeDeref for Box<T> {
+}
 
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
@@ -154,7 +157,7 @@ impl From<Error> for OomError {
         match err {
             Error::OutOfHostMemory => OomError::OutOfHostMemory,
             Error::OutOfDeviceMemory => OomError::OutOfDeviceMemory,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -178,7 +181,7 @@ enum Success {
 /// panic for error code that arent supposed to happen.
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
-#[doc(hidden)]      // TODO: this is necessary because of the stupid visibility rules in rustc
+#[doc(hidden)] // TODO: this is necessary because of the stupid visibility rules in rustc
 pub enum Error {
     OutOfHostMemory = vk::ERROR_OUT_OF_HOST_MEMORY,
     OutOfDeviceMemory = vk::ERROR_OUT_OF_DEVICE_MEMORY,
@@ -226,7 +229,8 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
         vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
-        vk::ERROR_INVALID_SHADER_NV => panic!("Vulkan function returned VK_ERROR_INVALID_SHADER_NV"),
-        c => unreachable!("Unexpected error code returned by Vulkan: {}", c)
+        vk::ERROR_INVALID_SHADER_NV => panic!("Vulkan function returned \
+                                               VK_ERROR_INVALID_SHADER_NV"),
+        c => unreachable!("Unexpected error code returned by Vulkan: {}", c),
     }
 }

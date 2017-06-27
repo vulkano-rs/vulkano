@@ -12,7 +12,7 @@
 //! Just like for CPU code, you have to ensure that buffers and images are not accessed mutably by
 //! multiple GPU queues simultaneously and that they are not accessed mutably by the CPU and by the
 //! GPU simultaneously.
-//! 
+//!
 //! This safety is enforced at runtime by vulkano but it is not magic and you will require some
 //! knowledge if you want to avoid errors.
 //!
@@ -103,21 +103,21 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
-use std::sync::Arc;
 use device::Queue;
+use std::sync::Arc;
 
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
-pub use self::future::now;
-pub use self::future::NowFuture;
-pub use self::future::GpuFuture;
-pub use self::future::SemaphoreSignalFuture;
-pub use self::future::FenceSignalFuture;
-pub use self::future::JoinFuture;
-pub use self::future::AccessError;
 pub use self::future::AccessCheckError;
+pub use self::future::AccessError;
+pub use self::future::FenceSignalFuture;
 pub use self::future::FlushError;
+pub use self::future::GpuFuture;
+pub use self::future::JoinFuture;
+pub use self::future::NowFuture;
+pub use self::future::SemaphoreSignalFuture;
+pub use self::future::now;
 pub use self::pipeline::AccessFlagBits;
 pub use self::pipeline::PipelineStages;
 pub use self::semaphore::Semaphore;
@@ -139,7 +139,7 @@ pub enum SharingMode {
     /// The resource is used is only one queue family.
     Exclusive(u32),
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
-    Concurrent(Vec<u32>),       // TODO: Vec is too expensive here
+    Concurrent(Vec<u32>), // TODO: Vec is too expensive here
 }
 
 impl<'a> From<&'a Arc<Queue>> for SharingMode {
@@ -152,15 +152,15 @@ impl<'a> From<&'a Arc<Queue>> for SharingMode {
 impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
     #[inline]
     fn from(queues: &'a [&'a Arc<Queue>]) -> SharingMode {
-        SharingMode::Concurrent(queues.iter().map(|queue| {
-            queue.family().id()
-        }).collect())
+        SharingMode::Concurrent(queues.iter().map(|queue| queue.family().id()).collect())
     }
 }
 
 /// Declares in which queue(s) a resource can be used.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Sharing<I> where I: Iterator<Item = u32> {
+pub enum Sharing<I>
+    where I: Iterator<Item = u32>
+{
     /// The resource is used is only one queue family.
     Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
