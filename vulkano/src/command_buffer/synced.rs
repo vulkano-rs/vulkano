@@ -1777,6 +1777,8 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
     fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         // TODO: if at any point we return an error, we can't recover
 
+        let commands_lock = self.commands.lock().unwrap();
+
         for (key, entry) in self.resources.iter() {
             let (commands, command_id, resource_ty, resource_index) = match *key {
                 CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
@@ -1784,8 +1786,6 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
                 },
                 _ => unreachable!()
             };
-
-            let commands_lock = commands.lock().unwrap();
 
             match resource_ty {
                 KeyTy::Buffer => {
@@ -1880,5 +1880,35 @@ unsafe impl<P> DeviceOwned for SyncCommandBuffer<P> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
+    }
+}
+
+impl<P> Drop for SyncCommandBuffer<P> {
+    fn drop(&mut self) {
+        unsafe {
+            let commands_lock = self.commands.lock().unwrap();
+
+            for (key, entry) in self.resources.iter() {
+                let (command_id, resource_ty, resource_index) = match *key {
+                    CbKey::Command { command_id, resource_ty, resource_index, .. } => {
+                        (command_id, resource_ty, resource_index)
+                    },
+                    _ => unreachable!()
+                };
+
+                match resource_ty {
+                    KeyTy::Buffer => {
+                        let cmd = &commands_lock[command_id];
+                        let buf = cmd.buffer(resource_index);
+                        buf.unlock();
+                    },
+                    KeyTy::Image => {
+                        let cmd = &commands_lock[command_id];
+                        let img = cmd.image(resource_index);
+                        img.unlock();
+                    },
+                }
+            }
+        }
     }
 }

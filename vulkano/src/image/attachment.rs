@@ -31,8 +31,6 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::traits::Image;
-use image::traits::ImageView;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -243,89 +241,61 @@ impl<F, A> AttachmentImage<F, A> {
     }
 }
 
-/// GPU access to an attachment image.
-pub struct AttachmentImageAccess<F, A> {
-    img: Arc<AttachmentImage<F, A>>,
-    // True if `try_gpu_lock` was already called on it.
-    already_locked: AtomicBool,
-}
-
-impl<F, A> Clone for AttachmentImageAccess<F, A> {
-    #[inline]
-    fn clone(&self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self.img.clone(),
-            already_locked: AtomicBool::new(self.already_locked.load(Ordering::SeqCst))
-        }
-    }
-}
-
-unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
-        &self.img.image
+        &self.image
     }
 
     #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
-        self.img.attachment_layout
+        self.attachment_layout
     }
 
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
-        self.img.attachment_layout
+        self.attachment_layout
     }
 
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
-        self.img.image.key()
+        self.image.key()
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-        // FIXME: uncomment when it's working
-        //        the problem is in the submit sync layer which locks framebuffer attachments and
-        //        keeps them locked even after destruction
-        Ok(())
-        /*if self.already_locked.swap(true, Ordering::SeqCst) == true {
-            return false;
+        if self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0 {
+            Ok(())
+        } else {
+            Err(AccessError::AlreadyInUse)
         }
-
-        self.img.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0*/
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        // FIXME: uncomment when it's working
-        //        the problem is in the submit sync layer which locks framebuffer attachments and
-        //        keeps them locked even after destruction
-        /*debug_assert!(self.already_locked.load(Ordering::SeqCst));
-        let val = self.img.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);*/
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(prev_val >= 1);
     }
 }
 
-impl<F, A> Drop for AttachmentImageAccess<F, A> {
-    fn drop(&mut self) {
-        if self.already_locked.load(Ordering::SeqCst) {
-            let prev_val = self.img.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            debug_assert!(prev_val >= 1);
-        }
-    }
-}
-
-unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
     where F: FormatDesc + 'static + Send + Sync
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
-        Some(self.img.format.decode_clear_value(value))
+        Some(self.format.decode_clear_value(value))
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
+unsafe impl<P, F, A> ImageContent<P> for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync
 {
     #[inline]
@@ -334,50 +304,7 @@ unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
     }
 }
 
-unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync
-{
-    type Access = AttachmentImageAccess<F, A>;
-
-    #[inline]
-    fn access(self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self, 
-            already_locked: AtomicBool::new(false),
-        }
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        self.image.format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.image.samples()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.image.dimensions()
-    }
-}
-
-unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync
-{
-    type Access = AttachmentImageAccess<F, A>;
-
-    #[inline]
-    fn access(self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self, 
-            already_locked: AtomicBool::new(false),
-        }
-    }
-}
-
-unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
@@ -387,13 +314,13 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
 
     #[inline]
     fn dimensions(&self) -> Dimensions {
-        let dims = self.img.image.dimensions();
+        let dims = self.image.dimensions();
         Dimensions::Dim2d { width: dims.width(), height: dims.height() }
     }
 
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
-        &self.img.view
+        &self.view
     }
 
     #[inline]

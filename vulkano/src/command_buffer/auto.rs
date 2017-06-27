@@ -14,7 +14,6 @@ use std::mem;
 use std::slice;
 use std::sync::Arc;
 
-use buffer::Buffer;
 use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use command_buffer::CommandBuffer;
@@ -46,7 +45,6 @@ use device::Queue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassAbstract;
-use image::Image;
 use image::ImageLayout;
 use image::ImageAccess;
 use instance::QueueFamily;
@@ -128,15 +126,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
     pub fn copy_buffer<S, D>(mut self, src: S, dest: D) -> Result<Self, validity::CheckCopyBufferError>
-        where S: Buffer,
-              S::Access: Send + Sync + 'static,
-              D: Buffer,
-              D::Access: Send + Sync + 'static,
+        where S: BufferAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static,
     {
         unsafe {
-            let src = src.access();
-            let dest = dest.access();
-
             // TODO: check that we're not in a render pass
 
             validity::check_copy_buffer(self.device(), &src, &dest)?;
@@ -149,10 +142,8 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D>(mut self, src: S, dest: D)
                                       -> Result<Self, AutoCommandBufferBuilderContextError>
-        where S: Buffer,
-              S::Access: Send + Sync + 'static,
-              D: Image,
-              D::Access: Send + Sync + 'static,
+        where S: BufferAccess + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static,
     {
         let dims = dest.dimensions().width_height_depth();
         self.copy_buffer_to_image_dimensions(src, dest, [0, 0, 0], dims, 0, 1, 0)
@@ -163,15 +154,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                                                  size: [u32; 3], first_layer: u32, num_layers: u32,
                                                  mipmap: u32)
                                                  -> Result<Self, AutoCommandBufferBuilderContextError>
-        where S: Buffer,
-              S::Access: Send + Sync + 'static,
-              D: Image,
-              D::Access: Send + Sync + 'static,
+        where S: BufferAccess + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
-            let src = src.access();
-            let dest = dest.access();
-
             // TODO: check that we're not in a render pass
             // TODO: check validity
             // TODO: hastily implemented
@@ -250,14 +236,12 @@ impl<P> AutoCommandBufferBuilder<P> {
                                              constants: Pc) -> Result<Self, AutoCommandBufferBuilderContextError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone,    // TODO: meh for Clone
               S: DescriptorSetsCollection,
-              Ib: Buffer,
-              Ib::Access: TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+              Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
               I: Index + 'static,
     {
         unsafe {
             // TODO: missing checks
 
-            let index_buffer = index_buffer.access();
             let index_count = index_buffer.len();
 
             if let StateCacherOutcome::NeedChange = self.state_cacher.bind_graphics_pipeline(&pipeline) {
@@ -282,13 +266,11 @@ impl<P> AutoCommandBufferBuilder<P> {
                                            constants: Pc) -> Result<Self, AutoCommandBufferBuilderContextError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone,    // TODO: meh for Clone
               S: DescriptorSetsCollection,
-              Ib: Buffer,
-              Ib::Access: TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
+              Ib: BufferAccess + TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
     {
         unsafe {
             // TODO: missing checks
 
-            let indirect_buffer = indirect_buffer.access();
             let draw_count = indirect_buffer.len() as u32;
 
             if let StateCacherOutcome::NeedChange = self.state_cacher.bind_graphics_pipeline(&pipeline) {
@@ -331,12 +313,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     // TODO: not safe because of signalling NaNs
     #[inline]
     pub fn fill_buffer<B>(mut self, buffer: B, data: u32) -> Result<Self, validity::CheckFillBufferError>
-        where B: Buffer,
-              B::Access: Send + Sync + 'static,
+        where B: BufferAccess + Send + Sync + 'static,
     {
         unsafe {
             // TODO: check that we're not in a render pass
-            let buffer = buffer.access();
             validity::check_fill_buffer(self.device(), &buffer)?;
             self.inner.fill_buffer(buffer, data);
             Ok(self)
@@ -362,13 +342,11 @@ impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     pub fn update_buffer<B, D>(mut self, buffer: B, data: D)
                                -> Result<Self, validity::CheckUpdateBufferError>
-        where B: Buffer,
-              B::Access: Send + Sync + 'static,
+        where B: BufferAccess + Send + Sync + 'static,
               D: Send + Sync + 'static
     {
         unsafe {
             // TODO: check that we're not in a render pass
-            let buffer = buffer.access();
             validity::check_update_buffer(self.device(), &buffer, &data)?;
 
             let size_of_data = mem::size_of_val(&data);

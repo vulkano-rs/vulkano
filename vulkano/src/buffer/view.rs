@@ -44,10 +44,8 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::Buffer;
 use buffer::BufferAccess;
 use buffer::BufferInner;
-use buffer::TypedBuffer;
 use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -73,18 +71,18 @@ pub struct BufferView<F, B> where B: BufferAccess {
 impl<F, B> BufferView<F, B> where B: BufferAccess {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<P>(buffer: P, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
-        where P: TypedBuffer<Content = [F::Pixel]> + Buffer<Access = B>,
-              B: BufferAccess,
+    pub fn new(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
+        where B: TypedBufferAccess<Content = [F::Pixel]>,
               F: StrongStorage + 'static
     {
         unsafe {
-            BufferView::unchecked(buffer.access(), format)
+            BufferView::unchecked(buffer, format)
         }
     }
 
     /// Builds a new buffer view from a `BufferAccess` object.
     #[inline]
+    #[deprecated = "Use new() instead"]
     pub fn from_access(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
         where B: TypedBufferAccess<Content = [F::Pixel]>, F: StrongStorage + 'static
     {

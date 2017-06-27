@@ -20,73 +20,6 @@ use sync::AccessError;
 use SafeDeref;
 use VulkanObject;
 
-/// Trait for objects that represent either a buffer or a slice of a buffer.
-///
-/// See also `TypedBuffer`.
-// TODO: require `DeviceOwned`
-pub unsafe trait Buffer {
-    /// Object that represents a GPU access to the buffer.
-    type Access: BufferAccess;
-
-    /// Builds an object that represents a GPU access to the buffer.
-    fn access(self) -> Self::Access;
-
-    /// Returns the size of the buffer in bytes.
-    fn size(&self) -> usize;
-
-    /// Returns the length of the buffer in number of elements.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    #[inline]
-    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
-        self.size() / <Self::Content as Content>::indiv_size()
-    }
-
-    /// Builds a `BufferSlice` object holding part of the buffer.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    ///
-    /// This method can be used when you want to perform an operation on some part of the buffer
-    /// and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    fn slice<T>(self, range: Range<usize>) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>
-    {
-        BufferSlice::slice(self.into_buffer_slice(), range)
-    }
-
-    /// Builds a `BufferSlice` object holding the buffer by value.
-    #[inline]
-    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
-        where Self: Sized + TypedBuffer
-    {
-        BufferSlice::from_typed_buffer(self)
-    }
-
-    /// Builds a `BufferSlice` object holding part of the buffer.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    ///
-    /// This method can be used when you want to perform an operation on a specific element of the
-    /// buffer and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    fn index<T>(self, index: usize) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>
-    {
-        self.slice(index .. (index + 1))
-    }
-}
-
-/// Extension trait for `Buffer`. Indicates the type of the content of the buffer.
-pub unsafe trait TypedBuffer: Buffer {
-    /// The type of the content of the buffer.
-    type Content: ?Sized;
-}
-
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
 ///
@@ -247,13 +180,28 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// The only way to know that the GPU has stopped accessing a queue is when the buffer object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 /// Inner information about a buffer.
@@ -297,6 +245,11 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 

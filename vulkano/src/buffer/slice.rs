@@ -14,9 +14,7 @@ use std::sync::Arc;
 
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
-use buffer::traits::Buffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -67,20 +65,6 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B>
 }
 
 impl<T: ?Sized, B> BufferSlice<T, B> {
-    #[inline]
-    pub fn from_typed_buffer(r: B) -> BufferSlice<T, B>
-        where B: TypedBuffer<Content = T>
-    {
-        let size = r.size();
-
-        BufferSlice {
-            marker: PhantomData,
-            resource: r,
-            offset: 0,
-            size: size,
-        }
-    }
-
     #[inline]
     pub fn from_typed_buffer_access(r: B) -> BufferSlice<T, B>
         where B: TypedBufferAccess<Content = T>
@@ -189,25 +173,6 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> Buffer for BufferSlice<T, B> where B: Buffer {
-    type Access = BufferSlice<T, B::Access>;
-
-    #[inline]
-    fn access(self) -> Self::Access {
-        BufferSlice {
-            marker: PhantomData,
-            resource: self.resource.access(),
-            offset: self.offset,
-            size: self.size,
-        }
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
 unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAccess {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -249,6 +214,11 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         self.resource.increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.resource.unlock()
     }
 }
 

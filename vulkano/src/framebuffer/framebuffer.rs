@@ -30,7 +30,6 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
 use framebuffer::ensure_image_view_compatible;
-use image::ImageView;
 use image::ImageViewAccess;
 
 use Error;
@@ -156,11 +155,9 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     ///
     /// Attachments must be added in the same order as the one defined in the render pass.
     pub fn add<T>(self, attachment: T)
-                  -> Result<FramebufferBuilder<Rp, (A, T::Access)>, FramebufferCreationError>
-        where T: ImageView
+                  -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
+        where T: ImageViewAccess
     {
-        let access = attachment.access();
-
         if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
                 expected: self.render_pass.num_attachments(),
@@ -168,12 +165,12 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             });
         }
 
-        match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &access) {
+        match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &attachment) {
             Ok(()) => (),
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err))
         };
 
-        let img_dims = access.dimensions();
+        let img_dims = attachment.dimensions();
         debug_assert_eq!(img_dims.depth(), 1);
 
         let dimensions = match self.dimensions {
@@ -225,13 +222,13 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         };
         
         let mut raw_ids = self.raw_ids;
-        raw_ids.push(access.inner().internal_object());
+        raw_ids.push(attachment.inner().internal_object());
 
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
             raw_ids: raw_ids,
             dimensions: dimensions,
-            attachments: (self.attachments, access),
+            attachments: (self.attachments, attachment),
         })
     }
 

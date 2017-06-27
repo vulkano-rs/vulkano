@@ -28,24 +28,6 @@ use sync::AccessError;
 use SafeDeref;
 use VulkanObject;
 
-/// Trait for types that represent images.
-pub unsafe trait Image {
-    /// Object that represents a GPU access to the image.
-    type Access: ImageAccess;
-
-    /// Builds an object that represents a GPU access to the image.
-    fn access(self) -> Self::Access;
-
-    /// Returns the format of this image.
-    fn format(&self) -> Format;
-
-    /// Returns the number of samples of this image.
-    fn samples(&self) -> u32;
-
-    /// Returns the dimensions of the image.
-    fn dimensions(&self) -> ImageDimensions;
-}
-
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
@@ -209,13 +191,28 @@ pub unsafe trait ImageAccess {
     /// The only way to know that the GPU has stopped accessing a queue is when the image object
     /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
     /// to a lock) in order to represent a GPU access.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` afterwards once the resource is no
+    /// longer in use. As a consequence, the implementation is not expected to automatically
+    /// perform any unlocking and can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
@@ -249,6 +246,11 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 
@@ -298,6 +300,11 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     unsafe fn increase_gpu_lock(&self) {
         self.image.increase_gpu_lock()
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.image.unlock()
+    }
 }
 
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
@@ -310,15 +317,6 @@ pub unsafe trait ImageClearValue<T>: ImageAccess {
 pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
-}
-
-/// Trait for types that represent image views.
-pub unsafe trait ImageView {
-    /// Object that represents a GPU access to the image view.
-    type Access: ImageViewAccess;
-
-    /// Builds an object that represents a GPU access to the image view.
-    fn access(self) -> Self::Access;
 }
 
 /// Trait for types that represent the GPU can access an image view.

@@ -24,8 +24,6 @@ use buffer::sys::UnsafeBuffer;
 use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -121,10 +119,6 @@ pub struct CpuBufferPoolSubbuffer<T: ?Sized, A> where A: MemoryPool {
 
     // Size in bytes of the subbuffer.
     size: usize,
-
-    // Whether this subbuffer was locked on the GPU.
-    // If true, then num_gpu_accesses must be decreased.
-    gpu_locked: AtomicBool,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -345,7 +339,6 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
         Ok(CpuBufferPoolSubbuffer {
             buffer: current_buffer,
             subbuffer_index: next_subbuffer,
-            gpu_locked: AtomicBool::new(false),
             size: self.one_size,
             marker: PhantomData,
         })
@@ -378,28 +371,6 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuBufferPool<T, A>
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    type Content = T;
-}
-
 impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {
     fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
         let old_val = self.buffer.subbuffers[self.subbuffer_index].num_cpu_accesses.fetch_add(1, Ordering::SeqCst);
@@ -408,7 +379,6 @@ impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {
         CpuBufferPoolSubbuffer {
             buffer: self.buffer.clone(),
             subbuffer_index: self.subbuffer_index,
-            gpu_locked: AtomicBool::new(false),
             size: self.size,
             marker: PhantomData,
         }
@@ -443,20 +413,31 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
             return Err(AccessError::AlreadyInUse);
         }
 
-        let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
-        debug_assert!(!was_locked);
         Ok(())
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
-        debug_assert!(!was_locked);
-
         let in_use = &self.buffer.subbuffers[self.subbuffer_index];
         let num_usages = in_use.num_gpu_accesses.fetch_add(1, Ordering::SeqCst);
         debug_assert!(num_usages >= 1);
-        debug_assert!(num_usages <= in_use.num_cpu_accesses.load(Ordering::SeqCst));
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
+        let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(was_in_use >= 1);
+    }
+}
+
+impl<T: ?Sized, A> Drop for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    fn drop(&mut self) {
+        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
+        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(prev_val >= 1);
     }
 }
 
@@ -472,22 +453,6 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.inner.device()
-    }
-}
-
-impl<T: ?Sized, A> Drop for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    #[inline]
-    fn drop(&mut self) {
-        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
-        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
-        debug_assert!(prev_val >= 1);
-
-        if self.gpu_locked.load(Ordering::SeqCst) {
-            let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
-            debug_assert!(was_in_use >= 1);
-        }
     }
 }
 

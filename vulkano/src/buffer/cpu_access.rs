@@ -34,8 +34,6 @@ use buffer::sys::UnsafeBuffer;
 use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -286,29 +284,6 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     }
 }
 
-// FIXME: wrong
-unsafe impl<T: ?Sized, A> Buffer for Arc<CpuAccessibleBuffer<T, A>>
-    where T: 'static + Send + Sync, A: MemoryPool
-{
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.inner.size()
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for Arc<CpuAccessibleBuffer<T, A>>
-    where T: 'static + Send + Sync, A: MemoryPool
-{
-    type Content = T;
-}
-
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     where T: 'static + Send + Sync, A: MemoryPool
 {
@@ -333,6 +308,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         // FIXME:
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        // TODO:
     }
 }
 

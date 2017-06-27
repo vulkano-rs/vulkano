@@ -161,7 +161,6 @@ mod tests {
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
     use image::AttachmentImage;
-    use image::ImageView;
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
 
@@ -186,7 +185,7 @@ mod tests {
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
-        ensure_image_view_compatible(&rp, 0, &img.access()).unwrap();
+        ensure_image_view_compatible(&rp, 0, &img).unwrap();
     }
 
     #[test]
@@ -210,7 +209,7 @@ mod tests {
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
-        match ensure_image_view_compatible(&rp, 0, &img.access()) {
+        match ensure_image_view_compatible(&rp, 0, &img) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
                 expected: Format::R16G16Sfloat, obtained: Format::R8G8B8A8Unorm }) => (),
             e => panic!("{:?}", e)
@@ -225,7 +224,7 @@ mod tests {
         let rp = EmptySinglePassRenderPassDesc;
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
         
-        let _ = ensure_image_view_compatible(&rp, 0, &img.access());
+        let _ = ensure_image_view_compatible(&rp, 0, &img);
     }
 
     // TODO: more tests
