@@ -27,9 +27,7 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     /// Builds a new empty `SubmitSemaphoresWaitBuilder`.
     #[inline]
     pub fn new() -> SubmitSemaphoresWaitBuilder<'a> {
-        SubmitSemaphoresWaitBuilder {
-            semaphores: SmallVec::new(),
-        }
+        SubmitSemaphoresWaitBuilder { semaphores: SmallVec::new() }
     }
 
     /// Adds an operation that waits on a semaphore.
@@ -53,11 +51,12 @@ impl<'a> Into<SubmitCommandBufferBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a
         unsafe {
             let mut builder = SubmitCommandBufferBuilder::new();
             for sem in self.semaphores.drain() {
-                builder.add_wait_semaphore(sem, PipelineStages {
-                    // TODO: correct stages ; hard
-                    all_commands: true,
-                    .. PipelineStages::none()
-                });
+                builder.add_wait_semaphore(sem,
+                                           PipelineStages {
+                                               // TODO: correct stages ; hard
+                                               all_commands: true,
+                                               ..PipelineStages::none()
+                                           });
             }
             builder
         }

@@ -114,8 +114,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// panic.
     #[inline]
     pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
-        where F: for<'r> FnOnce(&'r T) -> &'r R
-        // TODO: bounds on R
+        where F: for<'r> FnOnce(&'r T) -> &'r R // TODO: bounds on R
     {
         let data: &T = mem::zeroed();
         let result = f(data);
@@ -147,14 +146,16 @@ impl<T, B> BufferSlice<[T], B> {
     /// Returns `None` if out of range.
     #[inline]
     pub fn index(self, index: usize) -> Option<BufferSlice<T, B>> {
-        if index >= self.len() { return None; }
+        if index >= self.len() {
+            return None;
+        }
 
         Some(BufferSlice {
-            marker: PhantomData,
-            resource: self.resource,
-            offset: self.offset + index * mem::size_of::<T>(),
-            size: mem::size_of::<T>(),
-        })
+                 marker: PhantomData,
+                 resource: self.resource,
+                 offset: self.offset + index * mem::size_of::<T>(),
+                 size: mem::size_of::<T>(),
+             })
     }
 
     /// Reduces the slice to just a range of the array.
@@ -162,18 +163,22 @@ impl<T, B> BufferSlice<[T], B> {
     /// Returns `None` if out of range.
     #[inline]
     pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<[T], B>> {
-        if range.end > self.len() { return None; }
+        if range.end > self.len() {
+            return None;
+        }
 
         Some(BufferSlice {
-            marker: PhantomData,
-            resource: self.resource,
-            offset: self.offset + range.start * mem::size_of::<T>(),
-            size: (range.end - range.start) * mem::size_of::<T>(),
-        })
+                 marker: PhantomData,
+                 resource: self.resource,
+                 offset: self.offset + range.start * mem::size_of::<T>(),
+                 size: (range.end - range.start) * mem::size_of::<T>(),
+             })
     }
 }
 
-unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAccess {
+unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
+    where B: BufferAccess
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         let inner = self.resource.inner();
@@ -189,13 +194,14 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         let self_offset = self.offset + self_offset;
         // FIXME: spurious failures ; needs investigation
         //debug_assert!(self_size + self_offset <= self.size);
-        self.resource.conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
+        self.resource
+            .conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
     #[inline]
@@ -222,7 +228,9 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B> where B: BufferAcce
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B> where B: BufferAccess,  {
+unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B>
+    where B: BufferAccess
+{
     type Content = T;
 }
 

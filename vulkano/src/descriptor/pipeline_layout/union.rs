@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-use std::sync::Arc;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use std::cmp;
+use std::sync::Arc;
 
 /// Contains the union of two pipeline layout description.
 ///
@@ -32,7 +32,8 @@ impl<A, B> PipelineLayoutDescUnion<A, B> {
 }
 
 unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDesc, B: PipelineLayoutDesc
+    where A: PipelineLayoutDesc,
+          B: PipelineLayoutDesc
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -67,16 +68,19 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
 
     #[inline]
     fn provided_set_layout(&self, set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
-        self.a.provided_set_layout(set).or(self.b.provided_set_layout(set))
+        self.a
+            .provided_set_layout(set)
+            .or(self.b.provided_set_layout(set))
     }
 
     #[inline]
     fn num_push_constants_ranges(&self) -> usize {
         // We simply call `push_constants_range` repeatidely to determine when it is over.
-        // TODO: consider caching this 
-        (self.a.num_push_constants_ranges() ..).filter(|&n| {
-            self.push_constants_range(n).is_none()
-        }).next().unwrap()
+        // TODO: consider caching this
+        (self.a.num_push_constants_ranges() ..)
+            .filter(|&n| self.push_constants_range(n).is_none())
+            .next()
+            .unwrap()
     }
 
     // TODO: needs tests
@@ -119,20 +123,21 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
                     continue 'outer_loop;
                 }
             }
-            
+
             if num == 0 {
                 return Some(pc);
             } else {
                 num -= 1;
             }
         }
-        
+
         None
     }
 }
 
 unsafe impl<A, B> PipelineLayoutDescNames for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDescNames, B: PipelineLayoutDescNames
+    where A: PipelineLayoutDescNames,
+          B: PipelineLayoutDescNames
 {
     #[inline]
     fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
@@ -143,7 +148,10 @@ unsafe impl<A, B> PipelineLayoutDescNames for PipelineLayoutDescUnion<A, B>
             (None, None) => None,
             (Some(r), None) => Some(r),
             (None, Some(r)) => Some(r),
-            (Some(a), Some(b)) => { assert_eq!(a, b); Some(a) }
+            (Some(a), Some(b)) => {
+                assert_eq!(a, b);
+                Some(a)
+            },
         }
     }
 }

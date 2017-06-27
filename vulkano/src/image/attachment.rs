@@ -21,10 +21,10 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::Dimensions;
 use image::ImageDimensions;
-use image::ViewType;
-use image::sys::ImageCreationError;
 use image::ImageLayout;
 use image::ImageUsage;
+use image::ViewType;
+use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
@@ -147,7 +147,7 @@ impl<F> AttachmentImage<F> {
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            .. ImageUsage::none()
+            ..ImageUsage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
@@ -158,20 +158,22 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
     #[inline]
-    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
+                                  format: F)
                                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            .. ImageUsage::none()
+            ..ImageUsage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
     }
 
     fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage,
-                samples: u32) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                samples: u32)
+                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
@@ -181,13 +183,13 @@ impl<F> AttachmentImage<F> {
             FormatTy::DepthStencil => true,
             FormatTy::Stencil => true,
             FormatTy::Compressed => panic!(),
-            _ => false
+            _ => false,
         };
 
         let usage = ImageUsage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
-            .. base_usage
+            ..base_usage
         };
 
         let (image, mem_reqs) = unsafe {
@@ -195,40 +197,57 @@ impl<F> AttachmentImage<F> {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers: 1,
-                cubemap_compatible: false
+                cubemap_compatible: false,
             };
 
-            try!(UnsafeImage::new(device.clone(), usage, format.format(), dims,
-                                  samples, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            UnsafeImage::new(device.clone(),
+                             usage,
+                             format.format(),
+                             dims,
+                             samples,
+                             1,
+                             Sharing::Exclusive::<Empty<u32>>,
+                             false,
+                             false)?
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
+        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
+                                    mem_ty,
+                                    mem_reqs.size,
+                                    mem_reqs.alignment,
+                                    AllocLayout::Optimal)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe {
+            image.bind_memory(mem.memory(), mem.offset())?;
+        }
 
-        let view = unsafe {
-            try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1))
-        };
+        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1)? };
 
         Ok(Arc::new(AttachmentImage {
-            image: image,
-            view: view,
-            memory: mem,
-            format: format,
-            attachment_layout: if is_depth { ImageLayout::DepthStencilAttachmentOptimal }
-                               else { ImageLayout::ColorAttachmentOptimal },
-            gpu_lock: AtomicUsize::new(0),
-        }))
+                        image: image,
+                        view: view,
+                        memory: mem,
+                        format: format,
+                        attachment_layout: if is_depth {
+                            ImageLayout::DepthStencilAttachmentOptimal
+                        } else {
+                            ImageLayout::ColorAttachmentOptimal
+                        },
+                        gpu_lock: AtomicUsize::new(0),
+                    }))
     }
 }
 
@@ -300,7 +319,7 @@ unsafe impl<P, F, A> ImageContent<P> for Arc<AttachmentImage<F, A>>
 {
     #[inline]
     fn matches_format(&self) -> bool {
-        true        // FIXME:
+        true // FIXME:
     }
 }
 
@@ -315,7 +334,10 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     #[inline]
     fn dimensions(&self) -> Dimensions {
         let dims = self.image.dimensions();
-        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+        Dimensions::Dim2d {
+            width: dims.width(),
+            height: dims.height(),
+        }
     }
 
     #[inline]

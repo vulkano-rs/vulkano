@@ -44,21 +44,21 @@
 //! use vulkano::pipeline::vertex::;
 //! # let device: Arc<Device> = return;
 //! # let queue: Arc<Queue> = return;
-//! 
+//!
 //! struct Vertex {
 //!     position: [f32; 2]
 //! }
-//! 
+//!
 //! impl_vertex!(Vertex, position);
-//! 
+//!
 //! let usage = BufferUsage {
 //!     vertex_buffer: true,
 //!     .. BufferUsage::none()
 //! };
-//! 
+//!
 //! let vertex_buffer = BufferAccess::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)
 //!                                                     .expect("failed to create buffer");
-//! 
+//!
 //! // TODO: finish example
 //! # }
 //! ```

@@ -8,14 +8,14 @@
 // according to those terms.
 
 //! Depth and stencil operations description.
-//! 
+//!
 //! After the fragment shader has finished running, each fragment goes through the depth
 //! and stencil tests.
-//! 
+//!
 //! The depth test passes of fails depending on how the depth value of each fragment compares
 //! to the existing depth value in the depth buffer at that fragment's location. Depth values
 //! are always between 0.0 and 1.0.
-//! 
+//!
 //! The stencil test passes or fails depending on how a reference value compares to the existing
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
@@ -135,10 +135,10 @@ impl Stencil {
     pub fn always_keep(&self) -> bool {
         match self.compare {
             Compare::Always => self.pass_op == StencilOp::Keep &&
-                               self.depth_fail_op == StencilOp::Keep,
+                self.depth_fail_op == StencilOp::Keep,
             Compare::Never => self.fail_op == StencilOp::Keep,
             _ => self.pass_op == StencilOp::Keep && self.fail_op == StencilOp::Keep &&
-                 self.depth_fail_op == StencilOp::Keep,
+                self.depth_fail_op == StencilOp::Keep,
         }
     }
 }
@@ -178,7 +178,7 @@ pub enum DepthBounds {
     /// The test is disabled. All fragments pass the depth bounds test.
     Disabled,
 
-    /// Fragments that are within the given range do pass the test. Values are depth values 
+    /// Fragments that are within the given range do pass the test. Values are depth values
     /// between 0.0 and 1.0.
     Fixed(Range<f32>),
 

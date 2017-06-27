@@ -8,10 +8,11 @@
 // according to those terms.
 
 //! Stage when triangles are turned into pixels.
-//! 
+//!
 //! The rasterization is the stage when collections of triangles are turned into collections
 //! of pixels or samples.
 //!
+
 use vk;
 
 /// State of the rasterizer.
@@ -71,7 +72,7 @@ impl DepthBiasControl {
     pub fn is_dynamic(&self) -> bool {
         match *self {
             DepthBiasControl::Dynamic => true,
-            _ => false
+            _ => false,
         }
     }
 }

@@ -13,16 +13,16 @@
 //! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use smallvec::SmallVec;
 
+use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
@@ -42,7 +42,9 @@ use SafeDeref;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -66,9 +68,7 @@ impl<T> DeviceLocalBuffer<T> {
                       -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
@@ -76,12 +76,10 @@ impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
+                        -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
@@ -92,12 +90,15 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
+                             queue_families: I)
                              -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
@@ -109,36 +110,45 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
-                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                // errors can't happen
+                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                // errors can't happen
             }
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
+                                    mem_ty,
+                                    mem_reqs.size,
+                                    mem_reqs.alignment,
+                                    AllocLayout::Linear)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        try!(buffer.bind_memory(mem.memory(), mem.offset()));
+        buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(DeviceLocalBuffer {
-            inner: buffer,
-            memory: mem,
-            queue_families: queue_families,
-            gpu_lock: AtomicUsize::new(0),
-            marker: PhantomData,
-        }))
+                        inner: buffer,
+                        memory: mem,
+                        queue_families: queue_families,
+                        gpu_lock: AtomicUsize::new(0),
+                        marker: PhantomData,
+                    }))
     }
 }
 
-impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
+impl<T: ?Sized, A> DeviceLocalBuffer<T, A>
+    where A: MemoryPool
+{
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -149,9 +159,15 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
     // TODO: use a custom iterator
     #[inline]
     pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
+        self.queue_families
+            .iter()
+            .map(|&num| {
+                     self.device()
+                         .physical_device()
+                         .queue_family_by_id(num)
+                         .unwrap()
+                 })
+            .collect()
     }
 }
 

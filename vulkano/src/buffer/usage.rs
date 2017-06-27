@@ -67,7 +67,7 @@ impl BufferUsage {
     pub fn transfer_source() -> BufferUsage {
         BufferUsage {
             transfer_source: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -76,7 +76,7 @@ impl BufferUsage {
     pub fn transfer_dest() -> BufferUsage {
         BufferUsage {
             transfer_dest: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -85,7 +85,7 @@ impl BufferUsage {
     pub fn vertex_buffer() -> BufferUsage {
         BufferUsage {
             vertex_buffer: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -96,7 +96,7 @@ impl BufferUsage {
         BufferUsage {
             vertex_buffer: true,
             transfer_dest: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -105,7 +105,7 @@ impl BufferUsage {
     pub fn index_buffer() -> BufferUsage {
         BufferUsage {
             index_buffer: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -115,7 +115,7 @@ impl BufferUsage {
         BufferUsage {
             index_buffer: true,
             transfer_dest: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -124,7 +124,7 @@ impl BufferUsage {
     pub fn uniform_buffer() -> BufferUsage {
         BufferUsage {
             uniform_buffer: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -135,7 +135,7 @@ impl BufferUsage {
         BufferUsage {
             uniform_buffer: true,
             transfer_dest: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -144,7 +144,7 @@ impl BufferUsage {
     pub fn indirect_buffer() -> BufferUsage {
         BufferUsage {
             indirect_buffer: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 
@@ -155,7 +155,7 @@ impl BufferUsage {
         BufferUsage {
             indirect_buffer: true,
             transfer_dest: true,
-            .. BufferUsage::none()
+            ..BufferUsage::none()
         }
     }
 }
@@ -183,14 +183,32 @@ impl BitOr for BufferUsage {
 #[inline]
 pub fn usage_to_bits(usage: BufferUsage) -> vk::BufferUsageFlagBits {
     let mut result = 0;
-    if usage.transfer_source { result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT; }
-    if usage.transfer_dest { result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT; }
-    if usage.uniform_texel_buffer { result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT; }
-    if usage.storage_texel_buffer { result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT; }
-    if usage.uniform_buffer { result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT; }
-    if usage.storage_buffer { result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT; }
-    if usage.index_buffer { result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT; }
-    if usage.vertex_buffer { result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT; }
-    if usage.indirect_buffer { result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT; }
+    if usage.transfer_source {
+        result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
+    }
+    if usage.transfer_dest {
+        result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    if usage.uniform_texel_buffer {
+        result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    }
+    if usage.storage_texel_buffer {
+        result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+    }
+    if usage.uniform_buffer {
+        result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    }
+    if usage.storage_buffer {
+        result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    }
+    if usage.index_buffer {
+        result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
+    }
+    if usage.vertex_buffer {
+        result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+    if usage.indirect_buffer {
+        result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    }
     result
 }

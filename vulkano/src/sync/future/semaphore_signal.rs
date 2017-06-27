@@ -30,10 +30,12 @@ use sync::Semaphore;
 
 /// Builds a new semaphore signal future.
 #[inline]
-pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F> where F: GpuFuture {
+pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
+    where F: GpuFuture
+{
     let device = future.device().clone();
 
-    assert!(future.queue().is_some());        // TODO: document
+    assert!(future.queue().is_some()); // TODO: document
 
     SemaphoreSignalFuture {
         previous: future,
@@ -44,8 +46,11 @@ pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F> where F: 
 }
 
 /// Represents a semaphore being signaled after a previous event.
-#[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct SemaphoreSignalFuture<F> where F: GpuFuture {
+#[must_use = "Dropping this object will immediately block the thread until the GPU has finished \
+              processing the submission"]
+pub struct SemaphoreSignalFuture<F>
+    where F: GpuFuture
+{
     previous: F,
     semaphore: Semaphore,
     // True if the signaling command has already been submitted.
@@ -55,7 +60,9 @@ pub struct SemaphoreSignalFuture<F> where F: GpuFuture {
     finished: AtomicBool,
 }
 
-unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
+unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
+    where F: GpuFuture
+{
     #[inline]
     fn cleanup_finished(&mut self) {
         self.previous.cleanup_finished();
@@ -64,7 +71,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // Flushing the signaling part, since it must always be submitted before the waiting part.
-        try!(self.flush());
+        self.flush()?;
 
         let mut sem = SubmitSemaphoresWaitBuilder::new();
         sem.add_wait_semaphore(&self.semaphore);
@@ -81,33 +88,33 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
 
             let queue = self.previous.queue().unwrap().clone();
 
-            match try!(self.previous.build_submission()) {
+            match self.previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {
                     let mut builder = SubmitCommandBufferBuilder::new();
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));
+                    builder.submit(&queue)?;
                 },
                 SubmitAnyBuilder::SemaphoresWait(sem) => {
                     let mut builder: SubmitCommandBufferBuilder = sem.into();
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));
+                    builder.submit(&queue)?;
                 },
                 SubmitAnyBuilder::CommandBuffer(mut builder) => {
                     debug_assert_eq!(builder.num_signal_semaphores(), 0);
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));
+                    builder.submit(&queue)?;
                 },
                 SubmitAnyBuilder::BindSparse(_) => {
-                    unimplemented!()        // TODO: how to do that?
+                    unimplemented!() // TODO: how to do that?
                     /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
                     builder.add_signal_semaphore(&self.semaphore);
                     try!(builder.submit(&queue));*/
                 },
                 SubmitAnyBuilder::QueuePresent(present) => {
-                    try!(present.submit(&queue));
+                    present.submit(&queue)?;
                     let mut builder = SubmitCommandBufferBuilder::new();
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));       // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
+                    builder.submit(&queue)?; // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
                 },
             };
 
@@ -135,28 +142,36 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
-        self.previous.check_buffer_access(buffer, exclusive, queue).map(|_| None)
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        self.previous
+            .check_buffer_access(buffer, exclusive, queue)
+            .map(|_| None)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
-        self.previous.check_image_access(image, layout, exclusive, queue).map(|_| None)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        self.previous
+            .check_image_access(image, layout, exclusive, queue)
+            .map(|_| None)
     }
 }
 
-unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F> where F: GpuFuture {
+unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F>
+    where F: GpuFuture
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.semaphore.device()
     }
 }
 
-impl<F> Drop for SemaphoreSignalFuture<F> where F: GpuFuture {
+impl<F> Drop for SemaphoreSignalFuture<F>
+    where F: GpuFuture
+{
     fn drop(&mut self) {
         unsafe {
             if !*self.finished.get_mut() {

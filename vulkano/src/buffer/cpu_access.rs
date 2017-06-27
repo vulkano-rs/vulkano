@@ -8,14 +8,15 @@
 // according to those terms.
 
 //! Buffer whose content is accessible to the CPU.
-//! 
+//!
 //! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
 //! but may not perform as well as other buffer types.
-//! 
+//!
 //! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
 //! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
 //! or write and write simultaneously will block.
 
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
@@ -26,12 +27,11 @@ use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
 use std::sync::TryLockError;
-use smallvec::SmallVec;
 
+use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
@@ -46,15 +46,17 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
 use sync::AccessError;
-use sync::Sharing;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
+use sync::Sharing;
 
 use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -80,21 +82,18 @@ impl<T> CpuAccessibleBuffer<T> {
                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 
     /// Builds a new buffer with some data in it. Only allowed for sized data.
     pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
                             -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
-              T: Content + 'static,
+              T: Content + 'static
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-            );
+            let uninitialized =
+                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -129,9 +128,10 @@ impl<T> CpuAccessibleBuffer<[T]> {
               Q: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
-            let uninitialized = try!(
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, queue_families)
-            );
+            let uninitialized = CpuAccessibleBuffer::uninitialized_array(device,
+                                                                         data.len(),
+                                                                         usage,
+                                                                         queue_families)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -154,12 +154,10 @@ impl<T> CpuAccessibleBuffer<[T]> {
     #[inline]
     #[deprecated]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families)
-        }
+        unsafe { CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families) }
     }
 
     /// Builds a new buffer. Can be used for arrays.
@@ -180,12 +178,15 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
+                             queue_families: I)
                              -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
@@ -197,33 +198,41 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::OomError(err)) => return Err(err),
-                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                // errors can't happen
+                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                // errors can't happen
             }
         };
 
-        let mem_ty = device.physical_device().memory_types()
-                           .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                           .filter(|t| t.is_host_visible())
-                           .next().unwrap();    // Vk specs guarantee that this can't fail
+        let mem_ty = device
+            .physical_device()
+            .memory_types()
+            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+            .filter(|t| t.is_host_visible())
+            .next()
+            .unwrap(); // Vk specs guarantee that this can't fail
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
+                                    mem_ty,
+                                    mem_reqs.size,
+                                    mem_reqs.alignment,
+                                    AllocLayout::Linear)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
-        try!(buffer.bind_memory(mem.memory(), mem.offset()));
+        buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(CpuAccessibleBuffer {
-            inner: buffer,
-            memory: mem,
-            access: RwLock::new(()),
-            queue_families: queue_families,
-            marker: PhantomData,
-        }))
+                        inner: buffer,
+                        memory: mem,
+                        access: RwLock::new(()),
+                        queue_families: queue_families,
+                        marker: PhantomData,
+                    }))
     }
 }
 
-impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where A: MemoryPool {
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
+    where A: MemoryPool
+{
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -234,13 +243,22 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where A: MemoryPool {
     // TODO: use a custom iterator
     #[inline]
     pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
+        self.queue_families
+            .iter()
+            .map(|&num| {
+                     self.device()
+                         .physical_device()
+                         .queue_family_by_id(num)
+                         .unwrap()
+                 })
+            .collect()
     }
 }
 
-impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: MemoryPool {
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
+    where T: Content + 'static,
+          A: MemoryPool
+{
     /// Locks the buffer in order to write its content.
     ///
     /// If the buffer is currently in use by the GPU, this function will block until either the
@@ -251,15 +269,15 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     /// that uses it will block until you unlock it.
     #[inline]
     pub fn read(&self) -> Result<ReadLock<T>, TryLockError<RwLockReadGuard<()>>> {
-        let lock = try!(self.access.try_read());
+        let lock = self.access.try_read()?;
 
         let offset = self.memory.offset();
         let range = offset .. offset + self.inner.size();
 
         Ok(ReadLock {
-            inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
-            lock: lock,
-        })
+               inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
+               lock: lock,
+           })
     }
 
     /// Locks the buffer in order to write its content.
@@ -272,20 +290,21 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> where T: Content + 'static, A: Memo
     /// that uses it will block until you unlock it.
     #[inline]
     pub fn write(&self) -> Result<WriteLock<T>, TryLockError<RwLockWriteGuard<()>>> {
-        let lock = try!(self.access.try_write());
+        let lock = self.access.try_write()?;
 
         let offset = self.memory.offset();
         let range = offset .. offset + self.inner.size();
 
         Ok(WriteLock {
-            inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
-            lock: lock,
-        })
+               inner: unsafe { self.memory.mapped_memory().unwrap().read_write(range) },
+               lock: lock,
+           })
     }
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -302,7 +321,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
 
     #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        Ok(())       // FIXME:
+        Ok(()) // FIXME:
     }
 
     #[inline]
@@ -317,7 +336,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+    where T: 'static + Send + Sync,
+          A: MemoryPool
 {
     type Content = T;
 }
@@ -417,7 +437,7 @@ impl<'a, T: ?Sized + 'a> DerefMut for WriteLock<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use buffer::{CpuAccessibleBuffer, BufferUsage};
+    use buffer::{BufferUsage, CpuAccessibleBuffer};
 
     #[test]
     fn create_empty_buffer() {
@@ -425,6 +445,9 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), Some(queue.family()), EMPTY.iter());
+        let _ = CpuAccessibleBuffer::from_data(device,
+                                               BufferUsage::all(),
+                                               Some(queue.family()),
+                                               EMPTY.iter());
     }
 }

@@ -8,9 +8,9 @@
 // according to those terms.
 
 //! Link between Vulkan and a window and/or the screen.
-//! 
+//!
 //! Before you can draw on the screen or a window, you have to create two objects:
-//! 
+//!
 //! - Create a `Surface` object that represents the location where the image will show up (either
 //!   a window or a monitor).
 //! - Create a `Swapchain` that uses that `Surface`.
@@ -20,19 +20,19 @@
 //!
 //! Once you have a swapchain, you can retrieve `Image` objects from it and draw to them just like
 //! you would draw on any other image.
-//! 
+//!
 //! # Surfaces
-//! 
+//!
 //! A surface is an object that represents a location where to render. It can be created from an
 //! instance and either a window handle (in a platform-specific way) or a monitor.
-//! 
+//!
 //! In order to use surfaces, you will have to enable the `VK_KHR_surface` extension on the
 //! instance. See the `instance` module for more information about how to enable extensions.
-//! 
+//!
 //! ## Creating a surface from a window
-//! 
+//!
 //! There are 6 extensions that each allow you to create a surface from a type of window:
-//! 
+//!
 //! - `VK_KHR_xlib_surface`
 //! - `VK_KHR_xcb_surface`
 //! - `VK_KHR_wayland_surface`
@@ -48,7 +48,7 @@
 //! error.
 //!
 //! **Note that the `Surface` object is unsafe**. It is your responsibility to keep the window
-//! alive for at least as long as the surface exists. 
+//! alive for at least as long as the surface exists.
 //!
 //! ### Example
 //!
@@ -78,9 +78,9 @@
 //!     Surface::from_hwnd(instance.clone(), hinstance, window).unwrap()
 //! };
 //! ```
-//! 
+//!
 //! ## Creating a surface from a monitor
-//! 
+//!
 //! Currently no system provides the `VK_KHR_display` extension that contains this feature.
 //! This feature is still a work-in-progress in vulkano and will reside in the `display` module.
 //!
@@ -94,7 +94,7 @@
 //! turn on the screen, one after another. More information below.
 //!
 //! Swapchains have several properties:
-//! 
+//!
 //!  - The number of images that will cycle on the screen.
 //!  - The format of the images.
 //!  - The 2D dimensions of the images, plus a number of layers, for a total of three dimensions.
@@ -132,7 +132,7 @@
 //!    `acquire_next_image`.
 //!  - Call `Swapchain::present` with the same index and by chaining the futures, in order to tell
 //!    the implementation that you are finished drawing to the image and that it can queue a
-//!    command to present the image on the screen after the draw operations are finished. 
+//!    command to present the image on the screen after the draw operations are finished.
 //!
 //! TODO: add example here
 //! loop {
@@ -194,24 +194,24 @@
 use std::sync::atomic::AtomicBool;
 
 pub use self::capabilities::Capabilities;
-pub use self::capabilities::PresentMode;
-pub use self::capabilities::SupportedPresentModes;
-pub use self::capabilities::SupportedPresentModesIter;
-pub use self::capabilities::SurfaceTransform;
+pub use self::capabilities::ColorSpace;
 pub use self::capabilities::CompositeAlpha;
+pub use self::capabilities::PresentMode;
 pub use self::capabilities::SupportedCompositeAlpha;
 pub use self::capabilities::SupportedCompositeAlphaIter;
-pub use self::capabilities::ColorSpace;
+pub use self::capabilities::SupportedPresentModes;
+pub use self::capabilities::SupportedPresentModesIter;
 pub use self::capabilities::SupportedSurfaceTransforms;
 pub use self::capabilities::SupportedSurfaceTransformsIter;
+pub use self::capabilities::SurfaceTransform;
+pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
-pub use self::surface::CapabilitiesError;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
-pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::present;
 

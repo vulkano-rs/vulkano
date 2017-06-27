@@ -11,12 +11,12 @@ use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
-use format::PossibleFloatFormatDesc;
-use format::PossibleUintFormatDesc;
-use format::PossibleSintFormatDesc;
 use format::PossibleDepthFormatDesc;
-use format::PossibleStencilFormatDesc;
 use format::PossibleDepthStencilFormatDesc;
+use format::PossibleFloatFormatDesc;
+use format::PossibleSintFormatDesc;
+use format::PossibleStencilFormatDesc;
+use format::PossibleUintFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
@@ -47,7 +47,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_depth(&self) -> bool {
         let format = self.format();
@@ -55,7 +55,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_stencil(&self) -> bool {
         let format = self.format();
@@ -117,10 +117,10 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, other: &BufferAccess, other_offset: usize,
-                        other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32,
+                        self_first_mipmap: u32, self_num_mipmaps: u32, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         // TODO: should we really provide a default implementation?
         false
     }
@@ -132,11 +132,11 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, other: &ImageAccess,
+    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32,
+                       self_first_mipmap: u32, self_num_mipmaps: u32, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
+                       other_num_mipmaps: u32)
+                       -> bool {
         // TODO: should we really provide a default implementation?
 
         // TODO: debug asserts to check for ranges
@@ -166,15 +166,27 @@ pub unsafe trait ImageAccess {
     /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
     #[inline]
     fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
-        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
-                             other, 0, other.size())
+        self.conflicts_buffer(0,
+                              self.dimensions().array_layers(),
+                              0,
+                              self.mipmap_levels(),
+                              other,
+                              0,
+                              other.size())
     }
 
     /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
     #[inline]
     fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
-                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+        self.conflicts_image(0,
+                             self.dimensions().array_layers(),
+                             0,
+                             self.mipmap_levels(),
+                             other,
+                             0,
+                             other.dimensions().array_layers(),
+                             0,
+                             other.mipmap_levels())
     }
 
     /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
@@ -215,7 +227,10 @@ pub unsafe trait ImageAccess {
     unsafe fn unlock(&self);
 }
 
-unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
+unsafe impl<T> ImageAccess for T
+    where T: SafeDeref,
+          T::Target: ImageAccess
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
@@ -233,8 +248,7 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
 
     #[inline]
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
+                    -> u64 {
         (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 
@@ -286,9 +300,9 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 
     #[inline]
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
-        self.image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+                    -> u64 {
+        self.image
+            .conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 
     #[inline]
@@ -360,12 +374,17 @@ pub unsafe trait ImageViewAccess {
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
     // TODO: return a Result
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool { true /* FIXME */ }
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        true /* FIXME */
+    }
 
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAccess {
+unsafe impl<T> ImageViewAccess for T
+    where T: SafeDeref,
+          T::Target: ImageViewAccess
+{
     #[inline]
     fn parent(&self) -> &ImageAccess {
         (**self).parent()

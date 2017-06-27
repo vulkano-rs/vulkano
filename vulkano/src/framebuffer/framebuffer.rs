@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -14,7 +15,6 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
 use device::Device;
 use device::DeviceOwned;
@@ -26,8 +26,8 @@ use framebuffer::LayoutAttachmentDescription;
 use framebuffer::LayoutPassDependencyDescription;
 use framebuffer::LayoutPassDescription;
 use framebuffer::RenderPassAbstract;
-use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
 use framebuffer::ensure_image_view_compatible;
 use image::ImageViewAccess;
@@ -129,7 +129,10 @@ pub struct FramebufferBuilder<Rp, A> {
     attachments: A,
 }
 
-impl<Rp, A> fmt::Debug for FramebufferBuilder<Rp, A> where Rp: fmt::Debug, A: fmt::Debug {
+impl<Rp, A> fmt::Debug for FramebufferBuilder<Rp, A>
+    where Rp: fmt::Debug,
+          A: fmt::Debug
+{
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("FramebufferBuilder")
@@ -149,7 +152,7 @@ enum FramebufferBuilderDimensions {
 
 impl<Rp, A> FramebufferBuilder<Rp, A>
     where Rp: RenderPassAbstract,
-          A: AttachmentsList,
+          A: AttachmentsList
 {
     /// Appends an attachment to the prototype of the framebuffer.
     ///
@@ -160,14 +163,14 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     {
         if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
-                obtained: self.raw_ids.len() + 1,
-            });
+                           expected: self.render_pass.num_attachments(),
+                           obtained: self.raw_ids.len() + 1,
+                       });
         }
 
         match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &attachment) {
             Ok(()) => (),
-            Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err))
+            Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
 
         let img_dims = attachment.dimensions();
@@ -180,16 +183,16 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             },
             FramebufferBuilderDimensions::AutoIdentical(Some(current)) => {
                 if img_dims.width() != current[0] || img_dims.height() != current[1] ||
-                   img_dims.array_layers() != current[2]
+                    img_dims.array_layers() != current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()]
+                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
                     });
                 }
 
                 FramebufferBuilderDimensions::AutoIdentical(Some(current))
-            }
+            },
             FramebufferBuilderDimensions::AutoSmaller(None) => {
                 let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
                 FramebufferBuilderDimensions::AutoSmaller(Some(dims))
@@ -198,38 +201,36 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 let new_dims = [
                     cmp::min(current[0], img_dims.width()),
                     cmp::min(current[1], img_dims.height()),
-                    cmp::min(current[2], img_dims.array_layers())
+                    cmp::min(current[2], img_dims.array_layers()),
                 ];
 
                 FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
             },
             FramebufferBuilderDimensions::Specific(current) => {
                 if img_dims.width() < current[0] || img_dims.height() < current[1] ||
-                   img_dims.array_layers() < current[2]
+                    img_dims.array_layers() < current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()]
+                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
                     });
                 }
 
-                FramebufferBuilderDimensions::Specific([
-                    img_dims.width(),
-                    img_dims.height(),
-                    img_dims.array_layers()
-                ])
-            }
+                FramebufferBuilderDimensions::Specific(
+                    [img_dims.width(), img_dims.height(), img_dims.array_layers()],
+                )
+            },
         };
-        
+
         let mut raw_ids = self.raw_ids;
         raw_ids.push(attachment.inner().internal_object());
 
         Ok(FramebufferBuilder {
-            render_pass: self.render_pass,
-            raw_ids: raw_ids,
-            dimensions: dimensions,
-            attachments: (self.attachments, attachment),
-        })
+               render_pass: self.render_pass,
+               raw_ids: raw_ids,
+               dimensions: dimensions,
+               attachments: (self.attachments, attachment),
+           })
     }
 
     /// Turns this builder into a `FramebufferBuilder<Rp, Box<AttachmentsList>>`.
@@ -258,9 +259,9 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         // Check the number of attachments.
         if self.raw_ids.len() != self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
-                obtained: self.raw_ids.len(),
-            });
+                           expected: self.render_pass.num_attachments(),
+                           obtained: self.raw_ids.len(),
+                       });
         }
 
         // Compute the dimensions.
@@ -279,11 +280,12 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         // Checking the dimensions against the limits.
         {
             let limits = device.physical_device().limits();
-            let limits = [limits.max_framebuffer_width(), limits.max_framebuffer_height(),
-                          limits.max_framebuffer_layers()];
-            if dimensions[0] > limits[0] || dimensions[1] > limits[1] ||
-               dimensions[2] > limits[2]
-            {
+            let limits = [
+                limits.max_framebuffer_width(),
+                limits.max_framebuffer_height(),
+                limits.max_framebuffer_layers(),
+            ];
+            if dimensions[0] > limits[0] || dimensions[1] > limits[1] || dimensions[2] > limits[2] {
                 return Err(FramebufferCreationError::DimensionsTooLarge);
             }
         }
@@ -294,7 +296,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             let infos = vk::FramebufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 renderPass: self.render_pass.inner().internal_object(),
                 attachmentCount: self.raw_ids.len() as u32,
                 pAttachments: self.raw_ids.as_ptr(),
@@ -304,18 +306,20 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFramebuffer(device.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            check_errors(vk.CreateFramebuffer(device.internal_object(),
+                                              &infos,
+                                              ptr::null(),
+                                              &mut output))?;
             output
         };
 
         Ok(Framebuffer {
-            device: device,
-            render_pass: self.render_pass,
-            framebuffer: framebuffer,
-            dimensions: dimensions,
-            resources: self.attachments,
-        })
+               device: device,
+               render_pass: self.render_pass,
+               framebuffer: framebuffer,
+               dimensions: dimensions,
+               resources: self.attachments,
+           })
     }
 }
 
@@ -377,7 +381,9 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
     }
 }
 
-unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDesc {
+unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
+    where Rp: RenderPassDesc
+{
     #[inline]
     fn num_attachments(&self) -> usize {
         self.render_pass.num_attachments()
@@ -392,7 +398,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A> where Rp: RenderPassDes
     fn num_subpasses(&self) -> usize {
         self.render_pass.num_subpasses()
     }
-    
+
     #[inline]
     fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
         self.render_pass.subpass_desc(num)
@@ -418,7 +424,9 @@ unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
     }
 }
 
-unsafe impl<Rp, A> RenderPassAbstract for Framebuffer<Rp, A> where Rp: RenderPassAbstract {
+unsafe impl<Rp, A> RenderPassAbstract for Framebuffer<Rp, A>
+    where Rp: RenderPassAbstract
+{
     #[inline]
     fn inner(&self) -> RenderPassSys {
         self.render_pass.inner()
@@ -494,8 +502,8 @@ impl error::Error for FramebufferCreationError {
     fn description(&self) -> &str {
         match *self {
             FramebufferCreationError::OomError(_) => "no memory available",
-            FramebufferCreationError::DimensionsTooLarge => "the dimensions of the framebuffer \
-                                                             are too large",
+            FramebufferCreationError::DimensionsTooLarge =>
+                "the dimensions of the framebuffer are too large",
             FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
                 "the attachment has a size that isn't compatible with the framebuffer dimensions"
             },
@@ -537,19 +545,20 @@ impl From<Error> for FramebufferCreationError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
     use framebuffer::Framebuffer;
     use framebuffer::FramebufferCreationError;
     use framebuffer::RenderPassDesc;
     use image::attachment::AttachmentImage;
+    use std::sync::Arc;
 
     #[test]
     fn simple_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -562,22 +571,29 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
-        let image = AttachmentImage::new(device.clone(), [1024, 768],
-                                         Format::R8G8B8A8Unorm).unwrap();
-        let _ = Framebuffer::start(render_pass).add(image.clone()).unwrap().build().unwrap();
+        let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm)
+            .unwrap();
+        let _ = Framebuffer::start(render_pass)
+            .add(image.clone())
+            .unwrap()
+            .build()
+            .unwrap();
     }
 
     #[test]
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let rp = EmptySinglePassRenderPassDesc
+            .build_render_pass(device)
+            .unwrap();
         let res = Framebuffer::with_dimensions(rp, [0xffffffff, 0xffffffff, 0xffffffff]).build();
         match res {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -585,7 +601,8 @@ mod tests {
     fn attachment_format_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -598,14 +615,14 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
-        let image = AttachmentImage::new(device.clone(), [1024, 768],
-                                         Format::R8Unorm).unwrap();
+        let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap();
 
         match Framebuffer::start(render_pass).add(image.clone()) {
             Err(FramebufferCreationError::IncompatibleAttachment(_)) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -614,8 +631,9 @@ mod tests {
     #[test]
     fn attachment_dims_larger_than_specified_valid() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -628,20 +646,24 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let img = AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap();
 
         let _ = Framebuffer::with_dimensions(render_pass, [512, 512, 1])
-            .add(img).unwrap()
-            .build().unwrap();
+            .add(img)
+            .unwrap()
+            .build()
+            .unwrap();
     }
 
     #[test]
     fn attachment_dims_smaller_than_specified() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -654,24 +676,29 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let img = AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
-            Err(FramebufferCreationError::AttachmentDimensionsIncompatible { expected, obtained }) => {
+            Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
+                    expected,
+                    obtained,
+                }) => {
                 assert_eq!(expected, [600, 600, 1]);
                 assert_eq!(obtained, [512, 700, 1]);
             },
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn multi_attachments_dims_not_identical() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -690,25 +717,30 @@ mod tests {
                 color: [a, b],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let a = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
         let b = AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
-            Err(FramebufferCreationError::AttachmentDimensionsIncompatible { expected, obtained }) => {
+            Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
+                    expected,
+                    obtained,
+                }) => {
                 assert_eq!(expected, [512, 512, 1]);
                 assert_eq!(obtained, [512, 513, 1]);
             },
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn multi_attachments_auto_smaller() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -727,27 +759,32 @@ mod tests {
                 color: [a, b],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
         let b = AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap();
 
         let fb = Framebuffer::with_intersecting_dimensions(render_pass)
-            .add(a).unwrap()
-            .add(b).unwrap()
-            .build().unwrap();
+            .add(a)
+            .unwrap()
+            .add(b)
+            .unwrap()
+            .build()
+            .unwrap();
 
         match (fb.width(), fb.height(), fb.layers()) {
             (256, 128, 1) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn not_enough_attachments() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -766,26 +803,31 @@ mod tests {
                 color: [a, b],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let img = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
-            .add(img).unwrap()
+            .add(img)
+            .unwrap()
             .build();
 
         match res {
-            Err(FramebufferCreationError::AttachmentsCountMismatch { expected: 2,
-                                                                     obtained: 1 }) => (),
-            _ => panic!()
+            Err(FramebufferCreationError::AttachmentsCountMismatch {
+                    expected: 2,
+                    obtained: 1,
+                }) => (),
+            _ => panic!(),
         }
     }
 
     #[test]
     fn too_many_attachments() {
         let (device, _) = gfx_dev_and_queue!();
-        
-        let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+
+        let render_pass = Arc::new(
+            single_pass_renderpass!(device.clone(),
             attachments: {
                 a: {
                     load: Clear,
@@ -798,19 +840,23 @@ mod tests {
                 color: [a],
                 depth_stencil: {}
             }
-        ).unwrap());
+        ).unwrap(),
+        );
 
         let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
         let b = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
-            .add(a).unwrap()
+            .add(a)
+            .unwrap()
             .add(b);
 
         match res {
-            Err(FramebufferCreationError::AttachmentsCountMismatch { expected: 1,
-                                                                     obtained: 2 }) => (),
-            _ => panic!()
+            Err(FramebufferCreationError::AttachmentsCountMismatch {
+                    expected: 1,
+                    obtained: 2,
+                }) => (),
+            _ => panic!(),
         }
     }
 
@@ -818,19 +864,25 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
-        let _ = Framebuffer::with_dimensions(rp, [512, 512, 1]).build().unwrap();
+        let rp = EmptySinglePassRenderPassDesc
+            .build_render_pass(device)
+            .unwrap();
+        let _ = Framebuffer::with_dimensions(rp, [512, 512, 1])
+            .build()
+            .unwrap();
     }
 
     #[test]
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let rp = EmptySinglePassRenderPassDesc
+            .build_render_pass(device)
+            .unwrap();
         let res = Framebuffer::start(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -838,11 +890,13 @@ mod tests {
     fn cant_determine_dimensions_intersect() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc.build_render_pass(device).unwrap();
+        let rp = EmptySinglePassRenderPassDesc
+            .build_render_pass(device)
+            .unwrap();
         let res = Framebuffer::with_intersecting_dimensions(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

@@ -7,23 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use smallvec::SmallVec;
 
 use device::Queue;
 use swapchain::Swapchain;
 use sync::Semaphore;
 
-use check_errors;
-use vk;
 use Error;
 use OomError;
-use VulkanObject;
 use SynchronizedVulkanObject;
+use VulkanObject;
+use check_errors;
+use vk;
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
@@ -100,7 +100,7 @@ impl<'a> SubmitPresentBuilder<'a> {
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
 
-            let mut results = vec![mem::uninitialized(); self.swapchains.len()];       // TODO: alloca
+            let mut results = vec![mem::uninitialized(); self.swapchains.len()]; // TODO: alloca
 
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -113,7 +113,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 pResults: results.as_mut_ptr(),
             };
 
-            try!(check_errors(vk.QueuePresentKHR(*queue, &infos)));
+            check_errors(vk.QueuePresentKHR(*queue, &infos))?;
 
             for result in results {
                 // TODO: AMD driver initially didn't write the results ; check that it's been fixed
@@ -158,7 +158,7 @@ impl error::Error for SubmitPresentError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -179,7 +179,7 @@ impl From<Error> for SubmitPresentError {
             Error::DeviceLost => SubmitPresentError::DeviceLost,
             Error::SurfaceLost => SubmitPresentError::SurfaceLost,
             Error::OutOfDate => SubmitPresentError::OutOfDate,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

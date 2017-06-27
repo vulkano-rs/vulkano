@@ -24,7 +24,7 @@
 //! # use std::sync::Arc;
 //! # let instance: Arc<Instance> = return;
 //! use vulkano::instance::debug::DebugCallback;
-//! 
+//!
 //! let _callback = DebugCallback::errors_and_warnings(&instance, |msg| {
 //!     println!("Debug callback: {:?}", msg.description);
 //! }).ok();
@@ -34,23 +34,23 @@
 //!
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugCallback`'s constructor in a
-//! variable, it will be immediately destroyed and your callback will not work. 
+//! variable, it will be immediately destroyed and your callback will not work.
 //!
 
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
 use std::mem;
-use std::os::raw::{c_void, c_char};
+use std::os::raw::{c_char, c_void};
 use std::panic;
 use std::ptr;
 use std::sync::Arc;
 
 use instance::Instance;
 
-use check_errors;
 use Error;
 use VulkanObject;
+use check_errors;
 use vk;
 
 /// Registration of a callback called by validation layers.
@@ -80,27 +80,27 @@ impl DebugCallback {
         // that can't be casted to a `*const c_void`.
         let user_callback = Box::new(Box::new(user_callback) as Box<_>);
 
-        extern "system" fn callback(ty: vk::DebugReportFlagsEXT,
-                                    _: vk::DebugReportObjectTypeEXT, _: u64, _: usize,
-                                    _: i32, layer_prefix: *const c_char,
-                                    description: *const c_char, user_data: *mut c_void) -> u32
-        {
+        extern "system" fn callback(ty: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,
+                                    _: u64, _: usize, _: i32, layer_prefix: *const c_char,
+                                    description: *const c_char, user_data: *mut c_void)
+                                    -> u32 {
             unsafe {
                 let user_callback = user_data as *mut Box<Fn()> as *const _;
                 let user_callback: &Box<Fn(&Message)> = &*user_callback;
 
-                let layer_prefix = CStr::from_ptr(layer_prefix).to_str()
-                                                               .expect("debug callback message \
-                                                                        not utf-8");
-                let description = CStr::from_ptr(description).to_str()
-                                                             .expect("debug callback message \
-                                                                      not utf-8");
+                let layer_prefix = CStr::from_ptr(layer_prefix)
+                    .to_str()
+                    .expect("debug callback message not utf-8");
+                let description = CStr::from_ptr(description)
+                    .to_str()
+                    .expect("debug callback message not utf-8");
 
                 let message = Message {
                     ty: MessageTypes {
                         information: (ty & vk::DEBUG_REPORT_INFORMATION_BIT_EXT) != 0,
                         warning: (ty & vk::DEBUG_REPORT_WARNING_BIT_EXT) != 0,
-                        performance_warning: (ty & vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) != 0,
+                        performance_warning: (ty & vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT) !=
+                            0,
                         error: (ty & vk::DEBUG_REPORT_ERROR_BIT_EXT) != 0,
                         debug: (ty & vk::DEBUG_REPORT_DEBUG_BIT_EXT) != 0,
                     },
@@ -111,8 +111,8 @@ impl DebugCallback {
                 // Since we box the closure, the type system doesn't detect that the `UnwindSafe`
                 // bound is enforced. Therefore we enforce it manually.
                 let _ = panic::catch_unwind(panic::AssertUnwindSafe(move || {
-                    user_callback(&message);
-                }));
+                                                                        user_callback(&message);
+                                                                    }));
 
                 vk::FALSE
             }
@@ -120,11 +120,21 @@ impl DebugCallback {
 
         let flags = {
             let mut flags = 0;
-            if messages.information { flags |= vk::DEBUG_REPORT_INFORMATION_BIT_EXT; }
-            if messages.warning { flags |= vk::DEBUG_REPORT_WARNING_BIT_EXT; }
-            if messages.performance_warning { flags |= vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT; }
-            if messages.error { flags |= vk::DEBUG_REPORT_ERROR_BIT_EXT; }
-            if messages.debug { flags |= vk::DEBUG_REPORT_DEBUG_BIT_EXT; }
+            if messages.information {
+                flags |= vk::DEBUG_REPORT_INFORMATION_BIT_EXT;
+            }
+            if messages.warning {
+                flags |= vk::DEBUG_REPORT_WARNING_BIT_EXT;
+            }
+            if messages.performance_warning {
+                flags |= vk::DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+            }
+            if messages.error {
+                flags |= vk::DEBUG_REPORT_ERROR_BIT_EXT;
+            }
+            if messages.debug {
+                flags |= vk::DEBUG_REPORT_DEBUG_BIT_EXT;
+            }
             flags
         };
 
@@ -140,16 +150,18 @@ impl DebugCallback {
 
         let debug_report_callback = unsafe {
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDebugReportCallbackEXT(instance.internal_object(), &infos,
-                                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateDebugReportCallbackEXT(instance.internal_object(),
+                                                         &infos,
+                                                         ptr::null(),
+                                                         &mut output))?;
             output
         };
 
         Ok(DebugCallback {
-            instance: instance.clone(),
-            debug_report_callback: debug_report_callback,
-            user_callback: user_callback,
-        })
+               instance: instance.clone(),
+               debug_report_callback: debug_report_callback,
+               user_callback: user_callback,
+           })
     }
 
     /// Initializes a debug callback with errors and warnings.
@@ -170,7 +182,8 @@ impl Drop for DebugCallback {
         unsafe {
             let vk = self.instance.pointers();
             vk.DestroyDebugReportCallbackEXT(self.instance.internal_object(),
-                                             self.debug_report_callback, ptr::null());
+                                             self.debug_report_callback,
+                                             ptr::null());
         }
     }
 }
@@ -206,7 +219,7 @@ impl MessageTypes {
     pub fn errors() -> MessageTypes {
         MessageTypes {
             error: true,
-            .. MessageTypes::none()
+            ..MessageTypes::none()
         }
     }
 
@@ -218,7 +231,7 @@ impl MessageTypes {
             error: true,
             warning: true,
             performance_warning: true,
-            .. MessageTypes::none()
+            ..MessageTypes::none()
         }
     }
 
@@ -246,8 +259,8 @@ impl error::Error for DebugCallbackCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            DebugCallbackCreationError::MissingExtension => "the `EXT_debug_report` extension was \
-                                                             not enabled",
+            DebugCallbackCreationError::MissingExtension =>
+                "the `EXT_debug_report` extension was not enabled",
         }
     }
 }

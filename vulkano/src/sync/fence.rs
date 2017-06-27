@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -15,16 +16,15 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use smallvec::SmallVec;
 
-use device::Device;
-use device::DeviceOwned;
 use Error;
 use OomError;
 use SafeDeref;
 use Success;
 use VulkanObject;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
 use vk;
 
 /// A fence is used to know when a command buffer submission has finished its execution.
@@ -33,7 +33,9 @@ use vk;
 /// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
 /// when the CPU can access a ressource again, a fence has to be used.
 #[derive(Debug)]
-pub struct Fence<D = Arc<Device>> where D: SafeDeref<Target = Device> {
+pub struct Fence<D = Arc<Device>>
+    where D: SafeDeref<Target = Device>
+{
     fence: vk::Fence,
 
     device: D,
@@ -44,7 +46,9 @@ pub struct Fence<D = Arc<Device>> where D: SafeDeref<Target = Device> {
     signaled: AtomicBool,
 }
 
-impl<D> Fence<D> where D: SafeDeref<Target = Device> {
+impl<D> Fence<D>
+    where D: SafeDeref<Target = Device>
+{
     /// Builds a new fence.
     #[inline]
     pub fn new(device: D) -> Result<Fence<D>, OomError> {
@@ -62,39 +66,47 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
             let infos = vk::FenceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FENCE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: if signaled { vk::FENCE_CREATE_SIGNALED_BIT } else { 0 },
+                flags: if signaled {
+                    vk::FENCE_CREATE_SIGNALED_BIT
+                } else {
+                    0
+                },
             };
 
             let vk = device.pointers();
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateFence(device.internal_object(), &infos,
-                                             ptr::null(), &mut output)));
+            check_errors(vk.CreateFence(device.internal_object(),
+                                        &infos,
+                                        ptr::null(),
+                                        &mut output))?;
             output
         };
 
         Ok(Fence {
-            fence: fence,
-            device: device,
-            signaled: AtomicBool::new(signaled),
-        })
+               fence: fence,
+               device: device,
+               signaled: AtomicBool::new(signaled),
+           })
     }
 
     /// Returns true if the fence is signaled.
     #[inline]
     pub fn ready(&self) -> Result<bool, OomError> {
         unsafe {
-            if self.signaled.load(Ordering::Relaxed) { return Ok(true); }
+            if self.signaled.load(Ordering::Relaxed) {
+                return Ok(true);
+            }
 
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetFenceStatus(self.device.internal_object(),
-                                                             self.fence)));
+            let result = check_errors(vk.GetFenceStatus(self.device.internal_object(),
+                                                        self.fence))?;
             match result {
                 Success::Success => {
                     self.signaled.store(true, Ordering::Relaxed);
                     Ok(true)
                 },
                 Success::NotReady => Ok(false),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }
@@ -106,18 +118,25 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// If you pass a duration of 0, then the function will return without blocking.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceWaitError> {
         unsafe {
-            if self.signaled.load(Ordering::Relaxed) { return Ok(()); }
+            if self.signaled.load(Ordering::Relaxed) {
+                return Ok(());
+            }
 
             let timeout_ns = if let Some(timeout) = timeout {
-                timeout.as_secs().saturating_mul(1_000_000_000)
-                                 .saturating_add(timeout.subsec_nanos() as u64)
+                timeout
+                    .as_secs()
+                    .saturating_mul(1_000_000_000)
+                    .saturating_add(timeout.subsec_nanos() as u64)
             } else {
                 u64::max_value()
             };
 
             let vk = self.device.pointers();
-            let r = try!(check_errors(vk.WaitForFences(self.device.internal_object(), 1,
-                                                       &self.fence, vk::TRUE, timeout_ns)));
+            let r = check_errors(vk.WaitForFences(self.device.internal_object(),
+                                                  1,
+                                                  &self.fence,
+                                                  vk::TRUE,
+                                                  timeout_ns))?;
 
             match r {
                 Success::Success => {
@@ -127,7 +146,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
                 Success::Timeout => {
                     Err(FenceWaitError::Timeout)
                 },
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }
@@ -138,28 +157,34 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     ///
     /// Panics if not all fences belong to the same device.
     pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceWaitError>
-        where I: IntoIterator<Item = &'a Fence<D>>, D: 'a
+        where I: IntoIterator<Item = &'a Fence<D>>,
+              D: 'a
     {
         let mut device: Option<&Device> = None;
 
-        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().filter_map(|fence| {
-            match &mut device {
-                dev @ &mut None => *dev = Some(&*fence.device),
-                &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
-                _ => panic!("Tried to wait for multiple fences that didn't belong to the \
-                             same device"),
-            };
+        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter()
+            .filter_map(|fence| {
+                match &mut device {
+                    dev @ &mut None => *dev = Some(&*fence.device),
+                    &mut Some(ref dev)
+                        if &**dev as *const Device == &*fence.device as *const Device => {},
+                    _ => panic!("Tried to wait for multiple fences that didn't belong to the \
+                                 same device"),
+                };
 
-            if fence.signaled.load(Ordering::Relaxed) {
-                None
-            } else {
-                Some(fence.fence)
-            }
-        }).collect();
+                if fence.signaled.load(Ordering::Relaxed) {
+                    None
+                } else {
+                    Some(fence.fence)
+                }
+            })
+            .collect();
 
         let timeout_ns = if let Some(timeout) = timeout {
-            timeout.as_secs().saturating_mul(1_000_000_000)
-                                .saturating_add(timeout.subsec_nanos() as u64)
+            timeout
+                .as_secs()
+                .saturating_mul(1_000_000_000)
+                .saturating_add(timeout.subsec_nanos() as u64)
         } else {
             u64::max_value()
         };
@@ -167,8 +192,11 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
         let r = if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                try!(check_errors(vk.WaitForFences(device.internal_object(), fences.len() as u32,
-                                                   fences.as_ptr(), vk::TRUE, timeout_ns)))
+                check_errors(vk.WaitForFences(device.internal_object(),
+                                              fences.len() as u32,
+                                              fences.as_ptr(),
+                                              vk::TRUE,
+                                              timeout_ns))?
             }
         } else {
             return Ok(());
@@ -177,7 +205,7 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
         match r {
             Success::Success => Ok(()),
             Success::Timeout => Err(FenceWaitError::Timeout),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -200,25 +228,32 @@ impl<D> Fence<D> where D: SafeDeref<Target = Device> {
     /// - Panics if not all fences belong to the same device.
     ///
     pub fn multi_reset<'a, I>(iter: I)
-        where I: IntoIterator<Item = &'a mut Fence<D>>, D: 'a
+        where I: IntoIterator<Item = &'a mut Fence<D>>,
+              D: 'a
     {
         let mut device: Option<&Device> = None;
 
-        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter().map(|fence| {
-            match &mut device {
-                dev @ &mut None => *dev = Some(&*fence.device),
-                &mut Some(ref dev) if &**dev as *const Device == &*fence.device as *const Device => {},
-                _ => panic!("Tried to reset multiple fences that didn't belong to the same device"),
-            };
+        let fences: SmallVec<[vk::Fence; 8]> = iter.into_iter()
+            .map(|fence| {
+                match &mut device {
+                    dev @ &mut None => *dev = Some(&*fence.device),
+                    &mut Some(ref dev)
+                        if &**dev as *const Device == &*fence.device as *const Device => {},
+                    _ => panic!("Tried to reset multiple fences that didn't belong to the same \
+                                 device"),
+                };
 
-            fence.signaled.store(false, Ordering::Relaxed);
-            fence.fence
-        }).collect();
+                fence.signaled.store(false, Ordering::Relaxed);
+                fence.fence
+            })
+            .collect();
 
         if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                vk.ResetFences(device.internal_object(), fences.len() as u32, fences.as_ptr());
+                vk.ResetFences(device.internal_object(),
+                               fences.len() as u32,
+                               fences.as_ptr());
             }
         }
     }
@@ -231,7 +266,9 @@ unsafe impl DeviceOwned for Fence {
     }
 }
 
-unsafe impl<D> VulkanObject for Fence<D> where D: SafeDeref<Target = Device> {
+unsafe impl<D> VulkanObject for Fence<D>
+    where D: SafeDeref<Target = Device>
+{
     type Object = vk::Fence;
 
     #[inline]
@@ -240,7 +277,9 @@ unsafe impl<D> VulkanObject for Fence<D> where D: SafeDeref<Target = Device> {
     }
 }
 
-impl<D> Drop for Fence<D> where D: SafeDeref<Target = Device> {
+impl<D> Drop for Fence<D>
+    where D: SafeDeref<Target = Device>
+{
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -277,7 +316,7 @@ impl error::Error for FenceWaitError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -296,7 +335,7 @@ impl From<Error> for FenceWaitError {
             Error::OutOfHostMemory => FenceWaitError::OomError(From::from(err)),
             Error::OutOfDeviceMemory => FenceWaitError::OomError(From::from(err)),
             Error::DeviceLost => FenceWaitError::DeviceLostError,
-            _ => panic!("Unexpected error value: {}", err as i32)
+            _ => panic!("Unexpected error value: {}", err as i32),
         }
     }
 }
@@ -348,7 +387,8 @@ mod tests {
         let fence1 = Fence::signaled(device1.clone()).unwrap();
         let fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(), Some(Duration::new(0, 10)));
+        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(),
+                                  Some(Duration::new(0, 10)));
     }
 
     #[test]

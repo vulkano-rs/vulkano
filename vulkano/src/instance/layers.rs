@@ -8,18 +8,18 @@
 // according to those terms.
 
 use std::error;
-use std::fmt;
 use std::ffi::CStr;
+use std::fmt;
 use std::ptr;
 use std::vec::IntoIter;
 
-use check_errors;
-use OomError;
 use Error;
-use vk;
+use OomError;
+use check_errors;
 use instance::loader;
 use instance::loader::LoadingError;
 use version::Version;
+use vk;
 
 /// Queries the list of layers that are available when creating an instance.
 ///
@@ -28,7 +28,7 @@ use version::Version;
 /// to pass its name (returned by `LayerProperties::name()`) when creating the
 /// [`Instance`](struct.Instance.html).
 ///
-/// This function returns an error if it failed to load the Vulkan library. 
+/// This function returns an error if it failed to load the Vulkan library.
 ///
 /// > **Note**: It is possible that one of the layers enumerated here is no longer available when
 /// > you create the `Instance`. This will lead to an error when calling `Instance::new`. The
@@ -46,22 +46,21 @@ use version::Version;
 /// ```
 pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     unsafe {
-        let entry_points = try!(loader::entry_points());
+        let entry_points = loader::entry_points()?;
 
         let mut num = 0;
-        try!(check_errors({
-            entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())
-        }));
+        check_errors({
+                         entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())
+                     })?;
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
-        try!(check_errors({
-            entry_points.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
-        }));
+        check_errors({
+                         entry_points
+                             .EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
+                     })?;
         layers.set_len(num as usize);
 
-        Ok(LayersIterator {
-            iter: layers.into_iter()
-        })
+        Ok(LayersIterator { iter: layers.into_iter() })
     }
 }
 
@@ -87,7 +86,11 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn name(&self) -> &str {
-        unsafe { CStr::from_ptr(self.props.layerName.as_ptr()).to_str().unwrap() }
+        unsafe {
+            CStr::from_ptr(self.props.layerName.as_ptr())
+                .to_str()
+                .unwrap()
+        }
     }
 
     /// Returns a description of the layer.
@@ -105,7 +108,11 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn description(&self) -> &str {
-        unsafe { CStr::from_ptr(self.props.description.as_ptr()).to_str().unwrap() }
+        unsafe {
+            CStr::from_ptr(self.props.description.as_ptr())
+                .to_str()
+                .unwrap()
+        }
     }
 
     /// Returns the version of Vulkan supported by this layer.
@@ -200,7 +207,7 @@ impl From<Error> for LayersListError {
         match err {
             err @ Error::OutOfHostMemory => LayersListError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => LayersListError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -208,7 +215,7 @@ impl From<Error> for LayersListError {
 /// Iterator that produces the list of layers that are available.
 // TODO: #[derive(Debug, Clone)]
 pub struct LayersIterator {
-    iter: IntoIter<vk::LayerProperties>
+    iter: IntoIter<vk::LayerProperties>,
 }
 
 impl Iterator for LayersIterator {
@@ -236,7 +243,7 @@ mod tests {
     fn layers_list() {
         let mut list = match instance::layers_list() {
             Ok(l) => l,
-            Err(_) => return
+            Err(_) => return,
         };
 
         while let Some(_) = list.next() {}

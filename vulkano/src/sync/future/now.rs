@@ -25,9 +25,7 @@ use sync::PipelineStages;
 /// Builds a future that represents "now".
 #[inline]
 pub fn now(device: Arc<Device>) -> NowFuture {
-    NowFuture {
-        device: device,
-    }
+    NowFuture { device: device }
 }
 
 /// A dummy future that represents "now".
@@ -65,16 +63,16 @@ unsafe impl GpuFuture for NowFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 }

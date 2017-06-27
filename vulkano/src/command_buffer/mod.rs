@@ -28,10 +28,10 @@
 //! Using secondary command buffers leads to slightly lower performances on the GPU, but they have
 //! two advantages on the CPU side:
 //!
-//! - Building a command buffer is a single-threaded operation, but by using secondary command 
+//! - Building a command buffer is a single-threaded operation, but by using secondary command
 //!   buffers you can build multiple secondary command buffers in multiple threads simultaneously.
-//! - Secondary command buffers can be kept alive between frames. When you always repeat the same 
-//!   operations, it might be a good idea to build a secondary command buffer once at 
+//! - Secondary command buffers can be kept alive between frames. When you always repeat the same
+//!   operations, it might be a good idea to build a secondary command buffer once at
 //!   initialization and then reuse it afterwards.
 //!
 //! # The `AutoCommandBufferBuilder`
@@ -73,8 +73,8 @@
 //! alternative command pool implementations and use them. See the `pool` module for more
 //! information.
 
-pub use self::auto::AutoCommandBufferBuilder;
 pub use self::auto::AutoCommandBuffer;
+pub use self::auto::AutoCommandBufferBuilder;
 pub use self::state_cacher::StateCacher;
 pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
@@ -82,8 +82,8 @@ pub use self::traits::CommandBufferBuild;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 
-use pipeline::viewport::Viewport;
 use pipeline::viewport::Scissor;
+use pipeline::viewport::Viewport;
 
 pub mod pool;
 pub mod submit;

@@ -8,15 +8,15 @@
 // according to those terms.
 
 //! Low level implementation of buffers.
-//! 
+//!
 //! Wraps directly around Vulkan buffers, with the exceptions of a few safety checks.
-//! 
+//!
 //! The `UnsafeBuffer` type is the lowest-level buffer object provided by this library. It is used
 //! internally by the higher-level buffer types. You are strongly encouraged to have excellent
 //! knowledge of the Vulkan specs if you want to use an `UnsafeBuffer`.
-//! 
+//!
 //! Here is what you must take care of when you use an `UnsafeBuffer`:
-//! 
+//!
 //! - Synchronization, ie. avoid reading and writing simultaneously to the same buffer.
 //! - Memory aliasing considerations. If you use the same memory to back multiple resources, you
 //!   must ensure that they are not used together and must enable some additional flags.
@@ -24,12 +24,12 @@
 //!   sparse binding.
 //! - Type safety.
 
+use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
-use smallvec::SmallVec;
 
 use buffer::BufferUsage;
 use buffer::usage::usage_to_bits;
@@ -39,10 +39,10 @@ use memory::DeviceMemory;
 use memory::MemoryRequirements;
 use sync::Sharing;
 
-use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
+use check_errors;
 use vk;
 
 /// Data storage in a GPU-accessible location.
@@ -81,10 +81,10 @@ impl UnsafeBuffer {
         let usage_bits = usage_to_bits(usage);
 
         // Checking sparse features.
-        assert!(sparse.sparse || !sparse.sparse_residency, "Can't enable sparse residency without \
-                                                            enabling sparse binding as well");
-        assert!(sparse.sparse || !sparse.sparse_aliased, "Can't enable sparse aliasing without \
-                                                          enabling sparse binding as well");
+        assert!(sparse.sparse || !sparse.sparse_residency,
+                "Can't enable sparse residency without enabling sparse binding as well");
+        assert!(sparse.sparse || !sparse.sparse_aliased,
+                "Can't enable sparse aliasing without enabling sparse binding as well");
         if sparse.sparse && !device.enabled_features().sparse_binding {
             return Err(BufferCreationError::SparseBindingFeatureNotEnabled);
         }
@@ -113,13 +113,18 @@ impl UnsafeBuffer {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateBuffer(device.internal_object(), &infos,
-                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateBuffer(device.internal_object(),
+                                         &infos,
+                                         ptr::null(),
+                                         &mut output))?;
             output
         };
 
         let mem_reqs = {
-            #[inline] fn align(val: usize, al: usize) -> usize { al * (1 + (val - 1) / al) }
+            #[inline]
+            fn align(val: usize, al: usize) -> usize {
+                al * (1 + (val - 1) / al)
+            }
 
             let mut output: vk::MemoryRequirements = mem::uninitialized();
             vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
@@ -158,20 +163,19 @@ impl UnsafeBuffer {
         Ok((obj, mem_reqs))
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize)
-                              -> Result<(), OomError>
-    {
+    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
         let vk = self.device.pointers();
 
         // We check for correctness in debug mode.
         debug_assert!({
-            let mut mem_reqs = mem::uninitialized();
-            vk.GetBufferMemoryRequirements(self.device.internal_object(), self.buffer,
-                                           &mut mem_reqs);
-            mem_reqs.size <= (memory.size() - offset) as u64 &&
-            (offset as u64 % mem_reqs.alignment) == 0 &&
-            mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
-        });
+                          let mut mem_reqs = mem::uninitialized();
+                          vk.GetBufferMemoryRequirements(self.device.internal_object(),
+                                                         self.buffer,
+                                                         &mut mem_reqs);
+                          mem_reqs.size <= (memory.size() - offset) as u64 &&
+                              (offset as u64 % mem_reqs.alignment) == 0 &&
+                              mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+                      });
 
         // Check for alignment correctness.
         {
@@ -187,8 +191,10 @@ impl UnsafeBuffer {
             }
         }
 
-        try!(check_errors(vk.BindBufferMemory(self.device.internal_object(), self.buffer,
-                                              memory.internal_object(), offset as vk::DeviceSize)));
+        check_errors(vk.BindBufferMemory(self.device.internal_object(),
+                                         self.buffer,
+                                         memory.internal_object(),
+                                         offset as vk::DeviceSize))?;
         Ok(())
     }
 
@@ -303,9 +309,15 @@ impl SparseLevel {
     #[inline]
     fn to_flags(&self) -> vk::BufferCreateFlagBits {
         let mut result = 0;
-        if self.sparse { result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT; }
-        if self.sparse_residency { result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT; }
-        if self.sparse_aliased { result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT; }
+        if self.sparse {
+            result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT;
+        }
+        if self.sparse_residency {
+            result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
+        }
+        if self.sparse_aliased {
+            result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT;
+        }
         result
     }
 }
@@ -344,7 +356,7 @@ impl error::Error for BufferCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             BufferCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -369,7 +381,7 @@ impl From<Error> for BufferCreationError {
         match err {
             err @ Error::OutOfHostMemory => BufferCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => BufferCreationError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -379,9 +391,9 @@ mod tests {
     use std::iter::Empty;
 
     use super::BufferCreationError;
+    use super::BufferUsage;
     use super::SparseLevel;
     use super::UnsafeBuffer;
-    use super::BufferUsage;
 
     use device::Device;
     use device::DeviceOwned;
@@ -391,7 +403,10 @@ mod tests {
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
         let (buf, reqs) = unsafe {
-            UnsafeBuffer::new(device.clone(), 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device.clone(),
+                              128,
+                              BufferUsage::all(),
+                              Sharing::Exclusive::<Empty<_>>,
                               SparseLevel::none())
         }.unwrap();
 
@@ -401,23 +416,39 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Can't enable sparse residency without enabling sparse binding as well")]
+    #[should_panic(expected = "Can't enable sparse residency without enabling sparse \
+                               binding as well")]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: false, sparse_residency: true, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: false,
+            sparse_residency: true,
+            sparse_aliased: false,
+        };
         let _ = unsafe {
-            UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device,
+                              128,
+                              BufferUsage::all(),
+                              Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
 
     #[test]
-    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse binding as well")]
+    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse \
+                               binding as well")]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: false, sparse_residency: false, sparse_aliased: true };
+        let sparse = SparseLevel {
+            sparse: false,
+            sparse_residency: false,
+            sparse_aliased: true,
+        };
         let _ = unsafe {
-            UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
+            UnsafeBuffer::new(device,
+                              128,
+                              BufferUsage::all(),
+                              Sharing::Exclusive::<Empty<_>>,
                               sparse)
         };
     }
@@ -425,13 +456,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_binding() {
         let (device, _) = gfx_dev_and_queue!();
-        let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: false,
+            sparse_aliased: false,
+        };
         unsafe {
-            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(device,
+                                      128,
+                                      BufferUsage::all(),
+                                      Sharing::Exclusive::<Empty<_>>,
+                                      sparse) {
                 Err(BufferCreationError::SparseBindingFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }
@@ -439,13 +476,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
-        let sparse = SparseLevel { sparse: true, sparse_residency: true, sparse_aliased: false };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: true,
+            sparse_aliased: false,
+        };
         unsafe {
-            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(device,
+                                      128,
+                                      BufferUsage::all(),
+                                      Sharing::Exclusive::<Empty<_>>,
+                                      sparse) {
                 Err(BufferCreationError::SparseResidencyBufferFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }
@@ -453,13 +496,19 @@ mod tests {
     #[test]
     fn missing_feature_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!(sparse_binding);
-        let sparse = SparseLevel { sparse: true, sparse_residency: false, sparse_aliased: true };
+        let sparse = SparseLevel {
+            sparse: true,
+            sparse_residency: false,
+            sparse_aliased: true,
+        };
         unsafe {
-            match UnsafeBuffer::new(device, 128, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>,
-                                    sparse)
-            {
+            match UnsafeBuffer::new(device,
+                                      128,
+                                      BufferUsage::all(),
+                                      Sharing::Exclusive::<Empty<_>>,
+                                      sparse) {
                 Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         };
     }
@@ -469,7 +518,11 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         unsafe {
-            let _ = UnsafeBuffer::new(device, 0, BufferUsage::all(), Sharing::Exclusive::<Empty<_>>, SparseLevel::none());
+            let _ = UnsafeBuffer::new(device,
+                                      0,
+                                      BufferUsage::all(),
+                                      Sharing::Exclusive::<Empty<_>>,
+                                      SparseLevel::none());
         };
     }
 }

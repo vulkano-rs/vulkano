@@ -14,6 +14,8 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use SafeDeref;
+use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitCommandBufferBuilder;
@@ -21,18 +23,16 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use image::ImageLayout;
 use image::ImageAccess;
-use sync::now;
-use sync::AccessError;
+use image::ImageLayout;
 use sync::AccessCheckError;
+use sync::AccessError;
 use sync::AccessFlagBits;
 use sync::FlushError;
-use sync::NowFuture;
 use sync::GpuFuture;
+use sync::NowFuture;
 use sync::PipelineStages;
-use SafeDeref;
-use VulkanObject;
+use sync::now;
 
 pub unsafe trait CommandBuffer: DeviceOwned {
     /// The command pool of the command buffer.
@@ -114,9 +114,11 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     #[inline]
     fn execute_after<F>(self, future: F, queue: Arc<Queue>)
                         -> Result<CommandBufferExecFuture<F, Self>, CommandBufferExecError>
-        where Self: Sized + 'static, F: GpuFuture
+        where Self: Sized + 'static,
+              F: GpuFuture
     {
-        assert_eq!(self.device().internal_object(), future.device().internal_object());
+        assert_eq!(self.device().internal_object(),
+                   future.device().internal_object());
 
         self.prepare_submit(&future, &queue)?;
 
@@ -125,18 +127,19 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         }
 
         Ok(CommandBufferExecFuture {
-            previous: future,
-            command_buffer: self,
-            queue: queue,
-            submitted: Mutex::new(false),
-            finished: AtomicBool::new(false),
-        })
+               previous: future,
+               command_buffer: self,
+               queue: queue,
+               submitted: Mutex::new(false),
+               finished: AtomicBool::new(false),
+           })
     }
 
     fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     // FIXME: lots of other methods
@@ -153,7 +156,10 @@ pub unsafe trait CommandBufferBuild {
     fn build(self) -> Result<Self::Out, Self::Err>;
 }
 
-unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer {
+unsafe impl<T> CommandBuffer for T
+    where T: SafeDeref,
+          T::Target: CommandBuffer
+{
     type PoolAlloc = <T::Target as CommandBuffer>::PoolAlloc;
 
     #[inline]
@@ -162,21 +168,22 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
     }
 
     #[inline]
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
+                      -> Result<(), CommandBufferExecError> {
         (**self).prepare_submit(future, queue)
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
@@ -184,7 +191,10 @@ unsafe impl<T> CommandBuffer for T where T: SafeDeref, T::Target: CommandBuffer 
 /// Represents a command buffer being executed by the GPU and the moment when the execution
 /// finishes.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct CommandBufferExecFuture<F, Cb> where F: GpuFuture, Cb: CommandBuffer {
+pub struct CommandBufferExecFuture<F, Cb>
+    where F: GpuFuture,
+          Cb: CommandBuffer
+{
     previous: F,
     command_buffer: Cb,
     queue: Arc<Queue>,
@@ -196,7 +206,8 @@ pub struct CommandBufferExecFuture<F, Cb> where F: GpuFuture, Cb: CommandBuffer 
 }
 
 unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
-    where F: GpuFuture, Cb: CommandBuffer
+    where F: GpuFuture,
+          Cb: CommandBuffer
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -204,30 +215,31 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
-        Ok(match try!(self.previous.build_submission()) {
-            SubmitAnyBuilder::Empty => {
-                let mut builder = SubmitCommandBufferBuilder::new();
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
-            },
-            SubmitAnyBuilder::SemaphoresWait(sem) => {
-                let mut builder: SubmitCommandBufferBuilder = sem.into();
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
-            },
-            SubmitAnyBuilder::CommandBuffer(mut builder) => {
-                // FIXME: add pipeline barrier
-                builder.add_command_buffer(self.command_buffer.inner());
-                SubmitAnyBuilder::CommandBuffer(builder)
-            },
-            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_) => {
-                unimplemented!()        // TODO:
+        Ok(match self.previous.build_submission()? {
+               SubmitAnyBuilder::Empty => {
+                   let mut builder = SubmitCommandBufferBuilder::new();
+                   builder.add_command_buffer(self.command_buffer.inner());
+                   SubmitAnyBuilder::CommandBuffer(builder)
+               },
+               SubmitAnyBuilder::SemaphoresWait(sem) => {
+                   let mut builder: SubmitCommandBufferBuilder = sem.into();
+                   builder.add_command_buffer(self.command_buffer.inner());
+                   SubmitAnyBuilder::CommandBuffer(builder)
+               },
+               SubmitAnyBuilder::CommandBuffer(mut builder) => {
+                   // FIXME: add pipeline barrier
+                   builder.add_command_buffer(self.command_buffer.inner());
+                   SubmitAnyBuilder::CommandBuffer(builder)
+               },
+               SubmitAnyBuilder::QueuePresent(_) |
+               SubmitAnyBuilder::BindSparse(_) => {
+                   unimplemented!() // TODO:
                 /*present.submit();     // TODO: wrong
                 let mut builder = SubmitCommandBufferBuilder::new();
                 builder.add_command_buffer(self.command_buffer.inner());
                 SubmitAnyBuilder::CommandBuffer(builder)*/
-            },
-        })
+               },
+           })
     }
 
     #[inline]
@@ -240,10 +252,10 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
             let queue = self.queue.clone();
 
-            match try!(self.build_submission()) {
+            match self.build_submission()? {
                 SubmitAnyBuilder::Empty => {},
                 SubmitAnyBuilder::CommandBuffer(builder) => {
-                    try!(builder.submit(&queue));
+                    builder.submit(&queue)?;
                 },
                 _ => unreachable!(),
             };
@@ -271,10 +283,11 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
-        match self.command_buffer.check_buffer_access(buffer, exclusive, queue) {
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        match self.command_buffer
+            .check_buffer_access(buffer, exclusive, queue) {
             Ok(v) => Ok(v),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
             Err(AccessCheckError::Unknown) => {
@@ -284,21 +297,24 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
-        match self.command_buffer.check_image_access(image, layout, exclusive, queue) {
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        match self.command_buffer
+            .check_image_access(image, layout, exclusive, queue) {
             Ok(v) => Ok(v),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
             Err(AccessCheckError::Unknown) => {
-                self.previous.check_image_access(image, layout, exclusive, queue)
+                self.previous
+                    .check_image_access(image, layout, exclusive, queue)
             },
         }
     }
 }
 
 unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
-    where F: GpuFuture, Cb: CommandBuffer
+    where F: GpuFuture,
+          Cb: CommandBuffer
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -306,7 +322,10 @@ unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
     }
 }
 
-impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb> where F: GpuFuture, Cb: CommandBuffer {
+impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
+    where F: GpuFuture,
+          Cb: CommandBuffer
+{
     fn drop(&mut self) {
         unsafe {
             if !*self.finished.get_mut() {

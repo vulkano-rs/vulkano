@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
@@ -15,9 +17,8 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
-use fnv::FnvHashMap;
-use smallvec::SmallVec;
 
+use OomError;
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
@@ -31,18 +32,18 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
-use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor::ShaderStages;
+use descriptor::descriptor_set::DescriptorSet;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use format::ClearValue;
-use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPassAbstract;
-use image::ImageLayout;
-use image::ImageAccess;
-use image::ImageViewAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use format::ClearValue;
+use framebuffer::FramebufferAbstract;
+use framebuffer::RenderPassAbstract;
+use image::ImageAccess;
+use image::ImageLayout;
+use image::ImageViewAccess;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
@@ -52,9 +53,8 @@ use sync::AccessCheckError;
 use sync::AccessError;
 use sync::AccessFlagBits;
 use sync::Event;
-use sync::PipelineStages;
 use sync::GpuFuture;
-use OomError;
+use sync::PipelineStages;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
@@ -142,9 +142,13 @@ trait Command<P> {
     fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync>;
 
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, num: usize) -> &BufferAccess { panic!() }
+    fn buffer(&self, num: usize) -> &BufferAccess {
+        panic!()
+    }
     // Gives access to the `num`th image used by the command.
-    fn image(&self, num: usize) -> &ImageAccess { panic!() }
+    fn image(&self, num: usize) -> &ImageAccess {
+        panic!()
+    }
 }
 
 // Key that identifies a resource. Implements `PartialEq`, `Eq` and `Hash` so that two resources
@@ -173,8 +177,7 @@ impl<P> BuilderKey<P> {
     // Turns this key used by the builder into a key used by the final command buffer.
     // Called when the command buffer is being built.
     fn into_cb_key(self, final_commands: Arc<Mutex<Vec<Box<FinalCommand + Send + Sync>>>>)
-                   -> CbKey<'static>
-    {
+                   -> CbKey<'static> {
         CbKey::Command {
             commands: final_commands,
             command_id: self.command_id,
@@ -322,27 +325,25 @@ impl<P> SyncCommandBufferBuilder<P> {
     /// any existing resource usage.
     #[inline]
     pub unsafe fn from_unsafe_cmd(cmd: UnsafeCommandBufferBuilder<P>)
-                                  -> SyncCommandBufferBuilder<P>
-    {
+                                  -> SyncCommandBufferBuilder<P> {
         SyncCommandBufferBuilder {
             inner: cmd,
             resources: FnvHashMap::default(),
             pending_barrier: UnsafeCommandBufferBuilderPipelineBarrier::new(),
             commands: Arc::new(Mutex::new(Commands {
-                first_unflushed: 0,
-                commands: Vec::new(),
-            })),
+                                              first_unflushed: 0,
+                                              commands: Vec::new(),
+                                          })),
         }
     }
 
     // After a command is added to the list of pending commands, this function must be called for
     // each resource used by the command that has just been added.
     // The function will take care of handling the pipeline barrier or flushing.
-    fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
-                         exclusive: bool, stages: PipelineStages, access: AccessFlagBits,
+    fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize, exclusive: bool,
+                         stages: PipelineStages, access: AccessFlagBits,
                          start_layout: ImageLayout, end_layout: ImageLayout)
-                         -> Result<(), SyncCommandBufferBuilderError>
-    {
+                         -> Result<(), SyncCommandBufferBuilderError> {
         debug_assert!(exclusive || start_layout == end_layout);
         debug_assert!(access.is_compatible_with(&stages));
         debug_assert!(resource_ty != KeyTy::Image || end_layout != ImageLayout::Undefined);
@@ -406,9 +407,15 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     .buffer(resource_index);
 
                                 let b = &mut self.pending_barrier;
-                                b.add_buffer_memory_barrier(buf, entry.stages, entry.access,
-                                                            stages, access, true, None,
-                                                            0, buf.size());
+                                b.add_buffer_memory_barrier(buf,
+                                                            entry.stages,
+                                                            entry.access,
+                                                            stages,
+                                                            access,
+                                                            true,
+                                                            None,
+                                                            0,
+                                                            buf.size());
                             },
 
                             KeyTy::Image => {
@@ -416,11 +423,17 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     .image(resource_index);
 
                                 let b = &mut self.pending_barrier;
-                                b.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                                b.add_image_memory_barrier(img,
+                                                           0 .. img.mipmap_levels(),
                                                            0 .. img.dimensions().array_layers(),
-                                                           entry.stages, entry.access, stages,
-                                                           access, true, None,
-                                                           entry.current_layout, start_layout);
+                                                           entry.stages,
+                                                           entry.access,
+                                                           stages,
+                                                           access,
+                                                           true,
+                                                           None,
+                                                           entry.current_layout,
+                                                           start_layout);
                             },
                         };
                     }
@@ -459,12 +472,18 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                         unsafe {
                             let b = &mut self.pending_barrier;
-                            b.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                            b.add_image_memory_barrier(img,
+                                                       0 .. img.mipmap_levels(),
                                                        0 .. img.dimensions().array_layers(),
-                                                       PipelineStages { bottom_of_pipe: true, .. PipelineStages::none() },      // TODO:?
-                                                       AccessFlagBits::none(),        // TODO: ?
-                                                       stages, access,
-                                                       true, None,
+                                                       PipelineStages {
+                                                           bottom_of_pipe: true,
+                                                           ..PipelineStages::none()
+                                                       }, // TODO:?
+                                                       AccessFlagBits::none(), // TODO: ?
+                                                       stages,
+                                                       access,
+                                                       true,
+                                                       None,
                                                        img.initial_layout_requirement(),
                                                        start_layout);
                         }
@@ -496,7 +515,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         unsafe {
             self.inner.pipeline_barrier(&self.pending_barrier);
             let f = commands_lock.first_unflushed;
-            for command in &mut commands_lock.commands[f..] {
+            for command in &mut commands_lock.commands[f ..] {
                 command.send(&mut self.inner);
             }
         }
@@ -516,11 +535,18 @@ impl<P> SyncCommandBufferBuilder<P> {
                 }
 
                 state.exclusive_any = true;
-                barrier.add_image_memory_barrier(img, 0 .. img.mipmap_levels(),
+                barrier.add_image_memory_barrier(img,
+                                                 0 .. img.mipmap_levels(),
                                                  0 .. img.dimensions().array_layers(),
-                                                 state.stages, state.access,
-                                                 PipelineStages { bottom_of_pipe: true, .. PipelineStages::none() },      // TODO:?
-                                                 AccessFlagBits::none(), true, None,        // TODO: access?
+                                                 state.stages,
+                                                 state.access,
+                                                 PipelineStages {
+                                                     bottom_of_pipe: true,
+                                                     ..PipelineStages::none()
+                                                 }, // TODO:?
+                                                 AccessFlagBits::none(),
+                                                 true,
+                                                 None, // TODO: access?
                                                  state.current_layout,
                                                  img.final_layout_requirement());
             }
@@ -539,16 +565,19 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         // Build the final resources states.
         let final_resources_states: FnvHashMap<_, _> = {
-            self.resources.into_iter().map(|(resource, state)| {
-                (resource.into_cb_key(final_commands.clone()), state.finalize())
-            }).collect()
+            self.resources
+                .into_iter()
+                .map(|(resource, state)| {
+                         (resource.into_cb_key(final_commands.clone()), state.finalize())
+                     })
+                .collect()
         };
 
         Ok(SyncCommandBuffer {
-            inner: self.inner.build()?,
-            resources: final_resources_states,
-            commands: final_commands,
-        })
+               inner: self.inner.build()?,
+               resources: final_resources_states,
+               commands: final_commands,
+           })
     }
 
     /// Calls `vkBeginRenderPass` on the builder.
@@ -573,7 +602,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                   I: Iterator<Item = ClearValue>
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.begin_render_pass(&self.framebuffer, self.secondary,
+                out.begin_render_pass(&self.framebuffer,
+                                      self.secondary,
                                       self.clear_values.take().unwrap());
             }
 
@@ -583,28 +613,28 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where F: FramebufferAbstract + Send + Sync + 'static
                 {
                     fn image(&self, num: usize) -> &ImageAccess {
-                        self.0.attachments()[num].parent()     // TODO: slow
+                        self.0.attachments()[num].parent() // TODO: slow
                     }
                 }
                 Box::new(Fin(self.framebuffer))
             }
 
             fn image(&self, num: usize) -> &ImageAccess {
-                self.framebuffer.attachments()[num].parent()     // TODO: slow
+                self.framebuffer.attachments()[num].parent() // TODO: slow
             }
         }
 
-        let atch_desc = (0 .. framebuffer.num_attachments()).map(|atch| {
-            framebuffer.attachment_desc(atch).unwrap()
-        }).collect::<Vec<_>>();
+        let atch_desc = (0 .. framebuffer.num_attachments())
+            .map(|atch| framebuffer.attachment_desc(atch).unwrap())
+            .collect::<Vec<_>>();
 
         // FIXME: this is bad because dropping the command buffer doesn't drop the
         //        attachments of the framebuffer, meaning that they will stay locked
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            framebuffer,
-            secondary,
-            clear_values: Some(clear_values),
-        }));
+                                                                 framebuffer,
+                                                                 secondary,
+                                                                 clear_values: Some(clear_values),
+                                                             }));
 
         for (atch, desc) in atch_desc.into_iter().enumerate() {
             self.prev_cmd_resource(KeyTy::Image, atch, true,        // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
@@ -622,7 +652,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                    },       // TODO: suboptimal
                                    desc.initial_layout, desc.final_layout)?;
         }
-        
+
         Ok(())
     }
 
@@ -663,21 +693,34 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer, index_ty }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { vertex_input: true, .. PipelineStages::none() },
-                               AccessFlagBits { index_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { buffer, index_ty }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   vertex_input: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   index_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
         Ok(())
     }
-    
+
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
     pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: Gp)
         where Gp: GraphicsPipelineAbstract + Send + Sync + 'static
     {
         struct Cmd<Gp> {
-            pipeline: Gp
+            pipeline: Gp,
         }
 
         impl<P, Gp> Command<P> for Cmd<Gp>
@@ -697,7 +740,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { pipeline }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { pipeline }));
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -706,7 +753,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         where Cp: ComputePipelineAbstract + Send + Sync + 'static
     {
         struct Cmd<Gp> {
-            pipeline: Gp
+            pipeline: Gp,
         }
 
         impl<P, Gp> Command<P> for Cmd<Gp>
@@ -726,7 +773,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { pipeline }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { pipeline }));
     }
 
     /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
@@ -749,7 +800,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             buffers: Vec::new(),
         }
     }
- 
+
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
@@ -769,11 +820,12 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         impl<P, S, D, R> Command<P> for Cmd<S, D, R>
             where S: BufferAccess + Send + Sync + 'static,
-                D: BufferAccess + Send + Sync + 'static,
-                R: Iterator<Item = (usize, usize, usize)>
+                  D: BufferAccess + Send + Sync + 'static,
+                  R: Iterator<Item = (usize, usize, usize)>
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.copy_buffer(self.source.as_ref().unwrap(), self.destination.as_ref().unwrap(),
+                out.copy_buffer(self.source.as_ref().unwrap(),
+                                self.destination.as_ref().unwrap(),
                                 self.regions.take().unwrap());
             }
 
@@ -781,43 +833,62 @@ impl<P> SyncCommandBufferBuilder<P> {
                 struct Fin<S, D>(S, D);
                 impl<S, D> FinalCommand for Fin<S, D>
                     where S: BufferAccess + Send + Sync + 'static,
-                          D: BufferAccess + Send + Sync + 'static,
+                          D: BufferAccess + Send + Sync + 'static
                 {
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         match num {
                             0 => &self.0,
                             1 => &self.1,
-                            _ => panic!()
+                            _ => panic!(),
                         }
                     }
                 }
                 // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
                 // without using an Option.
-                Box::new(Fin(self.source.take().unwrap(), self.destination.take().unwrap()))
+                Box::new(Fin(self.source.take().unwrap(),
+                             self.destination.take().unwrap()))
             }
 
             fn buffer(&self, num: usize) -> &BufferAccess {
                 match num {
                     0 => self.source.as_ref().unwrap(),
                     1 => self.destination.as_ref().unwrap(),
-                    _ => panic!()
+                    _ => panic!(),
                 }
             }
         }
 
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            source: Some(source),
-            destination: Some(destination),
-            regions: Some(regions),
-        }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
-        self.prev_cmd_resource(KeyTy::Buffer, 1, true,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
+                                                                 source: Some(source),
+                                                                 destination: Some(destination),
+                                                                 regions: Some(regions),
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               1,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
         Ok(())
     }
 
@@ -848,14 +919,15 @@ impl<P> SyncCommandBufferBuilder<P> {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
                 out.copy_buffer_to_image(self.source.as_ref().unwrap(),
                                          self.destination.as_ref().unwrap(),
-                                         self.dest_layout, self.regions.take().unwrap());
+                                         self.dest_layout,
+                                         self.regions.take().unwrap());
             }
 
             fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin<S, D>(S, D);
                 impl<S, D> FinalCommand for Fin<S, D>
                     where S: BufferAccess + Send + Sync + 'static,
-                          D: ImageAccess + Send + Sync + 'static,
+                          D: ImageAccess + Send + Sync + 'static
                 {
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
@@ -870,7 +942,8 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                 // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
                 // without using an Option.
-                Box::new(Fin(self.source.take().unwrap(), self.destination.take().unwrap()))
+                Box::new(Fin(self.source.take().unwrap(),
+                             self.destination.take().unwrap()))
             }
 
             fn buffer(&self, num: usize) -> &BufferAccess {
@@ -885,26 +958,46 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            source: Some(source),
-            destination: Some(destination),
-            dest_layout,
-            regions: Some(regions),
-        }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
-        self.prev_cmd_resource(KeyTy::Image, 0, true,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() },
-                               dest_layout, dest_layout)?;
+                                                                 source: Some(source),
+                                                                 destination: Some(destination),
+                                                                 dest_layout,
+                                                                 regions: Some(regions),
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
+        self.prev_cmd_resource(KeyTy::Image,
+                               0,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               dest_layout,
+                               dest_layout)?;
         Ok(())
     }
 
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
     pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
-        struct Cmd { dimensions: [u32; 3] }
+        struct Cmd {
+            dimensions: [u32; 3],
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -916,7 +1009,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { dimensions }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { dimensions }));
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -955,19 +1052,31 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { draw_indirect: true, .. PipelineStages::none() },      // TODO: is draw_indirect correct?
-                               AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { buffer }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   draw_indirect: true,
+                                   ..PipelineStages::none()
+                               }, // TODO: is draw_indirect correct?
+                               AccessFlagBits {
+                                   indirect_command_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
         Ok(())
     }
 
     /// Calls `vkCmdDraw` on the builder.
     #[inline]
     pub unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32,
-                       first_instance: u32)
-    {
+                       first_instance: u32) {
         struct Cmd {
             vertex_count: u32,
             instance_count: u32,
@@ -977,7 +1086,9 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.draw(self.vertex_count, self.instance_count, self.first_vertex,
+                out.draw(self.vertex_count,
+                         self.instance_count,
+                         self.first_vertex,
                          self.first_instance);
             }
 
@@ -986,16 +1097,19 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { vertex_count, instance_count,
-                                                                   first_vertex, first_instance }));
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 vertex_count,
+                                                                 instance_count,
+                                                                 first_vertex,
+                                                                 first_instance,
+                                                             }));
 
     }
 
     /// Calls `vkCmdDrawIndexed` on the builder.
     #[inline]
-    pub unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32,
-                               vertex_offset: i32, first_instance: u32)
-    {
+    pub unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32,
+                               first_index: u32, vertex_offset: i32, first_instance: u32) {
         struct Cmd {
             index_count: u32,
             instance_count: u32,
@@ -1006,8 +1120,11 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.draw_indexed(self.index_count, self.instance_count, self.first_index,
-                                 self.vertex_offset, self.first_instance);
+                out.draw_indexed(self.index_count,
+                                 self.instance_count,
+                                 self.first_index,
+                                 self.vertex_offset,
+                                 self.first_instance);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
@@ -1015,8 +1132,13 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { index_count, instance_count, first_index,
-                                                                   vertex_offset, first_instance }));
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 index_count,
+                                                                 instance_count,
+                                                                 first_index,
+                                                                 vertex_offset,
+                                                                 first_instance,
+                                                             }));
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
@@ -1057,11 +1179,24 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer, draw_count, stride }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { draw_indirect: true, .. PipelineStages::none() },
-                               AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 buffer,
+                                                                 draw_count,
+                                                                 stride,
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   draw_indirect: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   indirect_command_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
         Ok(())
     }
 
@@ -1103,11 +1238,24 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer, draw_count, stride }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, false,
-                               PipelineStages { draw_indirect: true, .. PipelineStages::none() },
-                               AccessFlagBits { indirect_command_read: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined)?;
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 buffer,
+                                                                 draw_count,
+                                                                 stride,
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               false,
+                               PipelineStages {
+                                   draw_indirect: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   indirect_command_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
         Ok(())
     }
 
@@ -1165,17 +1313,33 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer, data }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, true,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined).unwrap();
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { buffer, data }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)
+            .unwrap();
     }
 
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
     pub unsafe fn next_subpass(&mut self, secondary: bool) {
-        struct Cmd { secondary: bool }
+        struct Cmd {
+            secondary: bool,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1187,7 +1351,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { secondary }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { secondary }));
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
@@ -1206,11 +1374,14 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         impl<P, Pl> Command<P> for Cmd<Pl>
-            where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
+            where Pl: PipelineLayoutAbstract + Send + Sync + 'static
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.push_constants::<_, [u8]>(&self.pipeline_layout, self.stages, self.offset,
-                                              self.size, &self.data);
+                out.push_constants::<_, [u8]>(&self.pipeline_layout,
+                                              self.stages,
+                                              self.offset,
+                                              self.size,
+                                              &self.data);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
@@ -1226,17 +1397,27 @@ impl<P> SyncCommandBufferBuilder<P> {
         debug_assert!(mem::size_of_val(data) >= size as usize);
 
         let mut out = Vec::with_capacity(size as usize);
-        ptr::copy::<u8>(data as *const D as *const u8, out.as_mut_ptr(), size as usize);
+        ptr::copy::<u8>(data as *const D as *const u8,
+                        out.as_mut_ptr(),
+                        size as usize);
         out.set_len(size as usize);
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { pipeline_layout, stages, offset,
-                                                                   size, data: out.into() }));
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 pipeline_layout,
+                                                                 stages,
+                                                                 offset,
+                                                                 size,
+                                                                 data: out.into(),
+                                                             }));
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
     #[inline]
     pub unsafe fn reset_event(&mut self, event: Arc<Event>, stages: PipelineStages) {
-        struct Cmd { event: Arc<Event>, stages: PipelineStages }
+        struct Cmd {
+            event: Arc<Event>,
+            stages: PipelineStages,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1245,18 +1426,25 @@ impl<P> SyncCommandBufferBuilder<P> {
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Arc<Event>);
-                impl FinalCommand for Fin {}
+                impl FinalCommand for Fin {
+                }
                 Box::new(Fin(self.event))
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { event, stages }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { event, stages }));
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
     #[inline]
     pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
-        struct Cmd { constants: [f32; 4] }
+        struct Cmd {
+            constants: [f32; 4],
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1268,13 +1456,21 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { constants }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { constants }));
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
-        struct Cmd { constant_factor: f32, clamp: f32, slope_factor: f32 }
+        struct Cmd {
+            constant_factor: f32,
+            clamp: f32,
+            slope_factor: f32,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1286,13 +1482,20 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { constant_factor, clamp, slope_factor }));
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 constant_factor,
+                                                                 clamp,
+                                                                 slope_factor,
+                                                             }));
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
     pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
-        struct Cmd { min: f32, max: f32 }
+        struct Cmd {
+            min: f32,
+            max: f32,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1304,13 +1507,20 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { min, max }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { min, max }));
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: Arc<Event>, stages: PipelineStages) {
-        struct Cmd { event: Arc<Event>, stages: PipelineStages }
+        struct Cmd {
+            event: Arc<Event>,
+            stages: PipelineStages,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1319,18 +1529,25 @@ impl<P> SyncCommandBufferBuilder<P> {
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Arc<Event>);
-                impl FinalCommand for Fin {}
+                impl FinalCommand for Fin {
+                }
                 Box::new(Fin(self.event))
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { event, stages }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { event, stages }));
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
     pub unsafe fn set_line_width(&mut self, line_width: f32) {
-        struct Cmd { line_width: f32 }
+        struct Cmd {
+            line_width: f32,
+        }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
@@ -1342,7 +1559,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { line_width }));
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { line_width }));
     }
 
     // TODO: stencil states
@@ -1354,7 +1575,10 @@ impl<P> SyncCommandBufferBuilder<P> {
     pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
         where I: Iterator<Item = Scissor> + Send + Sync + 'static
     {
-        struct Cmd<I> { first_scissor: u32, scissors: Option<I> }
+        struct Cmd<I> {
+            first_scissor: u32,
+            scissors: Option<I>,
+        }
 
         impl<P, I> Command<P> for Cmd<I>
             where I: Iterator<Item = Scissor>
@@ -1369,9 +1593,9 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            first_scissor,
-            scissors: Some(scissors),
-        }));
+                                                                 first_scissor,
+                                                                 scissors: Some(scissors),
+                                                             }));
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -1381,7 +1605,10 @@ impl<P> SyncCommandBufferBuilder<P> {
     pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
         where I: Iterator<Item = Viewport> + Send + Sync + 'static
     {
-        struct Cmd<I> { first_viewport: u32, viewports: Option<I> }
+        struct Cmd<I> {
+            first_viewport: u32,
+            viewports: Option<I>,
+        }
 
         impl<P, I> Command<P> for Cmd<I>
             where I: Iterator<Item = Viewport>
@@ -1396,9 +1623,9 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            first_viewport,
-            viewports: Some(viewports),
-        }));
+                                                                 first_viewport,
+                                                                 viewports: Some(viewports),
+                                                             }));
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
@@ -1439,11 +1666,25 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd { buffer, data }));
-        self.prev_cmd_resource(KeyTy::Buffer, 0, true,
-                               PipelineStages { transfer: true, .. PipelineStages::none() },
-                               AccessFlagBits { transfer_write: true, .. AccessFlagBits::none() },
-                               ImageLayout::Undefined, ImageLayout::Undefined).unwrap();
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd { buffer, data }));
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)
+            .unwrap();
     }
 }
 
@@ -1473,7 +1714,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                                 dynamic_offsets: I)
                                 -> Result<(), SyncCommandBufferBuilderError>
         where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
-              I: Iterator<Item = u32> + Send + Sync + 'static,
+              I: Iterator<Item = u32> + Send + Sync + 'static
     {
         struct Cmd<Pl, I> {
             inner: SmallVec<[Box<DescriptorSet + Send + Sync>; 12]>,
@@ -1488,25 +1729,34 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                   I: Iterator<Item = u32>
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.bind_descriptor_sets(self.graphics, &self.pipeline_layout, self.first_binding,
+                out.bind_descriptor_sets(self.graphics,
+                                         &self.pipeline_layout,
+                                         self.first_binding,
                                          self.inner.iter().map(|s| s.inner()),
                                          self.dynamic_offsets.take().unwrap());
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(SmallVec<[Box<DescriptorSet + Send + Sync>; 12]>);
-                impl FinalCommand for Fin { /* TODO: implement buffer() and image() */ }
+                impl FinalCommand for Fin {
+                    /* TODO: implement buffer() and image() */
+                }
                 Box::new(Fin(self.inner))
             }
         }
 
-        self.builder.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            inner: self.inner,
-            graphics,
-            pipeline_layout,
-            first_binding,
-            dynamic_offsets: Some(dynamic_offsets),
-        }));
+        self.builder
+            .commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd {
+                               inner: self.inner,
+                               graphics,
+                               pipeline_layout,
+                               first_binding,
+                               dynamic_offsets: Some(dynamic_offsets),
+                           }));
 
         // FIXME: add resources
 
@@ -1561,17 +1811,32 @@ impl<'a, P> SyncCommandBufferBuilderBindVertexBuffer<'a, P> {
 
         let num_buffers = self.buffers.len();
 
-        self.builder.commands.lock().unwrap().commands.push(Box::new(Cmd {
-            first_binding,
-            inner: Some(self.inner),
-            buffers: self.buffers,
-        }));
+        self.builder
+            .commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd {
+                               first_binding,
+                               inner: Some(self.inner),
+                               buffers: self.buffers,
+                           }));
 
         for n in 0 .. num_buffers {
-            self.builder.prev_cmd_resource(KeyTy::Buffer, n, false,
-                                           PipelineStages { vertex_input: true, .. PipelineStages::none() },
-                                           AccessFlagBits { vertex_attribute_read: true, .. AccessFlagBits::none() },
-                                           ImageLayout::Undefined, ImageLayout::Undefined)?;
+            self.builder
+                .prev_cmd_resource(KeyTy::Buffer,
+                                   n,
+                                   false,
+                                   PipelineStages {
+                                       vertex_input: true,
+                                       ..PipelineStages::none()
+                                   },
+                                   AccessFlagBits {
+                                       vertex_attribute_read: true,
+                                       ..AccessFlagBits::none()
+                                   },
+                                   ImageLayout::Undefined,
+                                   ImageLayout::Undefined)?;
         }
 
         Ok(())
@@ -1607,19 +1872,24 @@ struct ResourceFinalState {
     initial_layout: ImageLayout,
 
     // Layout the image will be in at the end of the command buffer.
-    final_layout: ImageLayout,      // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
+    final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
 }
 
 /// Equivalent to `Command`, but with less methods. Typically contains less things than the
 /// `Command` it comes from.
 trait FinalCommand {
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, num: usize) -> &BufferAccess { panic!() }
+    fn buffer(&self, num: usize) -> &BufferAccess {
+        panic!()
+    }
     // Gives access to the `num`th image used by the command.
-    fn image(&self, num: usize) -> &ImageAccess { panic!() }
+    fn image(&self, num: usize) -> &ImageAccess {
+        panic!()
+    }
 }
 
-impl FinalCommand for () {}
+impl FinalCommand for () {
+}
 
 // Equivalent of `BuilderKey` for a finished command buffer.
 //
@@ -1649,20 +1919,30 @@ enum CbKey<'a> {
 // because it would be too constraining.
 // Since only `CbKey::Command` must be stored in the resources hashmap, we force-implement `Send`
 // and `Sync` so that the hashmap itself implements `Send` and `Sync`.
-unsafe impl<'a> Send for CbKey<'a> {}
-unsafe impl<'a> Sync for CbKey<'a> {}
+unsafe impl<'a> Send for CbKey<'a> {
+}
+unsafe impl<'a> Sync for CbKey<'a> {
+}
 
 impl<'a> CbKey<'a> {
     #[inline]
     fn conflicts_buffer_all(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                            buf: &BufferAccess) -> bool
-    {
+                            buf: &BufferAccess)
+                            -> bool {
         match *self {
-            CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let lock = if commands_lock.is_none() { Some(commands.lock().unwrap()) }
-                           else { None };
+            CbKey::Command {
+                ref commands,
+                command_id,
+                resource_ty,
+                resource_index,
+            } => {
+                let lock = if commands_lock.is_none() {
+                    Some(commands.lock().unwrap())
+                } else {
+                    None
+                };
                 let commands_lock = commands_lock.unwrap_or_else(|| lock.as_ref().unwrap());
-                
+
                 // TODO: put the conflicts_* methods directly on the FinalCommand trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
@@ -1683,14 +1963,22 @@ impl<'a> CbKey<'a> {
 
     #[inline]
     fn conflicts_image_all(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                           img: &ImageAccess) -> bool
-    {
+                           img: &ImageAccess)
+                           -> bool {
         match *self {
-            CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
-                let lock = if commands_lock.is_none() { Some(commands.lock().unwrap()) }
-                           else { None };
+            CbKey::Command {
+                ref commands,
+                command_id,
+                resource_ty,
+                resource_index,
+            } => {
+                let lock = if commands_lock.is_none() {
+                    Some(commands.lock().unwrap())
+                } else {
+                    None
+                };
                 let commands_lock = commands_lock.unwrap_or_else(|| lock.as_ref().unwrap());
-                
+
                 // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
@@ -1720,7 +2008,12 @@ impl<'a> PartialEq for CbKey<'a> {
             CbKey::ImageRef(a) => {
                 other.conflicts_image_all(None, a)
             },
-            CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
+            CbKey::Command {
+                ref commands,
+                command_id,
+                resource_ty,
+                resource_index,
+            } => {
                 let commands_lock = commands.lock().unwrap();
 
                 match resource_ty {
@@ -1745,7 +2038,12 @@ impl<'a> Hash for CbKey<'a> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         match *self {
-            CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
+            CbKey::Command {
+                ref commands,
+                command_id,
+                resource_ty,
+                resource_index,
+            } => {
                 let commands_lock = commands.lock().unwrap();
 
                 match resource_ty {
@@ -1774,17 +2072,23 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         &self.inner
     }
 
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
+                      -> Result<(), CommandBufferExecError> {
         // TODO: if at any point we return an error, we can't recover
 
         let commands_lock = self.commands.lock().unwrap();
 
         for (key, entry) in self.resources.iter() {
             let (commands, command_id, resource_ty, resource_index) = match *key {
-                CbKey::Command { ref commands, command_id, resource_ty, resource_index } => {
+                CbKey::Command {
+                    ref commands,
+                    command_id,
+                    resource_ty,
+                    resource_index,
+                } => {
                     (commands, command_id, resource_ty, resource_index)
                 },
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
             match resource_ty {
@@ -1794,10 +2098,12 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
 
                     let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
                         Ok(_) => {
-                            unsafe { buf.increase_gpu_lock(); }
+                            unsafe {
+                                buf.increase_gpu_lock();
+                            }
                             continue;
                         },
-                        Err(err) => err
+                        Err(err) => err,
                     };
 
                     match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
@@ -1835,9 +2141,9 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::BufferRef(buffer)) {
@@ -1852,17 +2158,17 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::ImageRef(image)) {
             if layout != ImageLayout::Undefined && value.final_layout != layout {
                 return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
-                    allowed: value.final_layout,
-                    requested: layout,
-                }));
+                                                        allowed: value.final_layout,
+                                                        requested: layout,
+                                                    }));
             }
 
             if !value.exclusive && exclusive {
@@ -1890,10 +2196,15 @@ impl<P> Drop for SyncCommandBuffer<P> {
 
             for (key, entry) in self.resources.iter() {
                 let (command_id, resource_ty, resource_index) = match *key {
-                    CbKey::Command { command_id, resource_ty, resource_index, .. } => {
+                    CbKey::Command {
+                        command_id,
+                        resource_ty,
+                        resource_index,
+                        ..
+                    } => {
                         (command_id, resource_ty, resource_index)
                     },
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 };
 
                 match resource_ty {

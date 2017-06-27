@@ -39,7 +39,10 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize where Self: TypedBufferAccess, Self::Content: Content {
+    fn len(&self) -> usize
+        where Self: TypedBufferAccess,
+              Self::Content: Content
+    {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 
@@ -95,10 +98,9 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &BufferAccess, other_offset: usize, other_size: usize)
-                        -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         // TODO: should we really provide a default implementation?
 
         debug_assert!(self_size <= self.size());
@@ -129,9 +131,11 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
-        let other_key = other.conflict_key(other_first_layer, other_num_layers, other_first_mipmap,
+                       other_num_mipmaps: u32)
+                       -> bool {
+        let other_key = other.conflict_key(other_first_layer,
+                                           other_num_layers,
+                                           other_first_mipmap,
                                            other_num_mipmaps);
         self.conflict_key(self_offset, self_size) == other_key
     }
@@ -161,7 +165,12 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
     #[inline]
     fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0, self.size(), other, 0, other.dimensions().array_layers(), 0,
+        self.conflicts_image(0,
+                             self.size(),
+                             other,
+                             0,
+                             other.dimensions().array_layers(),
+                             0,
                              other.mipmap_levels())
     }
 
@@ -214,7 +223,10 @@ pub struct BufferInner<'a> {
     pub offset: usize,
 }
 
-unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
+unsafe impl<T> BufferAccess for T
+    where T: SafeDeref,
+          T::Target: BufferAccess
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -226,9 +238,9 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
@@ -259,6 +271,9 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     type Content: ?Sized;
 }
 
-unsafe impl<T> TypedBufferAccess for T where T: SafeDeref, T::Target: TypedBufferAccess {
+unsafe impl<T> TypedBufferAccess for T
+    where T: SafeDeref,
+          T::Target: TypedBufferAccess
+{
     type Content = <T::Target as TypedBufferAccess>::Content;
 }
