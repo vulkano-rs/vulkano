@@ -122,17 +122,17 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// This command will copy from the source to the destination. If their size is not equal, then
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
-    pub fn copy_buffer<S, D>(mut self, src: S, dest: D)
-                             -> Result<Self, validity::CheckCopyBufferError>
-        where S: BufferAccess + Send + Sync + 'static,
-              D: BufferAccess + Send + Sync + 'static
+    pub fn copy_buffer<S, D, T>(mut self, src: S, dest: D)
+                                -> Result<Self, validity::CheckCopyBufferError>
+        where S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
+              D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
+              T: ?Sized,
     {
         unsafe {
             // TODO: check that we're not in a render pass
 
-            validity::check_copy_buffer(self.device(), &src, &dest)?;
-            let size = src.size();
-            self.inner.copy_buffer(src, dest, iter::once((0, 0, size)));
+            let infos = validity::check_copy_buffer(self.device(), &src, &dest)?;
+            self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)));
             Ok(self)
         }
     }
