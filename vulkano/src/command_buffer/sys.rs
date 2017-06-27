@@ -36,6 +36,7 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::Subpass;
+use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
@@ -293,10 +294,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
-    // TODO: use an enum as the parameter
     #[inline]
-    pub unsafe fn begin_render_pass<F, I>(&mut self, framebuffer: &F, secondary: bool,
-                                          clear_values: I)
+    pub unsafe fn begin_render_pass<F, I>(&mut self, framebuffer: &F,
+                                          subpass_contents: SubpassContents, clear_values: I)
         where F: ?Sized + FramebufferAbstract,
               I: Iterator<Item = ClearValue>
     {
@@ -367,13 +367,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             pClearValues: raw_clear_values.as_ptr(),
         };
 
-        let contents = if secondary {
-            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-        } else {
-            vk::SUBPASS_CONTENTS_INLINE
-        };
-
-        vk.CmdBeginRenderPass(cmd, &begin, contents);
+        vk.CmdBeginRenderPass(cmd, &begin, subpass_contents as u32);
     }
 
     /// Calls `vkCmdBindDescriptorSets` on the builder.
@@ -771,18 +765,11 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdNextSubpass` on the builder.
-    // TODO: use an enum as the parameter
     #[inline]
-    pub unsafe fn next_subpass(&mut self, secondary: bool) {
+    pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-
-        let contents = if secondary {
-            vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS
-        } else {
-            vk::SUBPASS_CONTENTS_INLINE
-        };
-        vk.CmdNextSubpass(cmd, contents);
+        vk.CmdNextSubpass(cmd, subpass_contents as u32);
     }
 
     #[inline]

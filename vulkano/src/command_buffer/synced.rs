@@ -41,6 +41,7 @@ use device::Queue;
 use format::ClearValue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
+use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use image::ImageViewAccess;
@@ -585,15 +586,15 @@ impl<P> SyncCommandBufferBuilder<P> {
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
     //       returned if conflict
     #[inline]
-    pub unsafe fn begin_render_pass<F, I>(&mut self, framebuffer: F, secondary: bool,
-                                          clear_values: I)
+    pub unsafe fn begin_render_pass<F, I>(&mut self, framebuffer: F,
+                                          subpass_contents: SubpassContents, clear_values: I)
                                           -> Result<(), SyncCommandBufferBuilderError>
         where F: FramebufferAbstract + Send + Sync + 'static,
               I: Iterator<Item = ClearValue> + Send + Sync + 'static
     {
         struct Cmd<F, I> {
             framebuffer: F,
-            secondary: bool,
+            subpass_contents: SubpassContents,
             clear_values: Option<I>,
         }
 
@@ -603,7 +604,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
                 out.begin_render_pass(&self.framebuffer,
-                                      self.secondary,
+                                      self.subpass_contents,
                                       self.clear_values.take().unwrap());
             }
 
@@ -632,7 +633,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         //        attachments of the framebuffer, meaning that they will stay locked
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
                                                                  framebuffer,
-                                                                 secondary,
+                                                                 subpass_contents,
                                                                  clear_values: Some(clear_values),
                                                              }));
 
@@ -1336,14 +1337,14 @@ impl<P> SyncCommandBufferBuilder<P> {
 
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
-    pub unsafe fn next_subpass(&mut self, secondary: bool) {
+    pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
         struct Cmd {
-            secondary: bool,
+            subpass_contents: SubpassContents,
         }
 
         impl<P> Command<P> for Cmd {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.next_subpass(self.secondary);
+                out.next_subpass(self.subpass_contents);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
@@ -1355,7 +1356,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             .lock()
             .unwrap()
             .commands
-            .push(Box::new(Cmd { secondary }));
+            .push(Box::new(Cmd { subpass_contents }));
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
