@@ -62,11 +62,12 @@ after_success:
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
-    #- |
-        #[ $TRAVIS_BRANCH = master ] &&
-        #[ $TRAVIS_PULL_REQUEST = false ] &&
-        #chmod 600 www-deploy-key &&
-        #mv www-deploy-key ~/.ssh/id_rsa &&
-        #ssh -o "StrictHostKeyChecking no" git@push-par-clevercloud-customers.services.clever-cloud.com &&
-        #git remote add deploy git+ssh://git@push-par-clevercloud-customers.services.clever-cloud.com/app_1817cab1-3b09-4501-9c04-85ee2f6b3d76.git &&
-        #git subtree push --prefix www deploy master
+    - |
+        [ $TRAVIS_BRANCH = master ] &&
+        [ $TRAVIS_PULL_REQUEST = false ] &&
+        [ $TRAVIS_RUST_VERSION = stable ] &&
+        chmod 600 www-deploy-key &&
+        mv www-deploy-key ~/.ssh/id_rsa &&
+        ssh -o "StrictHostKeyChecking no" git@push-par-clevercloud-customers.services.clever-cloud.com &&
+        git remote add deploy git+ssh://git@push-par-clevercloud-customers.services.clever-cloud.com/app_1817cab1-3b09-4501-9c04-85ee2f6b3d76.git &&
+        git subtree push -q --prefix www deploy master
