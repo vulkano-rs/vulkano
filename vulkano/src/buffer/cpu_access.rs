@@ -45,6 +45,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -54,14 +55,12 @@ use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
-    where A: MemoryPool
-{
+pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
     // Inner content.
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: A::Alloc,
+    memory: A,
 
     // Access pattern of the buffer. Can be read-locked for a shared CPU access, or write-locked
     // for either a write CPU access or a GPU access.
@@ -179,8 +178,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     /// You must ensure that the size that you pass is correct for `T`.
     ///
     pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I)
-                             -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                             queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families
@@ -230,15 +228,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     }
 }
 
-impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
-    where A: MemoryPool
-{
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
+impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> {
     /// Returns the queue families this buffer can be used on.
     // TODO: use a custom iterator
     #[inline]
@@ -257,7 +247,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
 
 impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
     where T: Content + 'static,
-          A: MemoryPool
+          A: MemoryPoolAlloc,
 {
     /// Locks the buffer in order to write its content.
     ///
@@ -303,8 +293,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync,
-          A: MemoryPool
+    where T: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -341,15 +330,12 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
-    where T: 'static + Send + Sync,
-          A: MemoryPool
+    where T: 'static + Send + Sync
 {
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A>
-    where A: MemoryPool
-{
+unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
