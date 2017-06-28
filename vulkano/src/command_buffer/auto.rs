@@ -69,6 +69,12 @@ use sync::PipelineStages;
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder<P>,
     state_cacher: StateCacher,
+    // Contains the number of subpasses remaining in the current render pass, or `None` if we're
+    // outside a render pass. If this is `Some(0)`, the user must call `end_render_pass`. If this
+    // is `Some(1)` or more, the user must call `next_subpass`.
+    subpasses_remaining: Option<usize>,
+    // True if we are a secondary command buffer.
+    secondary_cb: bool,
 }
 
 impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
@@ -82,6 +88,8 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
             Ok(AutoCommandBufferBuilder {
                    inner: inner?,
                    state_cacher: state_cacher,
+                   subpasses_remaining: None,
+                   secondary_cb: false,
                })
         }
     }
@@ -93,7 +101,8 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn build(self) -> Result<AutoCommandBuffer<P::Alloc>, OomError>
         where P: CommandPoolBuilderAlloc
     {
-        // TODO: error if we're inside a render pass
+        // TODO: error instead
+        assert!(self.secondary_cb || self.subpasses_remaining.is_none());
         Ok(AutoCommandBuffer { inner: self.inner.build()? })
     }
 
@@ -110,12 +119,19 @@ impl<P> AutoCommandBufferBuilder<P> {
         where F: FramebufferAbstract + RenderPassDescClearValues<C> + Send + Sync + 'static
     {
         unsafe {
+            // TODO: error instead
+            assert!(!self.secondary_cb);
+            assert!(self.subpasses_remaining.is_none());
+
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
                            else { SubpassContents::Inline };
+            let num_subpasses = framebuffer.num_subpasses();
+            debug_assert_ne!(num_subpasses, 0);
             self.inner
                 .begin_render_pass(framebuffer, contents, clear_values);
+            self.subpasses_remaining = Some(num_subpasses - 1);
             Ok(self)
         }
     }
@@ -132,7 +148,8 @@ impl<P> AutoCommandBufferBuilder<P> {
               T: ?Sized,
     {
         unsafe {
-            // TODO: check that we're not in a render pass
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_none());
 
             let infos = validity::check_copy_buffer(self.device(), &src, &dest)?;
             self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)));
@@ -146,6 +163,9 @@ impl<P> AutoCommandBufferBuilder<P> {
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
+        // TODO: error instead
+        assert!(self.subpasses_remaining.is_none());
+
         let dims = dest.dimensions().width_height_depth();
         self.copy_buffer_to_image_dimensions(src, dest, [0, 0, 0], dims, 0, 1, 0)
     }
@@ -159,7 +179,9 @@ impl<P> AutoCommandBufferBuilder<P> {
               D: ImageAccess + Send + Sync + 'static
     {
         unsafe {
-            // TODO: check that we're not in a render pass
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_none());
+
             // TODO: check validity
             // TODO: hastily implemented
 
@@ -199,6 +221,9 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: missing checks
 
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_none());
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
             {
@@ -222,6 +247,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     {
         unsafe {
             // TODO: missing checks
+
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_some());
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -252,6 +280,9 @@ impl<P> AutoCommandBufferBuilder<P> {
               I: Index + 'static
     {
         unsafe {
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_some());
+
             // TODO: missing checks
 
             let index_count = index_buffer.len();
@@ -287,6 +318,9 @@ impl<P> AutoCommandBufferBuilder<P> {
                       + 'static
     {
         unsafe {
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_some());
+
             // TODO: missing checks
 
             let draw_count = indirect_buffer.len() as u32;
@@ -316,7 +350,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     pub fn end_render_pass(mut self) -> Result<Self, AutoCommandBufferBuilderContextError> {
         unsafe {
-            // TODO: check
+            // TODO: error instead
+            assert!(!self.secondary_cb);
+            assert_eq!(self.subpasses_remaining, Some(0));
             self.inner.end_render_pass();
             Ok(self)
         }
@@ -338,7 +374,8 @@ impl<P> AutoCommandBufferBuilder<P> {
         where B: BufferAccess + Send + Sync + 'static
     {
         unsafe {
-            // TODO: check that we're not in a render pass
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_none());
             validity::check_fill_buffer(self.device(), &buffer)?;
             self.inner.fill_buffer(buffer, data);
             Ok(self)
@@ -350,7 +387,17 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn next_subpass(mut self, secondary: bool)
                         -> Result<Self, AutoCommandBufferBuilderContextError> {
         unsafe {
-            // TODO: check
+            // TODO: error instead
+            assert!(!self.secondary_cb);
+
+            match self.subpasses_remaining {
+                None => panic!(),
+                Some(ref mut num) => {
+                    assert!(*num >= 1);
+                    *num -= 1;
+                }
+            }
+
             let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
                            else { SubpassContents::Inline };
             self.inner.next_subpass(contents);
@@ -369,7 +416,9 @@ impl<P> AutoCommandBufferBuilder<P> {
               D: Send + Sync + 'static
     {
         unsafe {
-            // TODO: check that we're not in a render pass
+            // TODO: error instead
+            assert!(self.subpasses_remaining.is_none());
+
             validity::check_update_buffer(self.device(), &buffer, &data)?;
 
             let size_of_data = mem::size_of_val(&data);
