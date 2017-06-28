@@ -342,21 +342,6 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
     }
 }
 
-pub struct CpuAccessibleBufferClState {
-    size: usize,
-    stages: PipelineStages,
-    access: AccessFlagBits,
-    first_stages: Option<PipelineStages>,
-    write: bool,
-    earliest_previous_transition: usize,
-    needs_flush_at_the_end: bool,
-}
-
-pub struct CpuAccessibleBufferFinished {
-    first_stages: PipelineStages,
-    write: bool,
-}
-
 /// Object that can be used to read or write the content of a `CpuAccessibleBuffer`.
 ///
 /// Note that this object holds a rwlock read guard on the chunk. If another thread tries to access
