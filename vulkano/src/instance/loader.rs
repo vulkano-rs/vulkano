@@ -20,22 +20,17 @@ use vk;
 fn load_static() -> Result<vk::Static, LoadingError> {
     use std::os::raw::c_char;
 
-    extern {
+    extern "C" {
         fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
                                  -> vk::PFN_vkVoidFunction;
     }
 
     extern "system" fn wrapper(instance: vk::Instance, pName: *const c_char)
-                               -> vk::PFN_vkVoidFunction
-    {
-        unsafe {
-            vkGetInstanceProcAddr(instance, pName)
-        }
+                               -> vk::PFN_vkVoidFunction {
+        unsafe { vkGetInstanceProcAddr(instance, pName) }
     }
 
-    Ok(vk::Static {
-        GetInstanceProcAddr: wrapper,
-    })
+    Ok(vk::Static { GetInstanceProcAddr: wrapper })
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -58,10 +53,11 @@ fn load_static() -> Result<vk::Static, LoadingError> {
                 let name = name.to_str().unwrap();
                 match lib.symbol(name) {
                     Ok(s) => s,
-                    Err(_) => {     // TODO: return error?
+                    Err(_) => {
+                        // TODO: return error?
                         err = Some(LoadingError::MissingEntryPoint(name.to_owned()));
                         ptr::null()
-                    }
+                    },
                 }
             });
 
@@ -109,7 +105,7 @@ pub fn entry_points() -> Result<&'static vk::EntryPoints, LoadingError> {
 #[derive(Debug, Clone)]
 pub enum LoadingError {
     /// Failed to load the Vulkan shared library.
-    LibraryLoadFailure(String),         // TODO: meh for error type, but this needs changes in shared_library
+    LibraryLoadFailure(String), // TODO: meh for error type, but this needs changes in shared_library
 
     /// One of the entry points required to be supported by the Vulkan implementation is missing.
     MissingEntryPoint(String),

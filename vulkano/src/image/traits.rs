@@ -11,12 +11,12 @@ use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
-use format::PossibleFloatFormatDesc;
-use format::PossibleUintFormatDesc;
-use format::PossibleSintFormatDesc;
 use format::PossibleDepthFormatDesc;
-use format::PossibleStencilFormatDesc;
 use format::PossibleDepthStencilFormatDesc;
+use format::PossibleFloatFormatDesc;
+use format::PossibleSintFormatDesc;
+use format::PossibleStencilFormatDesc;
+use format::PossibleUintFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
@@ -27,24 +27,6 @@ use sync::AccessError;
 
 use SafeDeref;
 use VulkanObject;
-
-/// Trait for types that represent images.
-pub unsafe trait Image {
-    /// Object that represents a GPU access to the image.
-    type Access: ImageAccess;
-
-    /// Builds an object that represents a GPU access to the image.
-    fn access(self) -> Self::Access;
-
-    /// Returns the format of this image.
-    fn format(&self) -> Format;
-
-    /// Returns the number of samples of this image.
-    fn samples(&self) -> u32;
-
-    /// Returns the dimensions of the image.
-    fn dimensions(&self) -> ImageDimensions;
-}
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
@@ -65,7 +47,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_depth(&self) -> bool {
         let format = self.format();
@@ -73,7 +55,7 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
-    /// depth-stencil format. 
+    /// depth-stencil format.
     #[inline]
     fn has_stencil(&self) -> bool {
         let format = self.format();
@@ -135,10 +117,10 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                        self_num_mipmaps: u32, other: &BufferAccess, other_offset: usize,
-                        other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32,
+                        self_first_mipmap: u32, self_num_mipmaps: u32, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         // TODO: should we really provide a default implementation?
         false
     }
@@ -150,11 +132,11 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32, self_first_mipmap: u32,
-                       self_num_mipmaps: u32, other: &ImageAccess,
+    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32,
+                       self_first_mipmap: u32, self_num_mipmaps: u32, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
+                       other_num_mipmaps: u32)
+                       -> bool {
         // TODO: should we really provide a default implementation?
 
         // TODO: debug asserts to check for ranges
@@ -184,15 +166,27 @@ pub unsafe trait ImageAccess {
     /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
     #[inline]
     fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
-        self.conflicts_buffer(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
-                             other, 0, other.size())
+        self.conflicts_buffer(0,
+                              self.dimensions().array_layers(),
+                              0,
+                              self.mipmap_levels(),
+                              other,
+                              0,
+                              other.size())
     }
 
     /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
     #[inline]
     fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0, self.dimensions().array_layers(), 0, self.mipmap_levels(),
-                             other, 0, other.dimensions().array_layers(), 0, other.mipmap_levels())
+        self.conflicts_image(0,
+                             self.dimensions().array_layers(),
+                             0,
+                             self.mipmap_levels(),
+                             other,
+                             0,
+                             other.dimensions().array_layers(),
+                             0,
+                             other.mipmap_levels())
     }
 
     /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
@@ -201,24 +195,38 @@ pub unsafe trait ImageAccess {
         self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
     }
 
-    /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
-    /// This function implementation should remember that it has been called and return `false` if
-    /// it gets called a second time.
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
     ///
-    /// The only way to know that the GPU has stopped accessing a queue is when the image object
-    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
-    /// to a lock) in order to represent a GPU access.
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
-unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
+unsafe impl<T> ImageAccess for T
+    where T: SafeDeref,
+          T::Target: ImageAccess
+{
     #[inline]
     fn inner(&self) -> &UnsafeImage {
         (**self).inner()
@@ -236,8 +244,7 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
 
     #[inline]
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
+                    -> u64 {
         (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 
@@ -249,6 +256,11 @@ unsafe impl<T> ImageAccess for T where T: SafeDeref, T::Target: ImageAccess {
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 
@@ -284,9 +296,9 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 
     #[inline]
     fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64
-    {
-        self.image.conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+                    -> u64 {
+        self.image
+            .conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
     }
 
     #[inline]
@@ -297,6 +309,11 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
         self.image.increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.image.unlock()
     }
 }
 
@@ -310,15 +327,6 @@ pub unsafe trait ImageClearValue<T>: ImageAccess {
 pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
-}
-
-/// Trait for types that represent image views.
-pub unsafe trait ImageView {
-    /// Object that represents a GPU access to the image view.
-    type Access: ImageViewAccess;
-
-    /// Builds an object that represents a GPU access to the image view.
-    fn access(self) -> Self::Access;
 }
 
 /// Trait for types that represent the GPU can access an image view.
@@ -362,12 +370,17 @@ pub unsafe trait ImageViewAccess {
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
     // TODO: return a Result
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool { true /* FIXME */ }
+    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+        true /* FIXME */
+    }
 
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<T> ImageViewAccess for T where T: SafeDeref, T::Target: ImageViewAccess {
+unsafe impl<T> ImageViewAccess for T
+    where T: SafeDeref,
+          T::Target: ImageViewAccess
+{
     #[inline]
     fn parent(&self) -> &ImageAccess {
         (**self).parent()

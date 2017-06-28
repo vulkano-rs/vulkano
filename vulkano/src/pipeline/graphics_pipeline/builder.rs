@@ -11,7 +11,6 @@
 // to avoid duplicating code, so we hide the warnings for now
 #![allow(deprecated)]
 
-use std::sync::Arc;
 use descriptor::pipeline_layout::EmptyPipelineDesc;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
@@ -19,9 +18,9 @@ use device::Device;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
-use pipeline::blend::Blend;
-use pipeline::blend::AttachmentsBlend;
 use pipeline::blend::AttachmentBlend;
+use pipeline::blend::AttachmentsBlend;
+use pipeline::blend::Blend;
 use pipeline::blend::LogicOp;
 use pipeline::depth_stencil::DepthStencil;
 use pipeline::graphics_pipeline::GraphicsPipeline;
@@ -36,23 +35,46 @@ use pipeline::raster::FrontFace;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
 use pipeline::shader::EmptyShaderInterfaceDef;
+use pipeline::shader::FragmentShaderEntryPoint;
+use pipeline::shader::GeometryShaderEntryPoint;
 use pipeline::shader::ShaderInterfaceDef;
 use pipeline::shader::ShaderInterfaceDefMatch;
-use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::shader::TessControlShaderEntryPoint;
 use pipeline::shader::TessEvaluationShaderEntryPoint;
-use pipeline::shader::GeometryShaderEntryPoint;
-use pipeline::shader::FragmentShaderEntryPoint;
+use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::ViewportsState;
+use std::sync::Arc;
 
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
-pub struct GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp> {
+pub struct GraphicsPipelineBuilder<'a,
+ Vdef,
+ Vsp,
+ Vi,
+ Vo,
+ Vl,
+ Tcs,
+ Tci,
+ Tco,
+ Tcl,
+ Tes,
+ Tei,
+ Teo,
+ Tel,
+ Gs,
+ Gi,
+ Go,
+ Gl,
+ Fs,
+ Fi,
+ Fo,
+ Fl,
+ Rp>
+{
     vertex_input: Vdef,
     vertex_shader: Option<VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>>,
     input_assembly: InputAssembly,
@@ -67,18 +89,34 @@ pub struct GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl
     render_pass: Option<Subpass<Rp>>,
 }
 
-impl<'a> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (), (),
-                                 EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
-                                 EmptyPipelineDesc, (), EmptyShaderInterfaceDef,
-                                 EmptyShaderInterfaceDef, EmptyPipelineDesc, (),
-                                 EmptyShaderInterfaceDef, EmptyShaderInterfaceDef,
-                                 EmptyPipelineDesc, (), EmptyShaderInterfaceDef,
-                                 EmptyShaderInterfaceDef, EmptyPipelineDesc, ()>
-{
+impl<'a>
+    GraphicsPipelineBuilder<'a,
+                            SingleBufferDefinition<()>,
+                            (),
+                            (),
+                            (),
+                            (),
+                            (),
+                            EmptyShaderInterfaceDef,
+                            EmptyShaderInterfaceDef,
+                            EmptyPipelineDesc,
+                            (),
+                            EmptyShaderInterfaceDef,
+                            EmptyShaderInterfaceDef,
+                            EmptyPipelineDesc,
+                            (),
+                            EmptyShaderInterfaceDef,
+                            EmptyShaderInterfaceDef,
+                            EmptyPipelineDesc,
+                            (),
+                            EmptyShaderInterfaceDef,
+                            EmptyShaderInterfaceDef,
+                            EmptyPipelineDesc,
+                            ()> {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: SingleBufferDefinition::new(),        // TODO: should be empty attrs instead
+            vertex_input: SingleBufferDefinition::new(), // TODO: should be empty attrs instead
             vertex_shader: None,
             input_assembly: InputAssembly::triangle_list(),
             tessellation: None,
@@ -94,16 +132,58 @@ impl<'a> GraphicsPipelineBuilder<'a, SingleBufferDefinition<()>, (), (), (), (),
     }
 }
 
-impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp>
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
+impl<'a,
+     Vdef,
+     Vsp,
+     Vi,
+     Vo,
+     Vl,
+     Tcs,
+     Tci,
+     Tco,
+     Tcl,
+     Tes,
+     Tei,
+     Teo,
+     Tel,
+     Gs,
+     Gi,
+     Go,
+     Gl,
+     Fs,
+     Fi,
+     Fo,
+     Fl,
+     Rp>
+    GraphicsPipelineBuilder<'a,
+                            Vdef,
+                            Vsp,
+                            Vi,
+                            Vo,
+                            Vl,
+                            Tcs,
+                            Tci,
+                            Tco,
+                            Tcl,
+                            Tes,
+                            Tei,
+                            Teo,
+                            Tel,
+                            Gs,
+                            Gi,
+                            Go,
+                            Gl,
+                            Fs,
+                            Fi,
+                            Fo,
+                            Fl,
+                            Rp>
     where Vdef: VertexDefinition<Vi>,
-          Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync,       // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync,        // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
+          Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
           Tci: ShaderInterfaceDefMatch<Vo>,
           Tei: ShaderInterfaceDefMatch<Tco>,
           Gi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
@@ -111,46 +191,128 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
           Tco: ShaderInterfaceDef,
           Teo: ShaderInterfaceDef,
           Go: ShaderInterfaceDef,
-          Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
+          Fi: ShaderInterfaceDefMatch<Go>
+                  + ShaderInterfaceDefMatch<Teo>
+                  + ShaderInterfaceDefMatch<Vo>,
           Fo: ShaderInterfaceDef,
-          Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
+          Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>
 {
     /// Builds the graphics pipeline.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
-    pub fn build(self, device: Arc<Device>) -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>, GraphicsPipelineCreationError> {
+    pub fn build(self, device: Arc<Device>)
+                 -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
+                           GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
-        GraphicsPipeline::with_tessellation_and_geometry(device, GraphicsPipelineParams {
-            vertex_input: self.vertex_input,
-            vertex_shader: self.vertex_shader.expect("Vertex shader not specified in the builder"),
-            input_assembly: self.input_assembly,
-            tessellation: self.tessellation,
-            geometry_shader: self.geometry_shader,
-            viewport: self.viewport.expect("Viewport state not specified in the builder"),
-            raster: self.raster,
-            multisample: self.multisample,
-            fragment_shader: self.fragment_shader.expect("Fragment shader not specified in the builder"),
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-            render_pass: self.render_pass.expect("Render pass not specified in the builder"),
-        })
+        GraphicsPipeline::with_tessellation_and_geometry(device,
+                                                         GraphicsPipelineParams {
+                                                             vertex_input: self.vertex_input,
+                                                             vertex_shader:
+                                                                 self.vertex_shader
+                                                                     .expect("Vertex shader not \
+                                                                              specified in the \
+                                                                              builder"),
+                                                             input_assembly: self.input_assembly,
+                                                             tessellation: self.tessellation,
+                                                             geometry_shader: self.geometry_shader,
+                                                             viewport:
+                                                                 self.viewport
+                                                                     .expect("Viewport state not \
+                                                                              specified in the \
+                                                                              builder"),
+                                                             raster: self.raster,
+                                                             multisample: self.multisample,
+                                                             fragment_shader:
+                                                                 self.fragment_shader
+                                                                     .expect("Fragment shader not \
+                                                                              specified in the \
+                                                                              builder"),
+                                                             depth_stencil: self.depth_stencil,
+                                                             blend: self.blend,
+                                                             render_pass:
+                                                                 self.render_pass
+                                                                     .expect("Render pass not \
+                                                                              specified in the \
+                                                                              builder"),
+                                                         })
     }
-    
+
     // TODO: add build_with_cache method
 }
 
-impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp>
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-{
+impl<'a,
+     Vdef,
+     Vsp,
+     Vi,
+     Vo,
+     Vl,
+     Tcs,
+     Tci,
+     Tco,
+     Tcl,
+     Tes,
+     Tei,
+     Teo,
+     Tel,
+     Gs,
+     Gi,
+     Go,
+     Gl,
+     Fs,
+     Fi,
+     Fo,
+     Fl,
+     Rp>
+    GraphicsPipelineBuilder<'a,
+                            Vdef,
+                            Vsp,
+                            Vi,
+                            Vo,
+                            Vl,
+                            Tcs,
+                            Tci,
+                            Tco,
+                            Tcl,
+                            Tes,
+                            Tei,
+                            Teo,
+                            Tel,
+                            Gs,
+                            Gi,
+                            Go,
+                            Gl,
+                            Fs,
+                            Fi,
+                            Fo,
+                            Fl,
+                            Rp> {
     // TODO: add pipeline derivate system
 
     /// Sets the vertex input.
     #[inline]
     pub fn vertex_input<T>(self, vertex_input: T)
-        -> GraphicsPipelineBuilder<'a, T, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                                   Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    {
+                           -> GraphicsPipelineBuilder<'a,
+                                                      T,
+                                                      Vsp,
+                                                      Vi,
+                                                      Vo,
+                                                      Vl,
+                                                      Tcs,
+                                                      Tci,
+                                                      Tco,
+                                                      Tcl,
+                                                      Tes,
+                                                      Tei,
+                                                      Teo,
+                                                      Tel,
+                                                      Gs,
+                                                      Gi,
+                                                      Go,
+                                                      Gl,
+                                                      Fs,
+                                                      Fi,
+                                                      Fo,
+                                                      Fl,
+                                                      Rp> {
         GraphicsPipelineBuilder {
             vertex_input: vertex_input,
             vertex_shader: self.vertex_shader,
@@ -173,20 +335,61 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// vertex.
     #[inline]
     pub fn vertex_input_single_buffer<V>(self)
-        -> GraphicsPipelineBuilder<'a, SingleBufferDefinition<V>, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    {
+                                         -> GraphicsPipelineBuilder<'a,
+                                                                    SingleBufferDefinition<V>,
+                                                                    Vsp,
+                                                                    Vi,
+                                                                    Vo,
+                                                                    Vl,
+                                                                    Tcs,
+                                                                    Tci,
+                                                                    Tco,
+                                                                    Tcl,
+                                                                    Tes,
+                                                                    Tei,
+                                                                    Teo,
+                                                                    Tel,
+                                                                    Gs,
+                                                                    Gi,
+                                                                    Go,
+                                                                    Gl,
+                                                                    Fs,
+                                                                    Fi,
+                                                                    Fo,
+                                                                    Fl,
+                                                                    Rp> {
         self.vertex_input(SingleBufferDefinition::<V>::new())
     }
 
     /// Sets the vertex shader to use.
     // TODO: correct specialization constants
     #[inline]
-    pub fn vertex_shader<Vi2, Vo2, Vl2>(self, shader: VertexShaderEntryPoint<'a, (), Vi2, Vo2, Vl2>,
+    pub fn vertex_shader<Vi2, Vo2, Vl2>(self,
+                                        shader: VertexShaderEntryPoint<'a, (), Vi2, Vo2, Vl2>,
                                         specialization_constants: ())
-        -> GraphicsPipelineBuilder<'a, Vdef, (), Vi2, Vo2, Vl2, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    {
+                                        -> GraphicsPipelineBuilder<'a,
+                                                                   Vdef,
+                                                                   (),
+                                                                   Vi2,
+                                                                   Vo2,
+                                                                   Vl2,
+                                                                   Tcs,
+                                                                   Tci,
+                                                                   Tco,
+                                                                   Tcl,
+                                                                   Tes,
+                                                                   Tei,
+                                                                   Teo,
+                                                                   Tel,
+                                                                   Gs,
+                                                                   Gi,
+                                                                   Go,
+                                                                   Gl,
+                                                                   Fs,
+                                                                   Fi,
+                                                                   Fo,
+                                                                   Fl,
+                                                                   Rp> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: Some(shader),
@@ -225,7 +428,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn point_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::PointList)
     }
-    
+
     /// Sets the topology of the primitives to a list of lines.
     ///
     /// > **Note**: This is equivalent to
@@ -234,7 +437,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn line_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineList)
     }
-    
+
     /// Sets the topology of the primitives to a line strip.
     ///
     /// > **Note**: This is equivalent to
@@ -243,7 +446,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn line_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStrip)
     }
-    
+
     /// Sets the topology of the primitives to a list of triangles. Note that this is the default.
     ///
     /// > **Note**: This is equivalent to
@@ -252,7 +455,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn triangle_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleList)
     }
-    
+
     /// Sets the topology of the primitives to a triangle strip.
     ///
     /// > **Note**: This is equivalent to
@@ -261,7 +464,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn triangle_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStrip)
     }
-    
+
     /// Sets the topology of the primitives to a fan of triangles.
     ///
     /// > **Note**: This is equivalent to
@@ -270,7 +473,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn triangle_fan(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleFan)
     }
-    
+
     /// Sets the topology of the primitives to a list of lines with adjacency information.
     ///
     /// > **Note**: This is equivalent to
@@ -279,7 +482,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn line_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)
     }
-    
+
     /// Sets the topology of the primitives to a line strip with adjacency information.
     ///
     /// > **Note**: This is equivalent to
@@ -288,7 +491,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn line_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)
     }
-    
+
     /// Sets the topology of the primitives to a list of triangles with adjacency information.
     ///
     /// > **Note**: This is equivalent to
@@ -297,7 +500,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn triangle_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)
     }
-    
+
     /// Sets the topology of the primitives to a triangle strip with adjacency information`
     ///
     /// > **Note**: This is equivalent to
@@ -306,7 +509,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn triangle_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)
     }
-    
+
     /// Sets the topology of the primitives to a list of patches. Can only be used and must be used
     /// with a tessellation shader.
     ///
@@ -333,9 +536,9 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             tessellation: Some(GraphicsPipelineParamsTess {
-                tessellation_control_shader: tessellation_control_shader,
-                tessellation_evaluation_shader: tessellation_evaluation_shader,
-            }),
+                                   tessellation_control_shader: tessellation_control_shader,
+                                   tessellation_evaluation_shader: tessellation_evaluation_shader,
+                               }),
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
             raster: self.raster,
@@ -357,11 +560,32 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// Sets the geometry shader to use.
     // TODO: correct specialization constants
     #[inline]
-    pub fn geometry_shader<Gi2, Go2, Gl2>(self, shader: GeometryShaderEntryPoint<'a, (), Gi2, Go2, Gl2>,
+    pub fn geometry_shader<Gi2, Go2, Gl2>(self,
+                                          shader: GeometryShaderEntryPoint<'a, (), Gi2, Go2, Gl2>,
                                           specialization_constants: ())
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, (), Gi2, Go2, Gl2, Fs, Fi, Fo, Fl, Rp>
-    {
+                                          -> GraphicsPipelineBuilder<'a,
+                                                                     Vdef,
+                                                                     Vsp,
+                                                                     Vi,
+                                                                     Vo,
+                                                                     Vl,
+                                                                     Tcs,
+                                                                     Tci,
+                                                                     Tco,
+                                                                     Tcl,
+                                                                     Tes,
+                                                                     Tei,
+                                                                     Teo,
+                                                                     Tel,
+                                                                     (),
+                                                                     Gi2,
+                                                                     Go2,
+                                                                     Gl2,
+                                                                     Fs,
+                                                                     Fi,
+                                                                     Fo,
+                                                                     Fl,
+                                                                     Rp> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -409,9 +633,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn viewports_dynamic_scissors_fixed<I>(mut self, scissors: I) -> Self
         where I: IntoIterator<Item = Scissor>
     {
-        self.viewport = Some(ViewportsState::DynamicViewports {
-            scissors: scissors.into_iter().collect()
-        });
+        self.viewport =
+            Some(ViewportsState::DynamicViewports { scissors: scissors.into_iter().collect() });
         self
     }
 
@@ -420,8 +643,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     #[inline]
     pub fn viewports_dynamic_scissors_irrelevant(mut self, num: u32) -> Self {
         self.viewport = Some(ViewportsState::DynamicViewports {
-            scissors: (0 .. num).map(|_| Scissor::irrelevant()).collect()
-        });
+                                 scissors: (0 .. num).map(|_| Scissor::irrelevant()).collect(),
+                             });
         self
     }
 
@@ -431,9 +654,8 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     pub fn viewports_fixed_scissors_dynamic<I>(mut self, viewports: I) -> Self
         where I: IntoIterator<Item = Viewport>
     {
-        self.viewport = Some(ViewportsState::DynamicScissors {
-            viewports: viewports.into_iter().collect()
-        });
+        self.viewport =
+            Some(ViewportsState::DynamicScissors { viewports: viewports.into_iter().collect() });
         self
     }
 
@@ -441,9 +663,7 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// drawing.
     #[inline]
     pub fn viewports_scissors_dynamic(mut self, num: u32) -> Self {
-        self.viewport = Some(ViewportsState::Dynamic {
-            num: num
-        });
+        self.viewport = Some(ViewportsState::Dynamic { num: num });
         self
     }
 
@@ -562,11 +782,32 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// The fragment shader is run once for each pixel that is covered by each primitive.
     // TODO: correct specialization constants
     #[inline]
-    pub fn fragment_shader<Fi2, Fo2, Fl2>(self, shader: FragmentShaderEntryPoint<'a, (), Fi2, Fo2, Fl2>,
+    pub fn fragment_shader<Fi2, Fo2, Fl2>(self,
+                                          shader: FragmentShaderEntryPoint<'a, (), Fi2, Fo2, Fl2>,
                                           specialization_constants: ())
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, (), Fi2, Fo2, Fl2, Rp>
-    {
+                                          -> GraphicsPipelineBuilder<'a,
+                                                                     Vdef,
+                                                                     Vsp,
+                                                                     Vi,
+                                                                     Vo,
+                                                                     Vl,
+                                                                     Tcs,
+                                                                     Tci,
+                                                                     Tco,
+                                                                     Tcl,
+                                                                     Tes,
+                                                                     Tei,
+                                                                     Teo,
+                                                                     Tel,
+                                                                     Gs,
+                                                                     Gi,
+                                                                     Go,
+                                                                     Gl,
+                                                                     (),
+                                                                     Fi2,
+                                                                     Fo2,
+                                                                     Fl2,
+                                                                     Rp> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -680,9 +921,29 @@ impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, 
     /// Sets the render pass subpass to use.
     #[inline]
     pub fn render_pass<Rp2>(self, subpass: Subpass<Rp2>)
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco,
-                                   Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp2>
-    {
+                            -> GraphicsPipelineBuilder<'a,
+                                                       Vdef,
+                                                       Vsp,
+                                                       Vi,
+                                                       Vo,
+                                                       Vl,
+                                                       Tcs,
+                                                       Tci,
+                                                       Tco,
+                                                       Tcl,
+                                                       Tes,
+                                                       Tei,
+                                                       Teo,
+                                                       Tel,
+                                                       Gs,
+                                                       Gi,
+                                                       Go,
+                                                       Gl,
+                                                       Fs,
+                                                       Fi,
+                                                       Fo,
+                                                       Fl,
+                                                       Rp2> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,

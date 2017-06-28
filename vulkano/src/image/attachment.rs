@@ -21,18 +21,16 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::Dimensions;
 use image::ImageDimensions;
-use image::ViewType;
-use image::sys::ImageCreationError;
 use image::ImageLayout;
 use image::ImageUsage;
+use image::ViewType;
+use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::traits::Image;
-use image::traits::ImageView;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -149,7 +147,7 @@ impl<F> AttachmentImage<F> {
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            .. ImageUsage::none()
+            ..ImageUsage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
@@ -160,20 +158,22 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
     #[inline]
-    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
+                                  format: F)
                                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            .. ImageUsage::none()
+            ..ImageUsage::none()
         };
 
         AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
     }
 
     fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage,
-                samples: u32) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                samples: u32)
+                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
@@ -183,13 +183,13 @@ impl<F> AttachmentImage<F> {
             FormatTy::DepthStencil => true,
             FormatTy::Stencil => true,
             FormatTy::Compressed => panic!(),
-            _ => false
+            _ => false,
         };
 
         let usage = ImageUsage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
-            .. base_usage
+            ..base_usage
         };
 
         let (image, mem_reqs) = unsafe {
@@ -197,40 +197,57 @@ impl<F> AttachmentImage<F> {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers: 1,
-                cubemap_compatible: false
+                cubemap_compatible: false,
             };
 
-            try!(UnsafeImage::new(device.clone(), usage, format.format(), dims,
-                                  samples, 1, Sharing::Exclusive::<Empty<u32>>, false, false))
+            UnsafeImage::new(device.clone(),
+                             usage,
+                             format.format(),
+                             dims,
+                             samples,
+                             1,
+                             Sharing::Exclusive::<Empty<u32>>,
+                             false,
+                             false)?
         };
 
         let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
+            let device_local = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_device_local());
+            let any = device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
             device_local.chain(any).next().unwrap()
         };
 
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(&device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Optimal));
+        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
+                                    mem_ty,
+                                    mem_reqs.size,
+                                    mem_reqs.alignment,
+                                    AllocLayout::Optimal)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        unsafe { try!(image.bind_memory(mem.memory(), mem.offset())); }
+        unsafe {
+            image.bind_memory(mem.memory(), mem.offset())?;
+        }
 
-        let view = unsafe {
-            try!(UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1))
-        };
+        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1)? };
 
         Ok(Arc::new(AttachmentImage {
-            image: image,
-            view: view,
-            memory: mem,
-            format: format,
-            attachment_layout: if is_depth { ImageLayout::DepthStencilAttachmentOptimal }
-                               else { ImageLayout::ColorAttachmentOptimal },
-            gpu_lock: AtomicUsize::new(0),
-        }))
+                        image: image,
+                        view: view,
+                        memory: mem,
+                        format: format,
+                        attachment_layout: if is_depth {
+                            ImageLayout::DepthStencilAttachmentOptimal
+                        } else {
+                            ImageLayout::ColorAttachmentOptimal
+                        },
+                        gpu_lock: AtomicUsize::new(0),
+                    }))
     }
 }
 
@@ -243,141 +260,70 @@ impl<F, A> AttachmentImage<F, A> {
     }
 }
 
-/// GPU access to an attachment image.
-pub struct AttachmentImageAccess<F, A> {
-    img: Arc<AttachmentImage<F, A>>,
-    // True if `try_gpu_lock` was already called on it.
-    already_locked: AtomicBool,
-}
-
-impl<F, A> Clone for AttachmentImageAccess<F, A> {
-    #[inline]
-    fn clone(&self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self.img.clone(),
-            already_locked: AtomicBool::new(self.already_locked.load(Ordering::SeqCst))
-        }
-    }
-}
-
-unsafe impl<F, A> ImageAccess for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> &UnsafeImage {
-        &self.img.image
+        &self.image
     }
 
     #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
-        self.img.attachment_layout
+        self.attachment_layout
     }
 
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
-        self.img.attachment_layout
+        self.attachment_layout
     }
 
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
-        self.img.image.key()
+        self.image.key()
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-        // FIXME: uncomment when it's working
-        //        the problem is in the submit sync layer which locks framebuffer attachments and
-        //        keeps them locked even after destruction
-        Ok(())
-        /*if self.already_locked.swap(true, Ordering::SeqCst) == true {
-            return false;
+        if self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0 {
+            Ok(())
+        } else {
+            Err(AccessError::AlreadyInUse)
         }
-
-        self.img.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0*/
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        // FIXME: uncomment when it's working
-        //        the problem is in the submit sync layer which locks framebuffer attachments and
-        //        keeps them locked even after destruction
-        /*debug_assert!(self.already_locked.load(Ordering::SeqCst));
-        let val = self.img.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);*/
+        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
+        debug_assert!(val >= 1);
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(prev_val >= 1);
     }
 }
 
-impl<F, A> Drop for AttachmentImageAccess<F, A> {
-    fn drop(&mut self) {
-        if self.already_locked.load(Ordering::SeqCst) {
-            let prev_val = self.img.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            debug_assert!(prev_val >= 1);
-        }
-    }
-}
-
-unsafe impl<F, A> ImageClearValue<F::ClearValue> for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
     where F: FormatDesc + 'static + Send + Sync
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
-        Some(self.img.format.decode_clear_value(value))
+        Some(self.format.decode_clear_value(value))
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for AttachmentImageAccess<F, A>
+unsafe impl<P, F, A> ImageContent<P> for Arc<AttachmentImage<F, A>>
     where F: 'static + Send + Sync
 {
     #[inline]
     fn matches_format(&self) -> bool {
-        true        // FIXME:
+        true // FIXME:
     }
 }
 
-unsafe impl<F, A> Image for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync
-{
-    type Access = AttachmentImageAccess<F, A>;
-
-    #[inline]
-    fn access(self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self, 
-            already_locked: AtomicBool::new(false),
-        }
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        self.image.format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.image.samples()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.image.dimensions()
-    }
-}
-
-unsafe impl<F, A> ImageView for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync
-{
-    type Access = AttachmentImageAccess<F, A>;
-
-    #[inline]
-    fn access(self) -> AttachmentImageAccess<F, A> {
-        AttachmentImageAccess {
-            img: self, 
-            already_locked: AtomicBool::new(false),
-        }
-    }
-}
-
-unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
+unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
@@ -387,13 +333,16 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImageAccess<F, A>
 
     #[inline]
     fn dimensions(&self) -> Dimensions {
-        let dims = self.img.image.dimensions();
-        Dimensions::Dim2d { width: dims.width(), height: dims.height() }
+        let dims = self.image.dimensions();
+        Dimensions::Dim2d {
+            width: dims.width(),
+            height: dims.height(),
+        }
     }
 
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
-        &self.img.view
+        &self.view
     }
 
     #[inline]

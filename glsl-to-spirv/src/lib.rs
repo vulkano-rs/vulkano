@@ -43,11 +43,16 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
         };
 
         let file_path = temp_dir.path().join(format!("{}{}", num, extension));
-        File::create(&file_path).unwrap().write_all(source.as_bytes()).unwrap();
+        File::create(&file_path)
+            .unwrap()
+            .write_all(source.as_bytes())
+            .unwrap();
         command.arg(file_path);
     }
 
-    let output = command.output().expect("Failed to execute glslangValidator");
+    let output = command
+        .output()
+        .expect("Failed to execute glslangValidator");
 
     if output.status.success() {
         let spirv_output = File::open(output_file).expect("failed to open SPIR-V output file");

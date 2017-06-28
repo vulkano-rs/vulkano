@@ -7,21 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::collections::HashSet;
 use std::error;
-use std::ffi::{CString, CStr};
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ptr;
 use std::str;
-use std::collections::HashSet;
 
 use Error;
 use OomError;
 use VulkanObject;
+use check_errors;
 use instance::PhysicalDevice;
 use instance::loader;
 use instance::loader::LoadingError;
 use vk;
-use check_errors;
 
 macro_rules! extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
@@ -402,7 +402,7 @@ impl From<Error> for SupportedExtensionsError {
             err @ Error::OutOfDeviceMemory => {
                 SupportedExtensionsError::OomError(OomError::from(err))
             },
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -415,8 +415,8 @@ pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
-    use instance::{InstanceExtensions, RawInstanceExtensions};
     use instance::{DeviceExtensions, RawDeviceExtensions};
+    use instance::{InstanceExtensions, RawInstanceExtensions};
 
     #[test]
     fn empty_extensions() {

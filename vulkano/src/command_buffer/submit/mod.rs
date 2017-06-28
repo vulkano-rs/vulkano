@@ -13,12 +13,12 @@
 //! module. These structs are low-level and unsafe, and are mostly used to implement other parts
 //! of vulkano, so you are encouraged to not use them directly.
 
-pub use self::bind_sparse::SubmitBindSparseBuilder;
 pub use self::bind_sparse::SubmitBindSparseBatchBuilder;
 pub use self::bind_sparse::SubmitBindSparseBufferBindBuilder;
-pub use self::bind_sparse::SubmitBindSparseImageOpaqueBindBuilder;
-pub use self::bind_sparse::SubmitBindSparseImageBindBuilder;
+pub use self::bind_sparse::SubmitBindSparseBuilder;
 pub use self::bind_sparse::SubmitBindSparseError;
+pub use self::bind_sparse::SubmitBindSparseImageBindBuilder;
+pub use self::bind_sparse::SubmitBindSparseImageOpaqueBindBuilder;
 pub use self::queue_present::SubmitPresentBuilder;
 pub use self::queue_present::SubmitPresentError;
 pub use self::queue_submit::SubmitCommandBufferBuilder;

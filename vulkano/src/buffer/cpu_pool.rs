@@ -7,25 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use smallvec::SmallVec;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use smallvec::SmallVec;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
+use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::BufferUsage;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
-use buffer::traits::Buffer;
-use buffer::traits::TypedBuffer;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
@@ -58,7 +56,9 @@ use OomError;
 /// The `CpuBufferPool` struct internally contains an `Arc`. You can clone the `CpuBufferPool` for
 /// a cheap cost, and all the clones will share the same underlying buffer.
 ///
-pub struct CpuBufferPool<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct CpuBufferPool<T: ?Sized, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
     // The device of the pool.
     device: Arc<Device>,
 
@@ -82,7 +82,9 @@ pub struct CpuBufferPool<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool 
 }
 
 // One buffer of the pool.
-struct ActualBuffer<A> where A: MemoryPool {
+struct ActualBuffer<A>
+    where A: MemoryPool
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -113,7 +115,9 @@ struct ActualBufferSubbuffer {
 /// A subbuffer allocated from a `CpuBufferPool`.
 ///
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
-pub struct CpuBufferPoolSubbuffer<T: ?Sized, A> where A: MemoryPool {
+pub struct CpuBufferPoolSubbuffer<T: ?Sized, A>
+    where A: MemoryPool
+{
     buffer: Arc<ActualBuffer<A>>,
 
     // Index of the subbuffer within `buffer`.
@@ -121,10 +125,6 @@ pub struct CpuBufferPoolSubbuffer<T: ?Sized, A> where A: MemoryPool {
 
     // Size in bytes of the subbuffer.
     size: usize,
-
-    // Whether this subbuffer was locked on the GPU.
-    // If true, then num_gpu_accesses must be decreased.
-    gpu_locked: AtomicBool,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -136,9 +136,7 @@ impl<T> CpuBufferPool<T> {
                       -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuBufferPool::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { CpuBufferPool::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 
     /// Builds a `CpuBufferPool` meant for simple uploads.
@@ -154,22 +152,23 @@ impl<T> CpuBufferPool<T> {
 impl<T> CpuBufferPool<[T]> {
     #[inline]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                      -> CpuBufferPool<[T]>
+                        -> CpuBufferPool<[T]>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            CpuBufferPool::raw(device, mem::size_of::<T>() * len, usage, queue_families)
-        }
+        unsafe { CpuBufferPool::raw(device, mem::size_of::<T>() * len, usage, queue_families) }
     }
 }
 
 impl<T: ?Sized> CpuBufferPool<T> {
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize,
-                             usage: BufferUsage, queue_families: I) -> CpuBufferPool<T>
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize, usage: BufferUsage,
+                             queue_families: I)
+                             -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let pool = Device::standard_pool(&device);
 
@@ -193,7 +192,9 @@ impl<T: ?Sized> CpuBufferPool<T> {
     }
 }
 
-impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
+impl<T, A> CpuBufferPool<T, A>
+    where A: MemoryPool
+{
     /// Sets the capacity to `capacity`, or does nothing if the capacity is already higher.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
@@ -203,9 +204,9 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
         // Check current capacity.
         match *cur_buf {
             Some(ref buf) if buf.capacity >= capacity => {
-                return Ok(())
+                return Ok(());
             },
-            _ => ()
+            _ => (),
         };
 
         self.reset_buf(&mut cur_buf, capacity)
@@ -231,11 +232,11 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
             None => 3,
         };
 
-        self.reset_buf(&mut mutex, next_capacity).unwrap();        /* FIXME: error */
+        self.reset_buf(&mut mutex, next_capacity).unwrap(); /* FIXME: error */
 
         match self.try_next_impl(&mut mutex, data) {
             Ok(n) => n,
-            Err(_) => unreachable!()
+            Err(_) => unreachable!(),
         }
     }
 
@@ -252,7 +253,9 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
     }
 
     // Creates a new buffer and sets it as current.
-    fn reset_buf(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>, capacity: usize) -> Result<(), OomError> {
+    fn reset_buf(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
+                 capacity: usize)
+                 -> Result<(), OomError> {
         unsafe {
             let (buffer, mem_reqs) = {
                 let sharing = if self.queue_families.len() >= 2 {
@@ -266,41 +269,52 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
                     None => return Err(OomError::OutOfDeviceMemory),
                 };
 
-                match UnsafeBuffer::new(self.device.clone(), total_size, self.usage, sharing, SparseLevel::none()) {
+                match UnsafeBuffer::new(self.device.clone(),
+                                          total_size,
+                                          self.usage,
+                                          sharing,
+                                          SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::OomError(err)) => return Err(err),
-                    Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                    // errors can't happen
+                    Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                    // errors can't happen
                 }
             };
 
-            let mem_ty = self.device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                            .filter(|t| t.is_host_visible())
-                            .next().unwrap();    // Vk specs guarantee that this can't fail
+            let mem_ty = self.device
+                .physical_device()
+                .memory_types()
+                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|t| t.is_host_visible())
+                .next()
+                .unwrap(); // Vk specs guarantee that this can't fail
 
-            let mem = try!(MemoryPool::alloc(&self.pool, mem_ty,
-                                            mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+            let mem = MemoryPool::alloc(&self.pool,
+                                        mem_ty,
+                                        mem_reqs.size,
+                                        mem_reqs.alignment,
+                                        AllocLayout::Linear)?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
             debug_assert!(mem.mapped_memory().is_some());
-            try!(buffer.bind_memory(mem.memory(), mem.offset()));
+            buffer.bind_memory(mem.memory(), mem.offset())?;
 
-            **cur_buf_mutex = Some(Arc::new(ActualBuffer {
-                inner: buffer,
-                memory: mem,
-                subbuffers: {
-                    let mut v = Vec::with_capacity(capacity);
-                    for _ in 0 .. capacity {
-                        v.push(ActualBufferSubbuffer {
-                            num_cpu_accesses: AtomicUsize::new(0),
-                            num_gpu_accesses: AtomicUsize::new(0),
-                         });
-                    }
-                    v
-                },
-                capacity: capacity,
-                next_subbuffer: AtomicUsize::new(0),
-            }));
+            **cur_buf_mutex =
+                Some(Arc::new(ActualBuffer {
+                                  inner: buffer,
+                                  memory: mem,
+                                  subbuffers: {
+                                      let mut v = Vec::with_capacity(capacity);
+                                      for _ in 0 .. capacity {
+                                          v.push(ActualBufferSubbuffer {
+                                                     num_cpu_accesses: AtomicUsize::new(0),
+                                                     num_gpu_accesses: AtomicUsize::new(0),
+                                                 });
+                                      }
+                                      v
+                                  },
+                                  capacity: capacity,
+                                  next_subbuffer: AtomicUsize::new(0),
+                              }));
 
             Ok(())
         }
@@ -308,12 +322,11 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
 
     // Tries to lock a subbuffer from the current buffer.
     fn try_next_impl(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>, data: T)
-                     -> Result<CpuBufferPoolSubbuffer<T, A>, T>
-    {
+                     -> Result<CpuBufferPoolSubbuffer<T, A>, T> {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
         let current_buffer = match cur_buf_mutex.clone() {
             Some(b) => b,
-            None => return Err(data)
+            None => return Err(data),
         };
 
         // Grab the next subbuffer to use.
@@ -321,39 +334,51 @@ impl<T, A> CpuBufferPool<T, A> where A: MemoryPool {
             // Since the only place that touches `next_subbuffer` is this code, and since we own a
             // mutex lock to the buffer, it means that `next_subbuffer` can't be accessed
             // concurrently.
-            let val = current_buffer.next_subbuffer.fetch_add(1, Ordering::Relaxed);
+            let val = current_buffer
+                .next_subbuffer
+                .fetch_add(1, Ordering::Relaxed);
             // TODO: handle overflows?
             // TODO: rewrite this in a proper way by holding an intermediary struct in the mutex instead of the Arc directly
             val % current_buffer.capacity
         };
 
         // Check if subbuffer is already taken. If so, the pool is full.
-        if current_buffer.subbuffers[next_subbuffer].num_cpu_accesses.compare_and_swap(0, 1, Ordering::SeqCst) != 0 {
+        if current_buffer.subbuffers[next_subbuffer]
+            .num_cpu_accesses
+            .compare_and_swap(0, 1, Ordering::SeqCst) != 0
+        {
             return Err(data);
         }
 
         // Reset num_gpu_accesses.
-        current_buffer.subbuffers[next_subbuffer].num_gpu_accesses.store(0, Ordering::SeqCst);
+        current_buffer.subbuffers[next_subbuffer]
+            .num_gpu_accesses
+            .store(0, Ordering::SeqCst);
 
         // Write `data` in the memory.
         unsafe {
             let range = (next_subbuffer * self.one_size) .. ((next_subbuffer + 1) * self.one_size);
-            let mut mapping = current_buffer.memory.mapped_memory().unwrap().read_write(range);
+            let mut mapping = current_buffer
+                .memory
+                .mapped_memory()
+                .unwrap()
+                .read_write(range);
             *mapping = data;
         }
 
         Ok(CpuBufferPoolSubbuffer {
-            buffer: current_buffer,
-            subbuffer_index: next_subbuffer,
-            gpu_locked: AtomicBool::new(false),
-            size: self.one_size,
-            marker: PhantomData,
-        })
+               buffer: current_buffer,
+               subbuffer_index: next_subbuffer,
+               size: self.one_size,
+               marker: PhantomData,
+           })
     }
 }
 
 // Can't automatically derive `Clone`, otherwise the compiler adds a `T: Clone` requirement.
-impl<T: ?Sized, A> Clone for CpuBufferPool<T, A> where A: MemoryPool + Clone {
+impl<T: ?Sized, A> Clone for CpuBufferPool<T, A>
+    where A: MemoryPool + Clone
+{
     fn clone(&self) -> Self {
         let buf = self.current_buffer.lock().unwrap();
 
@@ -378,37 +403,18 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuBufferPool<T, A>
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for CpuBufferPoolSubbuffer<T, A>
+impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
-    type Access = Self;
-
-    #[inline]
-    fn access(self) -> Self {
-        self
-    }
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.size
-    }
-}
-
-unsafe impl<T: ?Sized, A> TypedBuffer for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    type Content = T;
-}
-
-impl<T: ?Sized, A> Clone for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {
     fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
-        let old_val = self.buffer.subbuffers[self.subbuffer_index].num_cpu_accesses.fetch_add(1, Ordering::SeqCst);
+        let old_val = self.buffer.subbuffers[self.subbuffer_index]
+            .num_cpu_accesses
+            .fetch_add(1, Ordering::SeqCst);
         debug_assert!(old_val >= 1);
 
         CpuBufferPoolSubbuffer {
             buffer: self.buffer.clone(),
             subbuffer_index: self.subbuffer_index,
-            gpu_locked: AtomicBool::new(false),
             size: self.size,
             marker: PhantomData,
         }
@@ -443,20 +449,31 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
             return Err(AccessError::AlreadyInUse);
         }
 
-        let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
-        debug_assert!(!was_locked);
         Ok(())
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        let was_locked = self.gpu_locked.swap(true, Ordering::SeqCst);
-        debug_assert!(!was_locked);
-
         let in_use = &self.buffer.subbuffers[self.subbuffer_index];
         let num_usages = in_use.num_gpu_accesses.fetch_add(1, Ordering::SeqCst);
         debug_assert!(num_usages >= 1);
-        debug_assert!(num_usages <= in_use.num_cpu_accesses.load(Ordering::SeqCst));
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
+        let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(was_in_use >= 1);
+    }
+}
+
+impl<T: ?Sized, A> Drop for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    fn drop(&mut self) {
+        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
+        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(prev_val >= 1);
     }
 }
 
@@ -475,26 +492,10 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
     }
 }
 
-impl<T: ?Sized, A> Drop for CpuBufferPoolSubbuffer<T, A>
-    where A: MemoryPool
-{
-    #[inline]
-    fn drop(&mut self) {
-        let in_use = &self.buffer.subbuffers[self.subbuffer_index];
-        let prev_val = in_use.num_cpu_accesses.fetch_sub(1, Ordering::SeqCst);
-        debug_assert!(prev_val >= 1);
-
-        if self.gpu_locked.load(Ordering::SeqCst) {
-            let was_in_use = in_use.num_gpu_accesses.fetch_sub(1, Ordering::SeqCst);
-            debug_assert!(was_in_use >= 1);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::mem;
     use buffer::CpuBufferPool;
+    use std::mem;
 
     #[test]
     fn basic_create() {

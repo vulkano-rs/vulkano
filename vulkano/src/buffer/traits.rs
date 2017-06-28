@@ -20,73 +20,6 @@ use sync::AccessError;
 use SafeDeref;
 use VulkanObject;
 
-/// Trait for objects that represent either a buffer or a slice of a buffer.
-///
-/// See also `TypedBuffer`.
-// TODO: require `DeviceOwned`
-pub unsafe trait Buffer {
-    /// Object that represents a GPU access to the buffer.
-    type Access: BufferAccess;
-
-    /// Builds an object that represents a GPU access to the buffer.
-    fn access(self) -> Self::Access;
-
-    /// Returns the size of the buffer in bytes.
-    fn size(&self) -> usize;
-
-    /// Returns the length of the buffer in number of elements.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    #[inline]
-    fn len(&self) -> usize where Self: TypedBuffer, Self::Content: Content {
-        self.size() / <Self::Content as Content>::indiv_size()
-    }
-
-    /// Builds a `BufferSlice` object holding part of the buffer.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    ///
-    /// This method can be used when you want to perform an operation on some part of the buffer
-    /// and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    fn slice<T>(self, range: Range<usize>) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>
-    {
-        BufferSlice::slice(self.into_buffer_slice(), range)
-    }
-
-    /// Builds a `BufferSlice` object holding the buffer by value.
-    #[inline]
-    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
-        where Self: Sized + TypedBuffer
-    {
-        BufferSlice::from_typed_buffer(self)
-    }
-
-    /// Builds a `BufferSlice` object holding part of the buffer.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    ///
-    /// This method can be used when you want to perform an operation on a specific element of the
-    /// buffer and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    fn index<T>(self, index: usize) -> Option<BufferSlice<[T], Self>>
-        where Self: Sized + TypedBuffer<Content = [T]>
-    {
-        self.slice(index .. (index + 1))
-    }
-}
-
-/// Extension trait for `Buffer`. Indicates the type of the content of the buffer.
-pub unsafe trait TypedBuffer: Buffer {
-    /// The type of the content of the buffer.
-    type Content: ?Sized;
-}
-
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
 ///
@@ -96,17 +29,16 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn inner(&self) -> BufferInner;
 
     /// Returns the size of the buffer in bytes.
-    // FIXME: don't provide by default, because can be wrong
-    #[inline]
-    fn size(&self) -> usize {
-        self.inner().buffer.size()
-    }
+    fn size(&self) -> usize;
 
     /// Returns the length of the buffer in number of elements.
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize where Self: TypedBufferAccess, Self::Content: Content {
+    fn len(&self) -> usize
+        where Self: TypedBufferAccess,
+              Self::Content: Content
+    {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 
@@ -162,10 +94,9 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &BufferAccess, other_offset: usize, other_size: usize)
-                        -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         // TODO: should we really provide a default implementation?
 
         debug_assert!(self_size <= self.size());
@@ -196,9 +127,11 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
     fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32) -> bool
-    {
-        let other_key = other.conflict_key(other_first_layer, other_num_layers, other_first_mipmap,
+                       other_num_mipmaps: u32)
+                       -> bool {
+        let other_key = other.conflict_key(other_first_layer,
+                                           other_num_layers,
+                                           other_first_mipmap,
                                            other_num_mipmaps);
         self.conflict_key(self_offset, self_size) == other_key
     }
@@ -228,7 +161,12 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
     #[inline]
     fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0, self.size(), other, 0, other.dimensions().array_layers(), 0,
+        self.conflicts_image(0,
+                             self.size(),
+                             other,
+                             0,
+                             other.dimensions().array_layers(),
+                             0,
                              other.mipmap_levels())
     }
 
@@ -238,22 +176,32 @@ pub unsafe trait BufferAccess: DeviceOwned {
         self.conflict_key(0, self.size())
     }
 
-
-    /// Locks the resource for usage on the GPU. Returns `false` if the lock was already acquired.
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
-    /// This function implementation should remember that it has been called and return `false` if
-    /// it gets called a second time.
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
     ///
-    /// The only way to know that the GPU has stopped accessing a queue is when the buffer object
-    /// gets destroyed. Therefore you are encouraged to use temporary objects or handles (similar
-    /// to a lock) in order to represent a GPU access.
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
     unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 /// Inner information about a buffer.
@@ -266,7 +214,10 @@ pub struct BufferInner<'a> {
     pub offset: usize,
 }
 
-unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
+unsafe impl<T> BufferAccess for T
+    where T: SafeDeref,
+          T::Target: BufferAccess
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         (**self).inner()
@@ -278,9 +229,9 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize,
-                        other: &BufferAccess, other_offset: usize, other_size: usize) -> bool
-    {
+    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
+                        other_offset: usize, other_size: usize)
+                        -> bool {
         (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
     }
 
@@ -298,6 +249,11 @@ unsafe impl<T> BufferAccess for T where T: SafeDeref, T::Target: BufferAccess {
     unsafe fn increase_gpu_lock(&self) {
         (**self).increase_gpu_lock()
     }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
+    }
 }
 
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
@@ -306,6 +262,9 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     type Content: ?Sized;
 }
 
-unsafe impl<T> TypedBufferAccess for T where T: SafeDeref, T::Target: TypedBufferAccess {
+unsafe impl<T> TypedBufferAccess for T
+    where T: SafeDeref,
+          T::Target: TypedBufferAccess
+{
     type Content = <T::Target as TypedBufferAccess>::Content;
 }

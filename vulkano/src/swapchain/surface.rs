@@ -20,16 +20,16 @@ use image::ImageUsage;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
-use swapchain::capabilities;
 use swapchain::Capabilities;
 use swapchain::SurfaceSwapchainLock;
+use swapchain::capabilities;
 use swapchain::display::DisplayMode;
 use swapchain::display::DisplayPlane;
 
-use check_errors;
 use Error;
 use OomError;
 use VulkanObject;
+use check_errors;
 use vk;
 
 /// Represents a surface on the screen.
@@ -53,9 +53,14 @@ impl Surface {
     /// - Panics if `plane` doesn't support the display of `display_mode`.
     ///
     pub fn from_display_mode(display_mode: &DisplayMode, plane: &DisplayPlane)
-                             -> Result<Arc<Surface>, SurfaceCreationError>
-    {
-        if !display_mode.display().physical_device().instance().loaded_extensions().khr_display {
+                             -> Result<Arc<Surface>, SurfaceCreationError> {
+        if !display_mode
+            .display()
+            .physical_device()
+            .instance()
+            .loaded_extensions()
+            .khr_display
+        {
             return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_display" });
         }
 
@@ -70,30 +75,33 @@ impl Surface {
             let infos = vk::DisplaySurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 displayMode: display_mode.internal_object(),
                 planeIndex: plane.index(),
                 planeStackIndex: 0, // FIXME: plane.properties.currentStackIndex,
-                transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,      // TODO: let user choose
-                globalAlpha: 0.0,       // TODO: let user choose
-                alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,       // TODO: let user choose
-                imageExtent: vk::Extent2D {     // TODO: let user choose
+                transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, // TODO: let user choose
+                globalAlpha: 0.0, // TODO: let user choose
+                alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR, // TODO: let user choose
+                imageExtent: vk::Extent2D {
+                    // TODO: let user choose
                     width: display_mode.visible_region()[0],
                     height: display_mode.visible_region()[1],
                 },
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayPlaneSurfaceKHR(instance.internal_object(), &infos,
-                                                              ptr::null(), &mut output)));
+            check_errors(vk.CreateDisplayPlaneSurfaceKHR(instance.internal_object(),
+                                                         &infos,
+                                                         ptr::null(),
+                                                         &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from a Win32 window.
@@ -105,8 +113,7 @@ impl Surface {
     /// The caller must ensure that the `hinstance` and the `hwnd` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_hwnd<T, U>(instance: Arc<Instance>, hinstance: *const T, hwnd: *const U)
-                                  -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                  -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_win32_surface {
@@ -117,22 +124,24 @@ impl Surface {
             let infos = vk::Win32SurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 hinstance: hinstance as *mut _,
                 hwnd: hwnd as *mut _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateWin32SurfaceKHR(instance.internal_object(), &infos,
-                                                       ptr::null(), &mut output)));
+            check_errors(vk.CreateWin32SurfaceKHR(instance.internal_object(),
+                                                  &infos,
+                                                  ptr::null(),
+                                                  &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from an XCB window.
@@ -144,8 +153,7 @@ impl Surface {
     /// The caller must ensure that the `connection` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_xcb<C>(instance: Arc<Instance>, connection: *const C, window: u32)
-                                 -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                              -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_xcb_surface {
@@ -153,25 +161,27 @@ impl Surface {
         }
 
         let surface = {
-            let infos = vk::XcbSurfaceCreateInfoKHR   {
+            let infos = vk::XcbSurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 connection: connection as *mut _,
                 window: window,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateXcbSurfaceKHR(instance.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreateXcbSurfaceKHR(instance.internal_object(),
+                                                &infos,
+                                                ptr::null(),
+                                                &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from an Xlib window.
@@ -183,8 +193,7 @@ impl Surface {
     /// The caller must ensure that the `display` and the `window` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_xlib<D>(instance: Arc<Instance>, display: *const D, window: c_ulong)
-                                  -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                               -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_xlib_surface {
@@ -192,25 +201,27 @@ impl Surface {
         }
 
         let surface = {
-            let infos = vk::XlibSurfaceCreateInfoKHR  {
+            let infos = vk::XlibSurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 dpy: display as *mut _,
                 window: window,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateXlibSurfaceKHR(instance.internal_object(), &infos,
-                                                      ptr::null(), &mut output)));
+            check_errors(vk.CreateXlibSurfaceKHR(instance.internal_object(),
+                                                 &infos,
+                                                 ptr::null(),
+                                                 &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from a Wayland window.
@@ -221,9 +232,9 @@ impl Surface {
     ///
     /// The caller must ensure that the `display` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
-    pub unsafe fn from_wayland<D, S>(instance: Arc<Instance>, display: *const D, surface: *const S)
-                                     -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+    pub unsafe fn from_wayland<D, S>(instance: Arc<Instance>, display: *const D,
+                                     surface: *const S)
+                                     -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_wayland_surface {
@@ -234,22 +245,24 @@ impl Surface {
             let infos = vk::WaylandSurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 display: display as *mut _,
                 surface: surface as *mut _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateWaylandSurfaceKHR(instance.internal_object(), &infos,
-                                                         ptr::null(), &mut output)));
+            check_errors(vk.CreateWaylandSurfaceKHR(instance.internal_object(),
+                                                    &infos,
+                                                    ptr::null(),
+                                                    &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from a MIR window.
@@ -262,8 +275,7 @@ impl Surface {
     /// The caller must ensure that the `connection` and the `surface` are both correct and stay
     /// alive for the entire lifetime of the surface.
     pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C, surface: *const S)
-                                 -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                 -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_mir_surface {
@@ -271,25 +283,27 @@ impl Surface {
         }
 
         let surface = {
-            let infos = vk::MirSurfaceCreateInfoKHR  {
+            let infos = vk::MirSurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 connection: connection as *mut _,
                 mirSurface: surface as *mut _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(),
+                                                &infos,
+                                                ptr::null(),
+                                                &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from an Android window.
@@ -299,8 +313,7 @@ impl Surface {
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
     pub unsafe fn from_anativewindow<T>(instance: Arc<Instance>, window: *const T)
-                                        -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                        -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().khr_android_surface {
@@ -311,21 +324,23 @@ impl Surface {
             let infos = vk::AndroidSurfaceCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 window: window as *mut _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateAndroidSurfaceKHR(instance.internal_object(), &infos,
-                                                         ptr::null(), &mut output)));
+            check_errors(vk.CreateAndroidSurfaceKHR(instance.internal_object(),
+                                                    &infos,
+                                                    ptr::null(),
+                                                    &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from an iOS `UIView`.
@@ -336,8 +351,7 @@ impl Surface {
     ///   lifetime of the surface.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_ios_moltenvk<T>(instance: Arc<Instance>, view: *const T)
-                                       -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                       -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().mvk_ios_surface {
@@ -348,21 +362,23 @@ impl Surface {
             let infos = vk::IOSSurfaceCreateInfoMVK {
                 sType: vk::STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 pView: view as *const _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateIOSSurfaceMVK(instance.internal_object(), &infos,
-                                                     ptr::null(), &mut output)));
+            check_errors(vk.CreateIOSSurfaceMVK(instance.internal_object(),
+                                                &infos,
+                                                ptr::null(),
+                                                &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from a MacOS `NSView`.
@@ -373,8 +389,7 @@ impl Surface {
     ///   lifetime of the surface.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     pub unsafe fn from_macos_moltenvk<T>(instance: Arc<Instance>, view: *const T)
-                                         -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                         -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().mvk_macos_surface {
@@ -385,21 +400,23 @@ impl Surface {
             let infos = vk::MacOSSurfaceCreateInfoMVK {
                 sType: vk::STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 pView: view as *const _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateMacOSSurfaceMVK(instance.internal_object(), &infos,
-                                                       ptr::null(), &mut output)));
+            check_errors(vk.CreateMacOSSurfaceMVK(instance.internal_object(),
+                                                  &infos,
+                                                  ptr::null(),
+                                                  &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
@@ -409,8 +426,7 @@ impl Surface {
     /// The caller must ensure that the `window` is correct and stays alive for the entire
     /// lifetime of the surface.
     pub unsafe fn from_vi_surface<T>(instance: Arc<Instance>, window: *const T)
-                                        -> Result<Arc<Surface>, SurfaceCreationError>
-    {
+                                     -> Result<Arc<Surface>, SurfaceCreationError> {
         let vk = instance.pointers();
 
         if !instance.loaded_extensions().nn_vi_surface {
@@ -421,21 +437,23 @@ impl Surface {
             let infos = vk::ViSurfaceCreateInfoNN {
                 sType: vk::STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 window: window as *mut _,
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateViSurfaceNN(instance.internal_object(), &infos,
-                                                   ptr::null(), &mut output)));
+            check_errors(vk.CreateViSurfaceNN(instance.internal_object(),
+                                              &infos,
+                                              ptr::null(),
+                                              &mut output))?;
             output
         };
 
         Ok(Arc::new(Surface {
-            instance: instance.clone(),
-            surface: surface,
-            has_swapchain: AtomicBool::new(false),
-        }))
+                        instance: instance.clone(),
+                        surface: surface,
+                        has_swapchain: AtomicBool::new(false),
+                    }))
     }
 
     /// Returns true if the given queue family can draw on this surface.
@@ -445,10 +463,12 @@ impl Surface {
             let vk = self.instance.pointers();
 
             let mut output = mem::uninitialized();
-            try!(check_errors(
-                vk.GetPhysicalDeviceSurfaceSupportKHR(queue.physical_device().internal_object(),
-                                                      queue.id(), self.surface, &mut output)
-            ));
+            check_errors(vk.GetPhysicalDeviceSurfaceSupportKHR(queue
+                                                                   .physical_device()
+                                                                   .internal_object(),
+                                                               queue.id(),
+                                                               self.surface,
+                                                               &mut output))?;
             Ok(output != 0)
         }
     }
@@ -467,54 +487,53 @@ impl Surface {
     ///
     pub fn capabilities(&self, device: PhysicalDevice) -> Result<Capabilities, CapabilitiesError> {
         unsafe {
-            assert_eq!(&*self.instance as *const _, &**device.instance() as *const _,
+            assert_eq!(&*self.instance as *const _,
+                       &**device.instance() as *const _,
                        "Instance mismatch in Surface::capabilities");
 
             let vk = self.instance.pointers();
 
             let caps = {
                 let mut out: vk::SurfaceCapabilitiesKHR = mem::uninitialized();
-                try!(check_errors(
-                    vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(device.internal_object(),
-                                                               self.surface, &mut out)
-                ));
+                check_errors(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(device.internal_object(),
+                                                                        self.surface,
+                                                                        &mut out))?;
                 out
             };
 
             let formats = {
                 let mut num = 0;
-                try!(check_errors(
-                    vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
-                                                          self.surface, &mut num,
-                                                          ptr::null_mut())
-                ));
+                check_errors(vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
+                                                                   self.surface,
+                                                                   &mut num,
+                                                                   ptr::null_mut()))?;
 
                 let mut formats = Vec::with_capacity(num as usize);
-                try!(check_errors(
-                    vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
-                                                          self.surface, &mut num,
-                                                          formats.as_mut_ptr())
-                ));
+                check_errors(vk.GetPhysicalDeviceSurfaceFormatsKHR(device.internal_object(),
+                                                                   self.surface,
+                                                                   &mut num,
+                                                                   formats.as_mut_ptr()))?;
                 formats.set_len(num as usize);
                 formats
             };
 
             let modes = {
                 let mut num = 0;
-                try!(check_errors(
-                    vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
-                                                               self.surface, &mut num,
-                                                               ptr::null_mut())
-                ));
+                check_errors(vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
+                                                                        self.surface,
+                                                                        &mut num,
+                                                                        ptr::null_mut()))?;
 
                 let mut modes = Vec::with_capacity(num as usize);
-                try!(check_errors(
-                    vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
-                                                               self.surface, &mut num,
-                                                               modes.as_mut_ptr())
-                ));
+                check_errors(vk.GetPhysicalDeviceSurfacePresentModesKHR(device.internal_object(),
+                                                                        self.surface,
+                                                                        &mut num,
+                                                                        modes.as_mut_ptr()))?;
                 modes.set_len(num as usize);
-                debug_assert!(modes.iter().find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR).is_some());
+                debug_assert!(modes
+                                  .iter()
+                                  .find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR)
+                                  .is_some());
                 debug_assert!(modes.iter().count() > 0);
                 capabilities::supported_present_modes_from_list(modes.into_iter())
             };
@@ -547,6 +566,12 @@ impl Surface {
                 present_modes: modes,
             })
         }
+    }
+
+    /// Returns the instance this surface was created with.
+    #[inline]
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
 
@@ -592,7 +617,7 @@ pub enum SurfaceCreationError {
     /// The extension required for this function was not enabled.
     MissingExtension {
         /// Name of the missing extension.
-        name: &'static str
+        name: &'static str,
     },
 }
 
@@ -601,8 +626,8 @@ impl error::Error for SurfaceCreationError {
     fn description(&self) -> &str {
         match *self {
             SurfaceCreationError::OomError(_) => "not enough memory available",
-            SurfaceCreationError::MissingExtension { .. } => "the extension required for this \
-                                                              function was not enabled",
+            SurfaceCreationError::MissingExtension { .. } =>
+                "the extension required for this function was not enabled",
         }
     }
 
@@ -610,7 +635,7 @@ impl error::Error for SurfaceCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             SurfaceCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -635,7 +660,7 @@ impl From<Error> for SurfaceCreationError {
         match err {
             err @ Error::OutOfHostMemory => SurfaceCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => SurfaceCreationError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -664,7 +689,7 @@ impl error::Error for CapabilitiesError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             CapabilitiesError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -690,7 +715,7 @@ impl From<Error> for CapabilitiesError {
             err @ Error::OutOfHostMemory => CapabilitiesError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => CapabilitiesError::OomError(OomError::from(err)),
             Error::SurfaceLost => CapabilitiesError::SurfaceLost,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -706,7 +731,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_hwnd(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -715,7 +740,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -724,7 +749,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -733,7 +758,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -742,7 +767,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -751,7 +776,7 @@ mod tests {
         let instance = instance!();
         match unsafe { Surface::from_anativewindow(instance, ptr::null::<u8>()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

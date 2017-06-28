@@ -7,17 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use OomError;
 use instance::MemoryType;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
-use OomError;
 
-pub use self::pool::StdMemoryPool;
-pub use self::pool::StdMemoryPoolAlloc;
 pub use self::host_visible::StdHostVisibleMemoryTypePool;
 pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
 pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
 pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
+pub use self::pool::StdMemoryPool;
+pub use self::pool::StdMemoryPoolAlloc;
 
 mod host_visible;
 mod non_host_visible;

@@ -10,11 +10,11 @@
 //! This module contains the `ensure_image_view_compatible` function, which verifies whether
 //! an image view can be used as a render pass attachment.
 
-use std::error;
-use std::fmt;
 use format::Format;
 use framebuffer::RenderPassDesc;
 use image::ImageViewAccess;
+use std::error;
+use std::fmt;
 
 /// Checks whether the given image view is allowed to be the nth attachment of the given render
 /// pass.
@@ -29,21 +29,22 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
     where Rp: ?Sized + RenderPassDesc,
           I: ?Sized + ImageViewAccess
 {
-    let attachment_desc = render_pass.attachment_desc(attachment_num)
-                                     .expect("Attachment num out of range");
+    let attachment_desc = render_pass
+        .attachment_desc(attachment_num)
+        .expect("Attachment num out of range");
 
     if image.format() != attachment_desc.format {
         return Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
-            expected: attachment_desc.format,
-            obtained: image.format(),
-        });
+                       expected: attachment_desc.format,
+                       obtained: image.format(),
+                   });
     }
 
     if image.samples() != attachment_desc.samples {
         return Err(IncompatibleRenderPassAttachmentError::SamplesMismatch {
-            expected: attachment_desc.samples,
-            obtained: image.samples(),
-        });
+                       expected: attachment_desc.samples,
+                       obtained: image.samples(),
+                   });
     }
 
     if !image.identity_swizzle() {
@@ -51,11 +52,16 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
     }
 
     for subpass_num in 0 .. render_pass.num_subpasses() {
-        let subpass = render_pass.subpass_desc(subpass_num).expect("Subpass num out of range ; \
-                                                                    wrong RenderPassDesc trait impl");
+        let subpass = render_pass
+            .subpass_desc(subpass_num)
+            .expect("Subpass num out of range ; wrong RenderPassDesc trait impl");
 
-        if subpass.color_attachments.iter().any(|&(n, _)| n == attachment_num) {
-            debug_assert!(image.parent().has_color());  // Was normally checked by the render pass.
+        if subpass
+            .color_attachments
+            .iter()
+            .any(|&(n, _)| n == attachment_num)
+        {
+            debug_assert!(image.parent().has_color()); // Was normally checked by the render pass.
             if !image.parent().inner().usage_color_attachment() {
                 return Err(IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage);
             }
@@ -71,7 +77,11 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
             }
         }
 
-        if subpass.input_attachments.iter().any(|&(n, _)| n == attachment_num) {
+        if subpass
+            .input_attachments
+            .iter()
+            .any(|&(n, _)| n == attachment_num)
+        {
             if !image.parent().inner().usage_input_attachment() {
                 return Err(IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage);
             }
@@ -158,12 +168,11 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
 
 #[cfg(test)]
 mod tests {
+    use super::IncompatibleRenderPassAttachmentError;
+    use super::ensure_image_view_compatible;
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
     use image::AttachmentImage;
-    use image::ImageView;
-    use super::ensure_image_view_compatible;
-    use super::IncompatibleRenderPassAttachmentError;
 
     #[test]
     fn basic_ok() {
@@ -185,8 +194,8 @@ mod tests {
         ).unwrap();
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
-        
-        ensure_image_view_compatible(&rp, 0, &img.access()).unwrap();
+
+        ensure_image_view_compatible(&rp, 0, &img).unwrap();
     }
 
     #[test]
@@ -209,11 +218,13 @@ mod tests {
         ).unwrap();
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
-        
-        match ensure_image_view_compatible(&rp, 0, &img.access()) {
+
+        match ensure_image_view_compatible(&rp, 0, &img) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
-                expected: Format::R16G16Sfloat, obtained: Format::R8G8B8A8Unorm }) => (),
-            e => panic!("{:?}", e)
+                    expected: Format::R16G16Sfloat,
+                    obtained: Format::R8G8B8A8Unorm,
+                }) => (),
+            e => panic!("{:?}", e),
         }
     }
 
@@ -224,8 +235,8 @@ mod tests {
 
         let rp = EmptySinglePassRenderPassDesc;
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
-        
-        let _ = ensure_image_view_compatible(&rp, 0, &img.access());
+
+        let _ = ensure_image_view_compatible(&rp, 0, &img);
     }
 
     // TODO: more tests

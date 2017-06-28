@@ -9,20 +9,20 @@
 
 use std::fmt;
 use std::mem;
-use std::ptr;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
 use std::os::raw::c_void;
+use std::ptr;
 use std::sync::Arc;
 
-use instance::MemoryType;
-use device::Device;
-use device::DeviceOwned;
-use memory::Content;
 use OomError;
 use VulkanObject;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
+use instance::MemoryType;
+use memory::Content;
 use vk;
 
 /// Represents memory that has been allocated.
@@ -36,7 +36,7 @@ use vk;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let mem_ty = device.physical_device().memory_types().next().unwrap();
-/// 
+///
 /// // Allocates 1kB of memory.
 /// let memory = DeviceMemory::alloc(device.clone(), mem_ty, 1024).unwrap();
 /// ```
@@ -51,7 +51,7 @@ impl DeviceMemory {
     /// Allocates a chunk of memory from the device.
     ///
     /// Some platforms may have a limit on the maximum size of a single allocation. For example,
-    /// certain systems may fail to create allocations with a size greater than or equal to 4GB. 
+    /// certain systems may fail to create allocations with a size greater than or equal to 4GB.
     ///
     /// # Panic
     ///
@@ -61,8 +61,7 @@ impl DeviceMemory {
     // TODO: VK_ERROR_TOO_MANY_OBJECTS error
     #[inline]
     pub fn alloc(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                 -> Result<DeviceMemory, OomError>
-    {
+                 -> Result<DeviceMemory, OomError> {
         assert!(size >= 1);
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
@@ -85,17 +84,19 @@ impl DeviceMemory {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.AllocateMemory(device.internal_object(), &infos,
-                                                ptr::null(), &mut output)));
+            check_errors(vk.AllocateMemory(device.internal_object(),
+                                           &infos,
+                                           ptr::null(),
+                                           &mut output))?;
             output
         };
 
         Ok(DeviceMemory {
-            memory: memory,
-            device: device,
-            size: size,
-            memory_type_index: memory_type.id(),
-        })
+               memory: memory,
+               device: device,
+               size: size,
+               memory_type_index: memory_type.id(),
+           })
     }
 
     /// Allocates a chunk of memory and maps it.
@@ -106,34 +107,39 @@ impl DeviceMemory {
     /// - Panics if the memory type is not host-visible.
     ///
     pub fn alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                         -> Result<MappedDeviceMemory, OomError>
-    {
+                         -> Result<MappedDeviceMemory, OomError> {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
-        let mem = try!(DeviceMemory::alloc(device.clone(), memory_type, size));
+        let mem = DeviceMemory::alloc(device.clone(), memory_type, size)?;
 
         let coherent = memory_type.is_host_coherent();
 
         let ptr = unsafe {
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.MapMemory(device.internal_object(), mem.memory, 0,
-                                           mem.size as vk::DeviceSize, 0 /* reserved flags */,
-                                           &mut output)));
+            check_errors(vk.MapMemory(device.internal_object(),
+                                      mem.memory,
+                                      0,
+                                      mem.size as vk::DeviceSize,
+                                      0, /* reserved flags */
+                                      &mut output))?;
             output
         };
 
         Ok(MappedDeviceMemory {
-            memory: mem,
-            pointer: ptr,
-            coherent: coherent,
-        })
+               memory: mem,
+               pointer: ptr,
+               coherent: coherent,
+           })
     }
 
     /// Returns the memory type this chunk was allocated on.
     #[inline]
     pub fn memory_type(&self) -> MemoryType {
-        self.device.physical_device().memory_type_by_id(self.memory_type_index).unwrap()
+        self.device
+            .physical_device()
+            .memory_type_by_id(self.memory_type_index)
+            .unwrap()
     }
 
     /// Returns the size in bytes of that memory chunk.
@@ -185,7 +191,7 @@ impl Drop for DeviceMemory {
 /// is not host-accessible.
 ///
 /// In order to access the content of the allocated memory, you can use the `read_write` method.
-/// This method returns a guard object that derefs to the content. 
+/// This method returns a guard object that derefs to the content.
 ///
 /// # Example
 ///
@@ -193,7 +199,7 @@ impl Drop for DeviceMemory {
 /// use vulkano::memory::DeviceMemory;
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// // The memory type must be mappable. 
+/// // The memory type must be mappable.
 /// let mem_ty = device.physical_device().memory_types()
 ///                     .filter(|t| t.is_host_visible())
 ///                     .next().unwrap();    // Vk specs guarantee that this can't fail
@@ -253,7 +259,8 @@ impl MappedDeviceMemory {
     {
         let vk = self.memory.device().pointers();
         let pointer = T::ref_from_ptr((self.pointer as usize + range.start) as *mut _,
-                                      range.end - range.start).unwrap();       // TODO: error
+                                      range.end - range.start)
+            .unwrap(); // TODO: error
 
         if !self.coherent {
             let range = vk::MappedMemoryRange {
@@ -298,8 +305,10 @@ unsafe impl DeviceOwned for MappedDeviceMemory {
     }
 }
 
-unsafe impl Send for MappedDeviceMemory {}
-unsafe impl Sync for MappedDeviceMemory {}
+unsafe impl Send for MappedDeviceMemory {
+}
+unsafe impl Sync for MappedDeviceMemory {
+}
 
 impl fmt::Debug for MappedDeviceMemory {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -334,13 +343,15 @@ impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
             pointer: f(self.pointer),
             mem: self.mem,
             coherent: self.coherent,
-            range: self.range.clone(),  // TODO: ?
+            range: self.range.clone(), // TODO: ?
         }
     }
 }
 
-unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {}
-unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {}
+unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {
+}
+unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {
+}
 
 impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
     type Target = T;
@@ -375,8 +386,7 @@ impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
 
             // TODO: check result?
             unsafe {
-                vk.FlushMappedMemoryRanges(self.mem.as_ref().device().internal_object(),
-                                           1, &range);
+                vk.FlushMappedMemoryRanges(self.mem.as_ref().device().internal_object(), 1, &range);
             }
         }
     }
@@ -406,30 +416,38 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     fn oom_single() {
         let (device, _) = gfx_dev_and_queue!();
-        let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
-                           .next().unwrap();
-    
+        let mem_ty = device
+            .physical_device()
+            .memory_types()
+            .filter(|m| !m.is_lazily_allocated())
+            .next()
+            .unwrap();
+
         match DeviceMemory::alloc(device.clone(), mem_ty, 0xffffffffffffffff) {
             Err(OomError::OutOfDeviceMemory) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
-    #[ignore]       // TODO: test fails for now on Mesa+Intel
+    #[ignore] // TODO: test fails for now on Mesa+Intel
     fn oom_multi() {
         let (device, _) = gfx_dev_and_queue!();
-        let mem_ty = device.physical_device().memory_types().filter(|m| !m.is_lazily_allocated())
-                           .next().unwrap();
+        let mem_ty = device
+            .physical_device()
+            .memory_types()
+            .filter(|m| !m.is_lazily_allocated())
+            .next()
+            .unwrap();
         let heap_size = mem_ty.heap().size();
 
         let mut allocs = Vec::new();
-    
+
         for _ in 0 .. 4 {
             match DeviceMemory::alloc(device.clone(), mem_ty, heap_size / 3) {
                 Err(OomError::OutOfDeviceMemory) => return,     // test succeeded
                 Ok(a) => allocs.push(a),
-                _ => ()
+                _ => (),
             }
         }
 

@@ -1,8 +1,3 @@
----
-layout: page
-title: "Tutorial 4: render passes"
----
-
 # Render passes
 
 In the previous section, we created a window and asked the GPU to fill its surface with a color.
@@ -40,29 +35,27 @@ complex usages, vulkano's API to create a render pass is a bit particular.
 
 TODO: provide a simpler way in vulkano to do that?
 
-{% highlight rust %}
-mod render_pass {
-    use vulkano::format::Format;
-
-    single_pass_renderpass!{
-        attachments: {
-            color: {
-                load: Clear,
-                store: Store,
-                format: Format,
+    mod render_pass {
+        use vulkano::format::Format;
+         
+        single_pass_renderpass!{
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: Format,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
             }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {}
         }
     }
-}
-
-let render_pass = render_pass::CustomRenderPass::new(&device, &render_pass::Formats {
-    color: (images[0].format(), 1)
-}).unwrap();
-{% endhighlight %}
+     
+    let render_pass = render_pass::CustomRenderPass::new(&device, &render_pass::Formats {
+        color: (images[0].format(), 1)
+    }).unwrap();
 
 ## Entering the render pass
 
@@ -76,15 +69,13 @@ Creating a framebuffer is typically done as part of the rendering process. Altho
 bad idea to keep the framebuffer objects alive between frames, but it won't kill your
 performances to create and destroy a few framebuffer objects during each frame.
 
-{% highlight rust %}
-let framebuffer = {
-    let image = &images[image_num];
-    let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
-    Framebuffer::new(&render_pass, dimensions, render_pass::AList {
-        color: image
-    }).unwrap()
-};
-{% endhighlight %}
+    let framebuffer = {
+        let image = &images[image_num];
+        let dimensions = [image.dimensions()[0], image.dimensions()[1], 1];
+        Framebuffer::new(&render_pass, dimensions, render_pass::AList {
+            color: image
+        }).unwrap()
+    };
 
 We are now ready the enter drawing mode!
 
@@ -98,14 +89,12 @@ each attachment that was defined with `load: Clear`.
 Clearing our attachment has exactly the same effect as `clear_color_foo`, except that this
 time it is done by the rendering engine.
 
-{% highlight rust %}
-let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
-    .draw_inline(&render_pass, &framebuffer, render_pass::ClearValues {
-        color: [0.0, 0.0, 1.0, 1.0]
-    })
-    .draw_end()
-    .build();
-{% endhighlight %}
+    let command_buffer = PrimaryCommandBufferBuilder::new(&cb_pool)
+        .draw_inline(&render_pass, &framebuffer, render_pass::ClearValues {
+            color: [0.0, 0.0, 1.0, 1.0]
+        })
+        .draw_end()
+        .build();
 
 We enter the render pass and immediately leave it afterward. In the next section, we are going
 to insert a function call between `draw_inline` and `draw_end`.

@@ -11,10 +11,11 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
+use VulkanObject;
 use buffer::BufferAccess;
+use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use VulkanObject;
 
 /// Checks whether a copy buffer command is valid.
 ///
@@ -22,14 +23,16 @@ use VulkanObject;
 ///
 /// - Panics if the source and destination were not created with `device`.
 ///
-// FIXME: type safety
-pub fn check_copy_buffer<S, D>(device: &Device, source: &S, destination: &D)
-                               -> Result<(), CheckCopyBufferError>
-    where S: ?Sized + BufferAccess,
-          D: ?Sized + BufferAccess
+pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
+                                  -> Result<CheckCopyBuffer, CheckCopyBufferError>
+    where S: ?Sized + TypedBufferAccess<Content = T>,
+          D: ?Sized + TypedBufferAccess<Content = T>,
+          T: ?Sized,
 {
-    assert_eq!(source.inner().buffer.device().internal_object(), device.internal_object());
-    assert_eq!(destination.inner().buffer.device().internal_object(), device.internal_object());
+    assert_eq!(source.inner().buffer.device().internal_object(),
+               device.internal_object());
+    assert_eq!(destination.inner().buffer.device().internal_object(),
+               device.internal_object());
 
     if !source.inner().buffer.usage_transfer_src() {
         return Err(CheckCopyBufferError::SourceMissingTransferUsage);
@@ -39,15 +42,24 @@ pub fn check_copy_buffer<S, D>(device: &Device, source: &S, destination: &D)
         return Err(CheckCopyBufferError::DestinationMissingTransferUsage);
     }
 
-    let size = cmp::min(source.size(), destination.size());
+    let copy_size = cmp::min(source.size(), destination.size());
 
-    if source.conflicts_buffer(0, size, &destination, 0, size) {
+    if source.conflicts_buffer(0, copy_size, &destination, 0, copy_size) {
         return Err(CheckCopyBufferError::OverlappingRanges);
     } else {
-        debug_assert!(!destination.conflicts_buffer(0, size, &source, 0, size));
+        debug_assert!(!destination.conflicts_buffer(0, copy_size, &source, 0, copy_size));
     }
 
-    Ok(())
+    Ok(CheckCopyBuffer { copy_size })
+}
+
+/// Information returned if `check_copy_buffer` succeeds.
+pub struct CheckCopyBuffer {
+    /// Size of the transfer in bytes.
+    ///
+    /// If the size of the source and destination are not equal, then the value is equal to the
+    /// smallest of the two.
+    pub copy_size: usize,
 }
 
 /// Error that can happen from `check_copy_buffer`.

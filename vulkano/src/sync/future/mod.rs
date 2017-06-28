@@ -11,29 +11,29 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use OomError;
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
 use command_buffer::CommandBufferExecFuture;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitBindSparseError;
-use command_buffer::submit::SubmitPresentError;
 use command_buffer::submit::SubmitCommandBufferError;
+use command_buffer::submit::SubmitPresentError;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use image::ImageLayout;
 use swapchain;
-use swapchain::Swapchain;
 use swapchain::PresentFuture;
+use swapchain::Swapchain;
 use sync::AccessFlagBits;
 use sync::FenceWaitError;
 use sync::PipelineStages;
-use OomError;
 
-pub use self::now::{now, NowFuture};
 pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
 pub use self::join::JoinFuture;
+pub use self::now::{NowFuture, now};
 pub use self::semaphore_signal::SemaphoreSignalFuture;
 
 mod now;
@@ -50,7 +50,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// resources used by these submissions.
     ///
     /// It is highly recommended to call `cleanup_finished` from time to time. Doing so will
-    /// prevent memory usage from increasing over time, and will also destroy the locks on 
+    /// prevent memory usage from increasing over time, and will also destroy the locks on
     /// resources used by the GPU.
     fn cleanup_finished(&mut self);
 
@@ -60,7 +60,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// It is the responsibility of the caller to ensure that the submission is going to be
     /// submitted only once. However keep in mind that this function can perfectly be called
-    /// multiple times (as long as the returned object is only submitted once). 
+    /// multiple times (as long as the returned object is only submitted once).
     /// Also note that calling `flush()` on the future  may change the value returned by
     /// `build_submission()`.
     ///
@@ -129,12 +129,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
     fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
     fn join<F>(self, other: F) -> JoinFuture<Self, F>
-        where Self: Sized, F: GpuFuture
+        where Self: Sized,
+              F: GpuFuture
     {
         join::join(self, other)
     }
@@ -146,7 +148,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     #[inline]
     fn then_execute<Cb>(self, queue: Arc<Queue>, command_buffer: Cb)
                         -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
-        where Self: Sized, Cb: CommandBuffer + 'static
+        where Self: Sized,
+              Cb: CommandBuffer + 'static
     {
         command_buffer.execute_after(self, queue)
     }
@@ -156,9 +159,11 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
     #[inline]
-    fn then_execute_same_queue<Cb>(self, command_buffer: Cb)
-                            -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
-        where Self: Sized, Cb: CommandBuffer + 'static
+    fn then_execute_same_queue<Cb>(
+        self, command_buffer: Cb)
+        -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+        where Self: Sized,
+              Cb: CommandBuffer + 'static
     {
         let queue = self.queue().unwrap().clone();
         command_buffer.execute_after(self, queue)
@@ -169,7 +174,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// Call this function when you want to execute some operations on a queue and want to see the
     /// result on another queue.
     #[inline]
-    fn then_signal_semaphore(self) -> SemaphoreSignalFuture<Self> where Self: Sized {
+    fn then_signal_semaphore(self) -> SemaphoreSignalFuture<Self>
+        where Self: Sized
+    {
         semaphore_signal::then_signal_semaphore(self)
     }
 
@@ -200,7 +207,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: More often than not you want to immediately flush the future after calling this
     /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
-    fn then_signal_fence(self) -> FenceSignalFuture<Self> where Self: Sized {
+    fn then_signal_fence(self) -> FenceSignalFuture<Self>
+        where Self: Sized
+    {
         fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Continue)
     }
 
@@ -224,14 +233,17 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
     #[inline]
     fn then_swapchain_present(self, queue: Arc<Queue>, swapchain: Arc<Swapchain>,
-                              image_index: usize) -> PresentFuture<Self>
+                              image_index: usize)
+                              -> PresentFuture<Self>
         where Self: Sized
     {
         swapchain::present(swapchain, self, queue, image_index)
     }
 }
 
-unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
+unsafe impl<F: ?Sized> GpuFuture for Box<F>
+    where F: GpuFuture
+{
     #[inline]
     fn cleanup_finished(&mut self) {
         (**self).cleanup_finished()
@@ -263,16 +275,16 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F> where F: GpuFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_buffer_access(
+        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>
-    {
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                          queue: &Queue)
+                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
@@ -316,7 +328,7 @@ impl error::Error for AccessError {
                 "the resource is already in use, and there is no tracking of concurrent usages"
             },
             AccessError::UnexpectedImageLayout { .. } => {
-                unimplemented!()        // TODO: find a description
+                unimplemented!() // TODO: find a description
             },
             AccessError::ImageNotInitialized { .. } => {
                 "trying to use an image without transitionning it from the undefined or \
@@ -409,7 +421,8 @@ impl error::Error for FlushError {
             FlushError::DeviceLost => "the connection to the device has been lost",
             FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
             FlushError::OutOfDate => "the swapchain needs to be recreated",
-            FlushError::Timeout => "the flush operation needed to block, but the timeout has elapsed",
+            FlushError::Timeout => "the flush operation needed to block, but the timeout has \
+                                    elapsed",
         }
     }
 
@@ -418,7 +431,7 @@ impl error::Error for FlushError {
         match *self {
             FlushError::AccessError(ref err) => Some(err),
             FlushError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }

@@ -329,10 +329,10 @@ void main() {
         // function will block.
         // This operation returns the index of the image that we are allowed to draw upon.
         //
-        // This function can block if no image is available. The parameter is a timeout after
-        // which the function call will return an error.
+        // This function can block if no image is available. The parameter is an optional timeout
+        // after which the function call will return an error.
         let (image_num, acquire_future) = swapchain::acquire_next_image(swapchain.clone(),
-                                                                        Duration::new(1, 0)).unwrap();
+                                                                        None).unwrap();
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.

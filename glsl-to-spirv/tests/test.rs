@@ -14,7 +14,7 @@ fn test1() {
     let shader = r#"
 #version 330
 
-out vec4 f_color;
+layout(location = 0) out vec4 f_color;
 
 void main() {
     f_color = vec4(1.0);

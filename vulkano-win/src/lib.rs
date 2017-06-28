@@ -22,13 +22,13 @@ use winit::{EventsLoop, WindowBuilder};
 use winit::CreationError as WindowCreationError;
 
 #[cfg(target_os = "macos")]
-use objc::runtime::{YES};
+use cocoa::appkit::{NSView, NSWindow};
 #[cfg(target_os = "macos")]
 use cocoa::base::id as cocoa_id;
 #[cfg(target_os = "macos")]
-use cocoa::appkit::{NSWindow, NSView};
-#[cfg(target_os = "macos")]
 use metal::*;
+#[cfg(target_os = "macos")]
+use objc::runtime::YES;
 
 #[cfg(target_os = "macos")]
 use std::mem;
@@ -49,23 +49,25 @@ pub fn required_extensions() -> InstanceExtensions {
 
     match InstanceExtensions::supported_by_core() {
         Ok(supported) => supported.intersection(&ideal),
-        Err(_) => InstanceExtensions::none()
+        Err(_) => InstanceExtensions::none(),
     }
 }
 
 pub trait VkSurfaceBuild {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>) -> Result<Window, CreationError>;
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
+                        -> Result<Window, CreationError>;
 }
 
 impl VkSurfaceBuild for WindowBuilder {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>) -> Result<Window, CreationError> {
-        let window = try!(self.build(events_loop));
-        let surface = try!(unsafe { winit_to_surface(instance, &window) });
+    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
+                        -> Result<Window, CreationError> {
+        let window = self.build(events_loop)?;
+        let surface = unsafe { winit_to_surface(instance, &window) }?;
 
         Ok(Window {
-            window: window,
-            surface: surface,
-        })
+               window: window,
+               surface: surface,
+           })
     }
 }
 
@@ -135,16 +137,14 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface(instance: Arc<Instance>,
-                           win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::android::WindowExt;
     Surface::from_anativewindow(instance, win.get_native_window())
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-unsafe fn winit_to_surface(instance: Arc<Instance>,
-                           win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::unix::WindowExt;
     match (win.get_wayland_display(), win.get_wayland_surface()) {
@@ -158,16 +158,15 @@ unsafe fn winit_to_surface(instance: Arc<Instance>,
                                    win.get_xlib_window().unwrap() as _)
             } else {
                 Surface::from_xcb(instance,
-                                   win.get_xcb_connection().unwrap(),
-                                   win.get_xlib_window().unwrap() as _)
+                                  win.get_xcb_connection().unwrap(),
+                                  win.get_xlib_window().unwrap() as _)
             }
-        }
+        },
     }
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn winit_to_surface(instance: Arc<Instance>,
-                           win: &winit::Window)
+unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::windows::WindowExt;
     Surface::from_hwnd(instance,
@@ -177,8 +176,7 @@ unsafe fn winit_to_surface(instance: Arc<Instance>,
 
 #[cfg(target_os = "macos")]
 unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
-                           -> Result<Arc<Surface>, SurfaceCreationError>
-{
+                           -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::macos::WindowExt;
 
     unsafe {
@@ -192,7 +190,7 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
 
         let view = wnd.contentView();
         view.setWantsLayer(YES);
-        view.setLayer(mem::transmute(layer.0));  // Bombs here with out of memory
+        view.setLayer(mem::transmute(layer.0)); // Bombs here with out of memory
     }
 
     Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())

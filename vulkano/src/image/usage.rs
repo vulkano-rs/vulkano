@@ -98,14 +98,30 @@ impl ImageUsage {
     #[inline]
     pub fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
         let mut result = 0;
-        if self.transfer_source { result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT; }
-        if self.transfer_dest { result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT; }
-        if self.sampled { result |= vk::IMAGE_USAGE_SAMPLED_BIT; }
-        if self.storage { result |= vk::IMAGE_USAGE_STORAGE_BIT; }
-        if self.color_attachment { result |= vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT; }
-        if self.depth_stencil_attachment { result |= vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; }
-        if self.transient_attachment { result |= vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT; }
-        if self.input_attachment { result |= vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT; }
+        if self.transfer_source {
+            result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
+        if self.transfer_dest {
+            result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT;
+        }
+        if self.sampled {
+            result |= vk::IMAGE_USAGE_SAMPLED_BIT;
+        }
+        if self.storage {
+            result |= vk::IMAGE_USAGE_STORAGE_BIT;
+        }
+        if self.color_attachment {
+            result |= vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        }
+        if self.depth_stencil_attachment {
+            result |= vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        }
+        if self.transient_attachment {
+            result |= vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+        }
+        if self.input_attachment {
+            result |= vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        }
         result
     }
 

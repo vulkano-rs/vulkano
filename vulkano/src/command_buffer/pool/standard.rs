@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use fnv::FnvHasher;
 use std::cmp;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
@@ -14,7 +15,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
-use fnv::FnvHasher;
 
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
@@ -23,16 +23,18 @@ use command_buffer::pool::UnsafeCommandPool;
 use command_buffer::pool::UnsafeCommandPoolAlloc;
 use instance::QueueFamily;
 
-use device::Device;
-use device::DeviceOwned;
 use OomError;
 use VulkanObject;
+use device::Device;
+use device::DeviceOwned;
 
 // Since the stdlib doesn't have a "thread ID" yet, we store a `Box<u8>` for each thread and the
 // value of the pointer will be used as a thread id.
 thread_local!(static THREAD_ID: Box<u8> = Box::new(0));
 #[inline]
-fn curr_thread_id() -> usize { THREAD_ID.with(|data| &**data as *const u8 as usize) }
+fn curr_thread_id() -> usize {
+    THREAD_ID.with(|data| &**data as *const u8 as usize)
+}
 
 /// Standard implementation of a command pool.
 ///
@@ -47,12 +49,15 @@ pub struct StandardCommandPool {
     queue_family: u32,
 
     // For each "thread id" (see `THREAD_ID` above), we store thread-specific info.
-    per_thread: Mutex<HashMap<usize, Weak<Mutex<StandardCommandPoolPerThread>>,
+    per_thread: Mutex<HashMap<usize,
+                              Weak<Mutex<StandardCommandPoolPerThread>>,
                               BuildHasherDefault<FnvHasher>>>,
 }
 
-unsafe impl Send for StandardCommandPool {}
-unsafe impl Sync for StandardCommandPool {}
+unsafe impl Send for StandardCommandPool {
+}
+unsafe impl Sync for StandardCommandPool {
+}
 
 struct StandardCommandPoolPerThread {
     // The Vulkan pool of this thread.
@@ -83,7 +88,7 @@ impl StandardCommandPool {
 }
 
 unsafe impl CommandPool for Arc<StandardCommandPool> {
-    type Iter = Box<Iterator<Item = StandardCommandPoolBuilder>>;       // TODO: meh for Box
+    type Iter = Box<Iterator<Item = StandardCommandPoolBuilder>>; // TODO: meh for Box
     type Builder = StandardCommandPoolBuilder;
     type Alloc = StandardCommandPoolAlloc;
 
@@ -98,13 +103,13 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         let per_thread = match per_thread {
             Some(pt) => pt,
             None => {
-                let new_pool = try!(UnsafeCommandPool::new(self.device.clone(), self.queue_family(),
-                                                           false, true));
+                let new_pool =
+                    UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
                 let pt = Arc::new(Mutex::new(StandardCommandPoolPerThread {
-                    pool: new_pool,
-                    available_primary_command_buffers: Vec::new(),
-                    available_secondary_command_buffers: Vec::new(),
-                }));
+                                                 pool: new_pool,
+                                                 available_primary_command_buffers: Vec::new(),
+                                                 available_secondary_command_buffers: Vec::new(),
+                                             }));
 
                 hashmap.insert(curr_thread_id, Arc::downgrade(&pt));
                 pt
@@ -116,39 +121,51 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         // Build an iterator to pick from already-existing command buffers.
         let (num_from_existing, from_existing) = {
             // Which list of already-existing command buffers we are going to pick CBs from.
-            let mut existing = if secondary { &mut pt_lock.available_secondary_command_buffers }
-                            else { &mut pt_lock.available_primary_command_buffers };
+            let mut existing = if secondary {
+                &mut pt_lock.available_secondary_command_buffers
+            } else {
+                &mut pt_lock.available_primary_command_buffers
+            };
             let num_from_existing = cmp::min(count as usize, existing.len());
-            let from_existing = existing.drain(0 .. num_from_existing).collect::<Vec<_>>().into_iter();
+            let from_existing = existing
+                .drain(0 .. num_from_existing)
+                .collect::<Vec<_>>()
+                .into_iter();
             (num_from_existing, from_existing)
         };
 
         // Build an iterator to construct the missing command buffers from the Vulkan pool.
         let num_new = count as usize - num_from_existing;
-        debug_assert!(num_new <= count as usize);        // Check overflows.
-        let newly_allocated = try!(pt_lock.pool.alloc_command_buffers(secondary, num_new));
+        debug_assert!(num_new <= count as usize); // Check overflows.
+        let newly_allocated = pt_lock.pool.alloc_command_buffers(secondary, num_new)?;
 
         // Returning them as a chain.
         let device = self.device.clone();
         let queue_family_id = self.queue_family;
         let per_thread = per_thread.clone();
-        let final_iter = from_existing.chain(newly_allocated).map(move |cmd| {
-            StandardCommandPoolBuilder {
-                cmd: Some(cmd),
-                pool: per_thread.clone(),
-                secondary: secondary,
-                device: device.clone(),
-                queue_family_id: queue_family_id,
-                dummy_avoid_send_sync: PhantomData,
-            }
-        }).collect::<Vec<_>>();
+        let final_iter = from_existing
+            .chain(newly_allocated)
+            .map(move |cmd| {
+                StandardCommandPoolBuilder {
+                    cmd: Some(cmd),
+                    pool: per_thread.clone(),
+                    secondary: secondary,
+                    device: device.clone(),
+                    queue_family_id: queue_family_id,
+                    dummy_avoid_send_sync: PhantomData,
+                }
+            })
+            .collect::<Vec<_>>();
 
         Ok(Box::new(final_iter.into_iter()))
     }
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
-        self.device.physical_device().queue_family_by_id(self.queue_family).unwrap()
+        self.device
+            .physical_device()
+            .queue_family_by_id(self.queue_family)
+            .unwrap()
     }
 }
 
@@ -189,7 +206,10 @@ unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
-        self.device.physical_device().queue_family_by_id(self.queue_family_id).unwrap()
+        self.device
+            .physical_device()
+            .queue_family_by_id(self.queue_family_id)
+            .unwrap()
     }
 }
 
@@ -222,8 +242,10 @@ pub struct StandardCommandPoolAlloc {
     queue_family_id: u32,
 }
 
-unsafe impl Send for StandardCommandPoolAlloc {}
-unsafe impl Sync for StandardCommandPoolAlloc {}
+unsafe impl Send for StandardCommandPoolAlloc {
+}
+unsafe impl Sync for StandardCommandPoolAlloc {
+}
 
 unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     #[inline]
@@ -233,7 +255,10 @@ unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
-        self.device.physical_device().queue_family_by_id(self.queue_family_id).unwrap()
+        self.device
+            .physical_device()
+            .queue_family_by_id(self.queue_family_id)
+            .unwrap()
     }
 }
 
@@ -249,9 +274,11 @@ impl Drop for StandardCommandPoolAlloc {
         let mut pool = self.pool.lock().unwrap();
 
         if self.secondary {
-            pool.available_secondary_command_buffers.push(self.cmd.take().unwrap());
+            pool.available_secondary_command_buffers
+                .push(self.cmd.take().unwrap());
         } else {
-            pool.available_primary_command_buffers.push(self.cmd.take().unwrap());
+            pool.available_primary_command_buffers
+                .push(self.cmd.take().unwrap());
         }
     }
 }

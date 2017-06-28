@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use format::ClearValue;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::LayoutPassDescription;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDescription;
-use framebuffer::LayoutPassDependencyDescription;
+use std::iter;
 
 /// Description of an empty render pass.
 ///
@@ -52,12 +52,12 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
         if num == 0 {
             Some(LayoutPassDescription {
-                color_attachments: vec![],
-                depth_stencil: None,
-                input_attachments: vec![],
-                resolve_attachments: vec![],
-                preserve_attachments: vec![],
-            })
+                     color_attachments: vec![],
+                     depth_stencil: None,
+                     input_attachments: vec![],
+                     resolve_attachments: vec![],
+                     preserve_attachments: vec![],
+                 })
         } else {
             None
         }
@@ -75,11 +75,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
     #[inline]
     fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-        if subpass == 0 {
-            Some(0)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(0) } else { None }
     }
 
     #[inline]
@@ -98,45 +94,29 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
     #[inline]
     fn has_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 }
 
 unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
     fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
-        assert!(values.is_empty());     // TODO: error instead
+        assert!(values.is_empty()); // TODO: error instead
         Box::new(iter::empty())
     }
 }

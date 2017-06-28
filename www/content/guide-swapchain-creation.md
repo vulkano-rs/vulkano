@@ -1,8 +1,3 @@
----
-layout: page
-title: "Tutorial 3: windows and swapchains"
----
-
 # Windows and swapchains
 
 Vulkan can be used to perform calculations (like OpenCL for example), but its main usage is to
@@ -21,25 +16,19 @@ without using any third-party crate, but doing so would require unsafe code.
 
 Let's add these dependencies to our Cargo.toml:
 
-{% highlight toml %}
-winit = "0.5"
-vulkano-win = "0.1"
-{% endhighlight %}
+    winit = "0.5"
+    vulkano-win = "0.1"
 
 ... and to our Rust code:
 
-{% highlight rust %}
-extern crate winit;
-extern crate vulkano_win;
-{% endhighlight %}
+    extern crate winit;
+    extern crate vulkano_win;
 
 Creating a window is as easy as this:
 
-{% highlight rust %}
-use vulkano_win::VkSurfaceBuild;
-
-let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
-{% endhighlight %}
+    use vulkano_win::VkSurfaceBuild;
+     
+    let window = winit::WindowBuilder::new().build_vk_surface(&instance).unwrap();
 
 This code creates a window with the default parameters, and also builds a Vulkan *surface* object
 that represents the surface of that window whenever the Vulkan API is concerned.
@@ -56,12 +45,10 @@ will return a list of the extensions that are needed on the current platform.
 
 In order to make this work, we need to modify the way the instance is created:
 
-{% highlight rust %}
-let instance = {
-    let extensions = vulkano_win::required_extensions();
-    Instance::new(None, &extensions, None).expect("failed to create Vulkan instance")
-};
-{% endhighlight %}
+    let instance = {
+        let extensions = vulkano_win::required_extensions();
+        Instance::new(None, &extensions, None).expect("failed to create Vulkan instance")
+    };
 
 After you made the change, running the program should now work and open then immediately close
 a window.
@@ -74,6 +61,4 @@ Since the window is ultimately on the screen, things are a bit special.
 
 ## Clearing the image
 
-{% highlight rust %}
-let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();
-{% endhighlight %}
+    let cmd = PrimaryCommandBuffer::new().copy(&source, &destination).build();

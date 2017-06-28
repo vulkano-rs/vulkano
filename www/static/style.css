@@ -1,0 +1,131 @@
+/*
+ * General
+ */
+@import url('https://fonts.googleapis.com/css?family=Muli');
+
+body {
+    background-color: #222;
+    color: white;
+    font-family: 'Muli', Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 1.1em;
+    margin: 0;
+    padding: 0;
+}
+
+a {
+    color: white;
+}
+
+pre {
+    background-color: #111;
+    border: 1px dashed #888;
+    border-radius: 2px;
+    box-shadow: 2px 2px 1px black;
+    padding: 0.9em 1.5em;
+}
+
+/*
+ * Header
+ */
+header {
+    background-color: #6a8500;
+    background-image: url(/header_bg.png), linear-gradient(to bottom, #6a8500 0%,#647d00 100%);
+    background-repeat: no-repeat, repeat;
+    background-size: auto 80%, cover;
+    background-position: 5% 70%;
+    margin: 0;
+    padding: 0;
+}
+
+header h1 {
+    font-size: 3em;
+    margin: 0;
+    padding: 1em 0 0.4em;
+    text-align: center;
+}
+
+header h2 {
+    font-size: 1.4em;
+    margin: 0;
+    margin-bottom: 1em;
+    padding: 0;
+    text-align: center;
+}
+
+header ul {
+    display: block;
+    margin: 0;
+    padding: 0.9em 0;
+    text-align: center;
+}
+
+header ul li {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    text-transform: lowercase;
+}
+
+header ul li:first-child::before {
+    content: "";
+}
+
+header ul li::before {
+    content: " - ";
+}
+
+header ul li a {
+    text-decoration: none;
+}
+
+header ul li a:hover {
+    text-decoration: underline;
+}
+
+/*
+ * Guides
+ */
+#guides {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+#guides > nav {
+    background-color: #444;
+    font-size: 0.95em;
+    padding: 1em 5em 1em 3em;
+    flex: 0.2;
+    min-width: 10vw;
+}
+
+#guides > nav a {
+    text-decoration: none;
+}
+
+#guides > nav a:hover {
+    color: #ddd;
+    text-decoration: underline;
+}
+
+#guides > nav h2:first-child {
+    margin-top: 0.5em;
+}
+
+#guides > nav ul {
+    list-style-type: none;
+    margin: 1.7em 0 0;
+    padding: 0;
+}
+
+#guides > nav ul li {
+    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    margin: 0;
+    padding: 0.1em 0;
+    padding-left: 0.7em;
+}
+
+#guides > div {
+    flex: 1;
+    padding: 1em 2em;
+}

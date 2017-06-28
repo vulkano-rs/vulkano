@@ -196,7 +196,8 @@ impl AccessFlagBits {
         if (self.uniform_read || self.shader_read || self.shader_write) &&
             !stages.vertex_shader && !stages.tessellation_control_shader &&
             !stages.tessellation_evaluation_shader && !stages.geometry_shader &&
-            !stages.fragment_shader && !stages.compute_shader && !stages.all_graphics
+            !stages.fragment_shader &&
+            !stages.compute_shader && !stages.all_graphics
         {
             return false;
         }
@@ -212,7 +213,8 @@ impl AccessFlagBits {
         }
 
         if (self.depth_stencil_attachment_read || self.depth_stencil_attachment_write) &&
-            !stages.early_fragment_tests && !stages.late_fragment_tests && !stages.all_graphics
+            !stages.early_fragment_tests && !stages.late_fragment_tests &&
+            !stages.all_graphics
         {
             return false;
         }
