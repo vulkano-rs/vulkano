@@ -354,6 +354,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             assert!(!self.secondary_cb);
             assert_eq!(self.subpasses_remaining, Some(0));
             self.inner.end_render_pass();
+            self.subpasses_remaining = None;
             Ok(self)
         }
     }
