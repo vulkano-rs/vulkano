@@ -37,7 +37,7 @@ use command_buffer::sys::Kind;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
-use command_buffer::validity;
+use command_buffer::validity::*;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
@@ -96,13 +96,34 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 }
 
 impl<P> AutoCommandBufferBuilder<P> {
+    #[inline]
+    fn ensure_outside_render_pass(&self) -> Result<(), AutoCommandBufferBuilderContextError> {
+        if self.subpasses_remaining.is_none() {
+            Ok(())
+        } else {
+            Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass)
+        }
+    }
+
+    #[inline]
+    fn ensure_inside_render_pass(&self) -> Result<(), AutoCommandBufferBuilderContextError> {
+        if self.subpasses_remaining.is_some() {
+            Ok(())
+        } else {
+            Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
+        }
+    }
+
     /// Builds the command buffer.
     #[inline]
-    pub fn build(self) -> Result<AutoCommandBuffer<P::Alloc>, OomError>
+    pub fn build(self) -> Result<AutoCommandBuffer<P::Alloc>, BuildError>
         where P: CommandPoolBuilderAlloc
     {
-        // TODO: error instead
-        assert!(self.secondary_cb || self.subpasses_remaining.is_none());
+        if self.secondary_cb {
+            return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
+        }
+
+        self.ensure_outside_render_pass()?;
         Ok(AutoCommandBuffer { inner: self.inner.build()? })
     }
 
@@ -115,13 +136,15 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// You must call this before you can add draw commands.
     #[inline]
     pub fn begin_render_pass<F, C>(mut self, framebuffer: F, secondary: bool, clear_values: C)
-                                   -> Result<Self, AutoCommandBufferBuilderContextError>
+                                   -> Result<Self, BeginRenderPassError>
         where F: FramebufferAbstract + RenderPassDescClearValues<C> + Send + Sync + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(!self.secondary_cb);
-            assert!(self.subpasses_remaining.is_none());
+            if self.secondary_cb {
+                return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
+            }
+
+            self.ensure_outside_render_pass();
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
@@ -141,17 +164,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// This command will copy from the source to the destination. If their size is not equal, then
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
-    pub fn copy_buffer<S, D, T>(mut self, src: S, dest: D)
-                                -> Result<Self, validity::CheckCopyBufferError>
+    pub fn copy_buffer<S, D, T>(mut self, src: S, dest: D) -> Result<Self, CopyBufferError>
         where S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
               D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
               T: ?Sized,
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_none());
-
-            let infos = validity::check_copy_buffer(self.device(), &src, &dest)?;
+            self.ensure_outside_render_pass()?;
+            let infos = check_copy_buffer(self.device(), &src, &dest)?;
             self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)));
             Ok(self)
         }
@@ -159,12 +179,11 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D>(mut self, src: S, dest: D)
-                                      -> Result<Self, AutoCommandBufferBuilderContextError>
+                                      -> Result<Self, CopyBufferToImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
-        // TODO: error instead
-        assert!(self.subpasses_remaining.is_none());
+        self.ensure_outside_render_pass()?;
 
         let dims = dest.dimensions().width_height_depth();
         self.copy_buffer_to_image_dimensions(src, dest, [0, 0, 0], dims, 0, 1, 0)
@@ -173,14 +192,12 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image_dimensions<S, D>(
         mut self, src: S, dest: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
-        num_layers: u32, mipmap: u32)
-        -> Result<Self, AutoCommandBufferBuilderContextError>
+        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferToImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_none());
+            self.ensure_outside_render_pass()?;
 
             // TODO: check validity
             // TODO: hastily implemented
@@ -214,19 +231,15 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     pub fn dispatch<Cp, S, Pc>(mut self, dimensions: [u32; 3], pipeline: Cp, sets: S, constants: Pc)
-                               -> Result<Self, AutoCommandBufferBuilderContextError>
+                               -> Result<Self, DispatchError>
         where Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_none());
-            // TODO: error instead
-            validity::check_push_constants_validity(&pipeline, &constants).unwrap();
-            // TODO: error instead
-            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
-            // TODO: error instead
-            validity::check_dispatch(pipeline.device(), dimensions).unwrap();
+            self.ensure_outside_render_pass()?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_dispatch(pipeline.device(), dimensions)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -244,22 +257,18 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
-                              constants: Pc)
-                              -> Result<Self, AutoCommandBufferBuilderContextError>
+                              constants: Pc) -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_some());
-            // TODO: proper error
-            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
-            // TODO: error instead
-            validity::check_push_constants_validity(&pipeline, &constants).unwrap();
-            // TODO: error instead
-            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
-            // TODO: error instead
-            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
+            // TODO: must check that pipeline is compatible with render pass
+
+            self.ensure_inside_render_pass()?;
+            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -282,26 +291,21 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
         mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, index_buffer: Ib, sets: S,
         constants: Pc)
-        -> Result<Self, AutoCommandBufferBuilderContextError>
+        -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
               Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
               I: Index + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_some());
+            // TODO: must check that pipeline is compatible with render pass
 
-            // TODO: proper error
-            let ib_infos = validity::check_index_buffer(self.device(), &index_buffer).unwrap();
-            // TODO: proper error
-            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
-            // TODO: error instead
-            validity::check_push_constants_validity(&pipeline, &constants).unwrap();
-            // TODO: error instead
-            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
-            // TODO: error instead
-            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
+            self.ensure_inside_render_pass()?;
+            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -324,7 +328,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: DynamicState,
                                            vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
-                                           -> Result<Self, AutoCommandBufferBuilderContextError>
+                                           -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
               Ib: BufferAccess
@@ -334,17 +338,13 @@ impl<P> AutoCommandBufferBuilder<P> {
                       + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_some());
+            // TODO: must check that pipeline is compatible with render pass
 
-            // TODO: proper error
-            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
-            // TODO: error instead
-            validity::check_push_constants_validity(&pipeline, &constants).unwrap();
-            // TODO: error instead
-            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
-            // TODO: error instead
-            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
+            self.ensure_inside_render_pass()?;
+            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
 
             let draw_count = indirect_buffer.len() as u32;
 
@@ -373,9 +373,20 @@ impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     pub fn end_render_pass(mut self) -> Result<Self, AutoCommandBufferBuilderContextError> {
         unsafe {
-            // TODO: error instead
-            assert!(!self.secondary_cb);
-            assert_eq!(self.subpasses_remaining, Some(0));
+            if self.secondary_cb {
+                return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
+            }
+
+            match self.subpasses_remaining {
+                Some(0) => (),
+                None => {
+                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
+                },
+                Some(_) => {
+                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch);
+                },
+            }
+
             self.inner.end_render_pass();
             self.subpasses_remaining = None;
             Ok(self)
@@ -393,14 +404,12 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     // TODO: not safe because of signalling NaNs
     #[inline]
-    pub fn fill_buffer<B>(mut self, buffer: B, data: u32)
-                          -> Result<Self, validity::CheckFillBufferError>
+    pub fn fill_buffer<B>(mut self, buffer: B, data: u32) -> Result<Self, FillBufferError>
         where B: BufferAccess + Send + Sync + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_none());
-            validity::check_fill_buffer(self.device(), &buffer)?;
+            self.ensure_outside_render_pass()?;
+            check_fill_buffer(self.device(), &buffer)?;
             self.inner.fill_buffer(buffer, data);
             Ok(self)
         }
@@ -411,13 +420,18 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn next_subpass(mut self, secondary: bool)
                         -> Result<Self, AutoCommandBufferBuilderContextError> {
         unsafe {
-            // TODO: error instead
-            assert!(!self.secondary_cb);
+            if self.secondary_cb {
+                return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
+            }
 
             match self.subpasses_remaining {
-                None => panic!(),
+                None => {
+                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
+                },
+                Some(0) => {
+                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch);
+                },
                 Some(ref mut num) => {
-                    assert!(*num >= 1);
                     *num -= 1;
                 }
             }
@@ -434,16 +448,13 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
     /// buffer is larger than `data`, only the start of the buffer is written.
     #[inline]
-    pub fn update_buffer<B, D>(mut self, buffer: B, data: D)
-                               -> Result<Self, validity::CheckUpdateBufferError>
+    pub fn update_buffer<B, D>(mut self, buffer: B, data: D) -> Result<Self, UpdateBufferError>
         where B: BufferAccess + Send + Sync + 'static,
               D: Send + Sync + 'static
     {
         unsafe {
-            // TODO: error instead
-            assert!(self.subpasses_remaining.is_none());
-
-            validity::check_update_buffer(self.device(), &buffer, &data)?;
+            self.ensure_outside_render_pass()?;
+            check_update_buffer(self.device(), &buffer, &data)?;
 
             let size_of_data = mem::size_of_val(&data);
             if buffer.size() > size_of_data {
@@ -573,26 +584,143 @@ unsafe impl<P> DeviceOwned for AutoCommandBuffer<P> {
 }
 
 macro_rules! err_gen {
-    ($name:ident) => (
+    ($name:ident { $($err:ident),+ }) => (
+        #[derive(Debug, Clone)]
         pub enum $name {
-            SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+            $(
+                $err($err),
+            )+
         }
+
+        impl error::Error for $name {
+            #[inline]
+            fn description(&self) -> &str {
+                match *self {
+                    $(
+                        $name::$err(_) => {
+                            concat!("a ", stringify!($err))
+                        }
+                    )+
+                }
+            }
+
+            #[inline]
+            fn cause(&self) -> Option<&error::Error> {
+                match *self {
+                    $(
+                        $name::$err(ref err) => Some(err),
+                    )+
+                }
+            }
+        }
+
+        impl fmt::Display for $name {
+            #[inline]
+            fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+                write!(fmt, "{}", error::Error::description(self))
+            }
+        }
+
+        $(
+            impl From<$err> for $name {
+                #[inline]
+                fn from(err: $err) -> $name {
+                    $name::$err(err)
+                }
+            }
+        )+
     );
 }
 
-err_gen!(Foo);
+err_gen!(BuildError {
+    AutoCommandBufferBuilderContextError,
+    OomError
+});
+
+err_gen!(BeginRenderPassError {
+    AutoCommandBufferBuilderContextError
+});
+
+err_gen!(CopyBufferError {
+    AutoCommandBufferBuilderContextError,
+    CheckCopyBufferError
+});
+
+err_gen!(CopyBufferToImageError {
+    AutoCommandBufferBuilderContextError
+});
+
+err_gen!(FillBufferError {
+    AutoCommandBufferBuilderContextError,
+    CheckFillBufferError
+});
+
+err_gen!(DispatchError {
+    AutoCommandBufferBuilderContextError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckDispatchError
+});
+
+err_gen!(DrawError {
+    AutoCommandBufferBuilderContextError,
+    CheckDynamicStateValidityError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckVertexBufferError
+});
+
+err_gen!(DrawIndexedError {
+    AutoCommandBufferBuilderContextError,
+    CheckDynamicStateValidityError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckVertexBufferError,
+    CheckIndexBufferError
+});
+
+err_gen!(DrawIndirectError {
+    AutoCommandBufferBuilderContextError,
+    CheckDynamicStateValidityError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckVertexBufferError
+});
+
+err_gen!(UpdateBufferError {
+    AutoCommandBufferBuilderContextError,
+    CheckUpdateBufferError
+});
 
 #[derive(Debug, Copy, Clone)]
 pub enum AutoCommandBufferBuilderContextError {
-    Forbidden,
+    /// Operation forbidden in a secondary command buffer.
+    ForbiddenInSecondary,
+    /// Operation forbidden inside of a render pass.
+    ForbiddenInsideRenderPass,
+    /// Operation forbidden outside of a render pass.
+    ForbiddenOutsideRenderPass,
+    /// Tried to end a render pass with subpasses remaining, or tried to go to next subpass with no
+    /// subpass remaining.
+    NumSubpassesMismatch,
 }
 
 impl error::Error for AutoCommandBufferBuilderContextError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            AutoCommandBufferBuilderContextError::Forbidden => {
-                "operation forbidden inside or outside of a render pass"
+            AutoCommandBufferBuilderContextError::ForbiddenInSecondary => {
+                "operation forbidden in a secondary command buffer"
+            },
+            AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass => {
+                "operation forbidden inside of a render pass"
+            },
+            AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
+                "operation forbidden outside of a render pass"
+            },
+            AutoCommandBufferBuilderContextError::NumSubpassesMismatch => {
+                "tried to end a render pass with subpasses remaining, or tried to go to next \
+                 subpass with no subpass remaining"
             },
         }
     }
