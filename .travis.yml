@@ -6,10 +6,6 @@ rust:
 cache:
   cargo
 
-before_install:
-  - openssl aes-256-cbc -K $encrypted_68b8d7c1b5be_key -iv $encrypted_68b8d7c1b5be_iv
-        -in ./www/deploy.enc -out www-deploy-key -d
-
 install:
   - export CXX="g++-4.8"
 
@@ -35,7 +31,6 @@ script:
     - cargo test --no-run -j 1 -v --manifest-path vulkano/Cargo.toml
     - cargo test --doc -j 1 -v --manifest-path vulkano/Cargo.toml
     - cargo build -j 1 --manifest-path examples/Cargo.toml
-    - cargo test --manifest-path www/Cargo.toml
 
 after_success:
     - |
@@ -62,12 +57,3 @@ after_success:
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
-    #- |
-        #[ $TRAVIS_BRANCH = master ] &&
-        #[ $TRAVIS_PULL_REQUEST = false ] &&
-        #[ $TRAVIS_RUST_VERSION = stable ] &&
-        #chmod 600 www-deploy-key &&
-        #mv www-deploy-key ~/.ssh/id_rsa &&
-        #ssh -o "StrictHostKeyChecking no" git@push-par-clevercloud-customers.services.clever-cloud.com &&
-        #git remote add deploy git+ssh://git@push-par-clevercloud-customers.services.clever-cloud.com/app_1817cab1-3b09-4501-9c04-85ee2f6b3d76.git &&
-        #git push -f deploy `git subtree split --prefix www`:master
