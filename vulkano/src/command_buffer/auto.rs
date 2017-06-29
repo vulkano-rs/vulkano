@@ -260,6 +260,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
             // TODO: error instead
             validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
+            // TODO: error instead
+            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -270,11 +272,10 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            let (vertex_count, instance_count) =
-                vertex_buffers(&mut self.inner, &pipeline, vertices);
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
 
             self.inner
-                .draw(vertex_count as u32, instance_count as u32, 0, 0);
+                .draw(vb_infos.vertex_count as u32, vb_infos.instance_count as u32, 0, 0);
             Ok(self)
         }
     }
@@ -303,6 +304,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
             // TODO: error instead
             validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
+            // TODO: error instead
+            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -314,7 +317,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            vertex_buffers(&mut self.inner, &pipeline, vertices);
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
             // TODO: how to handle an index out of range of the vertex buffers?
 
             self.inner.draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
@@ -346,6 +349,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
             // TODO: error instead
             validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
+            // TODO: error instead
+            let vb_infos = validity::check_vertex_buffers(&pipeline, vertices).unwrap();
 
             let draw_count = indirect_buffer.len() as u32;
 
@@ -358,7 +363,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            vertex_buffers(&mut self.inner, &pipeline, vertices);
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
 
             self.inner.draw_indirect(indirect_buffer,
                                      draw_count,
@@ -508,20 +513,14 @@ unsafe fn set_state<P>(dest: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicS
 }
 
 // Shortcut function to bind vertex buffers.
-unsafe fn vertex_buffers<P, Gp, V>(dest: &mut SyncCommandBufferBuilder<P>, pipeline: &Gp,
-                                   vertices: V)
-                                   -> (u32, u32)
-    where Gp: VertexSource<V>
+unsafe fn vertex_buffers<P>(dest: &mut SyncCommandBufferBuilder<P>,
+                            vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
 {
-    let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertices);
-
     let mut binder = dest.bind_vertex_buffers();
     for vb in vertex_buffers {
         binder.add(vb);
     }
     binder.submit(0);
-
-    (vertex_count as u32, instance_count as u32)
 }
 
 unsafe fn descriptor_sets<P, Pl, S>(dest: &mut SyncCommandBufferBuilder<P>, gfx: bool,
