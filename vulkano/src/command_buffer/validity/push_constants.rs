@@ -12,27 +12,35 @@ use std::fmt;
 
 use command_buffer::DynamicState;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
+use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 
 /// Checks whether push constants are compatible with the pipeline.
 pub fn check_push_constants_validity<Pl, Pc>(pipeline: &Pl, push_constants: &Pc)
                                              -> Result<(), CheckPushConstantsValidityError>
-    where Pl: ?Sized + PipelineLayoutAbstract,
+    where Pl: ?Sized + PipelineLayoutAbstract + PipelineLayoutPushConstantsCompatible<Pc>,
           Pc: ?Sized,
 {
-    // FIXME:
+    if !pipeline.is_compatible(push_constants) {
+        return Err(CheckPushConstantsValidityError::IncompatiblePushConstants);
+    }
 
     Ok(())
 }
 
-/// Error that can happen when validating dynamic states.
+/// Error that can happen when checking push constants validity.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckPushConstantsValidityError {
+    /// The push constants are incompatible with the pipeline layout.
+    IncompatiblePushConstants,
 }
 
 impl error::Error for CheckPushConstantsValidityError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
+            CheckPushConstantsValidityError::IncompatiblePushConstants => {
+                "the push constants are incompatible with the pipeline layout"
+            },
         }
     }
 }
