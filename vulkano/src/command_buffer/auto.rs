@@ -225,6 +225,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             assert!(self.subpasses_remaining.is_none());
             // TODO: error instead
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
+            // TODO: error instead
+            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -256,6 +258,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
             // TODO: error instead
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
+            // TODO: error instead
+            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -297,6 +301,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
             // TODO: error instead
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
+            // TODO: error instead
+            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -338,6 +344,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
             // TODO: error instead
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
+            // TODO: error instead
+            validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
 
             let draw_count = indirect_buffer.len() as u32;
 
