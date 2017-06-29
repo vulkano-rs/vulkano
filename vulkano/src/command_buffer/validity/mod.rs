@@ -13,10 +13,12 @@ pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer, CheckCopyBu
 pub use self::dynamic_state::{CheckDynamicStateValidityError, check_dynamic_state_validity};
 pub use self::fill_buffer::{CheckFillBufferError, check_fill_buffer};
 pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
+pub use self::push_constants::{check_push_constants_validity, CheckPushConstantsValidityError};
 pub use self::update_buffer::{CheckUpdateBufferError, check_update_buffer};
 
 mod copy_buffer;
 mod dynamic_state;
 mod fill_buffer;
 mod index_buffer;
+mod push_constants;
 mod update_buffer;
