@@ -250,8 +250,6 @@ impl<P> AutoCommandBufferBuilder<P> {
               S: DescriptorSetsCollection
     {
         unsafe {
-            // TODO: missing checks
-
             // TODO: error instead
             assert!(self.subpasses_remaining.is_some());
             // TODO: proper error
@@ -293,8 +291,6 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: error instead
             assert!(self.subpasses_remaining.is_some());
-
-            // TODO: missing checks
 
             // TODO: proper error
             let ib_infos = validity::check_index_buffer(self.device(), &index_buffer).unwrap();
@@ -340,8 +336,6 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: error instead
             assert!(self.subpasses_remaining.is_some());
-
-            // TODO: missing checks
 
             // TODO: proper error
             validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();

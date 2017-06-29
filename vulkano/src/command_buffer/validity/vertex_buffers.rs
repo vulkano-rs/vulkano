@@ -18,12 +18,17 @@ use device::DeviceOwned;
 use pipeline::vertex::VertexSource;
 
 /// Checks whether vertex buffers can be bound.
+///
+/// # Panic
+///
+/// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
+///
 pub fn check_vertex_buffers<P, V>(pipeline: &P, vertex_buffers: V)
                                   -> Result<CheckVertexBuffer, CheckVertexBufferError>
     where P: DeviceOwned + VertexSource<V>
 {
     let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertex_buffers);
-    
+
     for (num, buf) in vertex_buffers.iter().enumerate() {
         assert_eq!(buf.inner().buffer.device().internal_object(),
                    pipeline.device().internal_object());

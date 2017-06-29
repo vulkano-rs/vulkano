@@ -51,10 +51,10 @@ pub struct CheckIndexBuffer {
     pub num_indices: usize,
 }
 
-/// Error that can happen when attempting to add a `fill_buffer` command.
+/// Error that can happen when checking whether binding an index buffer is valid.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckIndexBufferError {
-    /// The "transfer destination" usage must be enabled on the buffer.
+    /// The "index buffer" usage must be enabled on the index buffer.
     BufferMissingUsage,
     /// The data or size must be 4-bytes aligned.
     WrongAlignment,
@@ -67,7 +67,7 @@ impl error::Error for CheckIndexBufferError {
     fn description(&self) -> &str {
         match *self {
             CheckIndexBufferError::BufferMissingUsage => {
-                "the transfer destination usage must be enabled on the buffer"
+                "the index buffer usage must be enabled on the index buffer"
             },
             CheckIndexBufferError::WrongAlignment => {
                 "the sum of offset and the address of the range of VkDeviceMemory object that is \

@@ -12,7 +12,7 @@ use std::fmt;
 
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 
-/// Checks whether push constants are compatible with the pipeline.
+/// Checks whether descriptor sets are compatible with the pipeline.
 pub fn check_descriptor_sets_validity<Pl, D>(pipeline: &Pl, descriptor_sets: &D)
                                              -> Result<(), CheckDescriptorSetsValidityError>
     where Pl: ?Sized + PipelineLayoutAbstract,

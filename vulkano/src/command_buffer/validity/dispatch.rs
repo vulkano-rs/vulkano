@@ -27,7 +27,7 @@ pub fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), Check
     Ok(())
 }
 
-/// Error that can happen when checking descriptor sets validity.
+/// Error that can happen when checking dispatch command validity.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckDispatchError {
     /// The dimensions are too large for the device's limits.
