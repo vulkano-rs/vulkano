@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 
 /// Checks whether the dispatch dimensions are supported by the device.

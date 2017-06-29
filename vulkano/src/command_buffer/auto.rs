@@ -23,14 +23,11 @@ use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
-use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolBuilderAlloc;
-use command_buffer::pool::standard::StandardCommandPool;
 use command_buffer::pool::standard::StandardCommandPoolAlloc;
 use command_buffer::pool::standard::StandardCommandPoolBuilder;
 use command_buffer::synced::SyncCommandBuffer;
 use command_buffer::synced::SyncCommandBufferBuilder;
-use command_buffer::synced::SyncCommandBufferBuilderBindVertexBuffer;
 use command_buffer::synced::SyncCommandBufferBuilderError;
 use command_buffer::sys::Flags;
 use command_buffer::sys::Kind;
@@ -44,7 +41,6 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::SubpassContents;
 use image::ImageAccess;
@@ -144,7 +140,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
             }
 
-            self.ensure_outside_render_pass();
+            self.ensure_outside_render_pass()?;
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
@@ -153,7 +149,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let num_subpasses = framebuffer.num_subpasses();
             debug_assert_ne!(num_subpasses, 0);
             self.inner
-                .begin_render_pass(framebuffer, contents, clear_values);
+                .begin_render_pass(framebuffer, contents, clear_values)?;
             self.subpasses_remaining = Some(num_subpasses - 1);
             Ok(self)
         }
@@ -172,13 +168,13 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             self.ensure_outside_render_pass()?;
             let infos = check_copy_buffer(self.device(), &src, &dest)?;
-            self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)));
+            self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)))?;
             Ok(self)
         }
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image<S, D>(mut self, src: S, dest: D)
+    pub fn copy_buffer_to_image<S, D>(self, src: S, dest: D)
                                       -> Result<Self, CopyBufferToImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
@@ -224,7 +220,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             let size = src.size();
             self.inner.copy_buffer_to_image(src, dest, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
-                                            iter::once(copy));
+                                            iter::once(copy))?;
             Ok(self)
         }
     }
@@ -248,7 +244,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            descriptor_sets(&mut self.inner, false, pipeline.clone(), sets);
+            descriptor_sets(&mut self.inner, false, pipeline.clone(), sets)?;
 
             self.inner.dispatch(dimensions);
             Ok(self)
@@ -278,8 +274,8 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
+            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
             self.inner
                 .draw(vb_infos.vertex_count as u32, vb_infos.instance_count as u32, 0, 0);
@@ -313,11 +309,11 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
 
-            self.inner.bind_index_buffer(index_buffer, I::ty());
+            self.inner.bind_index_buffer(index_buffer, I::ty())?;
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
+            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
             self.inner.draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
@@ -356,12 +352,12 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets);
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers);
+            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
             self.inner.draw_indirect(indirect_buffer,
                                      draw_count,
-                                     mem::size_of::<DrawIndirectCommand>() as u32);
+                                     mem::size_of::<DrawIndirectCommand>() as u32)?;
             Ok(self)
         }
     }
@@ -520,16 +516,19 @@ unsafe fn set_state<P>(dest: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicS
 // Shortcut function to bind vertex buffers.
 unsafe fn vertex_buffers<P>(dest: &mut SyncCommandBufferBuilder<P>,
                             vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
+                            -> Result<(), SyncCommandBufferBuilderError>
 {
     let mut binder = dest.bind_vertex_buffers();
     for vb in vertex_buffers {
         binder.add(vb);
     }
-    binder.submit(0);
+    binder.submit(0)?;
+    Ok(())
 }
 
 unsafe fn descriptor_sets<P, Pl, S>(dest: &mut SyncCommandBufferBuilder<P>, gfx: bool,
                                     pipeline: Pl, sets: S)
+                                    -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
 {
@@ -539,7 +538,8 @@ unsafe fn descriptor_sets<P, Pl, S>(dest: &mut SyncCommandBufferBuilder<P>, gfx:
         sets_binder.add(set);
     }
 
-    sets_binder.submit(gfx, pipeline.clone(), 0, iter::empty());
+    sets_binder.submit(gfx, pipeline.clone(), 0, iter::empty())?;
+    Ok(())
 }
 
 pub struct AutoCommandBuffer<P = StandardCommandPoolAlloc> {
@@ -638,16 +638,19 @@ err_gen!(BuildError {
 });
 
 err_gen!(BeginRenderPassError {
-    AutoCommandBufferBuilderContextError
+    AutoCommandBufferBuilderContextError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(CopyBufferError {
     AutoCommandBufferBuilderContextError,
-    CheckCopyBufferError
+    CheckCopyBufferError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(CopyBufferToImageError {
-    AutoCommandBufferBuilderContextError
+    AutoCommandBufferBuilderContextError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(FillBufferError {
@@ -659,7 +662,8 @@ err_gen!(DispatchError {
     AutoCommandBufferBuilderContextError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
-    CheckDispatchError
+    CheckDispatchError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(DrawError {
@@ -667,7 +671,8 @@ err_gen!(DrawError {
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
-    CheckVertexBufferError
+    CheckVertexBufferError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(DrawIndexedError {
@@ -676,7 +681,8 @@ err_gen!(DrawIndexedError {
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
     CheckVertexBufferError,
-    CheckIndexBufferError
+    CheckIndexBufferError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(DrawIndirectError {
@@ -684,7 +690,8 @@ err_gen!(DrawIndirectError {
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
-    CheckVertexBufferError
+    CheckVertexBufferError,
+    SyncCommandBufferBuilderError
 });
 
 err_gen!(UpdateBufferError {

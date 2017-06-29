@@ -10,7 +10,6 @@
 use std::error;
 use std::fmt;
 
-use command_buffer::DynamicState;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 
