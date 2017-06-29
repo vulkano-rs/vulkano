@@ -250,6 +250,8 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             // TODO: error instead
             assert!(self.subpasses_remaining.is_some());
+            // TODO: proper error
+            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -287,6 +289,8 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             // TODO: proper error
             let ib_infos = validity::check_index_buffer(self.device(), &index_buffer).unwrap();
+            // TODO: proper error
+            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -323,6 +327,9 @@ impl<P> AutoCommandBufferBuilder<P> {
             assert!(self.subpasses_remaining.is_some());
 
             // TODO: missing checks
+
+            // TODO: proper error
+            validity::check_dynamic_state_validity(&pipeline, &dynamic).unwrap();
 
             let draw_count = indirect_buffer.len() as u32;
 

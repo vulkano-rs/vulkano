@@ -25,7 +25,7 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
     Ok(())
 }
 
-/// Error that can happen when attempting to add a `fill_buffer` command.
+/// Error that can happen when validating dynamic states.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckDynamicStateValidityError {
 }
