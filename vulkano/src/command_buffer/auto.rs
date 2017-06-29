@@ -285,7 +285,8 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             // TODO: missing checks
 
-            let index_count = index_buffer.len();
+            // TODO: proper error
+            let ib_infos = validity::check_index_buffer(self.device(), &index_buffer).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -300,7 +301,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             vertex_buffers(&mut self.inner, &pipeline, vertices);
             // TODO: how to handle an index out of range of the vertex buffers?
 
-            self.inner.draw_indexed(index_count as u32, 1, 0, 0, 0);
+            self.inner.draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
             Ok(self)
         }
     }
