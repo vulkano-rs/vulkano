@@ -126,7 +126,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
 
             let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
                 .copy_buffer(source, init).unwrap()     // TODO: return error?
-                .build()?;
+                .build().unwrap();                      // TODO: return OomError
 
             let future = match cb.execute(queue) {
                 Ok(f) => f,
