@@ -56,3 +56,27 @@ impl fmt::Display for CheckDispatchError {
         write!(fmt, "{}", error::Error::description(self))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use command_buffer::validity;
+
+    #[test]
+    fn max_checked() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let attempted = [u32::max_value(), u32::max_value(), u32::max_value()];
+
+        // Just in case the device is some kind of software implementation.
+        if device.physical_device().limits().max_compute_work_group_count() == attempted {
+            return;
+        }
+
+        match validity::check_dispatch(&device, attempted) {
+            Err(validity::CheckDispatchError::UnsupportedDimensions { requested, .. }) => {
+                assert_eq!(requested, attempted);
+            },
+            _ => panic!()
+        }
+    }
+}
