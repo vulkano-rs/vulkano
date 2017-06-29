@@ -219,14 +219,14 @@ impl<P> AutoCommandBufferBuilder<P> {
               S: DescriptorSetsCollection
     {
         unsafe {
-            // TODO: missing checks
-
             // TODO: error instead
             assert!(self.subpasses_remaining.is_none());
             // TODO: error instead
             validity::check_push_constants_validity(&pipeline, &constants).unwrap();
             // TODO: error instead
             validity::check_descriptor_sets_validity(&pipeline, &sets).unwrap();
+            // TODO: error instead
+            validity::check_dispatch(pipeline.device(), dimensions).unwrap();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)

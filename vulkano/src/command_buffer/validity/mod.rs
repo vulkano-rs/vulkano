@@ -11,6 +11,7 @@
 
 pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer, CheckCopyBuffer};
 pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorSetsValidityError};
+pub use self::dispatch::{check_dispatch, CheckDispatchError};
 pub use self::dynamic_state::{CheckDynamicStateValidityError, check_dynamic_state_validity};
 pub use self::fill_buffer::{CheckFillBufferError, check_fill_buffer};
 pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
@@ -19,6 +20,7 @@ pub use self::update_buffer::{CheckUpdateBufferError, check_update_buffer};
 
 mod copy_buffer;
 mod descriptor_sets;
+mod dispatch;
 mod dynamic_state;
 mod fill_buffer;
 mod index_buffer;
