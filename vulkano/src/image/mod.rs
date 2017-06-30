@@ -53,6 +53,7 @@ pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
 pub use self::traits::ImageAccess;
+pub use self::traits::ImageInner;
 pub use self::traits::ImageViewAccess;
 pub use self::usage::ImageUsage;
 

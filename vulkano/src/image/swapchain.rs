@@ -15,6 +15,7 @@ use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
+use image::ImageInner;
 use image::ImageLayout;
 use image::ViewType;
 use image::sys::UnsafeImage;
@@ -55,7 +56,7 @@ impl SwapchainImage {
     pub unsafe fn from_raw(swapchain: Arc<Swapchain>, id: usize)
                            -> Result<Arc<SwapchainImage>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1)?;
+        let view = UnsafeImageView::raw(&image.image, ViewType::Dim2d, 0 .. 1, 0 .. 1)?;
 
         Ok(Arc::new(SwapchainImage {
                         swapchain: swapchain.clone(),
@@ -69,7 +70,7 @@ impl SwapchainImage {
     /// A `SwapchainImage` is always two-dimensional.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
-        let dims = self.my_image().dimensions();
+        let dims = self.my_image().image.dimensions();
         [dims.width(), dims.height()]
     }
 
@@ -80,14 +81,14 @@ impl SwapchainImage {
     }
 
     #[inline]
-    fn my_image(&self) -> &UnsafeImage {
+    fn my_image(&self) -> ImageInner {
         self.swapchain.raw_image(self.image_offset).unwrap()
     }
 }
 
 unsafe impl ImageAccess for SwapchainImage {
     #[inline]
-    fn inner(&self) -> &UnsafeImage {
+    fn inner(&self) -> ImageInner {
         self.my_image()
     }
 
@@ -103,7 +104,7 @@ unsafe impl ImageAccess for SwapchainImage {
 
     #[inline]
     fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
-        self.my_image().key()
+        self.my_image().image.key()
     }
 
     #[inline]
