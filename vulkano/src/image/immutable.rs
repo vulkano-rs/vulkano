@@ -16,6 +16,7 @@ use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
+use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
 use image::MipmapsCount;
@@ -162,8 +163,14 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
           A: MemoryPool
 {
     #[inline]
-    fn inner(&self) -> &UnsafeImage {
-        &self.image
+    fn inner(&self) -> ImageInner {
+        ImageInner {
+            image: &self.image,
+            first_layer: 0,
+            num_layers: self.image.dimensions().array_layers() as usize,
+            first_mipmap_level: 0,
+            num_mipmap_levels: self.image.mipmap_levels() as usize,
+        }
     }
 
     #[inline]

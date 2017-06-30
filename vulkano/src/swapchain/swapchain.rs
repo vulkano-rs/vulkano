@@ -28,6 +28,7 @@ use format::Format;
 use format::FormatDesc;
 use image::ImageAccess;
 use image::ImageDimensions;
+use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
 use image::swapchain::SwapchainImage;
@@ -455,8 +456,16 @@ impl Swapchain {
 
     /// Returns of the images that belong to this swapchain.
     #[inline]
-    pub fn raw_image(&self, offset: usize) -> Option<&UnsafeImage> {
-        self.images.get(offset).map(|i| &i.image)
+    pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
+        self.images.get(offset).map(|i| {
+            ImageInner {
+                image: &i.image,
+                first_layer: 0,
+                num_layers: self.layers as usize,
+                first_mipmap_level: 0,
+                num_mipmap_levels: 1,
+            }
+        })
     }
 
     /// Returns the number of images of the swapchain.
@@ -767,7 +776,7 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
-        if swapchain_image.internal_object() != image.inner().internal_object() {
+        if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
             return Err(AccessCheckError::Unknown);
         }
 
@@ -1020,7 +1029,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
-        if swapchain_image.internal_object() == image.inner().internal_object() {
+        if swapchain_image.image.internal_object() == image.inner().image.internal_object() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.
             // Instead any attempt to access the image afterwards should get an authorization from

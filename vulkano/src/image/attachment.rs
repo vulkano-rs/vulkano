@@ -21,6 +21,7 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::Dimensions;
 use image::ImageDimensions;
+use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
 use image::ViewType;
@@ -264,8 +265,14 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
-    fn inner(&self) -> &UnsafeImage {
-        &self.image
+    fn inner(&self) -> ImageInner {
+        ImageInner {
+            image: &self.image,
+            first_layer: 0,
+            num_layers: self.image.dimensions().array_layers() as usize,
+            first_mipmap_level: 0,
+            num_mipmap_levels: 1,
+        }
     }
 
     #[inline]
