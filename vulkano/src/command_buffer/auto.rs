@@ -443,9 +443,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
     /// buffer is larger than `data`, only the start of the buffer is written.
+    // TODO: allow unsized values
     #[inline]
     pub fn update_buffer<B, D>(mut self, buffer: B, data: D) -> Result<Self, UpdateBufferError>
-        where B: BufferAccess + Send + Sync + 'static,
+        where B: TypedBufferAccess<Content = D> + Send + Sync + 'static,
               D: Send + Sync + 'static
     {
         unsafe {
