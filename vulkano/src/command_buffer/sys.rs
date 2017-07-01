@@ -565,16 +565,25 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         debug_assert!(source.offset < source.buffer.size());
         debug_assert!(source.buffer.usage_transfer_src());
 
+        debug_assert_eq!(destination.samples(), 1);
+        let destination = destination.inner();
+        debug_assert!(destination.image.usage_transfer_dest());
+        debug_assert!(dest_layout == ImageLayout::General ||
+                      dest_layout == ImageLayout::TransferDstOptimal);
+
         let regions: SmallVec<[_; 8]> = regions
             .map(|copy| {
+                debug_assert!(copy.image_layer_count <= destination.num_layers as u32);
+                debug_assert!(copy.image_mip_level < destination.num_mipmap_levels as u32);
+
                 vk::BufferImageCopy {
                     bufferOffset: (source.offset + copy.buffer_offset) as vk::DeviceSize,
                     bufferRowLength: copy.buffer_row_length,
                     bufferImageHeight: copy.buffer_image_height,
                     imageSubresource: vk::ImageSubresourceLayers {
                         aspectMask: copy.image_aspect.to_vk_bits(),
-                        mipLevel: copy.image_mip_level,
-                        baseArrayLayer: copy.image_base_array_layer,
+                        mipLevel: copy.image_mip_level + destination.first_mipmap_level as u32,
+                        baseArrayLayer: copy.image_base_array_layer + destination.first_layer as u32,
                         layerCount: copy.image_layer_count,
                     },
                     imageOffset: vk::Offset3D {
@@ -595,16 +604,11 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             return;
         }
 
-        debug_assert!(destination.inner().usage_transfer_dest());
-        debug_assert_eq!(destination.samples(), 1);
-        debug_assert!(dest_layout == ImageLayout::General ||
-                          dest_layout == ImageLayout::TransferDstOptimal);
-
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdCopyBufferToImage(cmd,
                                 source.buffer.internal_object(),
-                                destination.inner().internal_object(),
+                                destination.image.internal_object(),
                                 dest_layout as u32,
                                 regions.len() as u32,
                                 regions.as_ptr());
@@ -1324,6 +1328,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             unreachable!()
         };
 
+        let image = image.inner();
+
         self.image_barriers.push(vk::ImageMemoryBarrier {
                                      sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                                      pNext: ptr::null(),
@@ -1333,12 +1339,12 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                                      newLayout: new_layout as u32,
                                      srcQueueFamilyIndex: src_queue,
                                      dstQueueFamilyIndex: dest_queue,
-                                     image: image.inner().internal_object(),
+                                     image: image.image.internal_object(),
                                      subresourceRange: vk::ImageSubresourceRange {
                                          aspectMask: aspect_mask,
-                                         baseMipLevel: mipmaps.start,
+                                         baseMipLevel: mipmaps.start + image.first_mipmap_level as u32,
                                          levelCount: mipmaps.end - mipmaps.start,
-                                         baseArrayLayer: layers.start,
+                                         baseArrayLayer: layers.start + image.first_layer as u32,
                                          layerCount: layers.end - layers.start,
                                      },
                                  });

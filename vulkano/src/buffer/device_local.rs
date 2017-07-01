@@ -17,7 +17,7 @@ use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::Mutex;
 
 use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
@@ -33,36 +33,48 @@ use instance::QueueFamily;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
-use memory::pool::StdMemoryPool;
+use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
 
 use OomError;
-use SafeDeref;
 
-/// Buffer whose content is accessible by the CPU.
+/// Buffer whose content is in device-local memory.
+///
+/// This buffer type is useful in order to store intermediary data. For example you execute a
+/// compute shader that writes to this buffer, then read the content of the buffer in a following
+/// compute or graphics pipeline.
+///
+/// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
+/// device-local memory.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>>
-    where A: MemoryPool
-{
+pub struct DeviceLocalBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
     // Inner content.
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: A::Alloc,
+    memory: A,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
     // Number of times this buffer is locked on the GPU side.
-    gpu_lock: AtomicUsize,
+    gpu_lock: Mutex<GpuAccess>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
 }
 
+#[derive(Debug, Copy, Clone)]
+enum GpuAccess {
+    None,
+    NonExclusive { num: u32 },
+    Exclusive { num: u32 },
+}
+
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
+    // TODO: unsafe because uninitialized data
     #[inline]
     pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
@@ -74,6 +86,7 @@ impl<T> DeviceLocalBuffer<T> {
 
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
+    // TODO: unsafe because uninitialized data
     #[inline]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                         -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
@@ -140,21 +153,13 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                         inner: buffer,
                         memory: mem,
                         queue_families: queue_families,
-                        gpu_lock: AtomicUsize::new(0),
+                        gpu_lock: Mutex::new(GpuAccess::None),
                         marker: PhantomData,
                     }))
     }
 }
 
-impl<T: ?Sized, A> DeviceLocalBuffer<T, A>
-    where A: MemoryPool
-{
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
+impl<T: ?Sized, A> DeviceLocalBuffer<T, A> {
     /// Returns the queue families this buffer can be used on.
     // TODO: use a custom iterator
     #[inline]
@@ -171,9 +176,7 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A>
     }
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A>
-    where A: MemoryPool
-{
+unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -181,8 +184,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync,
-          A: MemoryPool + 'static
+    where T: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -203,34 +205,67 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-        // FIXME: not implemented correctly
-        /*let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        if val == 1 {
-            true
-        } else {
-            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-            false
-        }*/
-        Ok(())
+    fn try_gpu_lock(&self, exclusive: bool, _: &Queue) -> Result<(), AccessError> {
+        let mut lock = self.gpu_lock.lock().unwrap();
+        match &mut *lock {
+            a @ &mut GpuAccess::None => {
+                if exclusive {
+                    *a = GpuAccess::Exclusive { num: 1 };
+                } else {
+                    *a = GpuAccess::NonExclusive { num: 1 };
+                }
+
+                Ok(())
+            },
+            &mut GpuAccess::NonExclusive { ref mut num } => {
+                if exclusive {
+                    Err(AccessError::AlreadyInUse)
+                } else {
+                    *num += 1;
+                    Ok(())
+                }
+            },
+            &mut GpuAccess::Exclusive { ref mut num } => {
+                Err(AccessError::AlreadyInUse)
+            }
+        }
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
-        // FIXME: not implemented correctly
-        /*let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);*/
+        let mut lock = self.gpu_lock.lock().unwrap();
+        match *lock {
+            GpuAccess::None => panic!(),
+            GpuAccess::NonExclusive { ref mut num } => {
+                debug_assert!(*num >= 1);
+                *num += 1;
+            },
+            GpuAccess::Exclusive { ref mut num } => {
+                debug_assert!(*num >= 1);
+                *num += 1;
+            }
+        }
     }
 
     #[inline]
     unsafe fn unlock(&self) {
-        // TODO:
+        let mut lock = self.gpu_lock.lock().unwrap();
+        match *lock {
+            GpuAccess::None => panic!("Tried to unlock a buffer that isn't locked"),
+            GpuAccess::NonExclusive { ref mut num } => {
+                assert!(*num >= 1);
+                *num -= 1;
+            },
+            GpuAccess::Exclusive { ref mut num } => {
+                assert!(*num >= 1);
+                *num -= 1;
+            },
+        }
     }
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync,
-          A: MemoryPool + 'static
+    where T: 'static + Send + Sync
 {
     type Content = T;
 }

@@ -12,7 +12,6 @@ use std::error;
 use std::fmt;
 
 use VulkanObject;
-use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;

@@ -31,12 +31,12 @@ use VulkanObject;
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
     /// Returns the inner unsafe image object used by this image.
-    fn inner(&self) -> &UnsafeImage;
+    fn inner(&self) -> ImageInner;
 
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
-        self.inner().format()
+        self.inner().image.format()
     }
 
     /// Returns true if the image is a color image.
@@ -65,31 +65,33 @@ pub unsafe trait ImageAccess {
     /// Returns the number of mipmap levels of this image.
     #[inline]
     fn mipmap_levels(&self) -> u32 {
-        self.inner().mipmap_levels()
+        // TODO: not necessarily correct because of the new inner() design?
+        self.inner().image.mipmap_levels()
     }
 
     /// Returns the number of samples of this image.
     #[inline]
     fn samples(&self) -> u32 {
-        self.inner().samples()
+        self.inner().image.samples()
     }
 
     /// Returns the dimensions of the image.
     #[inline]
     fn dimensions(&self) -> ImageDimensions {
-        self.inner().dimensions()
+        // TODO: not necessarily correct because of the new inner() design?
+        self.inner().image.dimensions()
     }
 
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     fn supports_blit_source(&self) -> bool {
-        self.inner().supports_blit_source()
+        self.inner().image.supports_blit_source()
     }
 
     /// Returns true if the image can be used as a destination for blits.
     #[inline]
     fn supports_blit_destination(&self) -> bool {
-        self.inner().supports_blit_destination()
+        self.inner().image.supports_blit_destination()
     }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
@@ -141,7 +143,7 @@ pub unsafe trait ImageAccess {
 
         // TODO: debug asserts to check for ranges
 
-        if self.inner().internal_object() != other.inner().internal_object() {
+        if self.inner().image.internal_object() != other.inner().image.internal_object() {
             return false;
         }
 
@@ -223,12 +225,31 @@ pub unsafe trait ImageAccess {
     unsafe fn unlock(&self);
 }
 
+/// Inner information about an image.
+#[derive(Copy, Clone, Debug)]
+pub struct ImageInner<'a> {
+    /// The underlying image object.
+    pub image: &'a UnsafeImage,
+
+    /// The first layer of `image` to consider.
+    pub first_layer: usize,
+
+    /// The number of layers of `image` to consider.
+    pub num_layers: usize,
+
+    /// The first mipmap level of `image` to consider.
+    pub first_mipmap_level: usize,
+
+    /// The number of mipmap levels of `image` to consider.
+    pub num_mipmap_levels: usize,
+}
+
 unsafe impl<T> ImageAccess for T
     where T: SafeDeref,
           T::Target: ImageAccess
 {
     #[inline]
-    fn inner(&self) -> &UnsafeImage {
+    fn inner(&self) -> ImageInner {
         (**self).inner()
     }
 
@@ -276,7 +297,7 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     where I: ImageAccess
 {
     #[inline]
-    fn inner(&self) -> &UnsafeImage {
+    fn inner(&self) -> ImageInner {
         self.image.inner()
     }
 

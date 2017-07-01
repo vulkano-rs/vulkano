@@ -1586,6 +1586,30 @@ impl Drop for Inner {
 pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
 /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
+
+    /// Returns true if the line width used by this pipeline is dynamic.
+    fn has_dynamic_line_width(&self) -> bool;
+
+    /// Returns the number of viewports and scissors of this pipeline.
+    fn num_viewports(&self) -> u32;
+
+    /// Returns true if the viewports used by this pipeline are dynamic.
+    fn has_dynamic_viewports(&self) -> bool;
+
+    /// Returns true if the scissors used by this pipeline are dynamic.
+    fn has_dynamic_scissors(&self) -> bool;
+
+    /// Returns true if the depth bounds used by this pipeline are dynamic.
+    fn has_dynamic_depth_bounds(&self) -> bool;
+
+    /// Returns true if the stencil compare masks used by this pipeline are dynamic.
+    fn has_dynamic_stencil_compare_mask(&self) -> bool;
+
+    /// Returns true if the stencil write masks used by this pipeline are dynamic.
+    fn has_dynamic_stencil_write_mask(&self) -> bool;
+
+    /// Returns true if the stencil references used by this pipeline are dynamic.
+    fn has_dynamic_stencil_reference(&self) -> bool;
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
@@ -1597,6 +1621,46 @@ unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
     }
+
+    #[inline]
+    fn has_dynamic_line_width(&self) -> bool {
+        self.dynamic_line_width
+    }
+
+    #[inline]
+    fn num_viewports(&self) -> u32 {
+        self.num_viewports
+    }
+
+    #[inline]
+    fn has_dynamic_viewports(&self) -> bool {
+        self.dynamic_viewport
+    }
+
+    #[inline]
+    fn has_dynamic_scissors(&self) -> bool {
+        self.dynamic_scissor
+    }
+
+    #[inline]
+    fn has_dynamic_depth_bounds(&self) -> bool {
+        self.dynamic_depth_bounds
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_compare_mask(&self) -> bool {
+        self.dynamic_stencil_compare_mask
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_write_mask(&self) -> bool {
+        self.dynamic_stencil_write_mask
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_reference(&self) -> bool {
+        self.dynamic_stencil_reference
+    }
 }
 
 unsafe impl<T> GraphicsPipelineAbstract for T
@@ -1606,6 +1670,46 @@ unsafe impl<T> GraphicsPipelineAbstract for T
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineAbstract::inner(&**self)
+    }
+
+    #[inline]
+    fn has_dynamic_line_width(&self) -> bool {
+        (**self).has_dynamic_line_width()
+    }
+
+    #[inline]
+    fn num_viewports(&self) -> u32 {
+        (**self).num_viewports()
+    }
+
+    #[inline]
+    fn has_dynamic_viewports(&self) -> bool {
+        (**self).has_dynamic_viewports()
+    }
+
+    #[inline]
+    fn has_dynamic_scissors(&self) -> bool {
+        (**self).has_dynamic_scissors()
+    }
+
+    #[inline]
+    fn has_dynamic_depth_bounds(&self) -> bool {
+        (**self).has_dynamic_depth_bounds()
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_compare_mask(&self) -> bool {
+        (**self).has_dynamic_stencil_compare_mask()
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_write_mask(&self) -> bool {
+        (**self).has_dynamic_stencil_write_mask()
+    }
+
+    #[inline]
+    fn has_dynamic_stencil_reference(&self) -> bool {
+        (**self).has_dynamic_stencil_reference()
     }
 }
 

@@ -44,7 +44,6 @@ use framebuffer::RenderPassAbstract;
 use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
-use image::ImageViewAccess;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
