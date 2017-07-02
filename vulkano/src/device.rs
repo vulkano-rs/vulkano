@@ -38,7 +38,7 @@
 //!     let features = Features::none();
 //!     let ext = DeviceExtensions::none();
 //!
-//!     match Device::new(&physical_device, &features, &ext, Some((queue_family, 1.0))) {
+//!     match Device::new(physical_device, &features, &ext, Some((queue_family, 1.0))) {
 //!         Ok(d) => d,
 //!         Err(err) => panic!("Couldn't build device: {:?}", err)
 //!     }
@@ -163,7 +163,7 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(phys: &'a PhysicalDevice, requested_features: &Features,
+    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features,
                            extensions: Ext, queue_families: I)
                            -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
@@ -672,7 +672,7 @@ mod tests {
         let family = physical.queue_families().next().unwrap();
         let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
 
-        match Device::new(&physical,
+        match Device::new(physical,
                             &Features::none(),
                             &DeviceExtensions::none(),
                             queues) {
@@ -697,7 +697,7 @@ mod tests {
             return;
         }
 
-        match Device::new(&physical,
+        match Device::new(physical,
                             &features,
                             &DeviceExtensions::none(),
                             Some((family, 1.0))) {
@@ -716,7 +716,7 @@ mod tests {
 
         let family = physical.queue_families().next().unwrap();
 
-        match Device::new(&physical,
+        match Device::new(physical,
                             &Features::none(),
                             &DeviceExtensions::none(),
                             Some((family, 1.4))) {
@@ -724,7 +724,7 @@ mod tests {
             _ => panic!(),
         };
 
-        match Device::new(&physical,
+        match Device::new(physical,
                             &Features::none(),
                             &DeviceExtensions::none(),
                             Some((family, -0.2))) {

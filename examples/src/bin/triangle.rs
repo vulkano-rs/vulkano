@@ -145,7 +145,7 @@ fn main() {
             .. vulkano::device::DeviceExtensions::none()
         };
 
-        Device::new(&physical, physical.supported_features(), &device_ext,
+        Device::new(physical, physical.supported_features(), &device_ext,
                     [(queue, 0.5)].iter().cloned()).expect("failed to create device")
     };
 

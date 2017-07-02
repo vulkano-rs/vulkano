@@ -55,7 +55,7 @@ macro_rules! gfx_dev_and_queue {
             return;
         }
 
-        let (device, mut queues) = match Device::new(&physical, &features,
+        let (device, mut queues) = match Device::new(physical, &features,
                                                      &extensions, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,

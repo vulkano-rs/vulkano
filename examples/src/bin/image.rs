@@ -48,7 +48,7 @@ fn main() {
         khr_swapchain: true,
         .. vulkano::device::DeviceExtensions::none()
     };
-    let (device, mut queues) = vulkano::device::Device::new(&physical, physical.supported_features(),
+    let (device, mut queues) = vulkano::device::Device::new(physical, physical.supported_features(),
                                                             &device_ext, [(queue, 0.5)].iter().cloned())
                                .expect("failed to create device");
     let queue = queues.next().unwrap();
