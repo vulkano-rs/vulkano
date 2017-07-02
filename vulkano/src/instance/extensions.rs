@@ -245,7 +245,7 @@ macro_rules! device_extensions {
 
         impl $rawname {
             /// See the docs of supported_by_device().
-            pub fn supported_by_device_raw(physical_device: &PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
+            pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
                 let vk = physical_device.instance().pointers();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
@@ -263,7 +263,7 @@ macro_rules! device_extensions {
             }
 
             /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
-            pub fn supported_by_device(physical_device: &PhysicalDevice) -> Self {
+            pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $rawname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
                     Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
@@ -274,7 +274,7 @@ macro_rules! device_extensions {
 
         impl $sname {
             /// See the docs of supported_by_device().
-            pub fn supported_by_device_raw(physical_device: &PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
+            pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
                 let vk = physical_device.instance().pointers();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
@@ -304,7 +304,7 @@ macro_rules! device_extensions {
             }
 
             /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
-            pub fn supported_by_device(physical_device: &PhysicalDevice) -> Self {
+            pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $sname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
                     Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
