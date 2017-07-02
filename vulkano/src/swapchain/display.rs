@@ -58,7 +58,7 @@ pub struct DisplayPlane {
 
 impl DisplayPlane {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
+    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let vk = device.instance().pointers();
 
         assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
@@ -117,7 +117,7 @@ impl DisplayPlane {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<DisplayPlane> {
+    pub fn enumerate(device: PhysicalDevice) -> IntoIter<DisplayPlane> {
         DisplayPlane::enumerate_raw(device).unwrap()
     }
 
@@ -159,7 +159,7 @@ pub struct Display {
 
 impl Display {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
+    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let vk = device.instance().pointers();
         assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
 
@@ -202,7 +202,7 @@ impl Display {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<Display> {
+    pub fn enumerate(device: PhysicalDevice) -> IntoIter<Display> {
         Display::enumerate_raw(device).unwrap()
     }
 
