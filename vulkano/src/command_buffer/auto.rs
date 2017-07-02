@@ -160,34 +160,34 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// This command will copy from the source to the destination. If their size is not equal, then
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
-    pub fn copy_buffer<S, D, T>(mut self, src: S, dest: D) -> Result<Self, CopyBufferError>
+    pub fn copy_buffer<S, D, T>(mut self, source: S, destination: D) -> Result<Self, CopyBufferError>
         where S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
               D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
               T: ?Sized,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            let infos = check_copy_buffer(self.device(), &src, &dest)?;
-            self.inner.copy_buffer(src, dest, iter::once((0, 0, infos.copy_size)))?;
+            let infos = check_copy_buffer(self.device(), &source, &destination)?;
+            self.inner.copy_buffer(source, destination, iter::once((0, 0, infos.copy_size)))?;
             Ok(self)
         }
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image<S, D>(self, src: S, dest: D)
+    pub fn copy_buffer_to_image<S, D>(self, source: S, destination: D)
                                       -> Result<Self, CopyBufferToImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
         self.ensure_outside_render_pass()?;
 
-        let dims = dest.dimensions().width_height_depth();
-        self.copy_buffer_to_image_dimensions(src, dest, [0, 0, 0], dims, 0, 1, 0)
+        let dims = destination.dimensions().width_height_depth();
+        self.copy_buffer_to_image_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
     }
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image_dimensions<S, D>(
-        mut self, src: S, dest: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
+        mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
         num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferToImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
@@ -202,7 +202,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_aspect: if dest.has_color() {
+                image_aspect: if destination.has_color() {
                     UnsafeCommandBufferBuilderImageAspect {
                         color: true,
                         depth: false,
@@ -218,8 +218,8 @@ impl<P> AutoCommandBufferBuilder<P> {
                 image_extent: size,
             };
 
-            let size = src.size();
-            self.inner.copy_buffer_to_image(src, dest, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
+            let size = source.size();
+            self.inner.copy_buffer_to_image(source, destination, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
                                             iter::once(copy))?;
             Ok(self)
         }
@@ -474,7 +474,7 @@ unsafe impl<P> DeviceOwned for AutoCommandBufferBuilder<P> {
 }
 
 // Shortcut function to set the push constants.
-unsafe fn push_constants<P, Pl, Pc>(dest: &mut SyncCommandBufferBuilder<P>, pipeline: Pl,
+unsafe fn push_constants<P, Pl, Pc>(destination: &mut SyncCommandBufferBuilder<P>, pipeline: Pl,
                                     push_constants: Pc)
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static
 {
@@ -491,7 +491,7 @@ unsafe fn push_constants<P, Pl, Pc>(dest: &mut SyncCommandBufferBuilder<P>, pipe
                                              .offset(range.offset as isize),
                                          range.size as usize);
 
-        dest.push_constants::<_, [u8]>(pipeline.clone(),
+        destination.push_constants::<_, [u8]>(pipeline.clone(),
                                        range.stages,
                                        range.offset as u32,
                                        range.size as u32,
@@ -500,26 +500,26 @@ unsafe fn push_constants<P, Pl, Pc>(dest: &mut SyncCommandBufferBuilder<P>, pipe
 }
 
 // Shortcut function to change the state of the pipeline.
-unsafe fn set_state<P>(dest: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicState) {
+unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicState) {
     if let Some(line_width) = dynamic.line_width {
-        dest.set_line_width(line_width);
+        destination.set_line_width(line_width);
     }
 
     if let Some(ref viewports) = dynamic.viewports {
-        dest.set_viewport(0, viewports.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
+        destination.set_viewport(0, viewports.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
     }
 
     if let Some(ref scissors) = dynamic.scissors {
-        dest.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
+        destination.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
     }
 }
 
 // Shortcut function to bind vertex buffers.
-unsafe fn vertex_buffers<P>(dest: &mut SyncCommandBufferBuilder<P>,
+unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
                             vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
                             -> Result<(), SyncCommandBufferBuilderError>
 {
-    let mut binder = dest.bind_vertex_buffers();
+    let mut binder = destination.bind_vertex_buffers();
     for vb in vertex_buffers {
         binder.add(vb);
     }
@@ -527,13 +527,13 @@ unsafe fn vertex_buffers<P>(dest: &mut SyncCommandBufferBuilder<P>,
     Ok(())
 }
 
-unsafe fn descriptor_sets<P, Pl, S>(dest: &mut SyncCommandBufferBuilder<P>, gfx: bool,
+unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>, gfx: bool,
                                     pipeline: Pl, sets: S)
                                     -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
 {
-    let mut sets_binder = dest.bind_descriptor_sets();
+    let mut sets_binder = destination.bind_descriptor_sets();
 
     for set in sets.into_vec() {
         sets_binder.add(set);

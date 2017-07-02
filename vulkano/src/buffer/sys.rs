@@ -205,12 +205,12 @@ impl UnsafeBuffer {
     }
 
     #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
+    pub fn usage_transfer_source(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
     }
 
     #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
+    pub fn usage_transfer_destination(&self) -> bool {
         (self.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
     }
 

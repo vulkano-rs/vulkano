@@ -518,18 +518,18 @@ pub struct LayoutPassDependencyDescription {
 
     /// The pipeline stages that must be finished on the previous subpass before the destination
     /// subpass can start.
-    pub src_stages: PipelineStages,
+    pub source_stages: PipelineStages,
 
     /// The pipeline stages of the destination subpass that must wait for the source to be finished.
     /// Stages that are earlier of the stages specified here can start before the source is
     /// finished.
-    pub dst_stages: PipelineStages,
+    pub destination_stages: PipelineStages,
 
     /// The way the source subpass accesses the attachments on which we depend.
-    pub src_access: AccessFlagBits,
+    pub source_access: AccessFlagBits,
 
     /// The way the destination subpass accesses the attachments on which we depend.
-    pub dst_access: AccessFlagBits,
+    pub destination_access: AccessFlagBits,
 
     /// If false, then the whole subpass must be finished for the next one to start. If true, then
     /// the implementation can start the new subpass for some given pixels as long as the previous

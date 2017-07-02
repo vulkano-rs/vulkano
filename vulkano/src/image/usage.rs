@@ -23,7 +23,7 @@ pub struct ImageUsage {
     pub transfer_source: bool,
 
     /// Can be used a destination for transfers. Includes blits.
-    pub transfer_dest: bool,
+    pub transfer_destination: bool,
 
     /// Can be sampled from a shader.
     pub sampled: bool,
@@ -56,7 +56,7 @@ impl ImageUsage {
     pub fn all() -> ImageUsage {
         ImageUsage {
             transfer_source: true,
-            transfer_dest: true,
+            transfer_destination: true,
             sampled: true,
             storage: true,
             color_attachment: true,
@@ -74,7 +74,7 @@ impl ImageUsage {
     /// use vulkano::image::ImageUsage as ImageUsage;
     ///
     /// let _usage = ImageUsage {
-    ///     transfer_dest: true,
+    ///     transfer_destination: true,
     ///     sampled: true,
     ///     .. ImageUsage::none()
     /// };
@@ -83,7 +83,7 @@ impl ImageUsage {
     pub fn none() -> ImageUsage {
         ImageUsage {
             transfer_source: false,
-            transfer_dest: false,
+            transfer_destination: false,
             sampled: false,
             storage: false,
             color_attachment: false,
@@ -101,7 +101,7 @@ impl ImageUsage {
         if self.transfer_source {
             result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT;
         }
-        if self.transfer_dest {
+        if self.transfer_destination {
             result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT;
         }
         if self.sampled {
@@ -131,7 +131,7 @@ impl ImageUsage {
     pub fn from_bits(val: u32) -> ImageUsage {
         ImageUsage {
             transfer_source: (val & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0,
-            transfer_dest: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,
+            transfer_destination: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,
             sampled: (val & vk::IMAGE_USAGE_SAMPLED_BIT) != 0,
             storage: (val & vk::IMAGE_USAGE_STORAGE_BIT) != 0,
             color_attachment: (val & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0,
@@ -149,7 +149,7 @@ impl BitOr for ImageUsage {
     fn bitor(self, rhs: Self) -> Self {
         ImageUsage {
             transfer_source: self.transfer_source || rhs.transfer_source,
-            transfer_dest: self.transfer_dest || rhs.transfer_dest,
+            transfer_destination: self.transfer_destination || rhs.transfer_destination,
             sampled: self.sampled || rhs.sampled,
             storage: self.storage || rhs.storage,
             color_attachment: self.color_attachment || rhs.color_attachment,

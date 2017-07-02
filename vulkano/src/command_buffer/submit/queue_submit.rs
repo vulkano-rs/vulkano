@@ -31,7 +31,7 @@ use vk;
 #[derive(Debug)]
 pub struct SubmitCommandBufferBuilder<'a> {
     wait_semaphores: SmallVec<[vk::Semaphore; 16]>,
-    dest_stages: SmallVec<[vk::PipelineStageFlags; 8]>,
+    destination_stages: SmallVec<[vk::PipelineStageFlags; 8]>,
     signal_semaphores: SmallVec<[vk::Semaphore; 16]>,
     command_buffers: SmallVec<[vk::CommandBuffer; 4]>,
     fence: vk::Fence,
@@ -44,7 +44,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     pub fn new() -> SubmitCommandBufferBuilder<'a> {
         SubmitCommandBufferBuilder {
             wait_semaphores: SmallVec::new(),
-            dest_stages: SmallVec::new(),
+            destination_stages: SmallVec::new(),
             signal_semaphores: SmallVec::new(),
             command_buffers: SmallVec::new(),
             fence: 0,
@@ -144,7 +144,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
         debug_assert!(Into::<vk::PipelineStageFlagBits>::into(stages) != 0);
         // TODO: debug assert that the device supports the stages
         self.wait_semaphores.push(semaphore.internal_object());
-        self.dest_stages.push(stages.into());
+        self.destination_stages.push(stages.into());
     }
 
     /// Adds a command buffer that is executed as part of this command.
@@ -205,14 +205,14 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
 
-            debug_assert_eq!(self.wait_semaphores.len(), self.dest_stages.len());
+            debug_assert_eq!(self.wait_semaphores.len(), self.destination_stages.len());
 
             let batch = vk::SubmitInfo {
                 sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
                 pNext: ptr::null(),
                 waitSemaphoreCount: self.wait_semaphores.len() as u32,
                 pWaitSemaphores: self.wait_semaphores.as_ptr(),
-                pWaitDstStageMask: self.dest_stages.as_ptr(),
+                pWaitDstStageMask: self.destination_stages.as_ptr(),
                 commandBufferCount: self.command_buffers.len() as u32,
                 pCommandBuffers: self.command_buffers.as_ptr(),
                 signalSemaphoreCount: self.signal_semaphores.len() as u32,
@@ -235,7 +235,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
                 "Can't merge two queue submits that both have a fence");
 
         self.wait_semaphores.extend(other.wait_semaphores);
-        self.dest_stages.extend(other.dest_stages); // TODO: meh? will be solved if we submit multiple batches
+        self.destination_stages.extend(other.destination_stages); // TODO: meh? will be solved if we submit multiple batches
         self.signal_semaphores.extend(other.signal_semaphores);
         self.command_buffers.extend(other.command_buffers);
 

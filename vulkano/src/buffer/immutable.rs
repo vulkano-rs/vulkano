@@ -113,9 +113,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
               T: 'static + Send + Sync
     {
         unsafe {
-            // We automatically set `transfer_dest` to true in order to avoid annoying errors.
+            // We automatically set `transfer_destination` to true in order to avoid annoying errors.
             let actual_usage = BufferUsage {
-                transfer_dest: true,
+                transfer_destination: true,
                 ..usage
             };
 
@@ -453,7 +453,7 @@ mod tests {
                                                      queue.clone())
             .unwrap();
 
-        let dest = CpuAccessibleBuffer::from_data(device.clone(),
+        let destination = CpuAccessibleBuffer::from_data(device.clone(),
                                                   BufferUsage::all(),
                                                   iter::once(queue.family()),
                                                   0)
@@ -461,7 +461,7 @@ mod tests {
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(buffer, dest.clone())
+            .copy_buffer(buffer, destination.clone())
             .unwrap()
             .build()
             .unwrap()
@@ -470,8 +470,8 @@ mod tests {
             .then_signal_fence_and_flush()
             .unwrap();
 
-        let dest_content = dest.read().unwrap();
-        assert_eq!(*dest_content, 12);
+        let destination_content = destination.read().unwrap();
+        assert_eq!(*destination_content, 12);
     }
 
     #[test]
@@ -484,7 +484,7 @@ mod tests {
                                                      queue.clone())
             .unwrap();
 
-        let dest = CpuAccessibleBuffer::from_iter(device.clone(),
+        let destination = CpuAccessibleBuffer::from_iter(device.clone(),
                                                   BufferUsage::all(),
                                                   iter::once(queue.family()),
                                                   (0 .. 512).map(|_| 0u32))
@@ -492,7 +492,7 @@ mod tests {
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(buffer, dest.clone())
+            .copy_buffer(buffer, destination.clone())
             .unwrap()
             .build()
             .unwrap()
@@ -501,8 +501,8 @@ mod tests {
             .then_signal_fence_and_flush()
             .unwrap();
 
-        let dest_content = dest.read().unwrap();
-        for (n, &v) in dest_content.iter().enumerate() {
+        let destination_content = destination.read().unwrap();
+        for (n, &v) in destination_content.iter().enumerate() {
             assert_eq!(n * 2, v as usize);
         }
     }
@@ -542,7 +542,7 @@ mod tests {
                 .unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(device.clone(),
+        let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
                                                  iter::once(queue.family()),
                                                  0)
@@ -550,7 +550,7 @@ mod tests {
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(src, buffer)
+            .copy_buffer(source, buffer)
             .unwrap()
             .build()
             .unwrap()
@@ -571,7 +571,7 @@ mod tests {
                 .unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(device.clone(),
+        let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
                                                  iter::once(queue.family()),
                                                  0)
@@ -579,9 +579,9 @@ mod tests {
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(src.clone(), init)
+            .copy_buffer(source.clone(), init)
             .unwrap()
-            .copy_buffer(buffer, src.clone())
+            .copy_buffer(buffer, source.clone())
             .unwrap()
             .build()
             .unwrap()
@@ -603,7 +603,7 @@ mod tests {
                 .unwrap()
         };
 
-        let src = CpuAccessibleBuffer::from_data(device.clone(),
+        let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
                                                  iter::once(queue.family()),
                                                  0)
@@ -611,14 +611,14 @@ mod tests {
 
         let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(src.clone(), init)
+            .copy_buffer(source.clone(), init)
             .unwrap()
             .build()
             .unwrap();
 
         let cb2 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer(buffer, src.clone())
+            .copy_buffer(buffer, source.clone())
             .unwrap()
             .build()
             .unwrap();

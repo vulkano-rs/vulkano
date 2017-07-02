@@ -33,11 +33,11 @@ pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
     assert_eq!(destination.inner().buffer.device().internal_object(),
                device.internal_object());
 
-    if !source.inner().buffer.usage_transfer_src() {
+    if !source.inner().buffer.usage_transfer_source() {
         return Err(CheckCopyBufferError::SourceMissingTransferUsage);
     }
 
-    if !destination.inner().buffer.usage_transfer_dest() {
+    if !destination.inner().buffer.usage_transfer_destination() {
         return Err(CheckCopyBufferError::DestinationMissingTransferUsage);
     }
 
