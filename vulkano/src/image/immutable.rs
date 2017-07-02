@@ -74,7 +74,7 @@ impl<F> ImmutableImage<F> {
     {
         let usage = ImageUsage {
             transfer_source: true, // for blits
-            transfer_dest: true,
+            transfer_destination: true,
             sampled: true,
             ..ImageUsage::none()
         };

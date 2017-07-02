@@ -80,12 +80,12 @@ pub struct AttachmentBlend {
     pub enabled: bool,
 
     pub color_op: BlendOp,
-    pub color_src: BlendFactor,
-    pub color_dst: BlendFactor,
+    pub color_source: BlendFactor,
+    pub  color_destination: BlendFactor,
 
     pub alpha_op: BlendOp,
-    pub alpha_src: BlendFactor,
-    pub alpha_dst: BlendFactor,
+    pub alpha_source: BlendFactor,
+    pub alpha_destination: BlendFactor,
 
     pub mask_red: bool,
     pub mask_green: bool,
@@ -100,11 +100,11 @@ impl AttachmentBlend {
         AttachmentBlend {
             enabled: false,
             color_op: BlendOp::Add,
-            color_src: BlendFactor::Zero,
-            color_dst: BlendFactor::One,
+            color_source: BlendFactor::Zero,
+            color_destination: BlendFactor::One,
             alpha_op: BlendOp::Add,
-            alpha_src: BlendFactor::Zero,
-            alpha_dst: BlendFactor::One,
+            alpha_source: BlendFactor::Zero,
+            alpha_destination: BlendFactor::One,
             mask_red: true,
             mask_green: true,
             mask_blue: true,
@@ -119,11 +119,11 @@ impl AttachmentBlend {
         AttachmentBlend {
             enabled: true,
             color_op: BlendOp::Add,
-            color_src: BlendFactor::Zero,
-            color_dst: BlendFactor::DstColor,
+            color_source: BlendFactor::Zero,
+            color_destination: BlendFactor::DstColor,
             alpha_op: BlendOp::Add,
-            alpha_src: BlendFactor::Zero,
-            alpha_dst: BlendFactor::DstColor,
+            alpha_source: BlendFactor::Zero,
+            alpha_destination: BlendFactor::DstColor,
             mask_red: true,
             mask_green: true,
             mask_blue: true,
@@ -138,11 +138,11 @@ impl AttachmentBlend {
         AttachmentBlend {
             enabled: true,
             color_op: BlendOp::Add,
-            color_src: BlendFactor::SrcAlpha,
-            color_dst: BlendFactor::OneMinusSrcAlpha,
+            color_source: BlendFactor::SrcAlpha,
+            color_destination: BlendFactor::OneMinusSrcAlpha,
             alpha_op: BlendOp::Add,
-            alpha_src: BlendFactor::SrcAlpha,
-            alpha_dst: BlendFactor::OneMinusSrcAlpha,
+            alpha_source: BlendFactor::SrcAlpha,
+            alpha_destination: BlendFactor::OneMinusSrcAlpha,
             mask_red: true,
             mask_green: true,
             mask_blue: true,
@@ -157,11 +157,11 @@ impl Into<vk::PipelineColorBlendAttachmentState> for AttachmentBlend {
     fn into(self) -> vk::PipelineColorBlendAttachmentState {
         vk::PipelineColorBlendAttachmentState {
             blendEnable: if self.enabled { vk::TRUE } else { vk::FALSE },
-            srcColorBlendFactor: self.color_src as u32,
-            dstColorBlendFactor: self.color_dst as u32,
+            srcColorBlendFactor: self.color_source as u32,
+            dstColorBlendFactor: self.color_destination as u32,
             colorBlendOp: self.color_op as u32,
-            srcAlphaBlendFactor: self.alpha_src as u32,
-            dstAlphaBlendFactor: self.alpha_dst as u32,
+            srcAlphaBlendFactor: self.alpha_source as u32,
+            dstAlphaBlendFactor: self.alpha_destination as u32,
             alphaBlendOp: self.alpha_op as u32,
             colorWriteMask: {
                 let mut mask = 0;
@@ -195,33 +195,33 @@ impl Into<vk::PipelineColorBlendAttachmentState> for AttachmentBlend {
 pub enum LogicOp {
     /// Returns `0`.
     Clear = vk::LOGIC_OP_CLEAR,
-    /// Returns `src & dest`.
+    /// Returns `source & destination`.
     And = vk::LOGIC_OP_AND,
-    /// Returns `src & !dest`.
+    /// Returns `source & !destination`.
     AndReverse = vk::LOGIC_OP_AND_REVERSE,
-    /// Returns `src`.
+    /// Returns `source`.
     Copy = vk::LOGIC_OP_COPY,
-    /// Returns `!src & dest`.
+    /// Returns `!source & destination`.
     AndInverted = vk::LOGIC_OP_AND_INVERTED,
-    /// Returns `dest`.
+    /// Returns `destination`.
     Noop = vk::LOGIC_OP_NO_OP,
-    /// Returns `src ^ dest`.
+    /// Returns `source ^ destination`.
     Xor = vk::LOGIC_OP_XOR,
-    /// Returns `src | dest`.
+    /// Returns `source | destination`.
     Or = vk::LOGIC_OP_OR,
-    /// Returns `!(src | dest)`.
+    /// Returns `!(source | destination)`.
     Nor = vk::LOGIC_OP_NOR,
-    /// Returns `!(src ^ dest)`.
+    /// Returns `!(source ^ destination)`.
     Equivalent = vk::LOGIC_OP_EQUIVALENT,
-    /// Returns `!dest`.
+    /// Returns `!destination`.
     Invert = vk::LOGIC_OP_INVERT,
-    /// Returns `src | !dest.
+    /// Returns `source | !destination.
     OrReverse = vk::LOGIC_OP_OR_REVERSE,
-    /// Returns `!src`.
+    /// Returns `!source`.
     CopyInverted = vk::LOGIC_OP_COPY_INVERTED,
-    /// Returns `!src | dest`.
+    /// Returns `!source | destination`.
     OrInverted = vk::LOGIC_OP_OR_INVERTED,
-    /// Returns `!(src & dest)`.
+    /// Returns `!(source & destination)`.
     Nand = vk::LOGIC_OP_NAND,
     /// Returns `!0` (all bits set to 1).
     Set = vk::LOGIC_OP_SET,

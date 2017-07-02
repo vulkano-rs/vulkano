@@ -18,7 +18,7 @@ enum SourceKind {
 pub fn derive(input: TokenStream) -> TokenStream {
     let syn_item = syn::parse_macro_input(&input.to_string()).unwrap();
 
-    let src = {
+    let source_code = {
         let mut iter = syn_item.attrs.iter().filter_map(|attr| {
             match attr.value {
                 syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "src" => {
@@ -40,7 +40,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
 
         match source {
-            SourceKind::Src(src) => src,
+            SourceKind::Src(source) => source,
 
             SourceKind::Path(path) => {
                 let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
@@ -78,7 +78,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         _ => panic!("Unexpected shader type ; valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
     };
 
-    let spirv_data = match glsl_to_spirv::compile(&src, ty) {
+    let spirv_data = match glsl_to_spirv::compile(&source_code, ty) {
         Ok(compiled) => compiled,
         Err(message) => panic!("{}\nfailed to compile shader", message),
     };

@@ -236,10 +236,10 @@ macro_rules! ordered_passes_renderpass {
                 Some(LayoutPassDependencyDescription {
                     source_subpass: id,
                     destination_subpass: id + 1,
-                    src_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    dst_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    src_access: AccessFlagBits::all(),         // TODO: correct values
-                    dst_access: AccessFlagBits::all(),         // TODO: correct values
+                    source_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                    destination_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
+                    source_access: AccessFlagBits::all(),         // TODO: correct values
+                    destination_access: AccessFlagBits::all(),         // TODO: correct values
                     by_region: true,            // TODO: correct values
                 })
             }

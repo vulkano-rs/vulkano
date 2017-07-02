@@ -157,7 +157,7 @@ impl UnsafeImage {
                 {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
-                if usage.transfer_dest &&
+                if usage.transfer_destination &&
                     (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0)
                 {
                     return Err(ImageCreationError::UnsupportedUsage);
@@ -724,12 +724,12 @@ impl UnsafeImage {
     }
 
     #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
+    pub fn usage_transfer_source(&self) -> bool {
         (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
     }
 
     #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
+    pub fn usage_transfer_destination(&self) -> bool {
         (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
     }
 
@@ -1015,12 +1015,12 @@ impl UnsafeImageView {
     }
 
     #[inline]
-    pub fn usage_transfer_src(&self) -> bool {
+    pub fn usage_transfer_source(&self) -> bool {
         (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
     }
 
     #[inline]
-    pub fn usage_transfer_dest(&self) -> bool {
+    pub fn usage_transfer_destination(&self) -> bool {
         (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
     }
 

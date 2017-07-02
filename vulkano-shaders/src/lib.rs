@@ -29,8 +29,8 @@ mod structs;
 pub fn build_glsl_shaders<'a, I>(shaders: I)
     where I: IntoIterator<Item = (&'a str, ShaderType)>
 {
-    let dest = env::var("OUT_DIR").unwrap();
-    let dest = Path::new(&dest);
+    let destination = env::var("OUT_DIR").unwrap();
+    let destination = Path::new(&destination);
 
     let shaders = shaders.into_iter().collect::<Vec<_>>();
     for &(shader, _) in &shaders {
@@ -50,8 +50,8 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
             s
         };
 
-        fs::create_dir_all(&dest.join("shaders").join(shader.parent().unwrap())).unwrap();
-        let mut file_output = File::create(&dest.join("shaders").join(shader))
+        fs::create_dir_all(&destination.join("shaders").join(shader.parent().unwrap())).unwrap();
+        let mut file_output = File::create(&destination.join("shaders").join(shader))
             .expect("failed to open shader output");
 
         let content = match glsl_to_spirv::compile(&shader_content, ty) {

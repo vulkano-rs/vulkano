@@ -84,7 +84,7 @@ impl<F> StorageImage<F> {
 
         let usage = ImageUsage {
             transfer_source: true,
-            transfer_dest: true,
+            transfer_destination: true,
             sampled: true,
             storage: true,
             color_attachment: !is_depth,

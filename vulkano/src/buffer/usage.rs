@@ -19,7 +19,7 @@ use vk;
 #[derive(Debug, Copy, Clone)]
 pub struct BufferUsage {
     pub transfer_source: bool,
-    pub transfer_dest: bool,
+    pub transfer_destination: bool,
     pub uniform_texel_buffer: bool,
     pub storage_texel_buffer: bool,
     pub uniform_buffer: bool,
@@ -35,7 +35,7 @@ impl BufferUsage {
     pub fn none() -> BufferUsage {
         BufferUsage {
             transfer_source: false,
-            transfer_dest: false,
+            transfer_destination: false,
             uniform_texel_buffer: false,
             storage_texel_buffer: false,
             uniform_buffer: false,
@@ -51,7 +51,7 @@ impl BufferUsage {
     pub fn all() -> BufferUsage {
         BufferUsage {
             transfer_source: true,
-            transfer_dest: true,
+            transfer_destination: true,
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
             uniform_buffer: true,
@@ -71,11 +71,11 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `transfer_dest` set to true and the rest to false.
+    /// Builds a `BufferUsage` with `transfer_destination` set to true and the rest to false.
     #[inline]
-    pub fn transfer_dest() -> BufferUsage {
+    pub fn transfer_destination() -> BufferUsage {
         BufferUsage {
-            transfer_dest: true,
+            transfer_destination: true,
             ..BufferUsage::none()
         }
     }
@@ -89,13 +89,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `vertex_buffer` and `transfer_dest` set to true and the rest
+    /// Builds a `BufferUsage` with `vertex_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn vertex_buffer_transfer_dest() -> BufferUsage {
+    pub fn vertex_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             vertex_buffer: true,
-            transfer_dest: true,
+            transfer_destination: true,
             ..BufferUsage::none()
         }
     }
@@ -109,12 +109,12 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `index_buffer` and `transfer_dest` set to true and the rest to false.
+    /// Builds a `BufferUsage` with `index_buffer` and `transfer_destination` set to true and the rest to false.
     #[inline]
-    pub fn index_buffer_transfer_dest() -> BufferUsage {
+    pub fn index_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             index_buffer: true,
-            transfer_dest: true,
+            transfer_destination: true,
             ..BufferUsage::none()
         }
     }
@@ -128,13 +128,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_dest` set to true and the rest
+    /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn uniform_buffer_transfer_dest() -> BufferUsage {
+    pub fn uniform_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             uniform_buffer: true,
-            transfer_dest: true,
+            transfer_destination: true,
             ..BufferUsage::none()
         }
     }
@@ -148,13 +148,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `indirect_buffer` and `transfer_dest` set to true and the rest
+    /// Builds a `BufferUsage` with `indirect_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn indirect_buffer_transfer_dest() -> BufferUsage {
+    pub fn indirect_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             indirect_buffer: true,
-            transfer_dest: true,
+            transfer_destination: true,
             ..BufferUsage::none()
         }
     }
@@ -167,7 +167,7 @@ impl BitOr for BufferUsage {
     fn bitor(self, rhs: Self) -> Self {
         BufferUsage {
             transfer_source: self.transfer_source || rhs.transfer_source,
-            transfer_dest: self.transfer_dest || rhs.transfer_dest,
+            transfer_destination: self.transfer_destination || rhs.transfer_destination,
             uniform_texel_buffer: self.uniform_texel_buffer || rhs.uniform_texel_buffer,
             storage_texel_buffer: self.storage_texel_buffer || rhs.storage_texel_buffer,
             uniform_buffer: self.uniform_buffer || rhs.uniform_buffer,
@@ -186,7 +186,7 @@ pub fn usage_to_bits(usage: BufferUsage) -> vk::BufferUsageFlagBits {
     if usage.transfer_source {
         result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
     }
-    if usage.transfer_dest {
+    if usage.transfer_destination {
         result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
     }
     if usage.uniform_texel_buffer {

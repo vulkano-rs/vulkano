@@ -31,7 +31,7 @@ pub fn check_update_buffer<B, D>(device: &Device, buffer: &B, data: &D)
     assert_eq!(buffer.inner().buffer.device().internal_object(),
                device.internal_object());
 
-    if !buffer.inner().buffer.usage_transfer_dest() {
+    if !buffer.inner().buffer.usage_transfer_destination() {
         return Err(CheckUpdateBufferError::BufferMissingUsage);
     }
 
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn data_too_large() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_dest(),
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
                                                     iter::once(queue.family()),
                                                     0 .. 65536).unwrap();
         let data = (0 .. 65536).collect::<Vec<u32>>();
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn data_just_large_enough() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_dest(),
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
                                                     iter::once(queue.family()),
                                                     0 .. 100000).unwrap();
         let data = (0 .. 65536).collect::<Vec<u8>>();
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn wrong_alignment() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_dest(),
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
                                                     iter::once(queue.family()),
                                                     0 .. 100).unwrap();
         let data = (0 .. 30).collect::<Vec<u8>>();

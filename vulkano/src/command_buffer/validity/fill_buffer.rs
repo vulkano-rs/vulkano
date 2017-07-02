@@ -27,7 +27,7 @@ pub fn check_fill_buffer<B>(device: &Device, buffer: &B) -> Result<(), CheckFill
     assert_eq!(buffer.inner().buffer.device().internal_object(),
                device.internal_object());
 
-    if !buffer.inner().buffer.usage_transfer_dest() {
+    if !buffer.inner().buffer.usage_transfer_destination() {
         return Err(CheckFillBufferError::BufferMissingUsage);
     }
 

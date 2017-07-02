@@ -521,11 +521,11 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage_transfer_src());
+        debug_assert!(source.buffer.usage_transfer_source());
 
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage_transfer_dest());
+        debug_assert!(destination.buffer.usage_transfer_destination());
 
         let regions: SmallVec<[_; 8]> = regions
             .map(|(sr, de, sz)| {
@@ -556,20 +556,20 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     /// usage of the command anyway.
     #[inline]
     pub unsafe fn copy_buffer_to_image<S, D, R>(&mut self, source: &S, destination: &D,
-                                                dest_layout: ImageLayout, regions: R)
+                                                destination_layout: ImageLayout, regions: R)
         where S: ?Sized + BufferAccess,
               D: ?Sized + ImageAccess,
               R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>
     {
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage_transfer_src());
+        debug_assert!(source.buffer.usage_transfer_source());
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
-        debug_assert!(destination.image.usage_transfer_dest());
-        debug_assert!(dest_layout == ImageLayout::General ||
-                      dest_layout == ImageLayout::TransferDstOptimal);
+        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination_layout == ImageLayout::General ||
+                      destination_layout == ImageLayout::TransferDstOptimal);
 
         let regions: SmallVec<[_; 8]> = regions
             .map(|copy| {
@@ -609,7 +609,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         vk.CmdCopyBufferToImage(cmd,
                                 source.buffer.internal_object(),
                                 destination.image.internal_object(),
-                                dest_layout as u32,
+                                destination_layout as u32,
                                 regions.len() as u32,
                                 regions.as_ptr());
     }
@@ -756,7 +756,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                 buffer: buffer_inner,
                 offset,
             } = buffer.inner();
-            debug_assert!(buffer_inner.usage_transfer_dest());
+            debug_assert!(buffer_inner.usage_transfer_destination());
             debug_assert_eq!(offset % 4, 0);
             (buffer_inner.internal_object(), offset)
         };
@@ -991,7 +991,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                 buffer: buffer_inner,
                 offset,
             } = buffer.inner();
-            debug_assert!(buffer_inner.usage_transfer_dest());
+            debug_assert!(buffer_inner.usage_transfer_destination());
             debug_assert_eq!(offset % 4, 0);
             (buffer_inner.internal_object(), offset)
         };
@@ -1169,7 +1169,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     }
 
     /// Adds an execution dependency. This means that all the stages in `source` of the previous
-    /// commands must finish before any of the stages in `dest` of the following commands can start.
+    /// commands must finish before any of the stages in `destination` of the following commands can start.
     ///
     /// # Safety
     ///
@@ -1179,21 +1179,21 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     #[inline]
     pub unsafe fn add_execution_dependency(&mut self, source: PipelineStages,
-                                           dest: PipelineStages, by_region: bool) {
+                                           destination: PipelineStages, by_region: bool) {
         if !by_region {
             self.dependency_flags = 0;
         }
 
         debug_assert_ne!(source, PipelineStages::none());
-        debug_assert_ne!(dest, PipelineStages::none());
+        debug_assert_ne!(destination, PipelineStages::none());
 
         self.src_stage_mask |= Into::<vk::PipelineStageFlags>::into(source);
-        self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(dest);
+        self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(destination);
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
-    /// for the given source accesses must be visible by the given dest stages for the given dest
-    /// accesses.
+    /// for the given source accesses must be visible by the given destination stages for the given
+    /// destination accesses.
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.
     ///
@@ -1202,24 +1202,25 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     /// - Same as `add_execution_dependency`.
     ///
     pub unsafe fn add_memory_barrier(&mut self, source_stage: PipelineStages,
-                                     source_access: AccessFlagBits, dest_stage: PipelineStages,
-                                     dest_access: AccessFlagBits, by_region: bool) {
+                                     source_access: AccessFlagBits,
+                                     destination_stage: PipelineStages,
+                                     destination_access: AccessFlagBits, by_region: bool) {
         debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+        debug_assert!(destination_access.is_compatible_with(&destination_stage));
 
-        self.add_execution_dependency(source_stage, dest_stage, by_region);
+        self.add_execution_dependency(source_stage, destination_stage, by_region);
 
         self.memory_barriers.push(vk::MemoryBarrier {
                                       sType: vk::STRUCTURE_TYPE_MEMORY_BARRIER,
                                       pNext: ptr::null(),
                                       srcAccessMask: source_access.into(),
-                                      dstAccessMask: dest_access.into(),
+                                      dstAccessMask: destination_access.into(),
                                   });
     }
 
     /// Adds a buffer memory barrier. This means that all the memory writes to the given buffer by
     /// the given source stages for the given source accesses must be visible by the given dest
-    /// stages for the given dest accesses.
+    /// stages for the given destination accesses.
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.
     ///
@@ -1234,16 +1235,16 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     pub unsafe fn add_buffer_memory_barrier<B>(&mut self, buffer: &B, source_stage: PipelineStages,
                                                source_access: AccessFlagBits,
-                                               dest_stage: PipelineStages,
-                                               dest_access: AccessFlagBits, by_region: bool,
+                                               destination_stage: PipelineStages,
+                                               destination_access: AccessFlagBits, by_region: bool,
                                                queue_transfer: Option<(u32, u32)>, offset: usize,
                                                size: usize)
         where B: ?Sized + BufferAccess
     {
         debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+        debug_assert!(destination_access.is_compatible_with(&destination_stage));
 
-        self.add_execution_dependency(source_stage, dest_stage, by_region);
+        self.add_execution_dependency(source_stage, destination_stage, by_region);
 
         debug_assert!(size <= buffer.size());
         let BufferInner {
@@ -1262,7 +1263,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                                       sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                                       pNext: ptr::null(),
                                       srcAccessMask: source_access.into(),
-                                      dstAccessMask: dest_access.into(),
+                                      dstAccessMask: destination_access.into(),
                                       srcQueueFamilyIndex: src_queue,
                                       dstQueueFamilyIndex: dest_queue,
                                       buffer: buffer.internal_object(),
@@ -1291,16 +1292,16 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     pub unsafe fn add_image_memory_barrier<I>(&mut self, image: &I, mipmaps: Range<u32>,
                                               layers: Range<u32>, source_stage: PipelineStages,
                                               source_access: AccessFlagBits,
-                                              dest_stage: PipelineStages,
-                                              dest_access: AccessFlagBits, by_region: bool,
+                                              destination_stage: PipelineStages,
+                                              destination_access: AccessFlagBits, by_region: bool,
                                               queue_transfer: Option<(u32, u32)>,
                                               current_layout: ImageLayout, new_layout: ImageLayout)
         where I: ?Sized + ImageAccess
     {
         debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(dest_access.is_compatible_with(&dest_stage));
+        debug_assert!(destination_access.is_compatible_with(&destination_stage));
 
-        self.add_execution_dependency(source_stage, dest_stage, by_region);
+        self.add_execution_dependency(source_stage, destination_stage, by_region);
 
         debug_assert_ne!(new_layout, ImageLayout::Undefined);
         debug_assert_ne!(new_layout, ImageLayout::Preinitialized);
@@ -1334,7 +1335,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                                      sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                                      pNext: ptr::null(),
                                      srcAccessMask: source_access.into(),
-                                     dstAccessMask: dest_access.into(),
+                                     dstAccessMask: destination_access.into(),
                                      oldLayout: current_layout as u32,
                                      newLayout: new_layout as u32,
                                      srcQueueFamilyIndex: src_queue,

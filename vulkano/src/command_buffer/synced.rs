@@ -898,7 +898,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     /// usage of the command anyway.
     #[inline]
     pub unsafe fn copy_buffer_to_image<S, D, R>(&mut self, source: S, destination: D,
-                                                dest_layout: ImageLayout, regions: R)
+                                                destination_layout: ImageLayout, regions: R)
                                                 -> Result<(), SyncCommandBufferBuilderError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static,
@@ -907,7 +907,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         struct Cmd<S, D, R> {
             source: Option<S>,
             destination: Option<D>,
-            dest_layout: ImageLayout,
+            destination_layout: ImageLayout,
             regions: Option<R>,
         }
 
@@ -919,7 +919,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
                 out.copy_buffer_to_image(self.source.as_ref().unwrap(),
                                          self.destination.as_ref().unwrap(),
-                                         self.dest_layout,
+                                         self.destination_layout,
                                          self.regions.take().unwrap());
             }
 
@@ -960,7 +960,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         self.commands.lock().unwrap().commands.push(Box::new(Cmd {
                                                                  source: Some(source),
                                                                  destination: Some(destination),
-                                                                 dest_layout,
+            destination_layout: destination_layout,
                                                                  regions: Some(regions),
                                                              }));
         self.prev_cmd_resource(KeyTy::Buffer,
@@ -987,8 +987,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                                    transfer_write: true,
                                    ..AccessFlagBits::none()
                                },
-                               dest_layout,
-                               dest_layout)?;
+                               destination_layout,
+                               destination_layout)?;
         Ok(())
     }
 
