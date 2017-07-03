@@ -613,14 +613,14 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where F: FramebufferAbstract + Send + Sync + 'static
                 {
                     fn image(&self, num: usize) -> &ImageAccess {
-                        self.0.attachments()[num].parent() // TODO: slow
+                        self.0.attached_image_view(num).unwrap().parent()
                     }
                 }
                 Box::new(Fin(self.framebuffer))
             }
 
             fn image(&self, num: usize) -> &ImageAccess {
-                self.framebuffer.attachments()[num].parent() // TODO: slow
+                self.framebuffer.attached_image_view(num).unwrap().parent()
             }
         }
 

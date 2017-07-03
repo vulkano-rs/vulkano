@@ -28,9 +28,10 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns the width, height and array layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
 
-    /// Returns all the attachments of the framebuffer.
-    // TODO: meh for trait object
-    fn attachments(&self) -> Vec<&ImageViewAccess>;
+    /// Returns the attachment of the framebuffer with the given index.
+    ///
+    /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
+    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -66,8 +67,8 @@ unsafe impl<T> FramebufferAbstract for T
     }
 
     #[inline]
-    fn attachments(&self) -> Vec<&ImageViewAccess> {
-        FramebufferAbstract::attachments(&**self)
+    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess> {
+        (**self).attached_image_view(index)
     }
 }
 
