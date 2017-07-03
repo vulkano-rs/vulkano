@@ -86,6 +86,10 @@ pub struct AttachmentImage<F = Format, A = StdMemoryPoolAlloc> {
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: ImageLayout,
 
+    // If true, then the image is in the layout of `attachment_layout` (above). If false, then it
+    // is still `Undefined`.
+    initialized: AtomicBool,
+
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
 }
@@ -248,6 +252,7 @@ impl<F> AttachmentImage<F> {
                         } else {
                             ImageLayout::ColorAttachmentOptimal
                         },
+                        initialized: AtomicBool::new(false),
                         gpu_lock: AtomicUsize::new(0),
                     }))
     }
@@ -292,7 +297,28 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+        if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
+            if self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::UnexpectedImageLayout {
+                    requested: expected_layout,
+                    allowed: self.attachment_layout,
+                });
+            } else {
+                return Err(AccessError::ImageNotInitialized {
+                    requested: expected_layout,
+                });
+            }
+        }
+
+        if expected_layout != ImageLayout::Undefined {
+            if !self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::ImageNotInitialized {
+                    requested: expected_layout,
+                });
+            }
+        }
+
         if self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0 {
             Ok(())
         } else {

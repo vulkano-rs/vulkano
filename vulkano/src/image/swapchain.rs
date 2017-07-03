@@ -106,7 +106,7 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
         Err(AccessError::SwapchainImageAcquireOnly)
     }
@@ -116,7 +116,7 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, _: Option<ImageLayout>) {
     }
 }
 
