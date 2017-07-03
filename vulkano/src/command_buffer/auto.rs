@@ -65,12 +65,18 @@ use sync::PipelineStages;
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder<P>,
     state_cacher: StateCacher,
+
     // Contains the number of subpasses remaining in the current render pass, or `None` if we're
     // outside a render pass. If this is `Some(0)`, the user must call `end_render_pass`. If this
     // is `Some(1)` or more, the user must call `next_subpass`.
     subpasses_remaining: Option<usize>,
+
     // True if we are a secondary command buffer.
     secondary_cb: bool,
+
+    // True if we're in a subpass that only allows executing secondary command buffers. False if
+    // we're in a subpass that only allows inline commands. Irrelevant if not in a subpass.
+    subpass_secondary: bool,
 }
 
 impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
@@ -86,6 +92,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                    state_cacher: state_cacher,
                    subpasses_remaining: None,
                    secondary_cb: false,
+                   subpass_secondary: false,
                })
         }
     }
@@ -102,9 +109,15 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    fn ensure_inside_render_pass(&self) -> Result<(), AutoCommandBufferBuilderContextError> {
+    fn ensure_inside_render_pass(&self, secondary: bool)
+                                 -> Result<(), AutoCommandBufferBuilderContextError>
+    {
         if self.subpasses_remaining.is_some() {
-            Ok(())
+            if self.subpass_secondary == secondary {
+                Ok(())
+            } else {
+                Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
+            }
         } else {
             Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
         }
@@ -151,6 +164,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             self.inner
                 .begin_render_pass(framebuffer, contents, clear_values)?;
             self.subpasses_remaining = Some(num_subpasses - 1);
+            self.subpass_secondary = secondary;
             Ok(self)
         }
     }
@@ -260,7 +274,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
-            self.ensure_inside_render_pass()?;
+            self.ensure_inside_render_pass(false)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
@@ -296,7 +310,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
-            self.ensure_inside_render_pass()?;
+            self.ensure_inside_render_pass(false)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
@@ -336,7 +350,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
-            self.ensure_inside_render_pass()?;
+            self.ensure_inside_render_pass(false)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
@@ -430,7 +444,9 @@ impl<P> AutoCommandBufferBuilder<P> {
                 Some(ref mut num) => {
                     *num -= 1;
                 }
-            }
+            };
+
+            self.subpass_secondary = secondary;
 
             let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
                            else { SubpassContents::Inline };
@@ -711,6 +727,9 @@ pub enum AutoCommandBufferBuilderContextError {
     /// Tried to end a render pass with subpasses remaining, or tried to go to next subpass with no
     /// subpass remaining.
     NumSubpassesMismatch,
+    /// Tried to execute a secondary command buffer inside a subpass that only allows inline
+    /// commands, or a draw command in a subpass that only allows secondary command buffers.
+    WrongSubpassType,
 }
 
 impl error::Error for AutoCommandBufferBuilderContextError {
@@ -729,6 +748,11 @@ impl error::Error for AutoCommandBufferBuilderContextError {
             AutoCommandBufferBuilderContextError::NumSubpassesMismatch => {
                 "tried to end a render pass with subpasses remaining, or tried to go to next \
                  subpass with no subpass remaining"
+            },
+            AutoCommandBufferBuilderContextError::WrongSubpassType => {
+                "tried to execute a secondary command buffer inside a subpass that only allows \
+                 inline commands, or a draw command in a subpass that only allows secondary \
+                 command buffers"
             },
         }
     }
