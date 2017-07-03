@@ -230,8 +230,8 @@ void main() {
         struct Dummy;
     }
 
-    let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    let fs = fs::Shader::load(&device).expect("failed to create shader module");
+    let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
+    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
     // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this

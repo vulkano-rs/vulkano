@@ -100,7 +100,7 @@ void main() {
             struct Dummy;
         }
 
-        let shader = cs::Shader::load(&device)
+        let shader = cs::Shader::load(device.clone())
             .expect("failed to create shader module");
         ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())
             .expect("failed to create compute pipeline")
