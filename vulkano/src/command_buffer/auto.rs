@@ -309,7 +309,12 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
 
-            self.inner.bind_index_buffer(index_buffer, I::ty())?;
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
+            {
+                self.inner.bind_index_buffer(index_buffer, I::ty())?;
+            }
+
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;

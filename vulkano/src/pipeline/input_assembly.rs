@@ -117,7 +117,7 @@ unsafe impl Index for u32 {
 }
 
 /// An enumeration of all valid index types.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
 #[repr(u32)]
 pub enum IndexType {
