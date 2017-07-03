@@ -8,7 +8,9 @@
 // according to those terms.
 
 use VulkanObject;
+use buffer::BufferAccess;
 use command_buffer::DynamicState;
+use pipeline::input_assembly::IndexType;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use vk;
@@ -25,6 +27,8 @@ pub struct StateCacher {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The index buffer, offset, and index type currently bound. `None` if nothing bound.
+    index_buffer: Option<(vk::Buffer, usize, IndexType)>,
 }
 
 /// Outcome of an operation.
@@ -44,6 +48,7 @@ impl StateCacher {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            index_buffer: None,
         }
     }
 
@@ -54,6 +59,7 @@ impl StateCacher {
         self.dynamic_state = DynamicState::none();
         self.compute_pipeline = 0;
         self.graphics_pipeline = 0;
+        self.index_buffer = None;
     }
 
     /// Checks whether we need to bind a graphics pipeline. Returns `StateCacherOutcome::AlreadyOk`
@@ -82,6 +88,25 @@ impl StateCacher {
             StateCacherOutcome::AlreadyOk
         } else {
             self.compute_pipeline = inner;
+            StateCacherOutcome::NeedChange
+        }
+    }
+
+    /// Checks whether we need to bind an index buffer. Returns `StateCacherOutcome::AlreadyOk`
+    /// if the index buffer was already bound earlier, and `StateCacherOutcome::NeedChange` if you
+    /// need to actually bind the buffer.
+    pub fn bind_index_buffer<B>(&mut self, index_buffer: &B, ty: IndexType) -> StateCacherOutcome
+        where B: ?Sized + BufferAccess
+    {
+        let value = {
+            let inner = index_buffer.inner();
+            (inner.buffer.internal_object(), inner.offset, ty)
+        };
+
+        if self.index_buffer == Some(value) {
+            StateCacherOutcome::AlreadyOk
+        } else {
+            self.index_buffer = Some(value);
             StateCacherOutcome::NeedChange
         }
     }
