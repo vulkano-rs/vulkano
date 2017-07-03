@@ -376,8 +376,8 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn attachments(&self) -> Vec<&ImageViewAccess> {
-        self.resources.as_image_view_accesses()
+    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess> {
+        self.resources.as_image_view_access(index)
     }
 }
 

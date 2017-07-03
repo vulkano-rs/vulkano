@@ -16,8 +16,9 @@ use std::sync::Arc;
 /// A list of attachments.
 // TODO: rework this trait
 pub unsafe trait AttachmentsList {
-    // TODO: meh for API
-    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess>;
+    fn num_attachments(&self) -> usize;
+
+    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess>;
 }
 
 unsafe impl<T> AttachmentsList for T
@@ -25,22 +26,37 @@ unsafe impl<T> AttachmentsList for T
           T::Target: AttachmentsList
 {
     #[inline]
-    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
-        (**self).as_image_view_accesses()
+    fn num_attachments(&self) -> usize {
+        (**self).num_attachments()
+    }
+
+    #[inline]
+    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+        (**self).as_image_view_access(index)
     }
 }
 
 unsafe impl AttachmentsList for () {
     #[inline]
-    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
-        vec![]
+    fn num_attachments(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn as_image_view_access(&self, _: usize) -> Option<&ImageViewAccess> {
+        None
     }
 }
 
 unsafe impl AttachmentsList for Vec<Arc<ImageViewAccess + Send + Sync>> {
     #[inline]
-    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
-        self.iter().map(|p| &**p as &ImageViewAccess).collect()
+    fn num_attachments(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+        self.get(index).map(|v| &**v as &_)
     }
 }
 
@@ -49,9 +65,16 @@ unsafe impl<A, B> AttachmentsList for (A, B)
           B: ImageViewAccess
 {
     #[inline]
-    fn as_image_view_accesses(&self) -> Vec<&ImageViewAccess> {
-        let mut list = self.0.as_image_view_accesses();
-        list.push(&self.1);
-        list
+    fn num_attachments(&self) -> usize {
+        self.0.num_attachments() + 1
+    }
+
+    #[inline]
+    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+        if index == self.0.num_attachments() {
+            Some(&self.1)
+        } else {
+            self.0.as_image_view_access(index)
+        }
     }
 }
