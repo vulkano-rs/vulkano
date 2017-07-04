@@ -1,4 +1,6 @@
-# Vulkano
+# [Vulkano](http://vulkano.rs)
+
+See also [vulkano.rs](http://vulkano.rs).
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
 It follows the Rust philosophy, which is that as long as you don't use unsafe code you shouldn't
@@ -27,11 +29,6 @@ required.
 
 ## Development status
 
-**Please read this section.**
-
-The latest released version on crates.io is version 0.4. This version is not stable, and most
-likely differs from the code on github.
-
 Vulkano is still in heavy development and doesn't yet meet its goals of being very robust. However
 the general structure of the library is most likely definitive, and all future breaking changes
 will likely be straight-forward to fix in user code.
@@ -43,9 +40,13 @@ will likely be straight-forward to fix in user code.
 To get started you are encouraged to read the examples in `examples/src/bin`, starting with
 the `triangle` example.
 
+## Donate
+
+[![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/tomaka)
+
 ## Structure
 
-This repository contains five libraries:
+This repository contains six libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
@@ -55,6 +56,7 @@ This repository contains five libraries:
   a window where to render to.
 - `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
   implementation detail that you don't need to use manually if you use vulkano.
+- `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
 
 Once procedural macros are stabilized in Rust, the `vulkano-shaders` and `vulkano-shader-derive`
 crates will be merged with the `vulkano` crate. The `glsl-to-spirv` crate is an implementation
