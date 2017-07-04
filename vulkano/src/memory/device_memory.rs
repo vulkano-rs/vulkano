@@ -74,6 +74,11 @@ impl DeviceMemory {
         }*/
 
         let memory = unsafe {
+            let physical_device = device.physical_device();
+            let mut allocation_count = physical_device.allocation_count().lock().expect("Poisoned mutex");
+            if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
+                return Err(OomError::OutOfDeviceMemory) // TODO should be VK_ERROR_TOO_MANY_OBJECTS
+            }
             let vk = device.pointers();
 
             let infos = vk::MemoryAllocateInfo {
@@ -88,6 +93,7 @@ impl DeviceMemory {
                                            &infos,
                                            ptr::null(),
                                            &mut output))?;
+            *allocation_count += 1;
             output
         };
 
@@ -181,6 +187,9 @@ impl Drop for DeviceMemory {
         unsafe {
             let vk = self.device.pointers();
             vk.FreeMemory(self.device.internal_object(), self.memory, ptr::null());
+            let physical_device = self.device.physical_device();
+            let mut allocation_count = physical_device.allocation_count().lock().expect("Poisoned mutex");
+            *allocation_count -= 1;
         }
     }
 }
@@ -452,5 +461,20 @@ mod tests {
         }
 
         panic!()
+    }
+
+    #[test]
+    fn allocation_count() {
+        let (device, _) = gfx_dev_and_queue!();
+        let mem_ty = device.physical_device().memory_types().next().unwrap();
+        let phys = device.physical_device();
+        assert_eq!(*phys.allocation_count().lock().unwrap(), 0);
+        let mem1 = DeviceMemory::alloc(device.clone(), mem_ty, 256).unwrap();
+        assert_eq!(*phys.allocation_count().lock().unwrap(), 1);
+        {
+            let mem2 = DeviceMemory::alloc(device.clone(), mem_ty, 256).unwrap();
+            assert_eq!(*phys.allocation_count().lock().unwrap(), 2);
+        }
+        assert_eq!(*phys.allocation_count().lock().unwrap(), 1);
     }
 }
