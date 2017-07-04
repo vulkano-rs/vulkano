@@ -30,7 +30,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
-use std::sync::TryLockError;
 
 use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
@@ -48,11 +47,8 @@ use memory::CpuAccess as MemCpuAccess;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
-use memory::pool::StdMemoryPool;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 use sync::Sharing;
 
 use OomError;

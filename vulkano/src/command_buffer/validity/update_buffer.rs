@@ -124,8 +124,8 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
                                                     iter::once(queue.family()),
-                                                    0 .. 100000).unwrap();
-        let data = (0 .. 65536).collect::<Vec<u8>>();
+                                                    (0 .. 100000).map(|_| 0)).unwrap();
+        let data = (0 .. 65536).map(|_| 0).collect::<Vec<u8>>();
 
         match check_update_buffer(&device, &buffer, &data[..]) {
             Ok(_) => (),
