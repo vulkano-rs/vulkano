@@ -133,7 +133,7 @@ impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
     #[allow(unsafe_code)]
-    pub fn load(device: &::std::sync::Arc<::vulkano::device::Device>)
+    pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
                 -> Result<{name}, ::vulkano::OomError>
     {{
 
@@ -164,7 +164,7 @@ impl {name} {{
             let data = [{spirv_data}];
 
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device.clone(), &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
             }})
         }}
     }}

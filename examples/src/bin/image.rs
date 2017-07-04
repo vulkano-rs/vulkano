@@ -80,8 +80,8 @@ fn main() {
                                            Vertex { position: [ 0.5,  0.5 ] },
                                        ].iter().cloned()).expect("failed to create buffer");
 
-    let vs = vs::Shader::load(&device).expect("failed to create shader module");
-    let fs = fs::Shader::load(&device).expect("failed to create shader module");
+    let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
+    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
     let renderpass = Arc::new(
         single_pass_renderpass!(device.clone(),
