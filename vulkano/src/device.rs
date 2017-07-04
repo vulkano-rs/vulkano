@@ -133,6 +133,7 @@ pub struct Device {
         Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
+    allocation_count: Mutex<u32>,
 }
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
@@ -298,6 +299,7 @@ impl Device {
                                   standard_command_pools: Mutex::new(Default::default()),
                                   features: requested_features.clone(),
                                   extensions: (&extensions).into(),
+                                  allocation_count: Mutex::new(0),
                               });
 
         // Iterator for the produced queues.
@@ -410,6 +412,10 @@ impl Device {
                 new_pool
             },
         }
+    }
+
+    pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
+        &self.allocation_count
     }
 }
 

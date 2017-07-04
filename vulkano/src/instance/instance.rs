@@ -17,7 +17,6 @@ use std::mem;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use Error;
 use OomError;
@@ -308,7 +307,6 @@ impl Instance {
                             memory: memory,
                             queue_families: queue_families,
                             available_features: Features::from(available_features),
-                            allocation_count: Mutex::new(0),
                         });
         }
         output
@@ -383,7 +381,6 @@ impl Instance {
                             memory: memory,
                             queue_families: queue_families,
                             available_features: Features::from(available_features),
-                            allocation_count: Mutex::new(0),
                         });
         }
         output
@@ -584,7 +581,6 @@ struct PhysicalDeviceInfos {
     queue_families: Vec<vk::QueueFamilyProperties>,
     memory: vk::PhysicalDeviceMemoryProperties,
     available_features: Features,
-    allocation_count: Mutex<u32>,
 }
 
 /// Represents one of the available devices on this machine.
@@ -857,11 +853,6 @@ impl<'a> PhysicalDevice<'a> {
     #[inline]
     fn infos(&self) -> &'a PhysicalDeviceInfos {
         &self.instance.physical_devices[self.device]
-    }
-
-    #[inline]
-    pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
-        &self.infos().allocation_count
     }
 }
 
