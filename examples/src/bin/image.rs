@@ -37,7 +37,7 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let events_loop = winit::EventsLoop::new();
+    let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
