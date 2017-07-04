@@ -12,10 +12,8 @@ use std::sync::Arc;
 
 use device::Device;
 use device::Queue;
-use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
-use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
