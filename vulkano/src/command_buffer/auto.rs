@@ -33,6 +33,7 @@ use command_buffer::sys::Flags;
 use command_buffer::sys::Kind;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
+use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
 use command_buffer::validity::*;
 use descriptor::descriptor_set::DescriptorSetsCollection;
@@ -40,6 +41,7 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use format::ClearValue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::SubpassContents;
@@ -165,6 +167,39 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .begin_render_pass(framebuffer, contents, clear_values)?;
             self.subpasses_remaining = Some(num_subpasses - 1);
             self.subpass_secondary = secondary;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that clears a color image with a specific value.
+    ///
+    /// # Panic
+    ///
+    /// Panics if `color` is not a color value.
+    ///
+    pub fn clear_color_image<I>(mut self, image: I, color: ClearValue)
+                                -> Result<Self, ClearColorImageError>
+        where I: ImageAccess + Send + Sync + 'static,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+            check_clear_color_image(self.device(), &image)?;
+
+            match color {
+                ClearValue::Float(_) | ClearValue::Int(_) | ClearValue::Uint(_) => {},
+                _ => panic!("The clear color is not a color value"),
+            };
+    
+            let region = UnsafeCommandBufferBuilderColorImageClear {
+                base_mip_level: 0,
+                level_count: image.mipmap_levels(),
+                base_array_layer: 0,
+                layer_count: image.dimensions().array_layers(),
+            };
+
+            // TODO: let choose layout
+            self.inner.clear_color_image(image, ImageLayout::TransferDstOptimal, color,
+                                         iter::once(region))?;
             Ok(self)
         }
     }
@@ -661,6 +696,12 @@ err_gen!(BuildError {
 
 err_gen!(BeginRenderPassError {
     AutoCommandBufferBuilderContextError,
+    SyncCommandBufferBuilderError
+});
+
+err_gen!(ClearColorImageError {
+    AutoCommandBufferBuilderContextError,
+    CheckClearColorImageError,
     SyncCommandBufferBuilderError
 });
 
