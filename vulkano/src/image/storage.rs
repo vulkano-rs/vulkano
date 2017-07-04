@@ -284,6 +284,17 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     }
 }
 
+unsafe impl<F, A> ::VulkanObject for StorageImage<F, A>
+    where A: MemoryPool
+{
+    type Object = ::vk::Image;
+
+    #[inline]
+    fn internal_object(&self) -> ::vk::Image {
+        self.image.internal_object()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::StorageImage;

@@ -256,3 +256,14 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
         true
     }
 }
+
+unsafe impl<F, A> ::VulkanObject for ImmutableImage<F, A>
+    where A: MemoryPool
+{
+    type Object = ::vk::Image;
+
+    #[inline]
+    fn internal_object(&self) -> ::vk::Image {
+        self.image.internal_object()
+    }
+}
