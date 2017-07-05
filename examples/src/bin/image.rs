@@ -101,7 +101,7 @@ fn main() {
     );
 
     let texture = vulkano::image::immutable::ImmutableImage::new(device.clone(), vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
-                                                                 vulkano::format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
+                                                                 vulkano::format::R8G8B8A8Srgb, Some(queue.family())).unwrap();
 
 
     let pixel_buffer = {
