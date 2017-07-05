@@ -9,7 +9,7 @@
 
 // This example demonstrates how to use the compute capabilities of Vulkan.
 //
-// While graphics cards have traditionnally been used for graphical operations, over time they have
+// While graphics cards have traditionally been used for graphical operations, over time they have
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
