@@ -377,6 +377,15 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     }
 }
 
+unsafe impl ::VulkanObject for AttachmentImage {
+    type Object = ::vk::Image;
+
+    #[inline]
+    fn internal_object(&self) -> ::vk::Image {
+        self.image.internal_object()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::AttachmentImage;
