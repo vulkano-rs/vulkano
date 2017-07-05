@@ -123,7 +123,7 @@ impl ViewportsState {
 // FIXME: check that:
 //        x + width must be less than or equal to viewportBoundsRange[0]
 //        y + height must be less than or equal to viewportBoundsRange[1]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Viewport {
     /// Coordinates in pixels of the top-left hand corner of the viewport.
     pub origin: [f32; 2],
@@ -160,7 +160,7 @@ impl Into<vk::Viewport> for Viewport {
 // FIXME: add a check:
 //      Evaluation of (offset.x + extent.width) must not cause a signed integer addition overflow
 //      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Scissor {
     /// Coordinates in pixels of the top-left hand corner of the box.
     pub origin: [i32; 2],

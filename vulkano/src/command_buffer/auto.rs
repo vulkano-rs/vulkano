@@ -286,6 +286,8 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
 
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
@@ -329,6 +331,8 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_index_buffer(index_buffer, I::ty())?;
             }
 
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
@@ -368,6 +372,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
+
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);

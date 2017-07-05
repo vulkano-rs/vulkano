@@ -62,9 +62,35 @@ impl StateCacher {
         self.index_buffer = None;
     }
 
+    /// Compares the current state with `incoming`, and returns a new state that contains the
+    /// states that differ and that need to be actually set in the command buffer builder.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
+    pub fn dynamic_state(&mut self, mut incoming: DynamicState) -> DynamicState {
+        macro_rules! cmp {
+            ($field:ident) => (
+                if self.dynamic_state.$field == incoming.$field {
+                    incoming.$field = None;
+                } else if incoming.$field.is_some() {
+                    self.dynamic_state.$field = incoming.$field.clone();
+                }
+            );
+        }
+
+        cmp!(line_width);
+        cmp!(viewports);
+        cmp!(scissors);
+
+        incoming
+    }
+
     /// Checks whether we need to bind a graphics pipeline. Returns `StateCacherOutcome::AlreadyOk`
     /// if the pipeline was already bound earlier, and `StateCacherOutcome::NeedChange` if you need
     /// to actually bind the pipeline.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
     pub fn bind_graphics_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
         where P: GraphicsPipelineAbstract
     {
@@ -80,6 +106,9 @@ impl StateCacher {
     /// Checks whether we need to bind a compute pipeline. Returns `StateCacherOutcome::AlreadyOk`
     /// if the pipeline was already bound earlier, and `StateCacherOutcome::NeedChange` if you need
     /// to actually bind the pipeline.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
     pub fn bind_compute_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
         where P: ComputePipelineAbstract
     {
@@ -95,6 +124,9 @@ impl StateCacher {
     /// Checks whether we need to bind an index buffer. Returns `StateCacherOutcome::AlreadyOk`
     /// if the index buffer was already bound earlier, and `StateCacherOutcome::NeedChange` if you
     /// need to actually bind the buffer.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
     pub fn bind_index_buffer<B>(&mut self, index_buffer: &B, ty: IndexType) -> StateCacherOutcome
         where B: ?Sized + BufferAccess
     {
