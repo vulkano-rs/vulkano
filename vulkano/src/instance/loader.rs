@@ -10,13 +10,11 @@
 use std::error;
 use std::fmt;
 use std::mem;
-use std::path::Path;
-use std::ptr;
 
-use shared_library;
 use vk;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
+#[allow(non_snake_case)]
 fn load_static() -> Result<vk::Static, LoadingError> {
     use std::os::raw::c_char;
 
@@ -35,6 +33,9 @@ fn load_static() -> Result<vk::Static, LoadingError> {
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn load_static() -> Result<vk::Static, LoadingError> {
+    use std::path::Path;
+    use std::ptr;
+    use shared_library;
     lazy_static! {
         static ref VK_LIB: Result<shared_library::dynamic_library::DynamicLibrary, LoadingError> = {
             #[cfg(windows)] fn get_path() -> &'static Path { Path::new("vulkan-1.dll") }
