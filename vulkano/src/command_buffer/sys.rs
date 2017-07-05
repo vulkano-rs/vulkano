@@ -543,17 +543,21 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         };
 
         let regions: SmallVec<[_; 8]> = regions
-            .map(|region| {
+            .filter_map(|region| {
                 debug_assert!(region.layer_count + region.base_array_layer <= image.num_layers as u32);
                 debug_assert!(region.level_count + region.base_mip_level <= image.num_mipmap_levels as u32);
 
-                vk::ImageSubresourceRange {
+                if region.layer_count == 0 || region.level_count == 0 {
+                    return None;
+                }
+
+                Some(vk::ImageSubresourceRange {
                     aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
                     baseMipLevel: region.base_mip_level + image.first_mipmap_level as u32,
                     levelCount: region.level_count,
                     baseArrayLayer: region.base_array_layer + image.first_layer as u32,
                     layerCount: region.layer_count,
-                }
+                })
             })
             .collect();
 

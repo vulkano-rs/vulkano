@@ -171,19 +171,38 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
-    /// Adds a command that clears a color image with a specific value.
+    /// Adds a command that clears all the layers and mipmap levels of a color image with a
+    /// specific value.
     ///
     /// # Panic
     ///
     /// Panics if `color` is not a color value.
     ///
-    pub fn clear_color_image<I>(mut self, image: I, color: ClearValue)
+    pub fn clear_color_image<I>(self, image: I, color: ClearValue)
                                 -> Result<Self, ClearColorImageError>
+        where I: ImageAccess + Send + Sync + 'static,
+    {
+        let layers = image.dimensions().array_layers();
+        let levels = image.mipmap_levels();
+
+        self.clear_color_image_dimensions(image, 0, layers, 0, levels, color)
+    }
+
+    /// Adds a command that clears a color image with a specific value.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `color` is not a color value.
+    ///
+    pub fn clear_color_image_dimensions<I>(mut self, image: I, first_layer: u32, num_layers: u32,
+                                           first_mipmap: u32, num_mipmaps: u32, color: ClearValue)
+                                           -> Result<Self, ClearColorImageError>
         where I: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            check_clear_color_image(self.device(), &image)?;
+            check_clear_color_image(self.device(), &image, first_layer, num_layers,
+                                    first_mipmap, num_mipmaps)?;
 
             match color {
                 ClearValue::Float(_) | ClearValue::Int(_) | ClearValue::Uint(_) => {},
@@ -191,10 +210,10 @@ impl<P> AutoCommandBufferBuilder<P> {
             };
     
             let region = UnsafeCommandBufferBuilderColorImageClear {
-                base_mip_level: 0,
-                level_count: image.mipmap_levels(),
-                base_array_layer: 0,
-                layer_count: image.dimensions().array_layers(),
+                base_mip_level: first_mipmap,
+                level_count: num_mipmaps,
+                base_array_layer: first_layer,
+                layer_count: num_layers,
             };
 
             // TODO: let choose layout
