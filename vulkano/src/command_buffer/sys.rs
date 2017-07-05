@@ -30,6 +30,7 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
+use format::FormatTy;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
@@ -506,6 +507,73 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         vk.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
                                rects.len() as u32, rects.as_ptr());
     }*/
+
+    /// Calls `vkCmdClearColorImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    // TODO: ClearValue could be more precise
+    pub unsafe fn clear_color_image<I, R>(&mut self, image: &I, layout: ImageLayout,
+                                          color: ClearValue, regions: R)
+        where I: ?Sized + ImageAccess,
+              R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear>
+    {
+        debug_assert!(image.format().ty() == FormatTy::Float ||
+                      image.format().ty() == FormatTy::Uint ||
+                      image.format().ty() == FormatTy::Sint);
+
+        let image = image.inner();
+        debug_assert!(image.image.usage_transfer_destination());
+        debug_assert!(layout == ImageLayout::General ||
+                      layout == ImageLayout::TransferDstOptimal);
+
+        let color = match color {
+            ClearValue::Float(val) => {
+                vk::ClearColorValue::float32(val)
+            },
+            ClearValue::Int(val) => {
+                vk::ClearColorValue::int32(val)
+            },
+            ClearValue::Uint(val) => {
+                vk::ClearColorValue::uint32(val)
+            },
+            _ => {
+                vk::ClearColorValue::float32([0.0; 4])
+            },
+        };
+
+        let regions: SmallVec<[_; 8]> = regions
+            .filter_map(|region| {
+                debug_assert!(region.layer_count + region.base_array_layer <= image.num_layers as u32);
+                debug_assert!(region.level_count + region.base_mip_level <= image.num_mipmap_levels as u32);
+
+                if region.layer_count == 0 || region.level_count == 0 {
+                    return None;
+                }
+
+                Some(vk::ImageSubresourceRange {
+                    aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                    baseMipLevel: region.base_mip_level + image.first_mipmap_level as u32,
+                    levelCount: region.level_count,
+                    baseArrayLayer: region.base_array_layer + image.first_layer as u32,
+                    layerCount: region.layer_count,
+                })
+            })
+            .collect();
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdClearColorImage(cmd,
+                              image.image.internal_object(),
+                              layout as u32,
+                              &color,
+                              regions.len() as u32,
+                              regions.as_ptr());
+    }
 
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
@@ -1096,6 +1164,15 @@ impl UnsafeCommandBufferBuilderImageAspect {
         };
         out
     }
+}
+
+// TODO: move somewhere else?
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct UnsafeCommandBufferBuilderColorImageClear {
+    pub base_mip_level: u32,
+    pub level_count: u32,
+    pub base_array_layer: u32,
+    pub layer_count: u32,
 }
 
 // TODO: move somewhere else?

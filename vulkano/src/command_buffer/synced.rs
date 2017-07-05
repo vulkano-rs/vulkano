@@ -31,6 +31,7 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
+use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSet;
@@ -799,6 +800,75 @@ impl<P> SyncCommandBufferBuilder<P> {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: Vec::new(),
         }
+    }
+
+    /// Calls `vkCmdClearColorImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    pub unsafe fn clear_color_image<I, R>(&mut self, image: I, layout: ImageLayout,
+                                          color: ClearValue, regions: R)
+                                          -> Result<(), SyncCommandBufferBuilderError>
+        where I: ImageAccess + Send + Sync + 'static,
+              R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static
+    {
+        struct Cmd<I, R> {
+            image: Option<I>,
+            layout: ImageLayout,
+            color: ClearValue,
+            regions: Option<R>,
+        }
+
+        impl<P, I, R> Command<P> for Cmd<I, R>
+            where I: ImageAccess + Send + Sync + 'static,
+                  R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static
+        {
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.clear_color_image(self.image.as_ref().unwrap(), self.layout, self.color,
+                                      self.regions.take().unwrap());
+            }
+
+            fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                struct Fin<I>(I);
+                impl<I> FinalCommand for Fin<I>
+                    where I: ImageAccess + Send + Sync + 'static,
+                {
+                    fn image(&self, num: usize) -> &ImageAccess {
+                        assert_eq!(num, 0);
+                        &self.0
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.image` without using an Option.
+                Box::new(Fin(self.image.take().unwrap()))
+            }
+
+            fn image(&self, num: usize) -> &ImageAccess {
+                assert_eq!(num, 0);
+                self.image.as_ref().unwrap()
+            }
+        }
+
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 image: Some(image),
+                                                                 layout,
+                                                                 color,
+                                                                 regions: Some(regions),
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Image,
+                               0,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               layout,
+                               layout)?;
+        Ok(())
     }
 
     /// Calls `vkCmdCopyBuffer` on the builder.

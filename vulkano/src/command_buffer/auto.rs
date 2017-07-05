@@ -33,6 +33,7 @@ use command_buffer::sys::Flags;
 use command_buffer::sys::Kind;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
+use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
 use command_buffer::validity::*;
 use descriptor::descriptor_set::DescriptorSetsCollection;
@@ -40,6 +41,7 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use format::ClearValue;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::SubpassContents;
@@ -165,6 +167,58 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .begin_render_pass(framebuffer, contents, clear_values)?;
             self.subpasses_remaining = Some(num_subpasses - 1);
             self.subpass_secondary = secondary;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that clears all the layers and mipmap levels of a color image with a
+    /// specific value.
+    ///
+    /// # Panic
+    ///
+    /// Panics if `color` is not a color value.
+    ///
+    pub fn clear_color_image<I>(self, image: I, color: ClearValue)
+                                -> Result<Self, ClearColorImageError>
+        where I: ImageAccess + Send + Sync + 'static,
+    {
+        let layers = image.dimensions().array_layers();
+        let levels = image.mipmap_levels();
+
+        self.clear_color_image_dimensions(image, 0, layers, 0, levels, color)
+    }
+
+    /// Adds a command that clears a color image with a specific value.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `color` is not a color value.
+    ///
+    pub fn clear_color_image_dimensions<I>(mut self, image: I, first_layer: u32, num_layers: u32,
+                                           first_mipmap: u32, num_mipmaps: u32, color: ClearValue)
+                                           -> Result<Self, ClearColorImageError>
+        where I: ImageAccess + Send + Sync + 'static,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+            check_clear_color_image(self.device(), &image, first_layer, num_layers,
+                                    first_mipmap, num_mipmaps)?;
+
+            match color {
+                ClearValue::Float(_) | ClearValue::Int(_) | ClearValue::Uint(_) => {},
+                _ => panic!("The clear color is not a color value"),
+            };
+    
+            let region = UnsafeCommandBufferBuilderColorImageClear {
+                base_mip_level: first_mipmap,
+                level_count: num_mipmaps,
+                base_array_layer: first_layer,
+                layer_count: num_layers,
+            };
+
+            // TODO: let choose layout
+            self.inner.clear_color_image(image, ImageLayout::TransferDstOptimal, color,
+                                         iter::once(region))?;
             Ok(self)
         }
     }
@@ -661,6 +715,12 @@ err_gen!(BuildError {
 
 err_gen!(BeginRenderPassError {
     AutoCommandBufferBuilderContextError,
+    SyncCommandBufferBuilderError
+});
+
+err_gen!(ClearColorImageError {
+    AutoCommandBufferBuilderContextError,
+    CheckClearColorImageError,
     SyncCommandBufferBuilderError
 });
 
