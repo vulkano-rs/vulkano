@@ -797,60 +797,63 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn min_lod_inferior() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::new(device,
-                                      sampler::Filter::Linear,
-                                      sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      1.0,
-                                      1.0,
-                                      5.0,
-                                      2.0);
+        assert_should_panic!({
+            let _ = sampler::Sampler::new(device,
+                                        sampler::Filter::Linear,
+                                        sampler::Filter::Linear,
+                                        sampler::MipmapMode::Nearest,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        1.0,
+                                        1.0,
+                                        5.0,
+                                        2.0);
+        });
     }
 
     #[test]
-    #[should_panic]
     fn max_anisotropy() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::new(device,
-                                      sampler::Filter::Linear,
-                                      sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      1.0,
-                                      0.5,
-                                      0.0,
-                                      2.0);
+        assert_should_panic!({
+            let _ = sampler::Sampler::new(device,
+                                        sampler::Filter::Linear,
+                                        sampler::Filter::Linear,
+                                        sampler::MipmapMode::Nearest,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        sampler::SamplerAddressMode::Repeat,
+                                        1.0,
+                                        0.5,
+                                        0.0,
+                                        2.0);
+        });
     }
 
     #[test]
-    #[should_panic]
     fn different_borders() {
         let (device, queue) = gfx_dev_and_queue!();
 
         let b1 = sampler::BorderColor::IntTransparentBlack;
         let b2 = sampler::BorderColor::FloatOpaqueWhite;
 
-        let _ = sampler::Sampler::new(device,
-                                      sampler::Filter::Linear,
-                                      sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::ClampToBorder(b1),
-                                      sampler::SamplerAddressMode::ClampToBorder(b2),
-                                      sampler::SamplerAddressMode::Repeat,
-                                      1.0,
-                                      1.0,
-                                      5.0,
-                                      2.0);
+        assert_should_panic!({
+            let _ = sampler::Sampler::new(device,
+                                        sampler::Filter::Linear,
+                                        sampler::Filter::Linear,
+                                        sampler::MipmapMode::Nearest,
+                                        sampler::SamplerAddressMode::ClampToBorder(b1),
+                                        sampler::SamplerAddressMode::ClampToBorder(b2),
+                                        sampler::SamplerAddressMode::Repeat,
+                                        1.0,
+                                        1.0,
+                                        5.0,
+                                        2.0);
+        });
     }
 
     #[test]

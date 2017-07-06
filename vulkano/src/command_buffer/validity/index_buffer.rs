@@ -123,14 +123,16 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn wrong_device() {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
+
         let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(),
                                                     iter::once(queue.family()),
                                                     0 .. 500u32).unwrap();
 
-        let _ = check_index_buffer(&dev2, &buffer);
+        assert_should_panic!({
+            let _ = check_index_buffer(&dev2, &buffer);
+        });
     }
 }

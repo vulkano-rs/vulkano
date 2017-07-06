@@ -508,7 +508,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic] // TODO: check Result error instead of panicking
     fn writing_forbidden() {
         let (device, queue) = gfx_dev_and_queue!();
 
@@ -518,20 +517,21 @@ mod tests {
                                                      queue.clone())
             .unwrap();
 
-        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .fill_buffer(buffer, 50)
-            .unwrap()
-            .build()
-            .unwrap()
-            .execute(queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap();
+        assert_should_panic!({ // TODO: check Result error instead of panicking
+            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+                .unwrap()
+                .fill_buffer(buffer, 50)
+                .unwrap()
+                .build()
+                .unwrap()
+                .execute(queue.clone())
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap();
+        });
     }
 
     #[test]
-    #[should_panic] // TODO: check Result error instead of panicking
     fn read_uninitialized_forbidden() {
         let (device, queue) = gfx_dev_and_queue!();
 
@@ -548,16 +548,18 @@ mod tests {
                                                  0)
             .unwrap();
 
-        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(source, buffer)
-            .unwrap()
-            .build()
-            .unwrap()
-            .execute(queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap();
+        assert_should_panic!({ // TODO: check Result error instead of panicking
+            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+                .unwrap()
+                .copy_buffer(source, buffer)
+                .unwrap()
+                .build()
+                .unwrap()
+                .execute(queue.clone())
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap();
+        });
     }
 
     #[test]

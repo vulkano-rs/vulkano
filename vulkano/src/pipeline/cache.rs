@@ -240,10 +240,11 @@ mod tests {
     use pipeline::cache::PipelineCache;
 
     #[test]
-    #[should_panic]
     fn merge_self_forbidden() {
         let (device, queue) = gfx_dev_and_queue!();
         let pipeline = PipelineCache::empty(device).unwrap();
-        pipeline.merge(&[&pipeline]).unwrap();
+        assert_should_panic!({
+            pipeline.merge(&[&pipeline]).unwrap();
+        });
     }
 }
