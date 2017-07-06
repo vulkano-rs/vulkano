@@ -332,11 +332,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Device doesn't match physical device when creating a command pool")]
     fn panic_if_not_match_family() {
         let (device, _) = gfx_dev_and_queue!();
         let (_, queue) = gfx_dev_and_queue!();
-        let _ = UnsafeCommandPool::new(device, queue.family(), false, false);
+
+        assert_should_panic!("Device doesn't match physical device when creating a command pool", {
+            let _ = UnsafeCommandPool::new(device, queue.family(), false, false);
+        });
     }
 
     #[test]

@@ -379,29 +379,35 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Tried to wait for multiple fences that didn't belong to the same device")]
     fn multiwait_different_devices() {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let fence1 = Fence::signaled(device1.clone()).unwrap();
-        let fence2 = Fence::signaled(device2.clone()).unwrap();
+        assert_should_panic!("Tried to wait for multiple fences that didn't belong \
+                              to the same device",
+        {
+            let fence1 = Fence::signaled(device1.clone()).unwrap();
+            let fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(),
-                                  Some(Duration::new(0, 10)));
+            let _ = Fence::multi_wait([&fence1, &fence2].iter().cloned(),
+                                      Some(Duration::new(0, 10)));
+        });
     }
 
     #[test]
-    #[should_panic(expected = "Tried to reset multiple fences that didn't belong to the same device")]
     fn multireset_different_devices() {
         use std::iter::once;
 
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let mut fence1 = Fence::signaled(device1.clone()).unwrap();
-        let mut fence2 = Fence::signaled(device2.clone()).unwrap();
+        assert_should_panic!("Tried to reset multiple fences that didn't belong \
+                              to the same device",
+        {
+            let mut fence1 = Fence::signaled(device1.clone()).unwrap();
+            let mut fence2 = Fence::signaled(device2.clone()).unwrap();
 
-        let _ = Fence::multi_reset(once(&mut fence1).chain(once(&mut fence2)));
+            let _ = Fence::multi_reset(once(&mut fence1).chain(once(&mut fence2)));
+        });
     }
 }

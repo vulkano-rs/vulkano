@@ -365,7 +365,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn wrong_device_panic() {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
@@ -375,7 +374,9 @@ mod tests {
             Err(_) => return
         };
 
-        let _ = PipelineLayout::new(&device2, Some(&set), iter::empty());
+        assert_should_panic!({
+            let _ = PipelineLayout::new(&device2, Some(&set), iter::empty());
+        });
     }
 
     #[test]

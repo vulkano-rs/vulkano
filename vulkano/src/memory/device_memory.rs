@@ -405,11 +405,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn zero_size() {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().next().unwrap();
-        let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
+        assert_should_panic!({
+            let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
+        });
     }
 
     #[test]

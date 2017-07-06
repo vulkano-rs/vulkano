@@ -992,7 +992,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "The maximum number of sets can't be 0")]
     fn zero_max_set() {
         let (device, _) = gfx_dev_and_queue!();
         let desc = DescriptorsCount {
@@ -1000,14 +999,18 @@ mod tests {
             ..DescriptorsCount::zero()
         };
 
-        let _ = UnsafeDescriptorPool::new(device, &desc, 0, false);
+        assert_should_panic!("The maximum number of sets can't be 0", {
+            let _ = UnsafeDescriptorPool::new(device, &desc, 0, false);
+        });
     }
 
     #[test]
-    #[should_panic(expected = "All the descriptors count of a pool are 0")]
     fn zero_descriptors() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = UnsafeDescriptorPool::new(device, &DescriptorsCount::zero(), 10, false);
+
+        assert_should_panic!("All the descriptors count of a pool are 0", {
+            let _ = UnsafeDescriptorPool::new(device, &DescriptorsCount::zero(), 10, false);
+        });
     }
 
     #[test]
@@ -1041,7 +1044,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Tried to allocate from a pool with a set layout of a different device")]
     fn alloc_diff_device() {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
@@ -1064,10 +1066,15 @@ mod tests {
             ..DescriptorsCount::zero()
         };
 
-        let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
-        unsafe {
-            let _ = pool.alloc(iter::once(&set_layout));
-        }
+        assert_should_panic!("Tried to allocate from a pool with a set layout \
+                              of a different device",
+        {
+            let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
+
+            unsafe {
+                let _ = pool.alloc(iter::once(&set_layout));
+            }
+        });
     }
 
     #[test]

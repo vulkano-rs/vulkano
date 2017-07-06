@@ -229,14 +229,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Attachment num out of range")]
     fn attachment_out_of_range() {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = EmptySinglePassRenderPassDesc;
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
 
-        let _ = ensure_image_view_compatible(&rp, 0, &img);
+        assert_should_panic!("Attachment num out of range", {
+            let _ = ensure_image_view_compatible(&rp, 0, &img);
+        });
     }
 
     // TODO: more tests
