@@ -141,8 +141,8 @@ fn main() {
         .unwrap());
 
     let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
-        .add_sampled_image(texture.clone(), sampler.clone())
-        .build()
+        .add_sampled_image(texture.clone(), sampler.clone()).unwrap()
+        .build().unwrap()
     );
 
     let framebuffers = images.iter().map(|image| {

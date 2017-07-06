@@ -42,10 +42,12 @@ use image::ImageAccess;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::persistent::PersistentDescriptorSet;
+pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetBuilder;
 pub use self::persistent::PersistentDescriptorSetBuilderArray;
 pub use self::persistent::PersistentDescriptorSetBuf;
 pub use self::persistent::PersistentDescriptorSetBufView;
+pub use self::persistent::PersistentDescriptorSetError;
 pub use self::persistent::PersistentDescriptorSetImg;
 pub use self::simple::*;
 pub use self::std_pool::StdDescriptorPool;
