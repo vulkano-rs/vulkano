@@ -7,6 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// Since some elements of this module are deprecated, we allow using deprecated things in
+// this module in order to not get warnings.
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use buffer::BufferAccess;
