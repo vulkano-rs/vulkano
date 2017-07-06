@@ -54,7 +54,7 @@ pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
     layout: Arc<UnsafeDescriptorSetLayout>
 }
 
-impl<R, P> PersistentDescriptorSet<R, P> {
+impl PersistentDescriptorSet<()> {
     ///
     /// # Panic
     ///
