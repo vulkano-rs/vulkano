@@ -416,8 +416,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Can't enable sparse residency without enabling sparse \
-                               binding as well")]
     fn panic_wrong_sparse_residency() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel {
@@ -425,18 +423,20 @@ mod tests {
             sparse_residency: true,
             sparse_aliased: false,
         };
-        let _ = unsafe {
-            UnsafeBuffer::new(device,
-                              128,
-                              BufferUsage::all(),
-                              Sharing::Exclusive::<Empty<_>>,
-                              sparse)
-        };
+
+        assert_should_panic!("Can't enable sparse residency without enabling sparse \
+                              binding as well", {
+            let _ = unsafe {
+                UnsafeBuffer::new(device,
+                                128,
+                                BufferUsage::all(),
+                                Sharing::Exclusive::<Empty<_>>,
+                                sparse)
+            };
+        });
     }
 
     #[test]
-    #[should_panic(expected = "Can't enable sparse aliasing without enabling sparse \
-                               binding as well")]
     fn panic_wrong_sparse_aliased() {
         let (device, _) = gfx_dev_and_queue!();
         let sparse = SparseLevel {
@@ -444,13 +444,17 @@ mod tests {
             sparse_residency: false,
             sparse_aliased: true,
         };
-        let _ = unsafe {
-            UnsafeBuffer::new(device,
-                              128,
-                              BufferUsage::all(),
-                              Sharing::Exclusive::<Empty<_>>,
-                              sparse)
-        };
+
+        assert_should_panic!("Can't enable sparse aliasing without enabling sparse \
+                              binding as well", {
+            let _ = unsafe {
+                UnsafeBuffer::new(device,
+                                128,
+                                BufferUsage::all(),
+                                Sharing::Exclusive::<Empty<_>>,
+                                sparse)
+            };
+        });
     }
 
     #[test]

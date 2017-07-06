@@ -189,9 +189,10 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "Tried to submit a present command without any swapchain")]
     fn no_swapchain_added() {
         let (_, queue) = gfx_dev_and_queue!();
-        let _ = SubmitPresentBuilder::new().submit(&queue);
+        assert_should_panic!("Tried to submit a present command without any swapchain", {
+            let _ = SubmitPresentBuilder::new().submit(&queue);
+        });
     }
 }

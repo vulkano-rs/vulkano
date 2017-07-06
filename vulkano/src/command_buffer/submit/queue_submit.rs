@@ -341,7 +341,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Can't merge two queue submits that both have a fence")]
     fn merge_both_have_fences() {
         unsafe {
             let (device, _) = gfx_dev_and_queue!();
@@ -354,7 +353,9 @@ mod tests {
             let mut builder2 = SubmitCommandBufferBuilder::new();
             builder2.set_fence_signal(&fence2);
 
-            let _ = builder1.merge(builder2);
+            assert_should_panic!("Can't merge two queue submits that both have a fence", {
+                let _ = builder1.merge(builder2);
+            });
         }
     }
 }
