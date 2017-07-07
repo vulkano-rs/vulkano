@@ -49,6 +49,7 @@ pub use self::persistent::PersistentDescriptorSetBuf;
 pub use self::persistent::PersistentDescriptorSetBufView;
 pub use self::persistent::PersistentDescriptorSetError;
 pub use self::persistent::PersistentDescriptorSetImg;
+pub use self::persistent::PersistentDescriptorSetSampler;
 pub use self::simple::*;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;

@@ -239,11 +239,23 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     /// An error is returned if the image view isn't compatible with the descriptor.
     #[inline]
     pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilder<L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilder<L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         self.enter_array()?
             .add_sampled_image(image_view, sampler)?
+            .leave_array()
+    }
+
+    /// Binds a sampler as the next descriptor.
+    ///
+    /// An error is returned if the sampler isn't compatible with the descriptor.
+    #[inline]
+    pub fn add_sampler(self, sampler: Arc<Sampler>)
+        -> Result<PersistentDescriptorSetBuilder<L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+    {
+        self.enter_array()?
+            .add_sampler(sampler)?
             .leave_array()
     }
 }
@@ -358,7 +370,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: (self.builder.resources, PersistentDescriptorSetImg {
                     image: image_view,
-                    sampler: None,
                     write: !readonly,
                     first_mipmap: 0,            // FIXME:
                     num_mipmaps: 1,         // FIXME:
@@ -378,7 +389,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
     ///
     /// An error is returned if the image view isn't compatible with the descriptor.
     pub fn add_sampled_image<T>(mut self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         if self.array_element as u32 >= self.desc.array_count {
@@ -407,9 +418,8 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 set_id: self.builder.set_id,
                 binding_id: self.builder.binding_id,
                 writes: self.builder.writes,
-                resources: (self.builder.resources, PersistentDescriptorSetImg {
+                resources: ((self.builder.resources, PersistentDescriptorSetImg {
                     image: image_view,
-                    sampler: Some(sampler),
                     write: !readonly,
                     first_mipmap: 0,            // FIXME:
                     num_mipmaps: 1,         // FIXME:
@@ -418,6 +428,47 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                     layout: ImageLayout::General,            // FIXME:
                     stage: PipelineStages::none(),          // FIXME:
                     access: AccessFlagBits::none(),         // FIXME:
+                }), PersistentDescriptorSetSampler {
+                    sampler: sampler,
+                }),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
+    }
+
+    /// Binds a sampler as the next element in the array.
+    ///
+    /// An error is returned if the sampler isn't compatible with the descriptor.
+    pub fn add_sampler(mut self, sampler: Arc<Sampler>)
+        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+    {
+        if self.array_element as u32 >= self.desc.array_count {
+            return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
+        }
+
+        let desc = match self.builder.layout.descriptor(self.builder.set_id, self.builder.binding_id) {
+            Some(d) => d,
+            None => return Err(PersistentDescriptorSetError::EmptyExpected),
+        };
+
+        self.builder.writes.push(match desc.ty.ty().unwrap() {
+            DescriptorType::Sampler => {
+                DescriptorWrite::sampler(self.builder.binding_id as u32, self.array_element as u32, &sampler)
+            },
+            ty => {
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: ty });
+            },
+        });
+
+        Ok(PersistentDescriptorSetBuilderArray {
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                set_id: self.builder.set_id,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (self.builder.resources, PersistentDescriptorSetSampler {
+                    sampler: sampler,
                 }),
             },
             desc: self.desc,
@@ -447,7 +498,6 @@ pub struct PersistentDescriptorSetBufView<V>
 /// Internal object related to the `PersistentDescriptorSet` system.
 pub struct PersistentDescriptorSetImg<I> {
     image: I,
-    sampler: Option<Arc<Sampler>>,
     write: bool,
     first_mipmap: u32,
     num_mipmaps: u32,
@@ -456,6 +506,11 @@ pub struct PersistentDescriptorSetImg<I> {
     layout: ImageLayout,
     stage: PipelineStages,
     access: AccessFlagBits,
+}
+
+/// Internal object related to the `PersistentDescriptorSet` system.
+pub struct PersistentDescriptorSetSampler {
+    sampler: Arc<Sampler>,
 }
 
 /// Error related to the persistent descriptor set.
