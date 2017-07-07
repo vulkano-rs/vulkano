@@ -13,6 +13,7 @@ use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ptr;
 use std::str;
+use std::iter::FromIterator;
 
 use Error;
 use OomError;
@@ -101,7 +102,7 @@ macro_rules! extensions {
 
         impl $rawname {
             /// Constructs an extension set containing the supplied extensions.
-            pub fn new<'a, I>(extensions: I) -> Self
+            pub fn new<I>(extensions: I) -> Self
                 where I: IntoIterator<Item=CString>
             {
                 $rawname(extensions.into_iter().collect())
@@ -125,6 +126,11 @@ macro_rules! extensions {
                 $rawname(self.0.difference(&other.0).cloned().collect())
             }
 
+            /// Returns the union of both extension sets
+            pub fn union(&self, other: &Self) -> Self {
+                $rawname(self.0.union(&other.0).cloned().collect())
+            }
+
             // TODO: impl Iterator
             pub fn iter(&self) -> ::std::collections::hash_set::Iter<CString> { self.0.iter() }
         }
@@ -133,6 +139,14 @@ macro_rules! extensions {
             #[allow(unused_assignments)]
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 self.0.fmt(f)
+            }
+        }
+
+        impl FromIterator<CString> for $rawname {
+            fn from_iter<T>(iter: T) -> Self
+                where T: IntoIterator<Item = CString>
+            {
+                $rawname(iter.into_iter().collect())
             }
         }
 
