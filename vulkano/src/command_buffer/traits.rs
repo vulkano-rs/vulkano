@@ -60,6 +60,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// the given queue, and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
+    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
     fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
                    -> Result<(), CommandBufferExecError>;
 
@@ -68,6 +69,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// # Safety
     ///
     /// Must not be called if you haven't called `lock_submit` before.
+    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
