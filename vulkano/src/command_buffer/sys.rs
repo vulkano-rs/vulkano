@@ -46,6 +46,7 @@ use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use query::QueryPipelineStatisticFlags;
 use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
@@ -57,20 +58,51 @@ pub enum Kind<R, F> {
     /// A primary command buffer can execute all commands and can call secondary command buffers.
     Primary,
 
-    /// A secondary command buffer can execute all dispatch and transfer operations, but not
-    /// drawing operations.
-    Secondary,
+    /// A secondary command buffer.
+    Secondary {
+        /// If `Some`, can only call draw operations that can be executed from within a specific
+        /// subpass. Otherwise it can execute all dispatch and transfer operations, but not drawing
+        /// operations.
+        render_pass: Option<KindSecondaryRenderPass<R, F>>,
 
-    /// A secondary command buffer within a render pass can only call draw operations that can
-    /// be executed from within a specific subpass.
-    SecondaryRenderPass {
-        /// Which subpass this secondary command buffer can be called from.
-        subpass: Subpass<R>,
+        /// Whether it is allowed to have an active occlusion query in the primary command buffer
+        /// when executing this secondary command buffer.
+        occlusion_query: KindOcclusionQuery,
 
-        /// The framebuffer object that will be used when calling the command buffer.
-        /// This parameter is optional and is an optimization hint for the implementation.
-        framebuffer: Option<F>,
+        /// Which pipeline statistics queries are allowed to be active when this secondary command
+        /// buffer starts.
+        ///
+        /// Note that the `pipeline_statistics_query` feature must be enabled if any of the flags
+        /// of this value are set.
+        query_statistics_flags: QueryPipelineStatisticFlags,
     },
+}
+
+/// Additional information for `Kind::Secondary`.
+#[derive(Debug, Clone)]
+pub struct KindSecondaryRenderPass<R, F> {
+    /// Which subpass this secondary command buffer can be called from.
+    subpass: Subpass<R>,
+
+    /// The framebuffer object that will be used when calling the command buffer.
+    /// This parameter is optional and is an optimization hint for the implementation.
+    framebuffer: Option<F>,
+}
+
+/// Additional information for `Kind::Secondary`.
+#[derive(Debug, Copy, Clone)]
+pub enum KindOcclusionQuery {
+    /// It is allowed to have an active occlusion query in the primary command buffer when
+    /// executing this secondary command buffer.
+    ///
+    /// The `inherited_queries` feature must be enabled on the device for this to be a valid option.
+    Allowed {
+        /// The occlusion query can have the `control_precise` flag.
+        control_precise_allowed: bool,
+    },
+
+    /// It is forbidden to have an active occlusion query.
+    Forbidden,
 }
 
 impl
@@ -95,11 +127,16 @@ impl
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn secondary()
+    pub fn secondary(occlusion_query: KindOcclusionQuery,
+                     query_statistics_flags: QueryPipelineStatisticFlags)
         -> Kind<RenderPass<EmptySinglePassRenderPassDesc>,
                 Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
     {
-        Kind::Secondary
+        Kind::Secondary {
+            render_pass: None,
+            occlusion_query,
+            query_statistics_flags,
+        }
     }
 }
 
@@ -174,8 +211,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     {
         let secondary = match kind {
             Kind::Primary => false,
-            Kind::Secondary |
-            Kind::SecondaryRenderPass { .. } => true,
+            Kind::Secondary { .. } => true,
         };
 
         let cmd = pool.alloc(secondary, 1)?
@@ -210,31 +246,51 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             };
 
             let b = match kind {
-                Kind::Primary | Kind::Secondary => 0,
-                Kind::SecondaryRenderPass { .. } => {
+                Kind::Secondary { ref render_pass, .. } if render_pass.is_some() => {
                     vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
                 },
+                _ => 0,
             };
 
             a | b
         };
 
-        let (rp, sp) = if let Kind::SecondaryRenderPass { ref subpass, .. } = kind {
-            (subpass.render_pass().inner().internal_object(), subpass.index())
-        } else {
-            (0, 0)
+        let (rp, sp, fb) = match kind {
+            Kind::Secondary { render_pass: Some(ref render_pass), .. } => {
+                let rp = render_pass.subpass.render_pass().inner().internal_object();
+                let sp = render_pass.subpass.index();
+                let fb = match render_pass.framebuffer {
+                    Some(ref fb) => {
+                        // TODO: debug assert that the framebuffer is compatible with
+                        //       the render pass?
+                        FramebufferAbstract::inner(fb).internal_object()
+                    },
+                    None => 0,
+                };
+                (rp, sp, fb)
+            },
+            _ => (0, 0, 0)
         };
 
-        let framebuffer = if let Kind::SecondaryRenderPass {
-            ref subpass,
-            framebuffer: Some(ref framebuffer),
-        } = kind
-        {
-            // TODO: restore check
-            //assert!(framebuffer.is_compatible_with(subpass.render_pass()));     // TODO: proper error
-            FramebufferAbstract::inner(&framebuffer).internal_object()
-        } else {
-            0
+        let (oqe, qf, ps) = match kind {
+            Kind::Secondary { occlusion_query, query_statistics_flags, .. } => {
+                let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
+                debug_assert!(ps == 0 ||
+                              alloc.device().enabled_features().pipeline_statistics_query);
+
+                let (oqe, qf) = match occlusion_query {
+                    KindOcclusionQuery::Allowed { control_precise_allowed } => {
+                        debug_assert!(alloc.device().enabled_features().inherited_queries);
+                        let qf = if control_precise_allowed { vk::QUERY_CONTROL_PRECISE_BIT }
+                                 else { 0 };
+                        (vk::TRUE, qf)
+                    },
+                    KindOcclusionQuery::Forbidden => (0, 0),
+                };
+
+                (oqe, qf, ps)
+            },
+            _ => (0, 0, 0)
         };
 
         let inheritance = vk::CommandBufferInheritanceInfo {
@@ -242,10 +298,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             pNext: ptr::null(),
             renderPass: rp,
             subpass: sp,
-            framebuffer: framebuffer,
-            occlusionQueryEnable: 0, // TODO:
-            queryFlags: 0, // TODO:
-            pipelineStatistics: 0, // TODO:
+            framebuffer: fb,
+            occlusionQueryEnable: oqe,
+            queryFlags: qf,
+            pipelineStatistics: ps,
         };
 
         let infos = vk::CommandBufferBeginInfo {
