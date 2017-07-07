@@ -138,9 +138,10 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
-        uniforms: uniform_buffer.clone()
-    }));
+    let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
+        .add_buffer(uniform_buffer.clone()).unwrap()
+        .build().unwrap()
+    );
 
     let framebuffers = images.iter().map(|image| {
         Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())

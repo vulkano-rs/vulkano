@@ -73,6 +73,7 @@ use OomError;
 use VulkanObject;
 use check_errors;
 use device::Device;
+use device::DeviceOwned;
 use vk;
 
 pub use pipeline::depth_stencil::Compare;
@@ -468,6 +469,13 @@ impl Sampler {
     #[inline]
     pub fn usable_with_swizzling(&self) -> bool {
         self.usable_with_swizzling
+    }
+}
+
+unsafe impl DeviceOwned for Sampler {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

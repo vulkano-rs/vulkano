@@ -7,6 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// Since some elements of this module are deprecated, we allow using deprecated things in
+// this module in order to not get warnings.
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -101,6 +105,7 @@ unsafe impl<R, P> DescriptorSetDesc for SimpleDescriptorSet<R, P>
 /// Builds a descriptor set in the form of a `SimpleDescriptorSet` object.
 // TODO: more doc
 #[macro_export]
+#[deprecated(note = "Use `PersistentDescriptorSet` instead")]
 macro_rules! simple_descriptor_set {
     ($layout:expr, $set_num:expr, {$($name:ident: $val:expr),*$(,)*}) => ({
         #[allow(unused_imports)]
@@ -142,6 +147,7 @@ macro_rules! simple_descriptor_set {
 ///
 /// # Example
 // TODO: example here
+#[deprecated(note = "Use `PersistentDescriptorSet` instead of `simple_descriptor_set!`")]
 pub struct SimpleDescriptorSetBuilder<L, R> {
     // The pipeline layout.
     layout: L,

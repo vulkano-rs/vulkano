@@ -363,6 +363,7 @@ pub unsafe trait ImageViewAccess {
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {
+        // TODO: remove this default impl
         self.inner().format()
     }
 
@@ -390,7 +391,7 @@ pub unsafe trait ImageViewAccess {
     ///
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
-    // TODO: return a Result
+    // TODO: return a Result and propagate it when binding to a descriptor set
     fn can_be_sampled(&self, sampler: &Sampler) -> bool {
         true /* FIXME */
     }

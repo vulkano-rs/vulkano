@@ -69,7 +69,7 @@ pub unsafe trait PipelineLayoutDesc {
 
     /// Returns the descriptor for the given binding of the given set.
     ///
-    /// Returns `None` if out of range.
+    /// Returns `None` if out of range or if the descriptor is empty.
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
 
     /// If the `PipelineLayoutDesc` implementation is able to provide an existing
