@@ -253,6 +253,23 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
             .leave_array()
     }
 
+    /// Binds a buffer view as the next descriptor.
+    ///
+    /// An error is returned if the buffer isn't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    ///
+    pub fn add_buffer_view<T>(self, view: T)
+        -> Result<PersistentDescriptorSetBuilder<L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        where T: BufferViewRef
+    {
+        self.enter_array()?
+            .add_buffer_view(view)?
+            .leave_array()
+    }
+
     /// Binds an image view as the next descriptor.
     ///
     /// An error is returned if the image view isn't compatible with the descriptor.
@@ -402,6 +419,74 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: (self.builder.resources, PersistentDescriptorSetBuf {
                     buffer: buffer,
+                    write: !readonly,
+                    stage: PipelineStages::none(),      // FIXME:
+                    access: AccessFlagBits::none(),     // FIXME:
+                })
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
+    }
+
+    /// Binds a buffer view as the next element in the array.
+    ///
+    /// An error is returned if the buffer isn't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    ///
+    pub fn add_buffer_view<T>(mut self, view: T)
+        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        where T: BufferViewRef
+    {
+        assert_eq!(self.builder.layout.device().internal_object(),
+                   view.view().device().internal_object());
+
+        if self.array_element as u32 >= self.desc.array_count {
+            return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
+        }
+
+        self.builder.writes.push(match self.desc.ty {
+            DescriptorDescTy::TexelBuffer { storage, format } => {
+                if storage {
+                    // TODO: storage_texel_buffer_atomic
+
+                    if !view.view().storage_texel_buffer() {
+                        return Err(PersistentDescriptorSetError::MissingUsage);
+                    }
+
+                    DescriptorWrite::storage_texel_buffer(self.builder.binding_id as u32,
+                                                          self.array_element as u32,
+                                                          view.view())
+                } else {
+                    if !view.view().uniform_texel_buffer() {
+                        return Err(PersistentDescriptorSetError::MissingUsage);
+                    }
+
+                    DescriptorWrite::uniform_texel_buffer(self.builder.binding_id as u32,
+                                                          self.array_element as u32,
+                                                          view.view())
+                }
+            },
+            ref d => {
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
+                    expected: d.ty().unwrap()
+                });
+            },
+        });
+
+        let readonly = self.desc.readonly;
+
+        Ok(PersistentDescriptorSetBuilderArray {
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                set_id: self.builder.set_id,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (self.builder.resources, PersistentDescriptorSetBufView {
+                    view: view,
                     write: !readonly,
                     stage: PipelineStages::none(),      // FIXME:
                     access: AccessFlagBits::none(),     // FIXME:

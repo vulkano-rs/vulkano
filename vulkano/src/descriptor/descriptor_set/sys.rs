@@ -830,10 +830,9 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &Arc<BufferView<F, B>>)
+                                          view: &BufferView<F, B>)
                                           -> DescriptorWrite
-        where B: BufferAccess,
-              F: 'static + Send + Sync
+        where B: BufferAccess
     {
         assert!(view.uniform_texel_buffer());
 
@@ -846,10 +845,9 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &Arc<BufferView<F, B>>)
+                                          view: &BufferView<F, B>)
                                           -> DescriptorWrite
-        where B: BufferAccess + 'static,
-              F: 'static + Send + Sync
+        where B: BufferAccess
     {
         assert!(view.storage_texel_buffer());
 
