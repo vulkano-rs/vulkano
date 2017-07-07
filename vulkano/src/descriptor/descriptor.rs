@@ -42,6 +42,7 @@
 //!
 
 use format::Format;
+use image::Dimensions;
 use std::cmp;
 use std::ops::BitOr;
 use vk;
@@ -118,7 +119,7 @@ pub enum DescriptorDescTy {
     },
     InputAttachment {
         /// If `true`, the input attachment is multisampled. Only multisampled images can be
-        /// attached to this descriptor.
+        /// attached to this descriptor. If `false`, only single-sampled images can be attached.
         multisampled: bool,
         array_layers: DescriptorImageDescArray,
     },
@@ -300,6 +301,22 @@ pub enum DescriptorImageDescDimensions {
     TwoDimensional,
     ThreeDimensional,
     Cube,
+}
+
+impl DescriptorImageDescDimensions {
+    /// Builds the `DescriptorImageDescDimensions` that corresponds to actual dimensions.
+    #[inline]
+    pub fn from_dimensions(dims: Dimensions) -> DescriptorImageDescDimensions {
+        match dims {
+            Dimensions::Dim1d { .. } => DescriptorImageDescDimensions::OneDimensional,
+            Dimensions::Dim1dArray { .. } => DescriptorImageDescDimensions::OneDimensional,
+            Dimensions::Dim2d { .. } => DescriptorImageDescDimensions::TwoDimensional,
+            Dimensions::Dim2dArray { .. } => DescriptorImageDescDimensions::TwoDimensional,
+            Dimensions::Dim3d { .. } => DescriptorImageDescDimensions::ThreeDimensional,
+            Dimensions::Cubemap { .. } => DescriptorImageDescDimensions::Cube,
+            Dimensions::CubemapArray { .. } => DescriptorImageDescDimensions::Cube,
+        }
+    }
 }
 
 // TODO: documentation

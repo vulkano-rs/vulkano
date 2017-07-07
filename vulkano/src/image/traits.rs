@@ -363,6 +363,7 @@ pub unsafe trait ImageViewAccess {
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {
+        // TODO: remove this default impl
         self.inner().format()
     }
 
