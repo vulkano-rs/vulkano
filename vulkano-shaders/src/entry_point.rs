@@ -89,26 +89,26 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
-            let mut execution_mode = "Points"; // fallback value
-
+            let mut execution_mode = None;
+            
             for instruction in doc.instructions.iter() {
                 if let &parse::Instruction::ExecutionMode { target_id, ref mode, .. } = instruction {
                     if target_id != id {
                         continue;
                     }
                     execution_mode = match mode {
-                        &enums::ExecutionMode::ExecutionModeInputPoints => "Points",
-                        &enums::ExecutionMode::ExecutionModeInputLines => "Lines",
-                        &enums::ExecutionMode::ExecutionModeInputLinesAdjacency => "LinesWithAdjacency",
-                        &enums::ExecutionMode::ExecutionModeTriangles => "Triangles",
-                        &enums::ExecutionMode::ExecutionModeInputTrianglesAdjacency => "TrianglesWithAdjacency",
+                        &enums::ExecutionMode::ExecutionModeInputPoints => Some("Points"),
+                        &enums::ExecutionMode::ExecutionModeInputLines => Some("Lines"),
+                        &enums::ExecutionMode::ExecutionModeInputLinesAdjacency => Some("LinesWithAdjacency"),
+                        &enums::ExecutionMode::ExecutionModeTriangles => Some("Triangles"),
+                        &enums::ExecutionMode::ExecutionModeInputTrianglesAdjacency => Some("TrianglesWithAdjacency"),
                         _ => continue,
                     };
                     break;
                 }
             }
 
-            let execution_mode = format!("::vulkano::pipeline::shader::GeometryShaderExecutionMode::{0}", execution_mode);
+            let execution_mode = format!("::vulkano::pipeline::shader::GeometryShaderExecutionMode::{0}", execution_mode.unwrap());
             
             let t = format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint<(), {0}Input, \
                              {0}Output, Layout>",
