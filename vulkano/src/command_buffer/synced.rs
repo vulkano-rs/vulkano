@@ -2134,6 +2134,7 @@ impl<'a> Hash for CbKey<'a> {
     }
 }
 
+// TODO: should we really implement this trait on this type?
 unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
     type PoolAlloc = P;
 
@@ -2142,8 +2143,8 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         &self.inner
     }
 
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError> {
         // TODO: if at any point we return an error, we can't recover
 
         let commands_lock = self.commands.lock().unwrap();
@@ -2210,6 +2211,37 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         Ok(())
     }
 
+    unsafe fn unlock(&self) {
+        let commands_lock = self.commands.lock().unwrap();
+
+        for (key, entry) in self.resources.iter() {
+            let (command_id, resource_ty, resource_index) = match *key {
+                CbKey::Command {
+                    command_id,
+                    resource_ty,
+                    resource_index,
+                    ..
+                } => {
+                    (command_id, resource_ty, resource_index)
+                },
+                _ => unreachable!(),
+            };
+
+            match resource_ty {
+                KeyTy::Buffer => {
+                    let cmd = &commands_lock[command_id];
+                    let buf = cmd.buffer(resource_index);
+                    buf.unlock();
+                },
+                KeyTy::Image => {
+                    let cmd = &commands_lock[command_id];
+                    let img = cmd.image(resource_index);
+                    img.unlock();
+                },
+            }
+        }
+    }
+
     #[inline]
     fn check_buffer_access(
         &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
@@ -2256,40 +2288,5 @@ unsafe impl<P> DeviceOwned for SyncCommandBuffer<P> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
-    }
-}
-
-impl<P> Drop for SyncCommandBuffer<P> {
-    fn drop(&mut self) {
-        unsafe {
-            let commands_lock = self.commands.lock().unwrap();
-
-            for (key, entry) in self.resources.iter() {
-                let (command_id, resource_ty, resource_index) = match *key {
-                    CbKey::Command {
-                        command_id,
-                        resource_ty,
-                        resource_index,
-                        ..
-                    } => {
-                        (command_id, resource_ty, resource_index)
-                    },
-                    _ => unreachable!(),
-                };
-
-                match resource_ty {
-                    KeyTy::Buffer => {
-                        let cmd = &commands_lock[command_id];
-                        let buf = cmd.buffer(resource_index);
-                        buf.unlock();
-                    },
-                    KeyTy::Image => {
-                        let cmd = &commands_lock[command_id];
-                        let img = cmd.image(resource_index);
-                        img.unlock();
-                    },
-                }
-            }
-        }
     }
 }
