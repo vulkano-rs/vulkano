@@ -401,6 +401,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
 
+        if !image_view.can_be_sampled(&sampler) {
+            return Err(PersistentDescriptorSetError::IncompatibleImageViewSampler);
+        }
+
         self.builder.writes.push(match desc.ty.ty().unwrap() {
             DescriptorType::CombinedImageSampler => {
                 DescriptorWrite::combined_image_sampler(self.builder.binding_id as u32, self.array_element as u32, &sampler, &image_view)
@@ -535,6 +539,9 @@ pub enum PersistentDescriptorSetError {
         /// Number of elements that were added.
         obtained: u32,
     },
+
+    /// The image view isn't compatible with the sampler.
+    IncompatibleImageViewSampler,
 }
 
 impl error::Error for PersistentDescriptorSetError {
@@ -552,6 +559,9 @@ impl error::Error for PersistentDescriptorSetError {
             },
             PersistentDescriptorSetError::MissingArrayElements { .. } => {
                 "didn't fill all the elements of an array before leaving"
+            },
+            PersistentDescriptorSetError::IncompatibleImageViewSampler => {
+                "the image view isn't compatible with the sampler"
             },
         }
     }
