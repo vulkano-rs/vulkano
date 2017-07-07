@@ -68,7 +68,10 @@ use vk;
 // times in a row is an error
 pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
                           -> Result<(usize, SwapchainAcquireFuture), AcquireError> {
-    unsafe {
+    let semaphore = Semaphore::new(swapchain.device.clone())?;
+
+    // TODO: propagate `suboptimal` to the user
+    let AcquiredImage { id, suboptimal } = {
         // Check that this is not an old swapchain. From specs:
         // > swapchain must not have been replaced by being passed as the
         // > VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
@@ -77,43 +80,16 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
             return Err(AcquireError::OutOfDate);
         }
 
-        let vk = swapchain.device.pointers();
+        unsafe { acquire_next_image_raw(&swapchain, timeout, &semaphore) }?
+    };
 
-        let semaphore = Semaphore::new(swapchain.device.clone())?;
-
-        let timeout_ns = if let Some(timeout) = timeout {
-            timeout
-                .as_secs()
-                .saturating_mul(1_000_000_000)
-                .saturating_add(timeout.subsec_nanos() as u64)
-        } else {
-            u64::max_value()
-        };
-
-        let mut out = mem::uninitialized();
-        let r = check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
-                                                    swapchain.swapchain,
-                                                    timeout_ns,
-                                                    semaphore.internal_object(),
-                                                    0,
-                                                    &mut out))?;
-
-        let id = match r {
-            Success::Success => out as usize,
-            Success::Suboptimal => out as usize,        // TODO: give that info to the user
-            Success::NotReady => return Err(AcquireError::Timeout),
-            Success::Timeout => return Err(AcquireError::Timeout),
-            s => panic!("unexpected success value: {:?}", s),
-        };
-
-        Ok((id,
-            SwapchainAcquireFuture {
-                swapchain: swapchain.clone(), // TODO: don't clone
-                semaphore: semaphore,
-                image_id: id,
-                finished: AtomicBool::new(false),
-            }))
-    }
+    Ok((id,
+        SwapchainAcquireFuture {
+            swapchain: swapchain,
+            semaphore: semaphore,
+            image_id: id,
+            finished: AtomicBool::new(false),
+        }))
 }
 
 /// Presents an image on the screen.
@@ -1065,4 +1041,48 @@ impl<P> Drop for PresentFuture<P>
             }
         }
     }
+}
+
+pub struct AcquiredImage {
+    pub id: usize,
+    pub suboptimal: bool,
+}
+
+/// Unsafe variant of `acquire_next_image`.
+///
+/// # Safety
+///
+/// - The semaphore must be kept alive until it is signaled.
+/// - The swapchain must not have been replaced by being passed as the old swapchain when creating a new one.
+pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>, semaphore: &Semaphore)
+                                     -> Result<AcquiredImage, AcquireError>
+{
+    let vk = swapchain.device.pointers();
+
+    let timeout_ns = if let Some(timeout) = timeout {
+        timeout
+            .as_secs()
+            .saturating_mul(1_000_000_000)
+            .saturating_add(timeout.subsec_nanos() as u64)
+    } else {
+        u64::max_value()
+    };
+
+    let mut out = mem::uninitialized();
+    let r = check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
+                                                swapchain.swapchain,
+                                                timeout_ns,
+                                                semaphore.internal_object(),
+                                                0,
+                                                &mut out))?;
+
+    let (id, suboptimal) = match r {
+        Success::Success => (out as usize, false),
+        Success::Suboptimal => (out as usize, true),
+        Success::NotReady => return Err(AcquireError::Timeout),
+        Success::Timeout => return Err(AcquireError::Timeout),
+        s => panic!("unexpected success value: {:?}", s),
+    };
+
+    Ok(AcquiredImage { id, suboptimal })
 }
