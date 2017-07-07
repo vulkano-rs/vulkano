@@ -637,9 +637,14 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError> {
-        self.inner.prepare_submit(future, queue)
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError> {
+        self.inner.lock_submit(future, queue)
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.inner.unlock()
     }
 
     #[inline]
