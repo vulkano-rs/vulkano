@@ -283,8 +283,10 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        self.finished.store(true, Ordering::SeqCst);
-        self.command_buffer.unlock();
+        if self.finished.swap(true, Ordering::SeqCst) == false {
+            self.command_buffer.unlock();
+        }
+
         self.previous.signal_finished();
     }
 

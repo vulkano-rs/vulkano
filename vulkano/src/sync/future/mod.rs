@@ -90,6 +90,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// This must only be done if you called `build_submission()`, submitted the returned
     /// submission, and determined that it was finished.
+    ///
+    /// The implementation must be aware that this function can be called multiple times on the
+    /// same future.
     unsafe fn signal_finished(&self);
 
     /// Returns the queue that triggers the event. Returns `None` if unknown or irrelevant.
