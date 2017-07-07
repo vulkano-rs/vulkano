@@ -146,6 +146,9 @@ pub struct PersistentDescriptorSetBuilder<L, R> {
     resources: R,
 }
 
+// TODO: lots of checks are still missing, see the docs of
+//       VkDescriptorImageInfo and VkWriteDescriptorSet
+
 impl<L, R> PersistentDescriptorSetBuilder<L, R>
     where L: PipelineLayoutAbstract
 {
