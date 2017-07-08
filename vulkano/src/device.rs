@@ -255,6 +255,9 @@ impl Device {
             //       make all shaders depend on `robustBufferAccess`. But since usually the
             //       majority of shaders don't need this feature, it would be very annoying to have
             //       to enable it manually when you don't need it.
+            //
+            //       Note that if we ever remove this, don't forget to adjust the change in
+            //       `Device`'s construction below.
             let features = {
                 let mut features: vk::PhysicalDeviceFeatures = requested_features.clone().into();
                 features.robustBufferAccess = vk::TRUE;
@@ -296,7 +299,11 @@ impl Device {
                                   standard_pool: Mutex::new(Weak::new()),
                                   standard_descriptor_pool: Mutex::new(Weak::new()),
                                   standard_command_pools: Mutex::new(Default::default()),
-                                  features: requested_features.clone(),
+                                  features: Features {
+                                      // Always enabled ; see above
+                                      robust_buffer_access: true,
+                                      .. requested_features.clone()
+                                  },
                                   extensions: (&extensions).into(),
                               });
 
