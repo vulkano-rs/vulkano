@@ -802,6 +802,9 @@ impl Drop for SwapchainAcquireFuture {
                 self.semaphore = None;
             }
         }
+
+        // TODO: if this future is destroyed without being presented, then eventually acquiring
+        // a new image will block forever ; difficulty: hard
     }
 }
 
