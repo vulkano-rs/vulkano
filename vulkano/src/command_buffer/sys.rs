@@ -13,7 +13,6 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use OomError;
 use VulkanObject;
@@ -174,10 +173,6 @@ pub struct UnsafeCommandBufferBuilder<P> {
     // Device that owns the command buffer.
     // TODO: necessary?
     device: Arc<Device>,
-
-    // Flags that were used at creation.
-    // TODO: necessary?
-    flags: Flags,
 }
 
 impl<P> fmt::Debug for UnsafeCommandBufferBuilder<P> {
@@ -317,7 +312,6 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                cmd: Some(alloc),
                cmd_raw: cmd,
                device: device.clone(),
-               flags: flags,
            })
     }
 
@@ -344,8 +338,6 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                    cmd: cmd.into_alloc(),
                    cmd_raw: cmd_raw,
                    device: self.device.clone(),
-                   flags: self.flags,
-                   already_submitted: AtomicBool::new(false),
                })
         }
     }
@@ -1498,15 +1490,6 @@ pub struct UnsafeCommandBuffer<P> {
     // Device that owns the command buffer.
     // TODO: necessary?
     device: Arc<Device>,
-
-    // Flags that were used at creation.
-    // TODO: necessary?
-    flags: Flags,
-
-    // True if the command buffer has always been submitted once. Only relevant if `flags` is
-    // `OneTimeSubmit`.
-    // TODO: remove?
-    already_submitted: AtomicBool,
 }
 
 unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> {
