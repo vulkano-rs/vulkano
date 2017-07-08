@@ -12,6 +12,8 @@ use std::fmt;
 use std::iter;
 use std::mem;
 use std::slice;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use OomError;
@@ -135,7 +137,14 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
 
         self.ensure_outside_render_pass()?;
-        Ok(AutoCommandBuffer { inner: self.inner.build()? })
+
+        // TODO: adjust submit_state based on flag at creation
+        let submit_state = SubmitState::ExclusiveUse { in_use: AtomicBool::new(false) };
+
+        Ok(AutoCommandBuffer {
+            inner: self.inner.build()?,
+            submit_state,
+        })
     }
 
     /// Adds a command that enters a render pass.
@@ -626,6 +635,30 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
 
 pub struct AutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer<P>,
+
+    // Tracks usage of the command buffer on the GPU.
+    submit_state: SubmitState,
+}
+
+// Whether the command buffer can be submitted.
+#[derive(Debug)]
+enum SubmitState {
+    // The command buffer was created with the "SimultaneousUse" flag. Can always be submitted at
+    // any time.
+    Concurrent,
+
+    // The command buffer can only be submitted once simultaneously.
+    ExclusiveUse {
+        // True if the command buffer is current in use by the GPU.
+        in_use: AtomicBool,
+    },
+
+    // The command buffer can only ever be submitted once.
+    OneTime {
+        // True if the command buffer has already been submitted once and can be no longer be
+        // submitted.
+        already_submitted: AtomicBool,
+    },
 }
 
 unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
@@ -639,11 +672,38 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     #[inline]
     fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
                    -> Result<(), CommandBufferExecError> {
+        match self.submit_state {
+            SubmitState::OneTime { ref already_submitted } => {
+                let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
+                if was_already_submitted {
+                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
+                }
+            },
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let already_in_use = in_use.swap(true, Ordering::SeqCst);
+                if already_in_use {
+                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
+                }
+            },
+            SubmitState::Concurrent => (),
+        };
+
         self.inner.lock_submit(future, queue)
     }
 
     #[inline]
     unsafe fn unlock(&self) {
+        match self.submit_state {
+            SubmitState::OneTime { ref already_submitted } => {
+                debug_assert!(already_submitted.load(Ordering::SeqCst));
+            },
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let old_val = in_use.swap(false, Ordering::SeqCst);
+                debug_assert!(old_val);
+            },
+            SubmitState::Concurrent => (),
+        };
+
         self.inner.unlock()
     }
 
