@@ -364,6 +364,14 @@ pub enum CommandBufferExecError {
     /// Access to a resource has been denied.
     AccessError(AccessError),
 
+    /// The command buffer or one of the secondary command buffers it executes was created with the
+    /// "one time submit" flag, but has already been submitted it the past.
+    OneTimeSubmitAlreadySubmitted,
+
+    /// The command buffer or one of the secondary command buffers it executes is already in use by
+    /// the GPU and was not created with the "concurrent" flag.
+    ExclusiveAlreadyInUse,
+
     // TODO: missing entries (eg. wrong queue family, secondary command buffer)
 }
 
@@ -371,7 +379,18 @@ impl error::Error for CommandBufferExecError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CommandBufferExecError::AccessError(_) => "access to a resource has been denied",
+            CommandBufferExecError::AccessError(_) => {
+                "access to a resource has been denied"
+            },
+            CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
+                "the command buffer or one of the secondary command buffers it executes was \
+                 created with the \"one time submit\" flag, but has already been submitted it \
+                 the past"
+            },
+            CommandBufferExecError::ExclusiveAlreadyInUse => {
+                "the command buffer or one of the secondary command buffers it executes is \
+                 already in use by the GPU and was not created with the \"concurrent\" flag"
+            },
         }
     }
 
@@ -379,6 +398,7 @@ impl error::Error for CommandBufferExecError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             CommandBufferExecError::AccessError(ref err) => Some(err),
+            _ => None
         }
     }
 }
