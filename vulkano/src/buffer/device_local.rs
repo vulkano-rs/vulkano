@@ -250,17 +250,26 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     #[inline]
     unsafe fn unlock(&self) {
         let mut lock = self.gpu_lock.lock().unwrap();
+
         match *lock {
             GpuAccess::None => panic!("Tried to unlock a buffer that isn't locked"),
             GpuAccess::NonExclusive { ref mut num } => {
                 assert!(*num >= 1);
                 *num -= 1;
+                if *num >= 1 {
+                    return;
+                }
             },
             GpuAccess::Exclusive { ref mut num } => {
                 assert!(*num >= 1);
                 *num -= 1;
+                if *num >= 1 {
+                    return;
+                }
             },
-        }
+        };
+
+        *lock = GpuAccess::None;
     }
 }
 
