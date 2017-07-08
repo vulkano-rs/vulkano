@@ -243,7 +243,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D>(self, source: S, destination: D)
-                                      -> Result<Self, CopyBufferToImageError>
+                                      -> Result<Self, CopyBufferImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
@@ -256,7 +256,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image_dimensions<S, D>(
         mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
-        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferToImageError>
+        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
@@ -286,8 +286,58 @@ impl<P> AutoCommandBufferBuilder<P> {
                 image_extent: size,
             };
 
-            let size = source.size();
             self.inner.copy_buffer_to_image(source, destination, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
+                                            iter::once(copy))?;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that copies from an image to a buffer.
+    pub fn copy_image_to_buffer<S, D>(self, source: S, destination: D)
+                                      -> Result<Self, CopyBufferImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static
+    {
+        self.ensure_outside_render_pass()?;
+
+        let dims = source.dimensions().width_height_depth();
+        self.copy_image_to_buffer_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
+    }
+
+    /// Adds a command that copies from an image to a buffer.
+    pub fn copy_image_to_buffer_dimensions<S, D>(
+        mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
+        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+
+            // TODO: check validity
+            // TODO: hastily implemented
+
+            let copy = UnsafeCommandBufferBuilderBufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: 0,
+                buffer_image_height: 0,
+                image_aspect: if source.has_color() {
+                    UnsafeCommandBufferBuilderImageAspect {
+                        color: true,
+                        depth: false,
+                        stencil: false,
+                    }
+                } else {
+                    unimplemented!()
+                },
+                image_mip_level: mipmap,
+                image_base_array_layer: first_layer,
+                image_layer_count: num_layers,
+                image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
+                image_extent: size,
+            };
+
+            self.inner.copy_image_to_buffer(source, ImageLayout::TransferSrcOptimal, destination,     // TODO: let choose layout
                                             iter::once(copy))?;
             Ok(self)
         }
@@ -741,7 +791,7 @@ err_gen!(CopyBufferError {
     SyncCommandBufferBuilderError
 });
 
-err_gen!(CopyBufferToImageError {
+err_gen!(CopyBufferImageError {
     AutoCommandBufferBuilderContextError,
     SyncCommandBufferBuilderError
 });
