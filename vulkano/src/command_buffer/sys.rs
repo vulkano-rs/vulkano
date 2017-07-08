@@ -730,6 +730,70 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                                 regions.as_ptr());
     }
 
+    /// Calls `vkCmdCopyImageToBuffer` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_image_to_buffer<S, D, R>(&mut self, source: &S, source_layout: ImageLayout,
+                                                destination: &D, regions: R)
+        where S: ?Sized + ImageAccess,
+              D: ?Sized + BufferAccess,
+              R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>
+    {
+        debug_assert_eq!(source.samples(), 1);
+        let source = source.inner();
+        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source_layout == ImageLayout::General ||
+                      source_layout == ImageLayout::TransferSrcOptimal);
+
+        let destination = destination.inner();
+        debug_assert!(destination.offset < destination.buffer.size());
+        debug_assert!(destination.buffer.usage_transfer_destination());
+
+        let regions: SmallVec<[_; 8]> = regions
+            .map(|copy| {
+                debug_assert!(copy.image_layer_count <= source.num_layers as u32);
+                debug_assert!(copy.image_mip_level < source.num_mipmap_levels as u32);
+
+                vk::BufferImageCopy {
+                    bufferOffset: (destination.offset + copy.buffer_offset) as vk::DeviceSize,
+                    bufferRowLength: copy.buffer_row_length,
+                    bufferImageHeight: copy.buffer_image_height,
+                    imageSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: copy.image_aspect.to_vk_bits(),
+                        mipLevel: copy.image_mip_level + source.first_mipmap_level as u32,
+                        baseArrayLayer: copy.image_base_array_layer + source.first_layer as u32,
+                        layerCount: copy.image_layer_count,
+                    },
+                    imageOffset: vk::Offset3D {
+                        x: copy.image_offset[0],
+                        y: copy.image_offset[1],
+                        z: copy.image_offset[2],
+                    },
+                    imageExtent: vk::Extent3D {
+                        width: copy.image_extent[0],
+                        height: copy.image_extent[1],
+                        depth: copy.image_extent[2],
+                    },
+                }
+            })
+            .collect();
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdCopyImageToBuffer(cmd,
+                                source.image.internal_object(),
+                                source_layout as u32,
+                                destination.buffer.internal_object(),
+                                regions.len() as u32,
+                                regions.as_ptr());
+    }
+
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
     pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
