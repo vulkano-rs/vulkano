@@ -198,11 +198,10 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        if val == 1 {
+        let val = self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst);
+        if val == 0 {
             Ok(())
         } else {
-            self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
             Err(AccessError::AlreadyInUse)
         }
     }
