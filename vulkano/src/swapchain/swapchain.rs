@@ -65,11 +65,10 @@ use vk;
 ///
 /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
 /// behavior may change).
-// TODO: has to make sure vkQueuePresent is called, because calling acquire_next_image many
-// times in a row is an error
 pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
                           -> Result<(usize, SwapchainAcquireFuture), AcquireError> {
-    let semaphore = Semaphore::new(swapchain.device.clone())?;
+    let semaphore = Semaphore::new(swapchain.device.clone())?;  // TODO: take from a pool
+    let fence = Fence::new(swapchain.device.clone())?;  // TODO: take from a pool
 
     // TODO: propagate `suboptimal` to the user
     let AcquiredImage { id, suboptimal } = {
@@ -81,13 +80,14 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
             return Err(AcquireError::OutOfDate);
         }
 
-        unsafe { acquire_next_image_raw2(&swapchain, timeout, Some(&semaphore), None) }?
+        unsafe { acquire_next_image_raw2(&swapchain, timeout, Some(&semaphore), Some(&fence)) }?
     };
 
     Ok((id,
         SwapchainAcquireFuture {
             swapchain: swapchain,
-            semaphore: semaphore,
+            semaphore: Some(semaphore),
+            fence: Some(fence),
             image_id: id,
             finished: AtomicBool::new(false),
         }))
@@ -157,6 +157,7 @@ pub struct Swapchain {
 }
 
 struct ImageEntry {
+    // The actual image.
     image: UnsafeImage,
     // If true, then the image is still in the undefined layout and must be transitionned.
     undefined_layout: AtomicBool,
@@ -691,7 +692,12 @@ impl From<CapabilitiesError> for SwapchainCreationError {
 pub struct SwapchainAcquireFuture {
     swapchain: Arc<Swapchain>,
     image_id: usize,
-    semaphore: Semaphore,
+    // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
+    // happened.
+    semaphore: Option<Semaphore>,
+    // Fence that is signalled when the acquire is complete. Empty if the acquire has already
+    // happened.
+    fence: Option<Fence>,
     finished: AtomicBool,
 }
 
@@ -716,9 +722,13 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
-        let mut sem = SubmitSemaphoresWaitBuilder::new();
-        sem.add_wait_semaphore(&self.semaphore);
-        Ok(SubmitAnyBuilder::SemaphoresWait(sem))
+        if let Some(ref semaphore) = self.semaphore {
+            let mut sem = SubmitSemaphoresWaitBuilder::new();
+            sem.add_wait_semaphore(&semaphore);
+            Ok(SubmitAnyBuilder::SemaphoresWait(sem))
+        } else {
+            Ok(SubmitAnyBuilder::Empty)
+        }
     }
 
     #[inline]
@@ -780,21 +790,17 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 unsafe impl DeviceOwned for SwapchainAcquireFuture {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.semaphore.device()
+        &self.swapchain.device
     }
 }
 
 impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
         if !*self.finished.get_mut() {
-            panic!() // FIXME: what to do?
-            /*// TODO: handle errors?
-            let fence = Fence::new(self.device().clone()).unwrap();
-            let mut builder = SubmitCommandBufferBuilder::new();
-            builder.add_wait_semaphore(&self.semaphore);
-            builder.set_signal_fence(&fence);
-            builder.submit(... which queue ? ...).unwrap();
-            fence.wait(Duration::from_secs(600)).unwrap();*/
+            if let Some(ref fence) = self.fence {
+                fence.wait(None).unwrap();     // TODO: handle error?
+                self.semaphore = None;
+            }
         }
     }
 }
