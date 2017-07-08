@@ -22,6 +22,7 @@ extern crate vulkano_shader_derive;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::instance::Instance;
@@ -123,9 +124,10 @@ void main() {
     //
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
-    let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
-        data: data_buffer.clone()
-    }));
+    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+        .add_buffer(data_buffer.clone()).unwrap()
+        .build().unwrap()
+    );
 
     // In order to execute our operation, we have to build a command buffer.
     let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()

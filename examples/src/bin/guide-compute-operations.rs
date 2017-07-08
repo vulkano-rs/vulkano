@@ -21,6 +21,7 @@ use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::CommandBuffer;
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::instance::Features;
@@ -80,9 +81,10 @@ fn main() {
         .expect("failed to create compute pipeline"));
 
     // Descriptor sets
-    let set = Arc::new(simple_descriptor_set!(compute_pipeline.clone(), 0, {
-        data: data_buffer.clone()
-    }));
+    let set = Arc::new(PersistentDescriptorSet::start(compute_pipeline.clone(), 0)
+        .add_buffer(data_buffer.clone()).unwrap()
+        .build().unwrap()
+    );
 
     // Dispatch
     let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
