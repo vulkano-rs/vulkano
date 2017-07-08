@@ -43,6 +43,7 @@ use swapchain::SurfaceTransform;
 use sync::AccessCheckError;
 use sync::AccessError;
 use sync::AccessFlagBits;
+use sync::Fence;
 use sync::FlushError;
 use sync::GpuFuture;
 use sync::PipelineStages;
@@ -80,7 +81,7 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
             return Err(AcquireError::OutOfDate);
         }
 
-        unsafe { acquire_next_image_raw(&swapchain, timeout, &semaphore) }?
+        unsafe { acquire_next_image_raw2(&swapchain, timeout, Some(&semaphore), None) }?
     };
 
     Ok((id,
@@ -1054,8 +1055,17 @@ pub struct AcquiredImage {
 ///
 /// - The semaphore must be kept alive until it is signaled.
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating a new one.
+#[inline]
 pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>, semaphore: &Semaphore)
                                      -> Result<AcquiredImage, AcquireError>
+{
+    acquire_next_image_raw2(swapchain, timeout, Some(semaphore), None)
+}
+
+// TODO: this should replace `acquire_next_image_raw`, but requires an API break
+unsafe fn acquire_next_image_raw2(swapchain: &Swapchain, timeout: Option<Duration>,
+                                  semaphore: Option<&Semaphore>, fence: Option<&Fence>)
+                                  -> Result<AcquiredImage, AcquireError>
 {
     let vk = swapchain.device.pointers();
 
@@ -1072,8 +1082,8 @@ pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Dura
     let r = check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
                                                 swapchain.swapchain,
                                                 timeout_ns,
-                                                semaphore.internal_object(),
-                                                0,
+                                                semaphore.map(|s| s.internal_object()).unwrap_or(0),
+                                                fence.map(|f| f.internal_object()).unwrap_or(0),
                                                 &mut out))?;
 
     let (id, suboptimal) = match r {
