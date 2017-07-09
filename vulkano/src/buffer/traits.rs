@@ -94,6 +94,9 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
     fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
                         other_offset: usize, other_size: usize)
                         -> bool {
@@ -102,17 +105,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
         debug_assert!(self_size <= self.size());
 
         if self.inner().buffer.internal_object() != other.inner().buffer.internal_object() {
-            return false;
-        }
-
-        let self_offset = self_offset + self.inner().offset;
-        let other_offset = other_offset + other.inner().offset;
-
-        if self_offset < other_offset && self_offset + self_size <= other_offset {
-            return false;
-        }
-
-        if other_offset < self_offset && other_offset + other_size <= self_offset {
             return false;
         }
 
@@ -125,6 +117,9 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
     fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
                        other_num_mipmaps: u32)
