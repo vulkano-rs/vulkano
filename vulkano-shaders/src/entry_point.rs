@@ -16,14 +16,15 @@ use location_decoration;
 use name_from_id;
 
 pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -> (String, String) {
-    let (execution, ep_name, interface) = match instruction {
+    let (execution, id, ep_name, interface) = match instruction {
         &parse::Instruction::EntryPoint {
             ref execution,
+            id,
             ref name,
             ref interface,
             ..
         } => {
-            (execution, name, interface)
+            (execution, id, name, interface)
         },
         _ => unreachable!(),
     };
@@ -88,13 +89,35 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
         },
 
         enums::ExecutionModel::ExecutionModelGeometry => {
+            let mut execution_mode = None;
+            
+            for instruction in doc.instructions.iter() {
+                if let &parse::Instruction::ExecutionMode { target_id, ref mode, .. } = instruction {
+                    if target_id != id {
+                        continue;
+                    }
+                    execution_mode = match mode {
+                        &enums::ExecutionMode::ExecutionModeInputPoints => Some("Points"),
+                        &enums::ExecutionMode::ExecutionModeInputLines => Some("Lines"),
+                        &enums::ExecutionMode::ExecutionModeInputLinesAdjacency => Some("LinesWithAdjacency"),
+                        &enums::ExecutionMode::ExecutionModeTriangles => Some("Triangles"),
+                        &enums::ExecutionMode::ExecutionModeInputTrianglesAdjacency => Some("TrianglesWithAdjacency"),
+                        _ => continue,
+                    };
+                    break;
+                }
+            }
+
+            let execution_mode = format!("::vulkano::pipeline::shader::GeometryShaderExecutionMode::{0}", execution_mode.unwrap());
+            
             let t = format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint<(), {0}Input, \
                              {0}Output, Layout>",
                             capitalized_ep_name);
             let f = format!("geometry_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.\
-                             as_ptr() as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ \
+                             as_ptr() as *const _), {1}, {0}Input, {0}Output, Layout(ShaderStages {{ \
                              geometry: true, .. ShaderStages::none() }}))",
-                            capitalized_ep_name);
+                            capitalized_ep_name,
+                            execution_mode);
             (t, f)
         },
 

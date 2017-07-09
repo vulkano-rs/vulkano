@@ -49,18 +49,28 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         self.inner().queue_family()
     }*/
 
-    /// Checks whether this command buffer is allowed to be submitted after the `future` and on
-    /// the given queue.
-    ///
-    /// Calling this function means that at some point you will submit the command buffer to the
-    /// GPU. Once the function has returned `Ok`, the resources used by the command buffer will
-    /// likely be in a locked state until the command buffer is destroyed.
-    ///
-    /// **You should not call this function directly**, otherwise any further attempt to submit
-    /// will return a runtime error.
-    // TODO: what about command buffers that are submitted multiple times?
+    #[deprecated(note = "Renamed to `lock_submit`")]
     fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError>;
+                      -> Result<(), CommandBufferExecError>
+    {
+        self.lock_submit(future, queue)
+    }
+
+    /// Checks whether this command buffer is allowed to be submitted after the `future` and on
+    /// the given queue, and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
+    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError>;
+
+    /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if you haven't called `lock_submit` before.
+    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
+    unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
     ///
@@ -120,11 +130,11 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         assert_eq!(self.device().internal_object(),
                    future.device().internal_object());
 
-        self.prepare_submit(&future, &queue)?;
-
         if !future.queue_change_allowed() {
             assert!(future.queue().unwrap().is_same(&queue));
         }
+
+        self.lock_submit(&future, &queue)?;
 
         Ok(CommandBufferExecFuture {
                previous: future,
@@ -168,9 +178,14 @@ unsafe impl<T> CommandBuffer for T
     }
 
     #[inline]
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError> {
-        (**self).prepare_submit(future, queue)
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError> {
+        (**self).lock_submit(future, queue)
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock();
     }
 
     #[inline]
@@ -268,7 +283,10 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        self.finished.store(true, Ordering::SeqCst);
+        if self.finished.swap(true, Ordering::SeqCst) == false {
+            self.command_buffer.unlock();
+        }
+
         self.previous.signal_finished();
     }
 
@@ -333,6 +351,7 @@ impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
                 self.flush().unwrap();
                 // Block until the queue finished.
                 self.queue.wait().unwrap();
+                self.command_buffer.unlock();
                 self.previous.signal_finished();
             }
         }
@@ -345,6 +364,14 @@ pub enum CommandBufferExecError {
     /// Access to a resource has been denied.
     AccessError(AccessError),
 
+    /// The command buffer or one of the secondary command buffers it executes was created with the
+    /// "one time submit" flag, but has already been submitted it the past.
+    OneTimeSubmitAlreadySubmitted,
+
+    /// The command buffer or one of the secondary command buffers it executes is already in use by
+    /// the GPU and was not created with the "concurrent" flag.
+    ExclusiveAlreadyInUse,
+
     // TODO: missing entries (eg. wrong queue family, secondary command buffer)
 }
 
@@ -352,7 +379,18 @@ impl error::Error for CommandBufferExecError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CommandBufferExecError::AccessError(_) => "access to a resource has been denied",
+            CommandBufferExecError::AccessError(_) => {
+                "access to a resource has been denied"
+            },
+            CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
+                "the command buffer or one of the secondary command buffers it executes was \
+                 created with the \"one time submit\" flag, but has already been submitted it \
+                 the past"
+            },
+            CommandBufferExecError::ExclusiveAlreadyInUse => {
+                "the command buffer or one of the secondary command buffers it executes is \
+                 already in use by the GPU and was not created with the \"concurrent\" flag"
+            },
         }
     }
 
@@ -360,6 +398,7 @@ impl error::Error for CommandBufferExecError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             CommandBufferExecError::AccessError(ref err) => Some(err),
+            _ => None
         }
     }
 }

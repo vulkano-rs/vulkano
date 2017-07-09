@@ -108,6 +108,11 @@ pub enum Instruction {
         name: String,
         interface: Vec<u32>,
     },
+    ExecutionMode {
+        target_id: u32,
+        mode: ExecutionMode,
+        optional_literals: Vec<u32>,
+    },
     Capability(Capability),
     TypeVoid { result_id: u32 },
     TypeBool { result_id: u32 },
@@ -227,6 +232,13 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
                    interface: r.to_owned(),
                }
            },
+           16 => {
+               Instruction::ExecutionMode {
+                   target_id: operands[0],
+                   mode: ExecutionMode::from_num(operands[1])?,
+                   optional_literals: operands[2..].to_vec(),
+               }
+           }
            17 => Instruction::Capability(Capability::from_num(operands[0])?),
            19 => Instruction::TypeVoid { result_id: operands[0] },
            20 => Instruction::TypeBool { result_id: operands[0] },

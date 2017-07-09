@@ -138,9 +138,10 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let set = Arc::new(simple_descriptor_set!(pipeline.clone(), 0, {
-        uniforms: uniform_buffer.clone()
-    }));
+    let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
+        .add_buffer(uniform_buffer.clone()).unwrap()
+        .build().unwrap()
+    );
 
     let framebuffers = images.iter().map(|image| {
         Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
@@ -151,6 +152,7 @@ fn main() {
 
 
     let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
+    let rotation_start = std::time::Instant::now();
 
     loop {
         previous_frame.cleanup_finished();
@@ -159,7 +161,9 @@ fn main() {
             // aquiring write lock for the uniform buffer
             let mut buffer_content = uniform_buffer.write().unwrap(); 
 
-            let rotation = cgmath::Matrix3::from_angle_y(cgmath::Rad(time::precise_time_ns() as f32 * 0.000000001));
+            let elapsed = rotation_start.elapsed();
+            let rotation = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0;
+            let rotation = cgmath::Matrix3::from_angle_y(cgmath::Rad(rotation as f32));
 
             // since write lock implementd Deref and DerefMut traits, 
             // we can update content directly 

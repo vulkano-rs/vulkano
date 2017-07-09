@@ -119,6 +119,9 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
     fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32,
                         self_first_mipmap: u32, self_num_mipmaps: u32, other: &BufferAccess,
                         other_offset: usize, other_size: usize)
@@ -134,6 +137,9 @@ pub unsafe trait ImageAccess {
     ///
     /// If this function returns `false`, this means that we are allowed to access the offset/size
     /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
     fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32,
                        self_first_mipmap: u32, self_num_mipmaps: u32, other: &ImageAccess,
                        other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
@@ -363,6 +369,7 @@ pub unsafe trait ImageViewAccess {
     /// Returns the format of this view. This can be different from the parent's format.
     #[inline]
     fn format(&self) -> Format {
+        // TODO: remove this default impl
         self.inner().format()
     }
 
@@ -390,7 +397,7 @@ pub unsafe trait ImageViewAccess {
     ///
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
-    // TODO: return a Result
+    // TODO: return a Result and propagate it when binding to a descriptor set
     fn can_be_sampled(&self, sampler: &Sampler) -> bool {
         true /* FIXME */
     }

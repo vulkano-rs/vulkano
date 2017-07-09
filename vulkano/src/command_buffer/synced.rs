@@ -1062,6 +1062,106 @@ impl<P> SyncCommandBufferBuilder<P> {
         Ok(())
     }
 
+    /// Calls `vkCmdCopyImageToBuffer` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_image_to_buffer<S, D, R>(&mut self, source: S, source_layout: ImageLayout,
+                                                destination: D, regions: R)
+                                                -> Result<(), SyncCommandBufferBuilderError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static,
+              R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static
+    {
+        struct Cmd<S, D, R> {
+            source: Option<S>,
+            source_layout: ImageLayout,
+            destination: Option<D>,
+            regions: Option<R>,
+        }
+
+        impl<P, S, D, R> Command<P> for Cmd<S, D, R>
+            where S: ImageAccess + Send + Sync + 'static,
+                  D: BufferAccess + Send + Sync + 'static,
+                  R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>
+        {
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.copy_image_to_buffer(self.source.as_ref().unwrap(),
+                                         self.source_layout,
+                                         self.destination.as_ref().unwrap(),
+                                         self.regions.take().unwrap());
+            }
+
+            fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                struct Fin<S, D>(S, D);
+                impl<S, D> FinalCommand for Fin<S, D>
+                    where S: ImageAccess + Send + Sync + 'static,
+                          D: BufferAccess + Send + Sync + 'static
+                {
+                    fn buffer(&self, num: usize) -> &BufferAccess {
+                        assert_eq!(num, 0);
+                        &self.1
+                    }
+
+                    fn image(&self, num: usize) -> &ImageAccess {
+                        assert_eq!(num, 0);
+                        &self.0
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
+                // without using an Option.
+                Box::new(Fin(self.source.take().unwrap(),
+                             self.destination.take().unwrap()))
+            }
+
+            fn buffer(&self, num: usize) -> &BufferAccess {
+                assert_eq!(num, 0);
+                self.destination.as_ref().unwrap()
+            }
+
+            fn image(&self, num: usize) -> &ImageAccess {
+                assert_eq!(num, 0);
+                self.source.as_ref().unwrap()
+            }
+        }
+
+        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
+                                                                 source: Some(source),
+                                                                 destination: Some(destination),
+                                                                 source_layout: source_layout,
+                                                                 regions: Some(regions),
+                                                             }));
+        self.prev_cmd_resource(KeyTy::Image,
+                               0,
+                               false,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               source_layout,
+                               source_layout)?;
+        self.prev_cmd_resource(KeyTy::Buffer,
+                               0,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               ImageLayout::Undefined,
+                               ImageLayout::Undefined)?;
+        Ok(())
+    }
+
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
     pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
@@ -2134,6 +2234,7 @@ impl<'a> Hash for CbKey<'a> {
     }
 }
 
+// TODO: should we really implement this trait on this type?
 unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
     type PoolAlloc = P;
 
@@ -2142,8 +2243,8 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         &self.inner
     }
 
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError> {
         // TODO: if at any point we return an error, we can't recover
 
         let commands_lock = self.commands.lock().unwrap();
@@ -2210,6 +2311,37 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         Ok(())
     }
 
+    unsafe fn unlock(&self) {
+        let commands_lock = self.commands.lock().unwrap();
+
+        for (key, entry) in self.resources.iter() {
+            let (command_id, resource_ty, resource_index) = match *key {
+                CbKey::Command {
+                    command_id,
+                    resource_ty,
+                    resource_index,
+                    ..
+                } => {
+                    (command_id, resource_ty, resource_index)
+                },
+                _ => unreachable!(),
+            };
+
+            match resource_ty {
+                KeyTy::Buffer => {
+                    let cmd = &commands_lock[command_id];
+                    let buf = cmd.buffer(resource_index);
+                    buf.unlock();
+                },
+                KeyTy::Image => {
+                    let cmd = &commands_lock[command_id];
+                    let img = cmd.image(resource_index);
+                    img.unlock();
+                },
+            }
+        }
+    }
+
     #[inline]
     fn check_buffer_access(
         &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
@@ -2256,40 +2388,5 @@ unsafe impl<P> DeviceOwned for SyncCommandBuffer<P> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
-    }
-}
-
-impl<P> Drop for SyncCommandBuffer<P> {
-    fn drop(&mut self) {
-        unsafe {
-            let commands_lock = self.commands.lock().unwrap();
-
-            for (key, entry) in self.resources.iter() {
-                let (command_id, resource_ty, resource_index) = match *key {
-                    CbKey::Command {
-                        command_id,
-                        resource_ty,
-                        resource_index,
-                        ..
-                    } => {
-                        (command_id, resource_ty, resource_index)
-                    },
-                    _ => unreachable!(),
-                };
-
-                match resource_ty {
-                    KeyTy::Buffer => {
-                        let cmd = &commands_lock[command_id];
-                        let buf = cmd.buffer(resource_index);
-                        buf.unlock();
-                    },
-                    KeyTy::Image => {
-                        let cmd = &commands_lock[command_id];
-                        let img = cmd.image(resource_index);
-                        img.unlock();
-                    },
-                }
-            }
-        }
     }
 }

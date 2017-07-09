@@ -22,7 +22,7 @@ addons:
     - cmake-data
 
 script:
-    - cargo test --all
+    - cargo test --all -j 1
 
 after_success:
     - |

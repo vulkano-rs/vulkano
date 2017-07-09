@@ -740,6 +740,7 @@ impl fmt::Debug for UnsafeDescriptorSet {
 ///
 /// Use the various constructors to build a `DescriptorWrite`. While it is safe to build a
 /// `DescriptorWrite`, it is unsafe to actually use it to write to a descriptor set.
+// TODO: allow binding whole arrays at once
 pub struct DescriptorWrite {
     binding: u32,
     first_array_element: u32,
@@ -829,10 +830,9 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &Arc<BufferView<F, B>>)
+                                          view: &BufferView<F, B>)
                                           -> DescriptorWrite
-        where B: BufferAccess,
-              F: 'static + Send + Sync
+        where B: BufferAccess
     {
         assert!(view.uniform_texel_buffer());
 
@@ -845,10 +845,9 @@ impl DescriptorWrite {
 
     #[inline]
     pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &Arc<BufferView<F, B>>)
+                                          view: &BufferView<F, B>)
                                           -> DescriptorWrite
-        where B: BufferAccess + 'static,
-              F: 'static + Send + Sync
+        where B: BufferAccess
     {
         assert!(view.storage_texel_buffer());
 

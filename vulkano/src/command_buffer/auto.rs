@@ -12,6 +12,8 @@ use std::fmt;
 use std::iter;
 use std::mem;
 use std::slice;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use OomError;
@@ -135,7 +137,14 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
 
         self.ensure_outside_render_pass()?;
-        Ok(AutoCommandBuffer { inner: self.inner.build()? })
+
+        // TODO: adjust submit_state based on flag at creation
+        let submit_state = SubmitState::ExclusiveUse { in_use: AtomicBool::new(false) };
+
+        Ok(AutoCommandBuffer {
+            inner: self.inner.build()?,
+            submit_state,
+        })
     }
 
     /// Adds a command that enters a render pass.
@@ -243,7 +252,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D>(self, source: S, destination: D)
-                                      -> Result<Self, CopyBufferToImageError>
+                                      -> Result<Self, CopyBufferImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
@@ -256,7 +265,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image_dimensions<S, D>(
         mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
-        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferToImageError>
+        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
         where S: BufferAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
@@ -286,8 +295,58 @@ impl<P> AutoCommandBufferBuilder<P> {
                 image_extent: size,
             };
 
-            let size = source.size();
             self.inner.copy_buffer_to_image(source, destination, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
+                                            iter::once(copy))?;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that copies from an image to a buffer.
+    pub fn copy_image_to_buffer<S, D>(self, source: S, destination: D)
+                                      -> Result<Self, CopyBufferImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static
+    {
+        self.ensure_outside_render_pass()?;
+
+        let dims = source.dimensions().width_height_depth();
+        self.copy_image_to_buffer_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
+    }
+
+    /// Adds a command that copies from an image to a buffer.
+    pub fn copy_image_to_buffer_dimensions<S, D>(
+        mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
+        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: BufferAccess + Send + Sync + 'static
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+
+            // TODO: check validity
+            // TODO: hastily implemented
+
+            let copy = UnsafeCommandBufferBuilderBufferImageCopy {
+                buffer_offset: 0,
+                buffer_row_length: 0,
+                buffer_image_height: 0,
+                image_aspect: if source.has_color() {
+                    UnsafeCommandBufferBuilderImageAspect {
+                        color: true,
+                        depth: false,
+                        stencil: false,
+                    }
+                } else {
+                    unimplemented!()
+                },
+                image_mip_level: mipmap,
+                image_base_array_layer: first_layer,
+                image_layer_count: num_layers,
+                image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
+                image_extent: size,
+            };
+
+            self.inner.copy_image_to_buffer(source, ImageLayout::TransferSrcOptimal, destination,     // TODO: let choose layout
                                             iter::once(copy))?;
             Ok(self)
         }
@@ -626,6 +685,30 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
 
 pub struct AutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer<P>,
+
+    // Tracks usage of the command buffer on the GPU.
+    submit_state: SubmitState,
+}
+
+// Whether the command buffer can be submitted.
+#[derive(Debug)]
+enum SubmitState {
+    // The command buffer was created with the "SimultaneousUse" flag. Can always be submitted at
+    // any time.
+    Concurrent,
+
+    // The command buffer can only be submitted once simultaneously.
+    ExclusiveUse {
+        // True if the command buffer is current in use by the GPU.
+        in_use: AtomicBool,
+    },
+
+    // The command buffer can only ever be submitted once.
+    OneTime {
+        // True if the command buffer has already been submitted once and can be no longer be
+        // submitted.
+        already_submitted: AtomicBool,
+    },
 }
 
 unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
@@ -637,9 +720,41 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError> {
-        self.inner.prepare_submit(future, queue)
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                   -> Result<(), CommandBufferExecError> {
+        match self.submit_state {
+            SubmitState::OneTime { ref already_submitted } => {
+                let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
+                if was_already_submitted {
+                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
+                }
+            },
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let already_in_use = in_use.swap(true, Ordering::SeqCst);
+                if already_in_use {
+                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
+                }
+            },
+            SubmitState::Concurrent => (),
+        };
+
+        self.inner.lock_submit(future, queue)
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        match self.submit_state {
+            SubmitState::OneTime { ref already_submitted } => {
+                debug_assert!(already_submitted.load(Ordering::SeqCst));
+            },
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let old_val = in_use.swap(false, Ordering::SeqCst);
+                debug_assert!(old_val);
+            },
+            SubmitState::Concurrent => (),
+        };
+
+        self.inner.unlock()
     }
 
     #[inline]
@@ -736,7 +851,7 @@ err_gen!(CopyBufferError {
     SyncCommandBufferBuilderError
 });
 
-err_gen!(CopyBufferToImageError {
+err_gen!(CopyBufferImageError {
     AutoCommandBufferBuilderContextError,
     SyncCommandBufferBuilderError
 });
