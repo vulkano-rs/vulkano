@@ -81,14 +81,50 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     // True if we're in a subpass that only allows executing secondary command buffers. False if
     // we're in a subpass that only allows inline commands. Irrelevant if not in a subpass.
     subpass_secondary: bool,
+
+    // Flags passed when creating the command buffer.
+    flags: Flags,
 }
 
 impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
+    /// Starts building a command buffer.
+    ///
+    /// The final command buffer can only be executed once at a time. In other words, it is as if
+    /// executing the command buffer modifies it.
+    #[inline]
     pub fn new(device: Arc<Device>, queue_family: QueueFamily)
                -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::OneTimeSubmit)
+    }
+
+    /// Starts building a command buffer.
+    ///
+    /// Contrary to `new`, the final command buffer can only be submitted once before being
+    /// destroyed. This makes it possible for the implementation to perform additional
+    /// optimizations.
+    #[inline]
+    pub fn one_time_submit(device: Arc<Device>, queue_family: QueueFamily)
+                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    {
+        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::OneTimeSubmit)
+    }
+
+    /// Starts building a command buffer.
+    ///
+    /// Contrary to `new`, the final command buffer can be executed multiple times in parallel in
+    /// multiple different queues.
+    #[inline]
+    pub fn simultaneous_use(device: Arc<Device>, queue_family: QueueFamily)
+                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    {
+        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::SimultaneousUse)
+    }
+                
+    fn with_flags(device: Arc<Device>, queue_family: QueueFamily, flags: Flags)
+                  -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         unsafe {
             let pool = Device::standard_command_pool(&device, queue_family);
-            let inner = SyncCommandBufferBuilder::new(&pool, Kind::primary(), Flags::None);
+            let inner = SyncCommandBufferBuilder::new(&pool, Kind::primary(), flags);
             let state_cacher = StateCacher::new();
 
             Ok(AutoCommandBufferBuilder {
@@ -97,6 +133,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                    subpasses_remaining: None,
                    secondary_cb: false,
                    subpass_secondary: false,
+                   flags,
                })
         }
     }
@@ -138,8 +175,17 @@ impl<P> AutoCommandBufferBuilder<P> {
 
         self.ensure_outside_render_pass()?;
 
-        // TODO: adjust submit_state based on flag at creation
-        let submit_state = SubmitState::ExclusiveUse { in_use: AtomicBool::new(false) };
+        let submit_state = match self.flags {
+            Flags::None => {
+                SubmitState::ExclusiveUse { in_use: AtomicBool::new(false) }
+            },
+            Flags::SimultaneousUse => {
+                SubmitState::Concurrent
+            },
+            Flags::OneTimeSubmit => {
+                SubmitState::OneTime { already_submitted: AtomicBool::new(false) }
+            },
+        };
 
         Ok(AutoCommandBuffer {
             inner: self.inner.build()?,

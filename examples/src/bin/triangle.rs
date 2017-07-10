@@ -343,7 +343,7 @@ void main() {
         //
         // Note that we have to pass a queue family when we create the command buffer. The command
         // buffer will only be executable on that given queue family.
-        let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+        let command_buffer = AutoCommandBufferBuilder::one_time_submit(device.clone(), queue.family()).unwrap()
             // Before we can draw, we have to *enter a render pass*. There are two methods to do
             // this: `draw_inline` and `draw_secondary`. The latter is a bit more advanced and is
             // not covered here.
