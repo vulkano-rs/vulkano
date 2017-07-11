@@ -19,10 +19,10 @@ use vk;
 /// when creating the image.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ImageUsage {
-    /// Can be used a source for transfers. Includes blits.
+    /// Can be used as a source for transfers. Includes blits.
     pub transfer_source: bool,
 
-    /// Can be used a destination for transfers. Includes blits.
+    /// Can be used as a destination for transfers. Includes blits.
     pub transfer_destination: bool,
 
     /// Can be sampled from a shader.
