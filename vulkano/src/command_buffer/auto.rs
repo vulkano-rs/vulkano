@@ -87,34 +87,40 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
 }
 
 impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
-    /// Starts building a command buffer.
+    #[inline]
+    pub fn new(device: Arc<Device>, queue_family: QueueFamily)
+               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::None)
+    }
+
+    /// Starts building a primary command buffer.
     ///
     /// The final command buffer can only be executed once at a time. In other words, it is as if
     /// executing the command buffer modifies it.
     #[inline]
-    pub fn new(device: Arc<Device>, queue_family: QueueFamily)
+    pub fn primary(device: Arc<Device>, queue_family: QueueFamily)
                -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
-        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::OneTimeSubmit)
+        AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::None)
     }
 
-    /// Starts building a command buffer.
+    /// Starts building a primary command buffer.
     ///
-    /// Contrary to `new`, the final command buffer can only be submitted once before being
+    /// Contrary to `primary`, the final command buffer can only be submitted once before being
     /// destroyed. This makes it possible for the implementation to perform additional
     /// optimizations.
     #[inline]
-    pub fn one_time_submit(device: Arc<Device>, queue_family: QueueFamily)
+    pub fn primary_one_time_submit(device: Arc<Device>, queue_family: QueueFamily)
                         -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
     {
         AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::OneTimeSubmit)
     }
 
-    /// Starts building a command buffer.
+    /// Starts building a primary command buffer.
     ///
-    /// Contrary to `new`, the final command buffer can be executed multiple times in parallel in
-    /// multiple different queues.
+    /// Contrary to `primary`, the final command buffer can be executed multiple times in parallel
+    /// in multiple different queues.
     #[inline]
-    pub fn simultaneous_use(device: Arc<Device>, queue_family: QueueFamily)
+    pub fn primary_simultaneous_use(device: Arc<Device>, queue_family: QueueFamily)
                       -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
     {
         AutoCommandBufferBuilder::with_flags(device, queue_family, Flags::SimultaneousUse)
