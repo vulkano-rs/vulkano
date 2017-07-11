@@ -172,7 +172,7 @@ fn main() {
 
         let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
-        let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::one_time_submit(device.clone(), queue.family()).unwrap()
+        let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
                 vec![
