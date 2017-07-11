@@ -70,6 +70,12 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder<P>,
     state_cacher: StateCacher,
 
+    // True if the queue family supports graphics operations.
+    graphics_allowed: bool,
+
+    // True if the queue family supports compute operations.
+    compute_allowed: bool,
+
     // Contains the number of subpasses remaining in the current render pass, or `None` if we're
     // outside a render pass. If this is `Some(0)`, the user must call `end_render_pass`. If this
     // is `Some(1)` or more, the user must call `next_subpass`.
@@ -133,9 +139,14 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
             let inner = SyncCommandBufferBuilder::new(&pool, Kind::primary(), flags);
             let state_cacher = StateCacher::new();
 
+            let graphics_allowed = queue_family.supports_graphics();
+            let compute_allowed = queue_family.supports_compute();
+
             Ok(AutoCommandBufferBuilder {
                    inner: inner?,
-                   state_cacher: state_cacher,
+                   state_cacher,
+                   graphics_allowed,
+                   compute_allowed,
                    subpasses_remaining: None,
                    secondary_cb: false,
                    subpass_secondary: false,
@@ -216,6 +227,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
             }
 
+            if !self.graphics_allowed {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
             self.ensure_outside_render_pass()?;
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
@@ -261,6 +276,10 @@ impl<P> AutoCommandBufferBuilder<P> {
         where I: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
+            if !self.graphics_allowed && !self.compute_allowed {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
             self.ensure_outside_render_pass()?;
             check_clear_color_image(self.device(), &image, first_layer, num_layers,
                                     first_mipmap, num_mipmaps)?;
@@ -411,6 +430,10 @@ impl<P> AutoCommandBufferBuilder<P> {
               S: DescriptorSetsCollection
     {
         unsafe {
+            if !self.compute_allowed {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
             self.ensure_outside_render_pass()?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
@@ -458,6 +481,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
+            debug_assert!(self.graphics_allowed);
+
             self.inner
                 .draw(vb_infos.vertex_count as u32, vb_infos.instance_count as u32, 0, 0);
             Ok(self)
@@ -476,7 +501,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
-
+    
             self.ensure_inside_render_pass(false)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
@@ -503,6 +528,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
+
+            debug_assert!(self.graphics_allowed);
 
             self.inner.draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
             Ok(self)
@@ -545,6 +572,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
+            debug_assert!(self.graphics_allowed);
+
             self.inner.draw_indirect(indirect_buffer,
                                      draw_count,
                                      mem::size_of::<DrawIndirectCommand>() as u32)?;
@@ -572,6 +601,8 @@ impl<P> AutoCommandBufferBuilder<P> {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch);
                 },
             }
+
+            debug_assert!(self.graphics_allowed);
 
             self.inner.end_render_pass();
             self.subpasses_remaining = None;
@@ -623,6 +654,8 @@ impl<P> AutoCommandBufferBuilder<P> {
             };
 
             self.subpass_secondary = secondary;
+
+            debug_assert!(self.graphics_allowed);
 
             let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
                            else { SubpassContents::Inline };
@@ -962,6 +995,8 @@ pub enum AutoCommandBufferBuilderContextError {
     ForbiddenInsideRenderPass,
     /// Operation forbidden outside of a render pass.
     ForbiddenOutsideRenderPass,
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
     /// Tried to end a render pass with subpasses remaining, or tried to go to next subpass with no
     /// subpass remaining.
     NumSubpassesMismatch,
@@ -982,6 +1017,9 @@ impl error::Error for AutoCommandBufferBuilderContextError {
             },
             AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
                 "operation forbidden outside of a render pass"
+            },
+            AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
+                "the queue family doesn't allow this operation"
             },
             AutoCommandBufferBuilderContextError::NumSubpassesMismatch => {
                 "tried to end a render pass with subpasses remaining, or tried to go to next \
