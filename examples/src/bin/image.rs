@@ -157,7 +157,7 @@ fn main() {
 
         let (image_num, future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
-        let cb = vulkano::command_buffer::AutoCommandBufferBuilder::new(device.clone(), queue.family())
+        let cb = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
             .unwrap()
             .copy_buffer_to_image(pixel_buffer.clone(), texture.clone())
             .unwrap()

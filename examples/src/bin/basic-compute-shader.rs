@@ -130,7 +130,7 @@ void main() {
     );
 
     // In order to execute our operation, we have to build a command buffer.
-    let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
         // The command buffer only does one thing: execute the compute pipeline.
         // This is called a *dispatch* operation.
         //
