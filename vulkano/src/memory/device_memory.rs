@@ -58,7 +58,6 @@ impl DeviceMemory {
     /// - Panics if `size` is 0.
     /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     ///
-    // TODO: VK_ERROR_TOO_MANY_OBJECTS error
     #[inline]
     pub fn alloc(device: Arc<Device>, memory_type: MemoryType, size: usize)
                  -> Result<DeviceMemory, OomError> {
@@ -77,7 +76,7 @@ impl DeviceMemory {
             let physical_device = device.physical_device();
             let mut allocation_count = device.allocation_count().lock().expect("Poisoned mutex");
             if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
-                return Err(OomError::OutOfDeviceMemory) // TODO should be VK_ERROR_TOO_MANY_OBJECTS
+                return Err(OomError::TooManyObjects)
             }
             let vk = device.pointers();
 
