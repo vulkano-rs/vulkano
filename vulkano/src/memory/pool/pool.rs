@@ -14,11 +14,11 @@ use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use OomError;
 use device::Device;
 use instance::MemoryType;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
+use memory::DeviceMemoryAllocError;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -53,7 +53,7 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
     type Alloc = StdMemoryPoolAlloc;
 
     fn alloc(&self, memory_type: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
-             -> Result<StdMemoryPoolAlloc, OomError> {
+             -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
         let mut pools = self.pools.lock().unwrap();
 
         match pools.entry((memory_type.id(), layout)) {

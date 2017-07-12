@@ -132,8 +132,6 @@ pub enum OomError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
-    /// The maximum number of memory allocations has been exceeded.
-    TooManyObjects,
 }
 
 impl error::Error for OomError {
@@ -142,7 +140,6 @@ impl error::Error for OomError {
         match *self {
             OomError::OutOfHostMemory => "no memory available on the host",
             OomError::OutOfDeviceMemory => "no memory available on the graphical device",
-            OomError::TooManyObjects => "the maximum number of memory allocations has been exceeded.",
         }
     }
 }
@@ -160,7 +157,6 @@ impl From<Error> for OomError {
         match err {
             Error::OutOfHostMemory => OomError::OutOfHostMemory,
             Error::OutOfDeviceMemory => OomError::OutOfDeviceMemory,
-            Error::TooManyObjects => OomError::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

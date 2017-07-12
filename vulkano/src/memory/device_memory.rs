@@ -9,6 +9,7 @@
 
 use std::fmt;
 use std::mem;
+use std::error;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
@@ -17,6 +18,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use OomError;
+use Error;
 use VulkanObject;
 use check_errors;
 use device::Device;
@@ -60,7 +62,7 @@ impl DeviceMemory {
     ///
     #[inline]
     pub fn alloc(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                 -> Result<DeviceMemory, OomError> {
+                 -> Result<DeviceMemory, DeviceMemoryAllocError> {
         assert!(size >= 1);
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
@@ -76,7 +78,7 @@ impl DeviceMemory {
             let physical_device = device.physical_device();
             let mut allocation_count = device.allocation_count().lock().expect("Poisoned mutex");
             if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
-                return Err(OomError::TooManyObjects)
+                return Err(DeviceMemoryAllocError::TooManyObjects)
             }
             let vk = device.pointers();
 
@@ -112,7 +114,7 @@ impl DeviceMemory {
     /// - Panics if the memory type is not host-visible.
     ///
     pub fn alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                         -> Result<MappedDeviceMemory, OomError> {
+                         -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
@@ -399,10 +401,68 @@ impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
     }
 }
 
+/// Error type returned by functions related to `DeviceMemory`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DeviceMemoryAllocError {
+    /// Not enough memory available.
+    OomError(OomError),
+    /// The maximum number of allocations has been exceeded.
+    TooManyObjects,
+    /// Memory map failed.
+    MemoryMapFailed,
+}
+
+impl error::Error for DeviceMemoryAllocError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            DeviceMemoryAllocError::OomError(_) => "not enough memory available",
+            DeviceMemoryAllocError::TooManyObjects => "the maximum number of allocations has been exceeded",
+            DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            DeviceMemoryAllocError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for DeviceMemoryAllocError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for DeviceMemoryAllocError {
+    #[inline]
+    fn from(err: Error) -> DeviceMemoryAllocError {
+        match err {
+            e @ Error::OutOfHostMemory |
+            e @ Error::OutOfDeviceMemory => DeviceMemoryAllocError::OomError(e.into()),
+            Error::TooManyObjects => DeviceMemoryAllocError::TooManyObjects,
+            Error::MemoryMapFailed => DeviceMemoryAllocError::MemoryMapFailed,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for DeviceMemoryAllocError {
+    #[inline]
+    fn from(err: OomError) -> DeviceMemoryAllocError {
+        DeviceMemoryAllocError::OomError(err)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use OomError;
     use memory::DeviceMemory;
+    use memory::DeviceMemoryAllocError;
 
     #[test]
     fn create() {
@@ -431,7 +491,7 @@ mod tests {
             .unwrap();
 
         match DeviceMemory::alloc(device.clone(), mem_ty, 0xffffffffffffffff) {
-            Err(OomError::OutOfDeviceMemory) => (),
+            Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)) => (),
             _ => panic!(),
         }
     }
@@ -452,7 +512,7 @@ mod tests {
 
         for _ in 0 .. 4 {
             match DeviceMemory::alloc(device.clone(), mem_ty, heap_size / 3) {
-                Err(OomError::OutOfDeviceMemory) => return,     // test succeeded
+                Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
                 Ok(a) => allocs.push(a),
                 _ => (),
             }

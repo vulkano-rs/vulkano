@@ -12,11 +12,11 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use OomError;
 use device::Device;
 use instance::Instance;
 use instance::MemoryType;
 use memory::DeviceMemory;
+use memory::DeviceMemoryAllocError;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl StdNonHostVisibleMemoryTypePool {
     /// - Panics if `alignment` is 0.
     ///
     pub fn alloc(me: &Arc<Self>, size: usize, alignment: usize)
-                 -> Result<StdNonHostVisibleMemoryTypePoolAlloc, OomError> {
+                 -> Result<StdNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocError> {
         assert!(size != 0);
         assert!(alignment != 0);
 

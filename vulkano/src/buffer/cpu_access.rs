@@ -44,14 +44,13 @@ use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
+use memory::DeviceMemoryAllocError;
 use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
-
-use OomError;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
@@ -92,7 +91,7 @@ impl<T> CpuAccessibleBuffer<T> {
     #[deprecated]
     #[inline]
     pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                      -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe { CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
@@ -100,7 +99,7 @@ impl<T> CpuAccessibleBuffer<T> {
 
     /// Builds a new buffer with some data in it. Only allowed for sized data.
     pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
-                            -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                            -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
               T: Content + 'static
     {
@@ -124,7 +123,7 @@ impl<T> CpuAccessibleBuffer<T> {
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
     pub unsafe fn uninitialized<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                                       -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                                       -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
@@ -135,7 +134,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
     pub fn from_iter<'a, I, Q>(device: Arc<Device>, usage: BufferUsage, queue_families: Q, data: I)
-                               -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+                               -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static,
               Q: IntoIterator<Item = QueueFamily<'a>>
@@ -167,7 +166,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
     #[inline]
     #[deprecated]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe { CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families) }
@@ -177,7 +176,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
     #[inline]
     pub unsafe fn uninitialized_array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage,
                                              queue_families: I)
-                                             -> Result<Arc<CpuAccessibleBuffer<[T]>>, OomError>
+                                             -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
@@ -192,7 +191,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     /// You must ensure that the size that you pass is correct for `T`.
     ///
     pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, OomError>
+                             queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families
@@ -209,7 +208,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
 
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
-                Err(BufferCreationError::OomError(err)) => return Err(err),
+                Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
                 // errors can't happen
             }

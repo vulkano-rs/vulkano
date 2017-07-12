@@ -46,11 +46,10 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
+use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::NowFuture;
 use sync::Sharing;
-
-use OomError;
 
 /// Buffer that is written once then read for as long as it is alive.
 // TODO: implement Debug
@@ -88,7 +87,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// be finished before submitting your own operation.
     pub fn from_data<'a, I>(
         data: T, usage: BufferUsage, queue_families: I, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), OomError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
               T: 'static + Send + Sync + Sized
     {
@@ -107,7 +106,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// be finished before submitting your own operation.
     pub fn from_buffer<'a, B, I>(
         source: B, usage: BufferUsage, queue_families: I, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), OomError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
         where B: BufferAccess + TypedBufferAccess<Content = T> + 'static + Clone + Send + Sync,
               I: IntoIterator<Item = QueueFamily<'a>>,
               T: 'static + Send + Sync
@@ -158,7 +157,7 @@ impl<T> ImmutableBuffer<T> {
     #[inline]
     pub unsafe fn uninitialized<'a, I>(
         device: Arc<Device>, usage: BufferUsage, queue_families: I)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), OomError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         ImmutableBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
@@ -168,7 +167,7 @@ impl<T> ImmutableBuffer<T> {
 impl<T> ImmutableBuffer<[T]> {
     pub fn from_iter<'a, D, I>(
         data: D, usage: BufferUsage, queue_families: I, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), OomError>
+        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>,
               D: ExactSizeIterator<Item = T>,
               T: 'static + Send + Sync + Sized
@@ -199,7 +198,7 @@ impl<T> ImmutableBuffer<[T]> {
     #[inline]
     pub unsafe fn uninitialized_array<'a, I>(
         device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferInitialization<[T]>), OomError>
+        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferInitialization<[T]>), DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         ImmutableBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
@@ -225,7 +224,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     #[inline]
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), OomError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families.into_iter().map(|f| f.id()).collect();
@@ -236,7 +235,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     // inlined.
     unsafe fn raw_impl(
         device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: SmallVec<[u32; 4]>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), OomError> {
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError> {
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
@@ -246,7 +245,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
 
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
-                Err(BufferCreationError::OomError(err)) => return Err(err),
+                Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
                 // errors can't happen
             }

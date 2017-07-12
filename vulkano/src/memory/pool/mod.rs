@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use OomError;
 use instance::MemoryType;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
+use memory::DeviceMemoryAllocError;
 
 pub use self::host_visible::StdHostVisibleMemoryTypePool;
 pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
@@ -44,7 +44,7 @@ pub unsafe trait MemoryPool {
     /// - Panics if `alignment` is 0.
     ///
     fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
-             -> Result<Self::Alloc, OomError>;
+             -> Result<Self::Alloc, DeviceMemoryAllocError>;
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.

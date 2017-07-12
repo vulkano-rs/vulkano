@@ -34,10 +34,9 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
+use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
-
-use OomError;
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -77,7 +76,7 @@ impl<T> DeviceLocalBuffer<T> {
     // TODO: unsafe because uninitialized data
     #[inline]
     pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+                      -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe { DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
@@ -89,7 +88,7 @@ impl<T> DeviceLocalBuffer<[T]> {
     // TODO: unsafe because uninitialized data
     #[inline]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                        -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
+                        -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe { DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families) }
@@ -105,7 +104,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
                              queue_families: I)
-                             -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+                             -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families
@@ -122,7 +121,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
 
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
-                Err(BufferCreationError::OomError(err)) => return Err(err),
+                Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
                 // errors can't happen
             }
