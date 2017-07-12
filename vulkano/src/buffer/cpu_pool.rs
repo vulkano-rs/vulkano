@@ -32,6 +32,7 @@ use memory::pool::AllocLayout;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
+use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -197,7 +198,7 @@ impl<T, A> CpuBufferPool<T, A>
     /// Sets the capacity to `capacity`, or does nothing if the capacity is already higher.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
-    pub fn reserve(&self, capacity: usize) -> Result<(), OomError> {
+    pub fn reserve(&self, capacity: usize) -> Result<(), DeviceMemoryAllocError> {
         let mut cur_buf = self.current_buffer.lock().unwrap();
 
         // Check current capacity.
@@ -254,7 +255,7 @@ impl<T, A> CpuBufferPool<T, A>
     // Creates a new buffer and sets it as current.
     fn reset_buf(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
                  capacity: usize)
-                 -> Result<(), OomError> {
+                 -> Result<(), DeviceMemoryAllocError> {
         unsafe {
             let (buffer, mem_reqs) = {
                 let sharing = if self.queue_families.len() >= 2 {
@@ -265,7 +266,7 @@ impl<T, A> CpuBufferPool<T, A>
 
                 let total_size = match self.one_size.checked_mul(capacity) {
                     Some(s) => s,
-                    None => return Err(OomError::OutOfDeviceMemory),
+                    None => return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
                 };
 
                 match UnsafeBuffer::new(self.device.clone(),
@@ -274,7 +275,7 @@ impl<T, A> CpuBufferPool<T, A>
                                           sharing,
                                           SparseLevel::none()) {
                     Ok(b) => b,
-                    Err(BufferCreationError::OomError(err)) => return Err(err),
+                    Err(BufferCreationError::AllocError(err)) => return Err(err),
                     Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
                     // errors can't happen
                 }

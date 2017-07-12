@@ -30,6 +30,7 @@ use image::MipmapsCount;
 use image::ViewType;
 use memory::DeviceMemory;
 use memory::MemoryRequirements;
+use memory::DeviceMemoryAllocError;
 use sync::Sharing;
 
 use Error;
@@ -797,8 +798,8 @@ impl Drop for UnsafeImage {
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
-    /// Not enough memory.
-    OomError(OomError),
+    /// Allocating memory failed.
+    AllocError(DeviceMemoryAllocError),
     /// A wrong number of mipmaps was provided.
     InvalidMipmapsCount {
         obtained: u32,
@@ -820,7 +821,7 @@ impl error::Error for ImageCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            ImageCreationError::OomError(_) => "not enough memory available",
+            ImageCreationError::AllocError(_) => "allocating memory failed",
             ImageCreationError::InvalidMipmapsCount { .. } =>
                 "a wrong number of mipmaps was provided",
             ImageCreationError::UnsupportedSamplesCount { .. } =>
@@ -842,7 +843,7 @@ impl error::Error for ImageCreationError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            ImageCreationError::OomError(ref err) => Some(err),
+            ImageCreationError::AllocError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -858,7 +859,14 @@ impl fmt::Display for ImageCreationError {
 impl From<OomError> for ImageCreationError {
     #[inline]
     fn from(err: OomError) -> ImageCreationError {
-        ImageCreationError::OomError(err)
+        ImageCreationError::AllocError(DeviceMemoryAllocError::OomError(err))
+    }
+}
+
+impl From<DeviceMemoryAllocError> for ImageCreationError {
+    #[inline]
+    fn from(err: DeviceMemoryAllocError) -> ImageCreationError {
+        ImageCreationError::AllocError(err)
     }
 }
 
@@ -866,8 +874,8 @@ impl From<Error> for ImageCreationError {
     #[inline]
     fn from(err: Error) -> ImageCreationError {
         match err {
-            err @ Error::OutOfHostMemory => ImageCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => ImageCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfHostMemory => ImageCreationError::AllocError(err.into()),
+            err @ Error::OutOfDeviceMemory => ImageCreationError::AllocError(err.into()),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

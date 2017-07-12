@@ -36,6 +36,7 @@ use buffer::usage::usage_to_bits;
 use device::Device;
 use device::DeviceOwned;
 use memory::DeviceMemory;
+use memory::DeviceMemoryAllocError;
 use memory::MemoryRequirements;
 use sync::Sharing;
 
@@ -325,8 +326,8 @@ impl SparseLevel {
 /// Error that can happen when creating a buffer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
-    /// Not enough memory.
-    OomError(OomError),
+    /// Allocating memory failed.
+    AllocError(DeviceMemoryAllocError),
     /// Sparse binding was requested but the corresponding feature wasn't enabled.
     SparseBindingFeatureNotEnabled,
     /// Sparse residency was requested but the corresponding feature wasn't enabled.
@@ -339,7 +340,7 @@ impl error::Error for BufferCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            BufferCreationError::OomError(_) => "not enough memory available",
+            BufferCreationError::AllocError(_) => "allocating memory failed",
             BufferCreationError::SparseBindingFeatureNotEnabled => {
                 "sparse binding was requested but the corresponding feature wasn't enabled"
             },
@@ -355,7 +356,7 @@ impl error::Error for BufferCreationError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            BufferCreationError::OomError(ref err) => Some(err),
+            BufferCreationError::AllocError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -371,7 +372,7 @@ impl fmt::Display for BufferCreationError {
 impl From<OomError> for BufferCreationError {
     #[inline]
     fn from(err: OomError) -> BufferCreationError {
-        BufferCreationError::OomError(err)
+        BufferCreationError::AllocError(err.into())
     }
 }
 
@@ -379,8 +380,8 @@ impl From<Error> for BufferCreationError {
     #[inline]
     fn from(err: Error) -> BufferCreationError {
         match err {
-            err @ Error::OutOfHostMemory => BufferCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => BufferCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfHostMemory => BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
+            err @ Error::OutOfDeviceMemory => BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
