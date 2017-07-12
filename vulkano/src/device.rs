@@ -414,6 +414,13 @@ impl Device {
         }
     }
 
+    /// Used to track the number of allocations on this device.
+    ///
+    /// To ensure valid usage of the vulkan API, we cannot call `vkAllocateMemory` when
+    /// `maxMemoryAllocationCount` has been exceeded. See the vulkan specs:
+    /// https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
+    ///
+    /// Warning: You should never modify this value, except in `device_memory` module
     pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
         &self.allocation_count
     }
