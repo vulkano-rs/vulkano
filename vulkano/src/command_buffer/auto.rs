@@ -249,7 +249,37 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
-    /// Adds a command that blit an image to another.
+    /// Adds a command that blits an image to another.
+    ///
+    /// A *blit* is similar to an image copy operation, except that the portion of the image that
+    /// is transferred can be resized. You choose an area of the source and an area of the
+    /// destination, and the implementation will resize the area of the source so that it matches
+    /// the size of the area of the destination before writing it.
+    ///
+    /// Blit operations have several restrictions:
+    ///
+    /// - Blit operations are only allowed on queue families that support graphics operations.
+    /// - The format of the source and destination images must support blit operations, which
+    ///   depends on the Vulkan implementation. Vulkan guarantees that some specific formats must
+    ///   always be supported. See tables 52 to 61 of the specifications.
+    /// - Only single-sampled images are allowed.
+    /// - You can only blit between two images whose formats belong to the same type. The types
+    ///   are: floating-point, signed integers, unsigned integers, depth-stencil.
+    /// - If you blit between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - If you blit between depth, stencil or depth-stencil images, only the `Nearest` filter is
+    ///   allowed.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the top-left offset and 1 for
+    ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is superior to 1, the blit will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the source or the destination was not created with `device`.
+    ///
     pub fn blit_image<S, D>(
         mut self, source: S, source_top_left: [i32; 3], source_bottom_right: [i32; 3],
         source_base_array_layer: u32, source_mip_level: u32, destination: D,

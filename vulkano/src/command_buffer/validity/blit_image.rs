@@ -19,6 +19,8 @@ use sampler::Filter;
 
 /// Checks whether a blit image command is valid.
 ///
+/// Note that this doesn't check whether `layer_count` is equal to 0. TODO: change that?
+///
 /// # Panic
 ///
 /// - Panics if the source or the destination was not created with `device`.
