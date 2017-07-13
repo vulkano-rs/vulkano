@@ -67,10 +67,10 @@ impl DeviceMemory {
         DeviceMemory::dedicated_alloc(device, memory_type, size, DedicatedAlloc::None)
     }
                 
-    /// Same as `alloc`, but allows specifying a resource that we will be bound to the memory.
+    /// Same as `alloc`, but allows specifying a resource that will be bound to the memory.
     ///
-    /// If `resource` is different from `None`, then the returned memory must not be bound to a
-    /// different buffer or image.
+    /// If a buffer or an image is specified in `resource`, then the returned memory must not be
+    /// bound to a different buffer or image.
     ///
     /// If the `VK_KHR_dedicated_allocation` extension is enabled on the device, then it will be
     /// used by this method. Otherwise the `resource` parameter will be ignored.
