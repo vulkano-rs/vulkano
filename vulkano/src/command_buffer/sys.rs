@@ -46,6 +46,7 @@ use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use query::QueryPipelineStatisticFlags;
+use sampler::Filter;
 use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
@@ -531,6 +532,104 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                                 num_bindings,
                                 params.raw_buffers.as_ptr(),
                                 params.offsets.as_ptr());
+    }
+
+    /// Calls `vkCmdBlitImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn blit_image<S, D, R>(&mut self, source: &S, source_layout: ImageLayout,
+                                      destination: &D, destination_layout: ImageLayout, regions: R,
+                                      filter: Filter)
+        where S: ?Sized + ImageAccess,
+              D: ?Sized + ImageAccess,
+              R: Iterator<Item = UnsafeCommandBufferBuilderImageBlit>
+    {
+        debug_assert!(filter == Filter::Nearest || !source.format().ty().is_depth_and_or_stencil());
+        debug_assert!((source.format().ty() == FormatTy::Uint) ==
+                      (destination.format().ty() == FormatTy::Uint));
+        debug_assert!((source.format().ty() == FormatTy::Sint) ==
+                      (destination.format().ty() == FormatTy::Sint));
+        debug_assert!(source.format() == destination.format() ||
+                      !source.format().ty().is_depth_and_or_stencil());
+    
+        debug_assert_eq!(source.samples(), 1);
+        let source = source.inner();
+        debug_assert!(source.image.supports_blit_source());
+        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source_layout == ImageLayout::General ||
+                      source_layout == ImageLayout::TransferDstOptimal);
+
+        debug_assert_eq!(destination.samples(), 1);
+        let destination = destination.inner();
+        debug_assert!(destination.image.supports_blit_destination());
+        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination_layout == ImageLayout::General ||
+                      destination_layout == ImageLayout::TransferDstOptimal);
+
+        let regions: SmallVec<[_; 8]> = regions
+            .filter_map(|blit| {
+                // TODO: not everything is checked here
+                debug_assert!(blit.source_base_array_layer + blit.layer_count <= source.num_layers as u32);
+                debug_assert!(blit.destination_base_array_layer + blit.layer_count <= destination.num_layers as u32);
+                debug_assert!(blit.source_mip_level < destination.num_mipmap_levels as u32);
+                debug_assert!(blit.destination_mip_level < destination.num_mipmap_levels as u32);
+
+                if blit.layer_count == 0 {
+                    return None;
+                }
+
+                Some(vk::ImageBlit {
+                    srcSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: blit.aspect.to_vk_bits(),
+                        mipLevel: blit.source_mip_level,
+                        baseArrayLayer: blit.source_base_array_layer + source.first_layer as u32,
+                        layerCount: blit.layer_count,
+                    },
+                    srcOffsets: [
+                        vk::Offset3D {
+                            x: blit.source_top_left[0],
+                            y: blit.source_top_left[1],
+                            z: blit.source_top_left[2],
+                        },
+                        vk::Offset3D {
+                            x: blit.source_bottom_right[0],
+                            y: blit.source_bottom_right[1],
+                            z: blit.source_bottom_right[2],
+                        }
+                    ],
+                    dstSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: blit.aspect.to_vk_bits(),
+                        mipLevel: blit.destination_mip_level,
+                        baseArrayLayer: blit.destination_base_array_layer + destination.first_layer as u32,
+                        layerCount: blit.layer_count,
+                    },
+                    dstOffsets: [
+                        vk::Offset3D {
+                            x: blit.destination_top_left[0],
+                            y: blit.destination_top_left[1],
+                            z: blit.destination_top_left[2],
+                        },
+                        vk::Offset3D {
+                            x: blit.destination_bottom_right[0],
+                            y: blit.destination_bottom_right[1],
+                            z: blit.destination_bottom_right[2],
+                        }
+                    ],
+                })
+            })
+            .collect();
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdBlitImage(cmd, source.image.internal_object(), source_layout as u32,
+                        destination.image.internal_object(), destination_layout as u32,
+                        regions.len() as u32, regions.as_ptr(), filter as u32);
     }
 
     // TODO: missing structs
@@ -1299,6 +1398,21 @@ pub struct UnsafeCommandBufferBuilderBufferImageCopy {
     pub image_layer_count: u32,
     pub image_offset: [i32; 3],
     pub image_extent: [u32; 3],
+}
+
+// TODO: move somewhere else?
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct UnsafeCommandBufferBuilderImageBlit {
+    pub aspect: UnsafeCommandBufferBuilderImageAspect,
+    pub source_mip_level: u32,
+    pub destination_mip_level: u32,
+    pub source_base_array_layer: u32,
+    pub destination_base_array_layer: u32,
+    pub layer_count: u32,
+    pub source_top_left: [i32; 3],
+    pub source_bottom_right: [i32; 3],
+    pub destination_top_left: [i32; 3],
+    pub destination_bottom_right: [i32; 3],
 }
 
 /// Command that adds a pipeline barrier to a command buffer builder.

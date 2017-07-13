@@ -37,6 +37,7 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
+use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use command_buffer::validity::*;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
@@ -54,6 +55,7 @@ use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::VertexSource;
+use sampler::Filter;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
@@ -243,6 +245,87 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .begin_render_pass(framebuffer, contents, clear_values)?;
             self.subpasses_remaining = Some(num_subpasses - 1);
             self.subpass_secondary = secondary;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that blits an image to another.
+    ///
+    /// A *blit* is similar to an image copy operation, except that the portion of the image that
+    /// is transferred can be resized. You choose an area of the source and an area of the
+    /// destination, and the implementation will resize the area of the source so that it matches
+    /// the size of the area of the destination before writing it.
+    ///
+    /// Blit operations have several restrictions:
+    ///
+    /// - Blit operations are only allowed on queue families that support graphics operations.
+    /// - The format of the source and destination images must support blit operations, which
+    ///   depends on the Vulkan implementation. Vulkan guarantees that some specific formats must
+    ///   always be supported. See tables 52 to 61 of the specifications.
+    /// - Only single-sampled images are allowed.
+    /// - You can only blit between two images whose formats belong to the same type. The types
+    ///   are: floating-point, signed integers, unsigned integers, depth-stencil.
+    /// - If you blit between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - If you blit between depth, stencil or depth-stencil images, only the `Nearest` filter is
+    ///   allowed.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the top-left offset and 1 for
+    ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is superior to 1, the blit will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the source or the destination was not created with `device`.
+    ///
+    pub fn blit_image<S, D>(
+        mut self, source: S, source_top_left: [i32; 3], source_bottom_right: [i32; 3],
+        source_base_array_layer: u32, source_mip_level: u32, destination: D,
+        destination_top_left: [i32; 3], destination_bottom_right: [i32; 3],
+        destination_base_array_layer: u32, destination_mip_level: u32, layer_count: u32,
+        filter: Filter) -> Result<Self, BlitImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static
+    {
+        unsafe {
+            if !self.graphics_allowed {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
+            self.ensure_outside_render_pass()?;
+
+            check_blit_image(self.device(), &source, source_top_left, source_bottom_right,
+                             source_base_array_layer, source_mip_level, &destination,
+                             destination_top_left, destination_bottom_right,
+                             destination_base_array_layer, destination_mip_level, layer_count,
+                             filter)?;
+
+            let blit = UnsafeCommandBufferBuilderImageBlit {
+                // TODO:
+                aspect: if source.has_color() {
+                    UnsafeCommandBufferBuilderImageAspect {
+                        color: true,
+                        depth: false,
+                        stencil: false,
+                    }
+                } else {
+                    unimplemented!()
+                },
+                source_mip_level,
+                destination_mip_level,
+                source_base_array_layer,
+                destination_base_array_layer,
+                layer_count,
+                source_top_left,
+                source_bottom_right,
+                destination_top_left,
+                destination_bottom_right,
+            };
+
+            self.inner.blit_image(source, ImageLayout::TransferSrcOptimal, destination,     // TODO: let choose layout
+                                  ImageLayout::TransferDstOptimal, iter::once(blit), filter)?;
             Ok(self)
         }
     }
@@ -921,6 +1004,12 @@ err_gen!(BuildError {
 
 err_gen!(BeginRenderPassError {
     AutoCommandBufferBuilderContextError,
+    SyncCommandBufferBuilderError
+});
+
+err_gen!(BlitImageError {
+    AutoCommandBufferBuilderContextError,
+    CheckBlitImageError,
     SyncCommandBufferBuilderError
 });
 

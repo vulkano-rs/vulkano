@@ -689,6 +689,19 @@ pub enum FormatTy {
     Compressed,
 }
 
+impl FormatTy {
+    /// Returns true if `Depth`, `Stencil`, `DepthStencil`. False otherwise.
+    #[inline]
+    pub fn is_depth_and_or_stencil(&self) -> bool {
+        match *self {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => false
+        }
+    }
+}
+
 /// Describes a uniform value that will be used to fill an image.
 // TODO: should have the same layout as `vk::ClearValue` for performances
 #[derive(Debug, Copy, Clone, PartialEq)]
