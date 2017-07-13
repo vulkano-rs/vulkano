@@ -89,6 +89,7 @@
 //!
 //! TODO: write
 
+use crossbeam::sync::MsQueue;
 use fnv::FnvHasher;
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -134,7 +135,7 @@ pub struct Device {
     features: Features,
     extensions: DeviceExtensions,
     allocation_count: Mutex<u32>,
-    fence_pool: Mutex<Vec<vk::Fence>>,
+    fence_pool: MsQueue<vk::Fence>,
 }
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
@@ -308,7 +309,7 @@ impl Device {
                                   },
                                   extensions: (&extensions).into(),
                                   allocation_count: Mutex::new(0),
-                                  fence_pool: Mutex::new(Vec::new()),
+                                  fence_pool: MsQueue::new(),
                               });
 
         // Iterator for the produced queues.
@@ -434,7 +435,7 @@ impl Device {
         &self.allocation_count
     }
 
-    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<vk::Fence>> {
+    pub(crate) fn fence_pool(&self) -> &MsQueue<vk::Fence> {
         &self.fence_pool
     }
 }
@@ -459,7 +460,7 @@ impl Drop for Device {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            for &raw_fence in self.fence_pool.lock().unwrap().iter() {
+            while let Some(raw_fence) = self.fence_pool.try_pop() {
                 self.vk.DestroyFence(self.device, raw_fence, ptr::null());
             }
             self.vk.DeviceWaitIdle(self.device);

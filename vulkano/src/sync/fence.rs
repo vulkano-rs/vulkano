@@ -47,7 +47,7 @@ pub struct Fence<D = Arc<Device>>
 
     // Indicates whether this fence was taken from the fence pool.
     // If true, will be put back into fence pool on drop.
-    from_pool: bool,
+    must_put_in_pool: bool,
 }
 
 impl<D> Fence<D>
@@ -60,10 +60,19 @@ impl<D> Fence<D>
     /// For most applications, using the fence pool should be preferred,
     /// in order to avoid creating new fences every frame.
     pub fn from_pool(device: D) -> Result<Fence<D>, OomError> {
-        let raw_fence = device.fence_pool().lock().expect("Poisoned mutex").pop();
-        match raw_fence {
+        match device.fence_pool().try_pop() {
             Some(raw_fence) => {
-                unsafe { Ok(Fence::from_raw(device, raw_fence, true)) }
+                unsafe {
+                    // Make sure the fence isn't signaled
+                    let vk = device.pointers();
+                    vk.ResetFences(device.internal_object(), 1, &raw_fence);
+                }
+                Ok(Fence {
+                    fence: raw_fence,
+                    device: device,
+                    signaled: AtomicBool::new(false),
+                    must_put_in_pool: true,
+                })
             },
             None => {
                 // Pool is empty, alloc new fence
@@ -72,23 +81,8 @@ impl<D> Fence<D>
         }
     }
 
-    /// Unsafety: raw_fence must have been originally allocated from device.
-    unsafe fn from_raw(device: D, raw_fence: vk::Fence, from_pool: bool) -> Fence<D> {
-        {
-            // Make sure the fence isn't signaled
-            let vk = device.pointers();
-            vk.ResetFences(device.internal_object(), 1, &raw_fence);
-        }
-        Fence {
-            fence: raw_fence,
-            device: device,
-            signaled: AtomicBool::new(false),
-            from_pool: from_pool,
-        }
-    }
-
     /// Builds a new fence.
-    #[deprecated(note = "use `Fence::alloc` instead")]
+    #[deprecated(note = "use `Fence::from_pool` instead")]
     #[inline]
     pub fn new(device: D) -> Result<Fence<D>, OomError> {
         Fence::alloc(device)
@@ -113,7 +107,7 @@ impl<D> Fence<D>
         Fence::alloc_impl(device, true, false)
     }
 
-    fn alloc_impl(device: D, signaled: bool, from_pool: bool) -> Result<Fence<D>, OomError> {
+    fn alloc_impl(device: D, signaled: bool, must_put_in_pool: bool) -> Result<Fence<D>, OomError> {
         let fence = unsafe {
             let infos = vk::FenceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -138,7 +132,7 @@ impl<D> Fence<D>
                fence: fence,
                device: device,
                signaled: AtomicBool::new(signaled),
-               from_pool: from_pool,
+               must_put_in_pool: must_put_in_pool,
            })
     }
 
@@ -336,13 +330,9 @@ impl<D> Drop for Fence<D>
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            if self.from_pool {
+            if self.must_put_in_pool {
                 let raw_fence = self.fence;
-                self.device
-                    .fence_pool()
-                    .lock()
-                    .expect("Poisoned mutex")
-                    .push(raw_fence);
+                self.device.fence_pool().push(raw_fence);
             } else {
                 let vk = self.device.pointers();
                 vk.DestroyFence(self.device.internal_object(), self.fence, ptr::null());
