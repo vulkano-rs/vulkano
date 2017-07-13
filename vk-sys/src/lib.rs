@@ -180,6 +180,8 @@ pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1
 pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: u32 = 1000080000;
 pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
+pub const STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR: u32 = 1000127000;
+pub const STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR: u32 = 1000127001;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2584,6 +2586,21 @@ pub struct DescriptorUpdateTemplateCreateInfoKHR {
     pub set: u32,
 }
 
+#[repr(C)]
+pub struct MemoryDedicatedRequirementsKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub prefersDedicatedAllocation: Bool32,
+    pub requiresDedicatedAllocation: Bool32,
+}
+
+#[repr(C)]
+pub struct MemoryDedicatedAllocateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub image: Image,
+    pub buffer: Buffer,
+}
 
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (

@@ -25,6 +25,7 @@ use device::Device;
 use device::DeviceOwned;
 use instance::MemoryType;
 use memory::Content;
+use memory::DedicatedAlloc;
 use vk;
 
 /// Represents memory that has been allocated.
@@ -63,6 +64,20 @@ impl DeviceMemory {
     #[inline]
     pub fn alloc(device: Arc<Device>, memory_type: MemoryType, size: usize)
                  -> Result<DeviceMemory, DeviceMemoryAllocError> {
+        DeviceMemory::dedicated_alloc(device, memory_type, size, DedicatedAlloc::None)
+    }
+                
+    /// Same as `alloc`, but allows specifying a resource that we will be bound to the memory.
+    ///
+    /// If `resource` is different from `None`, then the returned memory must not be bound to a
+    /// different buffer or image.
+    ///
+    /// If the `VK_KHR_dedicated_allocation` extension is enabled on the device, then it will be
+    /// used by this method. Otherwise the `resource` parameter will be ignored.
+    #[inline]
+    pub fn dedicated_alloc(device: Arc<Device>, memory_type: MemoryType, size: usize,
+                           resource: DedicatedAlloc)
+                           -> Result<DeviceMemory, DeviceMemoryAllocError> {
         assert!(size >= 1);
         assert_eq!(device.physical_device().internal_object(),
                    memory_type.physical_device().internal_object());
@@ -82,9 +97,36 @@ impl DeviceMemory {
             }
             let vk = device.pointers();
 
+            // Decide whether we are going to pass a `vkMemoryDedicatedAllocateInfoKHR`.
+            let dedicated_alloc_info = if device.loaded_extensions().khr_dedicated_allocation {
+                match resource {
+                    DedicatedAlloc::Buffer(buffer) => {
+                        Some(vk::MemoryDedicatedAllocateInfoKHR {
+                            sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                            pNext: ptr::null(),
+                            image: 0,
+                            buffer: buffer.internal_object(),
+                        })
+                    },
+                    DedicatedAlloc::Image(image) => {
+                        Some(vk::MemoryDedicatedAllocateInfoKHR {
+                            sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                            pNext: ptr::null(),
+                            image: image.internal_object(),
+                            buffer: 0,
+                        })
+                    },
+                    DedicatedAlloc::None => {
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             let infos = vk::MemoryAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                pNext: ptr::null(),
+                pNext: dedicated_alloc_info.as_ref().map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR).unwrap_or(ptr::null()) as *const _,
                 allocationSize: size as u64,
                 memoryTypeIndex: memory_type.id(),
             };
@@ -113,12 +155,20 @@ impl DeviceMemory {
     /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     /// - Panics if the memory type is not host-visible.
     ///
+    #[inline]
     pub fn alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize)
                          -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+        DeviceMemory::dedicated_alloc_and_map(device, memory_type, size, DedicatedAlloc::None)
+    }
+
+    /// Equivalent of `dedicated_alloc` for `alloc_and_map`.
+    pub fn dedicated_alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize,
+                                   resource: DedicatedAlloc)
+                                   -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
-        let mem = DeviceMemory::alloc(device.clone(), memory_type, size)?;
+        let mem = DeviceMemory::dedicated_alloc(device.clone(), memory_type, size, resource)?;
 
         let coherent = memory_type.is_host_coherent();
 

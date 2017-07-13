@@ -89,6 +89,8 @@ use std::mem;
 use std::os::raw::c_void;
 use std::slice;
 
+use buffer::sys::UnsafeBuffer;
+use image::sys::UnsafeImage;
 use vk;
 
 pub use self::device_memory::CpuAccess;
@@ -125,6 +127,13 @@ impl From<vk::MemoryRequirements> for MemoryRequirements {
             memory_type_bits: reqs.memoryTypeBits,
         }
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum DedicatedAlloc<'a> {
+    None,
+    Buffer(&'a UnsafeBuffer),
+    Image(&'a UnsafeImage),
 }
 
 /// Trait for types of data that can be mapped.
