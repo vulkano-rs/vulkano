@@ -37,7 +37,7 @@ pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> F
 
     assert!(future.queue().is_some()); // TODO: document
 
-    let fence = Fence::new(device.clone()).unwrap();
+    let fence = Fence::from_pool(device.clone()).unwrap();
     FenceSignalFuture {
         device: device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),

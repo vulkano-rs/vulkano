@@ -68,7 +68,7 @@ use vk;
 pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
                           -> Result<(usize, SwapchainAcquireFuture), AcquireError> {
     let semaphore = Semaphore::new(swapchain.device.clone())?;  // TODO: take from a pool
-    let fence = Fence::new(swapchain.device.clone())?;  // TODO: take from a pool
+    let fence = Fence::from_pool(swapchain.device.clone())?;
 
     // TODO: propagate `suboptimal` to the user
     let AcquiredImage { id, suboptimal } = {
