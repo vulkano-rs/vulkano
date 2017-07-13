@@ -56,6 +56,10 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::DestinationFormatNotSupported);
     }
 
+    if source.samples() != 1 || destination.samples() != 1 {
+        return Err(CheckBlitImageError::UnexpectedMultisampled);
+    }
+
     if source.format().ty().is_depth_and_or_stencil() {
         if source.format() != destination.format() {
             return Err(CheckBlitImageError::DepthStencilFormatMismatch);
