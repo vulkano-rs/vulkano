@@ -9,6 +9,7 @@
 
 //! Functions that check the validity of commands.
 
+pub use self::blit_image::{check_blit_image, CheckBlitImageError};
 pub use self::clear_color_image::{check_clear_color_image, CheckClearColorImageError};
 pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer, CheckCopyBuffer};
 pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorSetsValidityError};
@@ -20,6 +21,7 @@ pub use self::push_constants::{check_push_constants_validity, CheckPushConstants
 pub use self::update_buffer::{CheckUpdateBufferError, check_update_buffer};
 pub use self::vertex_buffers::{check_vertex_buffers, CheckVertexBuffer, CheckVertexBufferError};
 
+mod blit_image;
 mod clear_color_image;
 mod copy_buffer;
 mod descriptor_sets;
