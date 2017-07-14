@@ -60,7 +60,8 @@ impl<D> Fence<D>
     /// For most applications, using the fence pool should be preferred,
     /// in order to avoid creating new fences every frame.
     pub fn from_pool(device: D) -> Result<Fence<D>, OomError> {
-        match device.fence_pool().try_pop() {
+        let maybe_raw_fence = device.fence_pool().lock().unwrap().pop();
+        match maybe_raw_fence {
             Some(raw_fence) => {
                 unsafe {
                     // Make sure the fence isn't signaled
@@ -332,7 +333,7 @@ impl<D> Drop for Fence<D>
         unsafe {
             if self.must_put_in_pool {
                 let raw_fence = self.fence;
-                self.device.fence_pool().push(raw_fence);
+                self.device.fence_pool().lock().unwrap().push(raw_fence);
             } else {
                 let vk = self.device.pointers();
                 vk.DestroyFence(self.device.internal_object(), self.fence, ptr::null());
