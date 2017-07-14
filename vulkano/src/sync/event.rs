@@ -31,12 +31,13 @@ pub struct Event {
     event: vk::Event,
     // The device.
     device: Arc<Device>,
+    must_put_in_pool: bool,
 }
 
 impl Event {
     /// See the docs of new().
     #[inline]
-    pub fn raw(device: Arc<Device>) -> Result<Event, OomError> {
+    pub fn raw(device: Arc<Device>, must_put_in_pool: bool) -> Result<Event, OomError> {
         let event = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
@@ -57,6 +58,7 @@ impl Event {
         Ok(Event {
                device: device,
                event: event,
+               must_put_in_pool: must_put_in_pool,
            })
     }
 
