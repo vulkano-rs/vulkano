@@ -182,6 +182,11 @@ pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: u32 = 1
 pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 pub const STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR: u32 = 1000127000;
 pub const STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR: u32 = 1000127001;
+pub const STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146000;
+pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
+pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
+pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
+pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2602,6 +2607,27 @@ pub struct MemoryDedicatedAllocateInfoKHR {
     pub buffer: Buffer,
 }
 
+#[repr(C)]
+pub struct BufferMemoryRequirementsInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub buffer: Buffer,
+}
+
+#[repr(C)]
+pub struct ImageMemoryRequirementsInfo2KHR {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub image: Image,
+}
+
+#[repr(C)]
+pub struct MemoryRequirements2KHR {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub memoryRequirements: MemoryRequirements,
+}
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -2848,4 +2874,6 @@ ptrs!(DevicePointers, {
     DestroyDescriptorUpdateTemplateKHR => (device: Device, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pAllocator: *const AllocationCallbacks) -> (),
     UpdateDescriptorSetWithTemplateKHR => (device: Device, descriptorSet: DescriptorSet, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, pData: *const c_void) -> (),
     CmdPushDescriptorSetWithTemplateKHR => (commandBuffer: CommandBuffer, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, layout: PipelineLayout, set: u32, pData: *const c_void) -> (),
+    GetImageMemoryRequirements2KHR => (device: Device, pInfo: *const ImageMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
+    GetBufferMemoryRequirements2KHR => (device: Device, pInfo: *const BufferMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
 });

@@ -102,7 +102,8 @@ pub use self::pool::MemoryPool;
 mod device_memory;
 pub mod pool;
 
-/// Represents requirements expressed by the Vulkan implementation.
+/// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
+/// to a resource.
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryRequirements {
     /// Number of bytes of memory required.
@@ -115,6 +116,14 @@ pub struct MemoryRequirements {
     /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
     /// type whose index is the same as the position of the bit can be used.
     pub memory_type_bits: u32,
+
+    /// True if the implementation prefers to use dedicated allocations (in other words, allocate
+    /// a whole block of memory dedicated to this resource alone). If the implementation doesn't
+    /// support dedicated allocations, this will be false.
+    ///
+    /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
+    /// > requirement.
+    pub prefer_dedicated: bool,
 }
 
 #[doc(hidden)]
@@ -125,6 +134,7 @@ impl From<vk::MemoryRequirements> for MemoryRequirements {
             size: reqs.size as usize,
             alignment: reqs.alignment as usize,
             memory_type_bits: reqs.memoryTypeBits,
+            prefer_dedicated: false,
         }
     }
 }

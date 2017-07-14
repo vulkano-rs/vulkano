@@ -519,11 +519,46 @@ impl UnsafeImage {
             output
         };
 
-        let mem_reqs: vk::MemoryRequirements = {
-            let mut output = mem::uninitialized();
+        let mem_reqs = if device.loaded_extensions().khr_get_memory_requirements2 {
+            let infos = vk::ImageMemoryRequirementsInfo2KHR {
+                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
+                pNext: ptr::null_mut(),
+                image: image,
+            };
+
+            let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
+                Some(vk::MemoryDedicatedRequirementsKHR {
+                    sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+                    pNext: ptr::null(),
+                    prefersDedicatedAllocation: mem::uninitialized(),
+                    requiresDedicatedAllocation: mem::uninitialized(),
+                })
+            } else {
+                None
+            };
+
+            let mut output = vk::MemoryRequirements2KHR {
+                sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+                pNext: output2.as_mut().map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                    .unwrap_or(ptr::null_mut()) as *mut _,
+                memoryRequirements: mem::uninitialized(),
+            };
+
+            vk.GetImageMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
+            debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
+
+            let mut out: MemoryRequirements = output.memoryRequirements.into();
+            if let Some(output2) = output2 {
+                debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
+                out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
+            }
+            out
+
+        } else {
+            let mut output: vk::MemoryRequirements = mem::uninitialized();
             vk.GetImageMemoryRequirements(device.internal_object(), image, &mut output);
             debug_assert!(output.memoryTypeBits != 0);
-            output
+            output.into()
         };
 
         let image = UnsafeImage {
@@ -538,7 +573,7 @@ impl UnsafeImage {
             needs_destruction: true,
         };
 
-        Ok((image, mem_reqs.into()))
+        Ok((image, mem_reqs))
     }
 
     /// Creates an image from a raw handle. The image won't be destroyed.

@@ -127,12 +127,49 @@ impl UnsafeBuffer {
                 al * (1 + (val - 1) / al)
             }
 
-            let mut output: vk::MemoryRequirements = mem::uninitialized();
-            vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
-            debug_assert!(output.size >= size as u64);
-            debug_assert!(output.memoryTypeBits != 0);
+            let mut output = if device.loaded_extensions().khr_get_memory_requirements2 {
+                let infos = vk::BufferMemoryRequirementsInfo2KHR {
+                    sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR,
+                    pNext: ptr::null_mut(),
+                    buffer: buffer,
+                };
 
-            let mut output: MemoryRequirements = output.into();
+                let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
+                    Some(vk::MemoryDedicatedRequirementsKHR {
+                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+                        pNext: ptr::null(),
+                        prefersDedicatedAllocation: mem::uninitialized(),
+                        requiresDedicatedAllocation: mem::uninitialized(),
+                    })
+                } else {
+                    None
+                };
+
+                let mut output = vk::MemoryRequirements2KHR {
+                    sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+                    pNext: output2.as_mut().map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                        .unwrap_or(ptr::null_mut()) as *mut _,
+                    memoryRequirements: mem::uninitialized(),
+                };
+
+                vk.GetBufferMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
+                debug_assert!(output.memoryRequirements.size >= size as u64);
+                debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
+
+                let mut out: MemoryRequirements = output.memoryRequirements.into();
+                if let Some(output2) = output2 {
+                    debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
+                    out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
+                }
+                out
+
+            } else {
+                let mut output: vk::MemoryRequirements = mem::uninitialized();
+                vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
+                debug_assert!(output.size >= size as u64);
+                debug_assert!(output.memoryTypeBits != 0);
+                output.into()
+            };
 
             // We have to manually enforce some additional requirements for some buffer types.
             let limits = device.physical_device().limits();
