@@ -354,6 +354,13 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
               F: FramebufferAbstract
     {
         unsafe {
+            let (secondary_cb, subpasses_remaining) = match kind {
+                Kind::Primary => (false, None),
+                Kind::Secondary { render_pass: Some(_), .. } => (true, Some(1)),
+                // TODO: fix number of subpasses here                     ^
+                Kind::Secondary { render_pass: None, .. } => (true, None),
+            };
+
             let pool = Device::standard_command_pool(&device, queue_family);
             let inner = SyncCommandBufferBuilder::new(&pool, kind, flags);
             let state_cacher = StateCacher::new();
@@ -366,9 +373,9 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                    state_cacher,
                    graphics_allowed,
                    compute_allowed,
-                   subpasses_remaining: None,
-                   secondary_cb: false,
-                   subpass_secondary: false,
+                   subpasses_remaining,
+                   secondary_cb,
+                   subpass_secondary: secondary_cb,
                    flags,
                })
         }
