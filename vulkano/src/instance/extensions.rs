@@ -356,6 +356,7 @@ device_extensions! {
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
     khr_maintenance1 => b"VK_KHR_maintenance1",
+    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
 }
 
