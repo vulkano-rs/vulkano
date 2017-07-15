@@ -82,11 +82,11 @@ pub enum Kind<R, F> {
 #[derive(Debug, Clone)]
 pub struct KindSecondaryRenderPass<R, F> {
     /// Which subpass this secondary command buffer can be called from.
-    subpass: Subpass<R>,
+    pub subpass: Subpass<R>,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
-    framebuffer: Option<F>,
+    pub framebuffer: Option<F>,
 }
 
 /// Additional information for `Kind::Secondary`.

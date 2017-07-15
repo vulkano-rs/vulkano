@@ -9,6 +9,7 @@
 
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::any::Any;
 use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
@@ -32,6 +33,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
+use command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use descriptor::descriptor::ShaderStages;
@@ -1553,6 +1555,17 @@ impl<P> SyncCommandBufferBuilder<P> {
         self.commands.lock().unwrap().commands.push(Box::new(Cmd));
     }
 
+    /// Starts the process of executing secondary command buffers. Returns an intermediate struct
+    /// which can be used to add the command buffers.
+    #[inline]
+    pub unsafe fn execute_commands(&mut self) -> SyncCommandBufferBuilderExecuteCommands<P> {
+        SyncCommandBufferBuilderExecuteCommands {
+            builder: self,
+            inner: UnsafeCommandBufferBuilderExecuteCommands::new(),
+            command_buffers: Vec::new(),
+        }
+    }
+
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
     pub unsafe fn fill_buffer<B>(&mut self, buffer: B, data: u32)
@@ -2115,6 +2128,57 @@ impl<'a, P> SyncCommandBufferBuilderBindVertexBuffer<'a, P> {
                                    ImageLayout::Undefined)?;
         }
 
+        Ok(())
+    }
+}
+
+/// Prototype for a `vkCmdExecuteCommands`.
+// FIXME: synchronization not implemented yet
+pub struct SyncCommandBufferBuilderExecuteCommands<'a, P: 'a> {
+    builder: &'a mut SyncCommandBufferBuilder<P>,
+    inner: UnsafeCommandBufferBuilderExecuteCommands,
+    command_buffers: Vec<Box<Any + Send + Sync>>,
+}
+
+impl<'a, P> SyncCommandBufferBuilderExecuteCommands<'a, P> {
+    /// Adds a command buffer to the list.
+    #[inline]
+    pub fn add<C>(&mut self, command_buffer: C)
+        where C: CommandBuffer + Send + Sync + 'static
+    {
+        self.inner.add(&command_buffer);
+        self.command_buffers.push(Box::new(command_buffer) as Box<_>);
+    }
+
+    #[inline]
+    pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            inner: Option<UnsafeCommandBufferBuilderExecuteCommands>,
+            command_buffers: Vec<Box<Any + Send + Sync>>,
+        }
+
+        impl<P> Command<P> for Cmd {
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.execute_commands(self.inner.take().unwrap());
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                struct Fin(Vec<Box<Any + Send + Sync>>);
+                impl FinalCommand for Fin {
+                }
+                Box::new(Fin(self.command_buffers))
+            }
+        }
+
+        self.builder
+            .commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(Cmd {
+                               inner: Some(self.inner),
+                               command_buffers: self.command_buffers,
+                           }));
         Ok(())
     }
 }
