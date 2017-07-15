@@ -49,7 +49,7 @@ impl Event {
                 unsafe {
                     // Make sure the event isn't signaled
                     let vk = device.pointers();
-                    vk.ResetEvent(device.internal_object(), raw_event);
+                    check_errors(vk.ResetEvent(device.internal_object(), raw_event))?;
                 }
                 Ok(Event {
                     event: raw_event,

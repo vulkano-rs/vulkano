@@ -66,7 +66,7 @@ impl<D> Fence<D>
                 unsafe {
                     // Make sure the fence isn't signaled
                     let vk = device.pointers();
-                    vk.ResetFences(device.internal_object(), 1, &raw_fence);
+                    check_errors(vk.ResetFences(device.internal_object(), 1, &raw_fence))?;
                 }
                 Ok(Fence {
                     fence: raw_fence,
