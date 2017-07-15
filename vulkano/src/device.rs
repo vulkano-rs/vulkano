@@ -312,6 +312,7 @@ impl Device {
                                   allocation_count: Mutex::new(0),
                                   fence_pool: Mutex::new(Vec::new()),
                                   semaphore_pool: Mutex::new(Vec::new()),
+                                  event_pool: Mutex::new(Vec::new()),
                               });
 
         // Iterator for the produced queues.
