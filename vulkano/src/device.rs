@@ -134,6 +134,9 @@ pub struct Device {
     features: Features,
     extensions: DeviceExtensions,
     allocation_count: Mutex<u32>,
+    fence_pool: Mutex<Vec<vk::Fence>>,
+    semaphore_pool: Mutex<Vec<vk::Semaphore>>,
+    event_pool: Mutex<Vec<vk::Event>>,
 }
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
@@ -307,6 +310,9 @@ impl Device {
                                   },
                                   extensions: (&extensions).into(),
                                   allocation_count: Mutex::new(0),
+                                  fence_pool: Mutex::new(Vec::new()),
+                                  semaphore_pool: Mutex::new(Vec::new()),
+                                  event_pool: Mutex::new(Vec::new()),
                               });
 
         // Iterator for the produced queues.
@@ -431,6 +437,18 @@ impl Device {
     pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
         &self.allocation_count
     }
+
+    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<vk::Fence>> {
+        &self.fence_pool
+    }
+
+    pub(crate) fn semaphore_pool(&self) -> &Mutex<Vec<vk::Semaphore>> {
+        &self.semaphore_pool
+    }
+
+    pub(crate) fn event_pool(&self) -> &Mutex<Vec<vk::Event>> {
+        &self.event_pool
+    }
 }
 
 impl fmt::Debug for Device {
@@ -453,6 +471,15 @@ impl Drop for Device {
     #[inline]
     fn drop(&mut self) {
         unsafe {
+            for &raw_fence in self.fence_pool.lock().unwrap().iter() {
+                self.vk.DestroyFence(self.device, raw_fence, ptr::null());
+            }
+            for &raw_sem in self.semaphore_pool.lock().unwrap().iter() {
+                self.vk.DestroySemaphore(self.device, raw_sem, ptr::null());
+            }
+            for &raw_event in self.event_pool.lock().unwrap().iter() {
+                self.vk.DestroyEvent(self.device, raw_event, ptr::null());
+            }
             self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());
         }

@@ -39,7 +39,7 @@ pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
 
     SemaphoreSignalFuture {
         previous: future,
-        semaphore: Semaphore::new(device).unwrap(),
+        semaphore: Semaphore::from_pool(device).unwrap(),
         wait_submitted: Mutex::new(false),
         finished: AtomicBool::new(false),
     }

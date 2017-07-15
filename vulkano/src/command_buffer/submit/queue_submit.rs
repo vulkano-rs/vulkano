@@ -314,7 +314,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device.clone()).unwrap();
+            let fence = Fence::alloc(device.clone()).unwrap();
             assert!(!fence.ready().unwrap());
 
             let mut builder = SubmitCommandBufferBuilder::new();
@@ -331,7 +331,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device.clone()).unwrap();
+            let fence = Fence::alloc(device.clone()).unwrap();
 
             let mut builder = SubmitCommandBufferBuilder::new();
             assert!(!builder.has_fence());
@@ -345,8 +345,8 @@ mod tests {
         unsafe {
             let (device, _) = gfx_dev_and_queue!();
 
-            let fence1 = Fence::new(device.clone()).unwrap();
-            let fence2 = Fence::new(device.clone()).unwrap();
+            let fence1 = Fence::alloc(device.clone()).unwrap();
+            let fence2 = Fence::alloc(device.clone()).unwrap();
 
             let mut builder1 = SubmitCommandBufferBuilder::new();
             builder1.set_fence_signal(&fence1);

@@ -29,14 +29,48 @@ pub struct Semaphore<D = Arc<Device>>
 {
     semaphore: vk::Semaphore,
     device: D,
+    must_put_in_pool: bool,
 }
 
 impl<D> Semaphore<D>
     where D: SafeDeref<Target = Device>
 {
-    /// Builds a new semaphore.
+    /// Takes a semaphore from the vulkano-provided semaphore pool.
+    /// If the pool is empty, a new semaphore will be allocated.
+    /// Upon `drop`, the semaphore is put back into the pool.
+    ///
+    /// For most applications, using the pool should be preferred,
+    /// in order to avoid creating new semaphores every frame.
+    pub fn from_pool(device: D) -> Result<Semaphore<D>, OomError> {
+        let maybe_raw_sem = device.semaphore_pool().lock().unwrap().pop();
+        match maybe_raw_sem {
+            Some(raw_sem) => {
+                Ok(Semaphore {
+                       device: device,
+                       semaphore: raw_sem,
+                       must_put_in_pool: true,
+                   })
+            },
+            None => {
+                // Pool is empty, alloc new semaphore
+                Semaphore::alloc_impl(device, true)
+            },
+        }
+    }
+
+    #[deprecated(note = "use `Semaphore::from_pool` instead")]
     #[inline]
     pub fn new(device: D) -> Result<Semaphore<D>, OomError> {
+        Semaphore::alloc(device)
+    }
+
+    /// Builds a new semaphore.
+    #[inline]
+    pub fn alloc(device: D) -> Result<Semaphore<D>, OomError> {
+        Semaphore::alloc_impl(device, false)
+    }
+
+    fn alloc_impl(device: D, must_put_in_pool: bool) -> Result<Semaphore<D>, OomError> {
         let semaphore = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
@@ -57,6 +91,7 @@ impl<D> Semaphore<D>
         Ok(Semaphore {
                device: device,
                semaphore: semaphore,
+               must_put_in_pool: must_put_in_pool,
            })
     }
 }
@@ -85,8 +120,13 @@ impl<D> Drop for Semaphore<D>
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroySemaphore(self.device.internal_object(), self.semaphore, ptr::null());
+            if self.must_put_in_pool {
+                let raw_sem = self.semaphore;
+                self.device.semaphore_pool().lock().unwrap().push(raw_sem);
+            } else {
+                let vk = self.device.pointers();
+                vk.DestroySemaphore(self.device.internal_object(), self.semaphore, ptr::null());
+            }
         }
     }
 }
@@ -94,10 +134,28 @@ impl<D> Drop for Semaphore<D>
 #[cfg(test)]
 mod tests {
     use sync::Semaphore;
+    use VulkanObject;
 
     #[test]
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = Semaphore::new(device.clone());
+        let _ = Semaphore::alloc(device.clone());
+    }
+
+    #[test]
+    fn semaphore_pool() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+        let sem1_internal_obj = {
+            let sem = Semaphore::from_pool(device.clone()).unwrap();
+            assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+            sem.internal_object()
+        };
+
+        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 1);
+        let sem2 = Semaphore::from_pool(device.clone()).unwrap();
+        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+        assert_eq!(sem2.internal_object(), sem1_internal_obj);
     }
 }
