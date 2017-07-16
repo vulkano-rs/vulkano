@@ -228,7 +228,7 @@ impl Instance {
 
         // Loading the function pointers of the newly-created instance.
         let vk = {
-            let f = loader::static_functions().unwrap(); // TODO: return proper error
+            let f = loader::static_functions()?;
             vk::InstancePointers::load(|name| unsafe {
                                            mem::transmute(f.GetInstanceProcAddr(instance,
                                                                                 name.as_ptr()))
