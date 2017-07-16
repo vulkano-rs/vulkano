@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-win"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
 repository = "https://github.com/tomaka/vulkano"
 description = "Link between vulkano and winit"
