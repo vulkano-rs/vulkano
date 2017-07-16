@@ -14,6 +14,7 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
@@ -23,6 +24,8 @@ use OomError;
 use VulkanObject;
 use check_errors;
 use instance::loader;
+use instance::loader::FunctionPointers;
+use instance::loader::Loader;
 use instance::loader::LoadingError;
 use vk;
 
@@ -86,6 +89,7 @@ pub struct Instance {
     vk: vk::InstancePointers,
     extensions: InstanceExtensions,
     layers: SmallVec<[CString; 16]>,
+    function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>,
 }
 
 impl Instance {
@@ -124,11 +128,13 @@ impl Instance {
             .map(|&layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos, extensions.into(), layers)
+        Instance::new_inner(app_infos, extensions.into(), layers,
+                            OwnedOrRef::Ref(loader::default_function_pointers()?))
     }
 
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
-                 layers: SmallVec<[CString; 16]>)
+                 layers: SmallVec<[CString; 16]>,
+                 function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>)
                  -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
@@ -202,8 +208,6 @@ impl Instance {
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 32]>>();
 
-        let entry_points = loader::entry_points()?;
-
         // Creating the Vulkan instance.
         let instance = unsafe {
             let mut output = mem::uninitialized();
@@ -222,17 +226,16 @@ impl Instance {
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
             };
 
+            let entry_points = function_pointers.entry_points();
             check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
             output
         };
 
         // Loading the function pointers of the newly-created instance.
         let vk = {
-            let f = loader::static_functions()?;
             vk::InstancePointers::load(|name| unsafe {
-                                           mem::transmute(f.GetInstanceProcAddr(instance,
-                                                                                name.as_ptr()))
-                                       })
+                mem::transmute(function_pointers.get_instance_proc_addr(instance, name.as_ptr()))
+            })
         };
 
         // Enumerating all physical devices.
@@ -264,6 +267,7 @@ impl Instance {
                         vk: vk,
                         extensions: extensions,
                         layers: layers,
+                        function_pointers: function_pointers,
                     }))
     }
 
@@ -448,6 +452,23 @@ impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
             self.vk.DestroyInstance(self.instance, ptr::null());
+        }
+    }
+}
+
+// Same as Cow but less annoying.
+enum OwnedOrRef<T: 'static> {
+    Owned(T),
+    Ref(&'static T),
+}
+
+impl<T> Deref for OwnedOrRef<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &T {
+        match *self {
+            OwnedOrRef::Owned(ref v) => v,
+            OwnedOrRef::Ref(v) => v,
         }
     }
 }

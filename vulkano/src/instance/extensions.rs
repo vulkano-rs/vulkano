@@ -182,7 +182,7 @@ macro_rules! instance_extensions {
         impl $rawname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                let entry_points = try!(loader::entry_points());
+                let entry_points = try!(loader::default_function_pointers()).entry_points();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
@@ -211,7 +211,7 @@ macro_rules! instance_extensions {
         impl $sname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                let entry_points = try!(loader::entry_points());
+                let entry_points = try!(loader::default_function_pointers()).entry_points();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;

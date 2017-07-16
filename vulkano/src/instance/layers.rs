@@ -46,7 +46,7 @@ use vk;
 /// ```
 pub fn layers_list() -> Result<LayersIterator, LayersListError> {
     unsafe {
-        let entry_points = loader::entry_points()?;
+        let entry_points = loader::default_function_pointers()?.entry_points();
 
         let mut num = 0;
         check_errors({
