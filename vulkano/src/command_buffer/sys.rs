@@ -968,7 +968,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                               stride as usize >= mem::size_of::<vk::DrawIndirectCommand>());
 
         let inner = buffer.inner();
-        debug_assert!(inner.offset < buffer.size());
+        debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage_indirect_buffer());
 
         vk.CmdDrawIndirect(cmd,
@@ -987,7 +987,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
-        debug_assert!(inner.offset < buffer.size());
+        debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage_indirect_buffer());
 
         vk.CmdDrawIndexedIndirect(cmd,
