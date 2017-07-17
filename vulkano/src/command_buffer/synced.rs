@@ -2520,7 +2520,7 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
 
         if let Some(value) = self.resources.get(&CbKey::BufferRef(buffer)) {
             if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Denied(AccessError::ExclusiveDenied));
+                return Err(AccessCheckError::Unknown);
             }
 
             return Ok(Some((value.final_stages, value.final_access)));
@@ -2544,7 +2544,7 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
             }
 
             if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Denied(AccessError::ExclusiveDenied));
+                return Err(AccessCheckError::Unknown);
             }
 
             return Ok(Some((value.final_stages, value.final_access)));
