@@ -149,11 +149,20 @@ impl<T> CpuBufferPool<T> {
 
     /// Builds a `CpuBufferPool` meant for simple uploads.
     ///
-    /// Shortcut for a pool that can only be used as transfer sources and with exclusive queue
+    /// Shortcut for a pool that can only be used as transfer source and with exclusive queue
     /// family accesses.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::transfer_source(), iter::empty())
+    }
+
+    /// Builds a `CpuBufferPool` meant for simple downloads.
+    ///
+    /// Shortcut for a pool that can only be used as transfer destination and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::transfer_destination(), iter::empty())
     }
 }
 
