@@ -241,6 +241,11 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// > **Note**: You can think of it like a `Vec`. If you insert elements and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
+    ///
+    /// # Panic
+    ///
+    /// Panicks if the length of the iterator didn't match the actual number of element.
+    ///
     pub fn chunk<I>(&self, data: I) -> CpuBufferPoolSubbuffer<T, A>
         where I: IntoIterator<Item = T>,
               I::IntoIter: ExactSizeIterator
@@ -346,6 +351,11 @@ impl<T, A> CpuBufferPool<T, A>
     // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
     //
     // Returns `data` wrapped inside an `Err` if there is no slot available in the current buffer.
+    //
+    // # Panic
+    //
+    // Panicks if the length of the iterator didn't match the actual number of element.
+    //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
                         data: I) -> Result<CpuBufferPoolSubbuffer<T, A>, I>
         where I: ExactSizeIterator<Item = T>
@@ -399,10 +409,12 @@ impl<T, A> CpuBufferPool<T, A>
                 .unwrap()
                 .read_write::<[T]>(range);
 
-            // TODO: assert that the data has been entirely written, in case the iterator's content didn't match the len
+            let mut written = 0;
             for (o, i) in mapping.iter_mut().zip(data) {
                 ptr::write(o, i);
+                written += 1;
             }
+            assert_eq!(written, data_len);
         }
 
         // Mark the chunk as in use.
