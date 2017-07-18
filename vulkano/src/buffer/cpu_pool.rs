@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+// TODO: since we use some deprecated methods in there, we allow it ; remove this eventually
+#![allow(deprecated)]
+
 use smallvec::SmallVec;
 use std::iter;
 use std::marker::PhantomData;
@@ -131,6 +134,7 @@ pub struct CpuBufferPoolSubbuffer<T: ?Sized, A>
 }
 
 impl<T> CpuBufferPool<T> {
+    /// Builds a `CpuBufferPool`.
     #[inline]
     pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
                       -> CpuBufferPool<T>
@@ -151,6 +155,7 @@ impl<T> CpuBufferPool<T> {
 
 impl<T> CpuBufferPool<[T]> {
     #[inline]
+    #[deprecated(note = "Useless ; use new and allocate chunks instead")]
     pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
                         -> CpuBufferPool<[T]>
         where I: IntoIterator<Item = QueueFamily<'a>>
@@ -160,9 +165,9 @@ impl<T> CpuBufferPool<[T]> {
 }
 
 impl<T: ?Sized> CpuBufferPool<T> {
+    #[deprecated(note = "Useless ; use new instead")]
     pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize, usage: BufferUsage,
-                             queue_families: I)
-                             -> CpuBufferPool<T>
+                             queue_families: I) -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families
@@ -183,7 +188,7 @@ impl<T: ?Sized> CpuBufferPool<T> {
         }
     }
 
-    /// Returns the current capacity of the pool.
+    /// Returns the current capacity of the pool, in number of elements.
     pub fn capacity(&self) -> usize {
         match *self.current_buffer.lock().unwrap() {
             None => 0,
@@ -195,7 +200,8 @@ impl<T: ?Sized> CpuBufferPool<T> {
 impl<T, A> CpuBufferPool<T, A>
     where A: MemoryPool
 {
-    /// Sets the capacity to `capacity`, or does nothing if the capacity is already higher.
+    /// Makes sure that the capacity is at least `capacity`. Allocates memory if it is not the
+    /// case.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
     pub fn reserve(&self, capacity: usize) -> Result<(), DeviceMemoryAllocError> {
@@ -253,6 +259,8 @@ impl<T, A> CpuBufferPool<T, A>
     }
 
     // Creates a new buffer and sets it as current.
+    //
+    // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
     fn reset_buf(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
                  capacity: usize)
                  -> Result<(), DeviceMemoryAllocError> {
@@ -321,6 +329,10 @@ impl<T, A> CpuBufferPool<T, A>
     }
 
     // Tries to lock a subbuffer from the current buffer.
+    //
+    // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
+    //
+    // Returns `data` wrapped inside an `Err` if there is no slot available in the current buffer.
     fn try_next_impl(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>, data: T)
                      -> Result<CpuBufferPoolSubbuffer<T, A>, T> {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
