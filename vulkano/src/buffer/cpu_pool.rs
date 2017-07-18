@@ -42,6 +42,10 @@ use sync::Sharing;
 
 use OomError;
 
+// TODO: Add `CpuBufferPoolSubbuffer::read` to read the content of a subbuffer.
+//       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
+//       a buffer is locked.
+
 /// Buffer from which "sub-buffers" can be individually allocated.
 ///
 /// This buffer is especially suitable when you want to upload or download some data at each frame.
