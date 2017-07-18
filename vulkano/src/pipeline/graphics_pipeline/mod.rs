@@ -1584,8 +1584,18 @@ impl Drop for Inner {
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
 pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
-/// Returns an opaque object that represents the inside of the graphics pipeline.
+    /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
+
+    /// Returns the index of the subpass this graphics pipeline is rendering to.
+    fn subpass_index(&self) -> u32;
+
+    /// Returns the subpass this graphics pipeline is rendering to.
+    #[inline]
+    fn subpass(self) -> Subpass<Self> where Self: Sized {
+        let index = self.subpass_index();
+        Subpass::from(self, index).expect("Wrong subpass index in GraphicsPipelineAbstract::subpass")
+    }
 
     /// Returns true if the line width used by this pipeline is dynamic.
     fn has_dynamic_line_width(&self) -> bool;
@@ -1620,6 +1630,11 @@ unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
+    }
+
+    #[inline]
+    fn subpass_index(&self) -> u32 {
+        self.render_pass_subpass
     }
 
     #[inline]
@@ -1670,6 +1685,11 @@ unsafe impl<T> GraphicsPipelineAbstract for T
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineAbstract::inner(&**self)
+    }
+
+    #[inline]
+    fn subpass_index(&self) -> u32 {
+        (**self).subpass_index()
     }
 
     #[inline]
