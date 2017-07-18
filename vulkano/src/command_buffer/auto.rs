@@ -375,7 +375,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                    compute_allowed,
                    subpasses_remaining,
                    secondary_cb,
-                   subpass_secondary: secondary_cb,
+                   subpass_secondary: false,
                    flags,
                })
         }
@@ -412,11 +412,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn build(self) -> Result<AutoCommandBuffer<P::Alloc>, BuildError>
         where P: CommandPoolBuilderAlloc
     {
-        if self.secondary_cb {
-            return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
+        if !self.secondary_cb && self.subpasses_remaining.is_some() {
+            return Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass.into());
         }
-
-        self.ensure_outside_render_pass()?;
 
         let submit_state = match self.flags {
             Flags::None => {
