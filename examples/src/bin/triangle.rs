@@ -35,6 +35,8 @@ extern crate winit;
 // the two.
 extern crate vulkano_win;
 
+use winit::Window;
+
 use vulkano_win::VkSurfaceBuild;
 
 use vulkano::buffer::BufferUsage;
@@ -51,6 +53,7 @@ use vulkano::swapchain;
 use vulkano::swapchain::PresentMode;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::swapchain::AcquireError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
@@ -157,7 +160,7 @@ fn main() {
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
     // be visible on the screen. These images are returned alongside with the swapchain.
-    let (swapchain, images) = {
+    let (mut swapchain, mut images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
         let caps = window.surface().capabilities(physical)
@@ -301,13 +304,24 @@ void main() {
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let framebuffers = images.iter().map(|image| {
+    let mut framebuffers = images.iter().map(|image| {
         Arc::new(Framebuffer::start(render_pass.clone())
             .add(image.clone()).unwrap()
             .build().unwrap())
     }).collect::<Vec<_>>();
 
     // Initialization is finally finished!
+
+    // In some situations, the swapchain will become invalid by itself. This includes for example
+    // when the window is resized (as the images of the swapchain will no longer match the
+    // window's) or, on Android, when the application went to the background and goes back to the
+    // foreground.
+    //
+    // In this situation, acquiring a swapchain image or presenting it will return an error.
+    // Rendering to an image of that swapchain will not produce any error, but may or may not work.
+    // To continue rendering, we need to recreate the swapchain by creating a new swapchain.
+    // Here, we remember that we need to do this for the next loop iteration.
+    let mut recreate_swapchain = false;
 
     // In the loop below we are going to submit commands to the GPU. Submitting a command produces
     // an object that implements the `GpuFuture` trait, which holds the resources for as long as
@@ -324,6 +338,29 @@ void main() {
         // already processed, and frees the resources that are no longer needed.
         previous_frame_end.cleanup_finished();
 
+        // If the swapchain needs to be recreated, recreate it
+        if recreate_swapchain {
+            let (width, height) = window.window().get_inner_size_pixels().unwrap();
+            let (new_swapchain, new_images) = swapchain.recreate_with_dimension([width, height])
+                .unwrap();
+
+            use std::mem::replace;
+            replace(&mut swapchain, new_swapchain);
+            replace(&mut images, new_images);
+
+            // Because framebuffers contains an Arc on the old swapchain, we need to
+            // recreate framebuffers as well.  This is just like we did before, and so you
+            // might want to make a function for this in your code.
+            let new_framebuffers = images.iter().map(|image| {
+                Arc::new(Framebuffer::start(render_pass.clone())
+                         .add(image.clone()).unwrap()
+                         .build().unwrap())
+            }).collect::<Vec<_>>();
+            replace(&mut framebuffers, new_framebuffers);
+
+            recreate_swapchain = false;
+        }
+
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
         // function will block.
@@ -331,8 +368,15 @@ void main() {
         //
         // This function can block if no image is available. The parameter is an optional timeout
         // after which the function call will return an error.
-        let (image_num, acquire_future) = swapchain::acquire_next_image(swapchain.clone(),
-                                                                        None).unwrap();
+        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(),
+                                                                              None) {
+            Ok(r) => r,
+            Err(AcquireError::OutOfDate) => {
+                recreate_swapchain = true;
+                continue;
+            },
+            Err(err) => panic!("{:?}", err)
+        };
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
