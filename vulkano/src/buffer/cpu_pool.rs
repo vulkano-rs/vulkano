@@ -11,6 +11,7 @@
 #![allow(deprecated)]
 
 use smallvec::SmallVec;
+use std::cmp;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -134,8 +135,12 @@ pub struct CpuBufferPoolChunk<T, A>
     // Index of the subbuffer within `buffer`. In number of elements.
     index: usize,
 
-    // Size of the subbuffer in number of elements.
-    len: usize,
+    // Number of bytes to add to `index * mem::size_of::<T>()` to obtain the start of the data in
+    // the buffer. Necessary for alignment purposes.
+    align_offset: usize,
+
+    // Size of the subbuffer in number of elements, as requested by the user.
+    requested_len: usize,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -386,32 +391,55 @@ impl<T, A> CpuBufferPool<T, A>
         };
 
         let mut chunks_in_use = current_buffer.chunks_in_use.lock().unwrap();
-        let data_len = data.len();
 
-        // Find a suitable offset, or return if none available.
-        let index = {
-            let next_index = {
+        // Number of elements requested by the user.
+        let requested_len = data.len();
+
+        // Find a suitable offset and len, or returns if none available.
+        let (index, occupied_len, align_offset) = {
+            let (tentative_index, tentative_len, tentative_align_offset) = {
                 // Since the only place that touches `next_index` is this code, and since we
                 // own a mutex lock to the buffer, it means that `next_index` can't be accessed
                 // concurrently.
                 // TODO: ^ eventually should be put inside the mutex
-                current_buffer
+                let idx = current_buffer
                     .next_index
-                    .load(Ordering::SeqCst)
+                    .load(Ordering::SeqCst);
+
+                // Find the required alignment in bytes.
+                let align_bytes = cmp::max(
+                    if self.usage.uniform_buffer {
+                        self.device().physical_device().limits()
+                            .min_uniform_buffer_offset_alignment() as usize
+                    } else { 1 },
+                    if self.usage.storage_buffer {
+                        self.device().physical_device().limits()
+                            .min_storage_buffer_offset_alignment() as usize
+                    } else { 1 },
+                );
+
+                let tentative_align_offset = (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
+                let additional_len = if tentative_align_offset == 0 {
+                    0
+                } else {
+                    1 + (tentative_align_offset - 1) / mem::size_of::<T>()
+                };
+
+                (idx, requested_len + additional_len, tentative_align_offset)
             };
 
             // Find out whether any chunk in use overlaps this range.
-            if next_index + data_len <= current_buffer.capacity &&
-                !chunks_in_use.iter().any(|c| (c.index >= next_index && c.index < next_index + data_len) ||
-                    (c.index <= next_index && c.index + c.len > next_index))
+            if tentative_index + tentative_len <= current_buffer.capacity &&
+                !chunks_in_use.iter().any(|c| (c.index >= tentative_index && c.index < tentative_index + tentative_len) ||
+                    (c.index <= tentative_index && c.index + c.len > tentative_index))
             {
-                next_index
+                (tentative_index, tentative_len, tentative_align_offset)
             } else {
-                // Impossible to allocate at `next_index`. Let's try 0 instead.
-                if data_len <= current_buffer.capacity &&
-                    !chunks_in_use.iter().any(|c| c.index < data_len)
+                // Impossible to allocate at `tentative_index`. Let's try 0 instead.
+                if requested_len <= current_buffer.capacity &&
+                    !chunks_in_use.iter().any(|c| c.index < requested_len)
                 {
-                    0
+                    (0, requested_len, 0)
                 } else {
                     // Buffer is full. Return.
                     return Err(data);
@@ -421,26 +449,30 @@ impl<T, A> CpuBufferPool<T, A>
 
         // Write `data` in the memory.
         unsafe {
-            let range = (index * mem::size_of::<T>()) .. ((index + data_len) * mem::size_of::<T>());
+            let mem_off = current_buffer.memory.offset();
+            let range_start = index * mem::size_of::<T>() + align_offset + mem_off;
+            let range_end = (index + requested_len) * mem::size_of::<T>() + align_offset + mem_off;
             let mut mapping = current_buffer
                 .memory
                 .mapped_memory()
                 .unwrap()
-                .read_write::<[T]>(range);
+                .read_write::<[T]>(range_start .. range_end);
 
             let mut written = 0;
             for (o, i) in mapping.iter_mut().zip(data) {
                 ptr::write(o, i);
                 written += 1;
             }
-            assert_eq!(written, data_len);
+            assert_eq!(written, requested_len,
+                       "Iterator passed to CpuBufferPool::chunk has a mismatch between reported \
+                        length and actual number of elements");
         }
 
         // Mark the chunk as in use.
-        current_buffer.next_index.store(index + data_len, Ordering::SeqCst);
+        current_buffer.next_index.store(index + occupied_len, Ordering::SeqCst);
         chunks_in_use.push(ActualBufferChunk {
             index,
-            len: data_len,
+            len: occupied_len,
             num_cpu_accesses: 1,
             num_gpu_accesses: 0,
         });
@@ -449,7 +481,8 @@ impl<T, A> CpuBufferPool<T, A>
                // TODO: remove .clone() once non-lexical borrows land
                buffer: current_buffer.clone(),
                index: index,
-               len: data_len,
+               align_offset,
+               requested_len,
                marker: PhantomData,
            })
     }
@@ -496,7 +529,8 @@ impl<T, A> Clone for CpuBufferPoolChunk<T, A>
         CpuBufferPoolChunk {
             buffer: self.buffer.clone(),
             index: self.index,
-            len: self.len,
+            align_offset: self.align_offset,
+            requested_len: self.requested_len,
             marker: PhantomData,
         }
     }
@@ -509,13 +543,13 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     fn inner(&self) -> BufferInner {
         BufferInner {
             buffer: &self.buffer.inner,
-            offset: self.index * mem::size_of::<T>(),
+            offset: self.index * mem::size_of::<T>() + self.align_offset,
         }
     }
 
     #[inline]
     fn size(&self) -> usize {
-        self.len * mem::size_of::<T>()
+        self.requested_len * mem::size_of::<T>()
     }
 
     #[inline]

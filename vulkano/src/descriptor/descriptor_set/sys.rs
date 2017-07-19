@@ -865,6 +865,11 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
+        debug_assert_eq!(offset % buffer.device().physical_device().limits()
+                            .min_uniform_buffer_offset_alignment() as usize, 0);
+        debug_assert!(size <= buffer.device().physical_device().limits()
+                            .max_uniform_buffer_range() as usize);
+
         DescriptorWrite {
             binding: binding,
             first_array_element: array_element,
@@ -882,6 +887,11 @@ impl DescriptorWrite {
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
+
+        debug_assert_eq!(offset % buffer.device().physical_device().limits()
+                            .min_storage_buffer_offset_alignment() as usize, 0);
+        debug_assert!(size <= buffer.device().physical_device().limits()
+                            .max_storage_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
@@ -902,6 +912,11 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
+        debug_assert_eq!(offset % buffer.device().physical_device().limits()
+                            .min_uniform_buffer_offset_alignment() as usize, 0);
+        debug_assert!(size <= buffer.device().physical_device().limits()
+                            .max_uniform_buffer_range() as usize);
+
         DescriptorWrite {
             binding: binding,
             first_array_element: array_element,
@@ -918,6 +933,11 @@ impl DescriptorWrite {
     {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
+
+        debug_assert_eq!(offset % buffer.device().physical_device().limits()
+                            .min_storage_buffer_offset_alignment() as usize, 0);
+        debug_assert!(size <= buffer.device().physical_device().limits()
+                            .max_storage_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
