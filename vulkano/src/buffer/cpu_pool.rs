@@ -126,7 +126,7 @@ struct ActualBufferChunk {
 /// A subbuffer allocated from a `CpuBufferPool`.
 ///
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
-pub struct CpuBufferPoolSubbuffer<T, A>
+pub struct CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
     buffer: Arc<ActualBuffer<A>>,
@@ -139,6 +139,16 @@ pub struct CpuBufferPoolSubbuffer<T, A>
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
+}
+
+/// A subbuffer allocated from a `CpuBufferPool`.
+///
+/// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
+pub struct CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    // This struct is just a wrapper around `CpuBufferPoolChunk`.
+    chunk: CpuBufferPoolChunk<T, A>,
 }
 
 impl<T> CpuBufferPool<T> {
@@ -234,8 +244,11 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
+    #[inline]
     pub fn next(&self, data: T) -> CpuBufferPoolSubbuffer<T, A> {
-        self.chunk(iter::once(data))
+        CpuBufferPoolSubbuffer {
+            chunk: self.chunk(iter::once(data))
+        }
     }
 
     /// Grants access to a new subbuffer and puts `data` in it.
@@ -250,7 +263,7 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// Panicks if the length of the iterator didn't match the actual number of element.
     ///
-    pub fn chunk<I>(&self, data: I) -> CpuBufferPoolSubbuffer<T, A>
+    pub fn chunk<I>(&self, data: I) -> CpuBufferPoolChunk<T, A>
         where I: IntoIterator<Item = T>,
               I::IntoIter: ExactSizeIterator
     {
@@ -286,7 +299,9 @@ impl<T, A> CpuBufferPool<T, A>
     #[inline]
     pub fn try_next(&self, data: T) -> Option<CpuBufferPoolSubbuffer<T, A>> {
         let mut mutex = self.current_buffer.lock().unwrap();
-        self.try_next_impl(&mut mutex, iter::once(data)).ok()
+        self.try_next_impl(&mut mutex, iter::once(data)).map(|c| {
+            CpuBufferPoolSubbuffer { chunk: c }
+        }).ok()
     }
 
     // Creates a new buffer and sets it as current. The capacity is in number of elements.
@@ -361,7 +376,7 @@ impl<T, A> CpuBufferPool<T, A>
     // Panicks if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-                        data: I) -> Result<CpuBufferPoolSubbuffer<T, A>, I>
+                        data: I) -> Result<CpuBufferPoolChunk<T, A>, I>
         where I: ExactSizeIterator<Item = T>
     {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
@@ -430,7 +445,7 @@ impl<T, A> CpuBufferPool<T, A>
             num_gpu_accesses: 0,
         });
 
-        Ok(CpuBufferPoolSubbuffer {
+        Ok(CpuBufferPoolChunk {
                // TODO: remove .clone() once non-lexical borrows land
                buffer: current_buffer.clone(),
                index: index,
@@ -467,10 +482,10 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPool<T, A>
     }
 }
 
-impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
+impl<T, A> Clone for CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
-    fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
+    fn clone(&self) -> CpuBufferPoolChunk<T, A> {
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -478,7 +493,7 @@ impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
         chunk.num_cpu_accesses = chunk.num_cpu_accesses.checked_add(1)
             .expect("Overflow in CPU accesses");
 
-        CpuBufferPoolSubbuffer {
+        CpuBufferPoolChunk {
             buffer: self.buffer.clone(),
             index: self.index,
             len: self.len,
@@ -487,7 +502,7 @@ impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
     }
 }
 
-unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
+unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
     #[inline]
@@ -541,7 +556,7 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 }
 
-impl<T, A> Drop for CpuBufferPoolSubbuffer<T, A>
+impl<T, A> Drop for CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
     fn drop(&mut self) {
@@ -557,6 +572,65 @@ impl<T, A> Drop for CpuBufferPoolSubbuffer<T, A>
     }
 }
 
+unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    type Content = [T];
+}
+
+unsafe impl<T, A> DeviceOwned for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.inner.device()
+    }
+}
+
+impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
+        CpuBufferPoolSubbuffer {
+            chunk: self.chunk.clone(),
+        }
+    }
+}
+
+unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        self.chunk.inner()
+    }
+
+    #[inline]
+    fn size(&self) -> usize {
+        self.chunk.size()
+    }
+
+    #[inline]
+    fn conflict_key(&self, a: usize, b: usize) -> u64 {
+        self.chunk.conflict_key(a, b)
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, e: bool, q: &Queue) -> Result<(), AccessError> {
+        self.chunk.try_gpu_lock(e, q)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        self.chunk.increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        self.chunk.unlock()
+    }
+}
+
 unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
@@ -568,7 +642,7 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.buffer.inner.device()
+        self.chunk.buffer.inner.device()
     }
 }
 
