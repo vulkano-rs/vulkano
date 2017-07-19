@@ -38,8 +38,8 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
 
     let queue_family = physical.queue_families()
-        .find(|&q| q.supports_graphics())
-        .expect("couldn't find a graphical queue family");
+        .find(|&q| q.supports_compute())
+        .expect("couldn't find a compute queue family");
 
     let (device, mut queues) = {
         Device::new(physical, &Features::none(), &DeviceExtensions::none(),
