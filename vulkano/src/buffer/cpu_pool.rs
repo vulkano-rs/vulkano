@@ -388,7 +388,7 @@ impl<T, A> CpuBufferPool<T, A>
             // Find out whether any chunk in use overlaps this range.
             if next_index + data_len <= current_buffer.capacity &&
                 !chunks_in_use.iter().any(|c| (c.index >= next_index && c.index < next_index + data_len) ||
-                    (c.index <= next_index && c.index + c.len >= next_index))
+                    (c.index <= next_index && c.index + c.len > next_index))
             {
                 next_index
             } else {
@@ -630,5 +630,23 @@ mod tests {
                 Some(c) => assert_eq!(c, new_cap),
             }
         }
+    }
+
+    #[test]
+    fn chunk_loopback() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let pool = CpuBufferPool::<u8>::upload(device);
+        pool.reserve(5).unwrap();
+
+        let a = pool.chunk(vec![0, 0]);
+        let b = pool.chunk(vec![0, 0]);
+        assert_eq!(b.index, 2);
+        drop(a);
+
+        let c = pool.chunk(vec![0, 0]);
+        assert_eq!(c.index, 0);
+
+        assert_eq!(pool.capacity(), 5);
     }
 }
