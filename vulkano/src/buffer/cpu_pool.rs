@@ -51,7 +51,7 @@ use OomError;
 ///
 /// This buffer is especially suitable when you want to upload or download some data at each frame.
 ///
-/// # BufferUsage
+/// # Usage
 ///
 /// A `CpuBufferPool` is similar to a ring buffer. You start by creating an empty pool, then you
 /// grab elements from the pool and use them, and if the pool is full it will automatically grow
