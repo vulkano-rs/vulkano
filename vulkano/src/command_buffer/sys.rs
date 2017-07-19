@@ -115,7 +115,7 @@ impl
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
     pub fn primary()
-        -> Kind<RenderPass<EmptySinglePassRenderPassDesc>,
+        -> Kind<Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
                 Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
     {
         Kind::Primary
@@ -129,7 +129,7 @@ impl
     #[inline]
     pub fn secondary(occlusion_query: KindOcclusionQuery,
                      query_statistics_flags: QueryPipelineStatisticFlags)
-        -> Kind<RenderPass<EmptySinglePassRenderPassDesc>,
+        -> Kind<Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
                 Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
     {
         Kind::Secondary {
