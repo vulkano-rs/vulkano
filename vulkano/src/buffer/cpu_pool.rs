@@ -211,7 +211,11 @@ impl<T> CpuBufferPool<T> {
             marker: PhantomData,
         }
     }
+}
 
+impl<T, A> CpuBufferPool<T, A>
+    where A: MemoryPool
+{
     /// Returns the current capacity of the pool, in number of elements.
     pub fn capacity(&self) -> usize {
         match *self.current_buffer.lock().unwrap() {
@@ -219,11 +223,7 @@ impl<T> CpuBufferPool<T> {
             Some(ref buf) => buf.capacity,
         }
     }
-}
 
-impl<T, A> CpuBufferPool<T, A>
-    where A: MemoryPool
-{
     /// Makes sure that the capacity is at least `capacity`. Allocates memory if it is not the
     /// case.
     ///
