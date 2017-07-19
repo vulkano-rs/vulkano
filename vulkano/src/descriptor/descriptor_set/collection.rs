@@ -105,8 +105,15 @@ macro_rules! impl_collection {
         {
             #[inline]
             fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
-                let mut list = self.1.into_vec();
-                list.insert(0, Box::new(self.0) as Box<_>);
+                #![allow(non_snake_case)]
+
+                let ($first, $($others,)*) = self;
+
+                let mut list = Vec::new();
+                list.push(Box::new($first) as Box<_>);
+                $(
+                    list.push(Box::new($others) as Box<_>);
+                )+
                 list
             }
 
