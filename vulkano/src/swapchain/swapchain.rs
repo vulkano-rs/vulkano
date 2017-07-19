@@ -801,6 +801,15 @@ impl Drop for SwapchainAcquireFuture {
                 fence.wait(None).unwrap();     // TODO: handle error?
                 self.semaphore = None;
             }
+
+        } else {
+            // We make sure that the fence is signalled. This also silences an error from the
+            // validation layers about using a fence whose state hasn't been checked (even though
+            // we know for sure that it must've been signalled).
+            debug_assert!({
+                let dur = Some(Duration::new(0, 0));
+                self.fence.as_ref().map(|f| f.wait(dur).is_ok()).unwrap_or(true)
+            });
         }
 
         // TODO: if this future is destroyed without being presented, then eventually acquiring
