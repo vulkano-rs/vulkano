@@ -88,14 +88,8 @@ fn main() {
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
-    let uniform_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<vs::ty::Data>
-                               ::from_data(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), 
-                                vs::ty::Data {
-                                    world : <cgmath::Matrix4<f32> as cgmath::SquareMatrix>::identity().into(),
-                                    view : (view * scale).into(),
-                                    proj : proj.into(),
-                                })
-                               .expect("failed to create buffer");
+    let uniform_buffer = vulkano::buffer::cpu_pool::CpuBufferPool::<vs::ty::Data>
+                               ::new(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()));
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
@@ -138,11 +132,6 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
-        .add_buffer(uniform_buffer.clone()).unwrap()
-        .build().unwrap()
-    );
-
     let framebuffers = images.iter().map(|image| {
         Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
             .add(image.clone()).unwrap()
@@ -157,18 +146,24 @@ fn main() {
     loop {
         previous_frame.cleanup_finished();
 
-        {
-            // aquiring write lock for the uniform buffer
-            let mut buffer_content = uniform_buffer.write().unwrap(); 
-
+        let uniform_buffer_subbuffer = {
             let elapsed = rotation_start.elapsed();
             let rotation = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0;
             let rotation = cgmath::Matrix3::from_angle_y(cgmath::Rad(rotation as f32));
 
-            // since write lock implementd Deref and DerefMut traits, 
-            // we can update content directly 
-            buffer_content.world = cgmath::Matrix4::from(rotation).into();
-        }
+            let uniform_data = vs::ty::Data {
+                world : cgmath::Matrix4::from(rotation).into(),
+                view : (view * scale).into(),
+                proj : proj.into(),
+            };
+
+            uniform_buffer.next(uniform_data)
+        };
+
+        let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(uniform_buffer_subbuffer).unwrap()
+            .build().unwrap()
+        );
 
         let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
