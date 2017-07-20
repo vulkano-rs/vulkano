@@ -40,6 +40,8 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
+    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
+
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
@@ -56,7 +58,7 @@ fn main() {
     let (mut swapchain, mut images) = {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
-        let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
+        let dimensions = caps.current_extent.unwrap_or([width, height]);
         let usage = caps.supported_usage_flags;
 
         vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
@@ -136,8 +138,6 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
-
     let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
         .add_sampled_image(texture.clone(), sampler.clone()).unwrap()
         .build().unwrap()
@@ -209,7 +209,6 @@ fn main() {
                       }]),
                       scissors: None,
                   },
-                 
                   vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

@@ -106,6 +106,10 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
+    // Get the dimensions of the viewport. These variables need to be mutable since the viewport
+    // can change size.
+    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
+
     // The next step is to choose which GPU queue will execute our draw commands.
     //
     // Devices can provide multiple queues to run commands in parallel (for example a draw queue
@@ -166,8 +170,8 @@ fn main() {
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
-        // by the dimensions of the swapchain, in which case we just use a default value.
-        let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
+        // by the dimensions of the swapchain, in which case we just use the width and height defined above.
+        let dimensions = caps.current_extent.unwrap_or([width, height]);
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
@@ -282,12 +286,7 @@ void main() {
         .vertex_shader(vs.main_entry_point(), ())
         // The content of the vertex buffer describes a list of triangles.
         .triangle_list()
-        // // TODO: switch to dynamic viewports and explain how it works
-        // .viewports(iter::once(Viewport {
-        //     origin: [0.0, 0.0],
-        //     depth_range: 0.0 .. 1.0,
-        //     dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        // }))
+        // Use a resizable viewport set to draw over the entire window
         .viewports_dynamic_scissors_irrelevant(1)
         // See `vertex_shader`.
         .fragment_shader(fs.main_entry_point(), ())
@@ -297,10 +296,6 @@ void main() {
         // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap());
-
-    // Get the dimensions of the viewport. These variables need to be mutable since the viewport
-    // can change size.
-    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
