@@ -62,7 +62,6 @@ fn main() {
     let (mut swapchain, mut images) = {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
-        //let dimensions = caps.current_extent.unwrap_or([width, height]);
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
@@ -126,11 +125,6 @@ fn main() {
         .vertex_input(vulkano::pipeline::vertex::TwoBuffersDefinition::new())
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
-        // .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
-        //     origin: [0.0, 0.0],
-        //     depth_range: 0.0 .. 1.0,
-        //     dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        // }))
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .depth_stencil_simple_depth()
