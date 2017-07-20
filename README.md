@@ -53,7 +53,7 @@ This repository contains six libraries:
 - `vulkano-shader-derive` provides a custom derive that invokes `vulkano-shaders`. It lets you
   easily integrate your GLSL shaders within the rest of your source code.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
-  a window where to render to.
+  a window to render to.
 - `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
   implementation detail that you don't need to use manually if you use vulkano.
 - `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
