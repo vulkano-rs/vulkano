@@ -35,8 +35,6 @@ extern crate winit;
 // the two.
 extern crate vulkano_win;
 
-use winit::Window;
-
 use vulkano_win::VkSurfaceBuild;
 
 use vulkano::buffer::BufferUsage;
@@ -54,12 +52,12 @@ use vulkano::swapchain::PresentMode;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 use vulkano::swapchain::AcquireError;
+use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::iter;
 use std::sync::Arc;
-use std::time::Duration;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -341,8 +339,15 @@ void main() {
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
             let (width, height) = window.window().get_inner_size_pixels().unwrap();
-            let (new_swapchain, new_images) = swapchain.recreate_with_dimension([width, height])
-                .unwrap();
+            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension([width, height]) {
+                Ok(r) => r,
+                // This error tends to happen when the user is manually resizing the window.
+                // Simply restarting the loop is the easiest way to fix this issue.
+                Err(SwapchainCreationError::UnsupportedDimensions) => {
+                    continue;
+                },
+                Err(err) => panic!("{:?}", err)
+            };
 
             use std::mem::replace;
             replace(&mut swapchain, new_swapchain);
