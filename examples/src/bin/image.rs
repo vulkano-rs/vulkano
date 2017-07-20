@@ -40,7 +40,10 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
-    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
+    let mut dimensions = {
+        let (width, height) = window.window().get_inner_size_pixels().unwrap();
+        [width, height]
+    };
 
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
@@ -58,7 +61,7 @@ fn main() {
     let (mut swapchain, mut images) = {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
-        let dimensions = caps.current_extent.unwrap_or([width, height]);
+        //let dimensions = caps.current_extent.unwrap_or([width, height]);
         let usage = caps.supported_usage_flags;
 
         vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
@@ -155,11 +158,12 @@ fn main() {
     loop {
         previous_frame_end.cleanup_finished();
         if recreate_swapchain {
-            let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
-            width  = new_width;
-            height = new_height;
+            dimensions = {
+                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
+                [new_width, new_height]
+            };
             
-            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension([width, height]) {
+            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => {
                     continue;
@@ -167,16 +171,15 @@ fn main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            use std::mem::replace;
-            replace(&mut swapchain, new_swapchain);
-            replace(&mut images, new_images);
+            std::mem::replace(&mut swapchain, new_swapchain);
+            std::mem::replace(&mut images, new_images);
 
             let new_framebuffers = images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>();
-            replace(&mut framebuffers, new_framebuffers);
+            std::mem::replace(&mut framebuffers, new_framebuffers);
 
             recreate_swapchain = false;
         }
@@ -204,7 +207,7 @@ fn main() {
                       line_width: None,
                       viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
                           origin: [0.0, 0.0],
-                          dimensions: [width as f32, height as f32],
+                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
                           depth_range: 0.0 .. 1.0,
                       }]),
                       scissors: None,

@@ -58,6 +58,7 @@ use vulkano::sync::GpuFuture;
 
 use std::iter;
 use std::sync::Arc;
+use std::mem;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -108,7 +109,10 @@ fn main() {
 
     // Get the dimensions of the viewport. These variables need to be mutable since the viewport
     // can change size.
-    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
+    let mut dimensions = {
+        let (width, height) = window.window().get_inner_size_pixels().unwrap();
+        [width, height]
+    };
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -171,7 +175,7 @@ fn main() {
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
         // by the dimensions of the swapchain, in which case we just use the width and height defined above.
-        let dimensions = caps.current_extent.unwrap_or([width, height]);
+        //let dimensions = caps.current_extent.unwrap_or([width, height]);
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
@@ -338,12 +342,13 @@ void main() {
 
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
-            // Get the new size for the viewport/framebuffers.
-            let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
-            width  = new_width;
-            height = new_height;
+            // Get the new dimensions for the viewport/framebuffers.
+            dimensions = {
+                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
+                [new_width, new_height]
+            };
             
-            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension([width, height]) {
+            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
                 // Simply restarting the loop is the easiest way to fix this issue.
@@ -353,9 +358,8 @@ void main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            use std::mem::replace;
-            replace(&mut swapchain, new_swapchain);
-            replace(&mut images, new_images);
+            mem::replace(&mut swapchain, new_swapchain);
+            mem::replace(&mut images, new_images);
 
             // Because framebuffers contains an Arc on the old swapchain, we need to
             // recreate framebuffers as well.  This is just like we did before, and so you
@@ -365,7 +369,7 @@ void main() {
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>();
-            replace(&mut framebuffers, new_framebuffers);
+            mem::replace(&mut framebuffers, new_framebuffers);
 
             recreate_swapchain = false;
         }
@@ -418,7 +422,7 @@ void main() {
                       // TODO: Find a way to do this without having to dynamically allocate a Vec every frame.
                       viewports: Some(vec![Viewport {
                           origin: [0.0, 0.0],
-                          dimensions: [width as f32, height as f32],
+                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
                           depth_range: 0.0 .. 1.0,
                       }]),
                       scissors: None,
