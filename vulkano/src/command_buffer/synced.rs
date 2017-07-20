@@ -134,6 +134,10 @@ struct Commands<P> {
     // `UnsafeCommandBufferBuilder`.
     first_unflushed: usize,
 
+    // If we're currently inside a render pass, contains the index of the `CmdBeginRenderPass`
+    // command.
+    latest_render_pass_enter: Option<usize>,
+
     // The actual list.
     commands: Vec<Box<Command<P> + Send + Sync>>,
 }
@@ -316,8 +320,13 @@ impl<P> SyncCommandBufferBuilder<P> {
               R: RenderPassAbstract,
               F: FramebufferAbstract
     {
+        let inside_render_pass = match kind {
+            Kind::Primary => false,
+            Kind::Secondary { ref render_pass, .. } => render_pass.is_some()
+        };
+
         let cmd = UnsafeCommandBufferBuilder::new(pool, kind, flags)?;
-        Ok(SyncCommandBufferBuilder::from_unsafe_cmd(cmd))
+        Ok(SyncCommandBufferBuilder::from_unsafe_cmd(cmd, inside_render_pass))
     }
 
     /// Builds a `SyncCommandBufferBuilder` from an existing `UnsafeCommandBufferBuilder`.
@@ -330,14 +339,21 @@ impl<P> SyncCommandBufferBuilder<P> {
     /// you must take into account the fact that the `SyncCommandBufferBuilder` won't be aware of
     /// any existing resource usage.
     #[inline]
-    pub unsafe fn from_unsafe_cmd(cmd: UnsafeCommandBufferBuilder<P>)
+    pub unsafe fn from_unsafe_cmd(cmd: UnsafeCommandBufferBuilder<P>, inside_render_pass: bool)
                                   -> SyncCommandBufferBuilder<P> {
+        let latest_render_pass_enter = if inside_render_pass {
+            Some(0)
+        } else {
+            None
+        };
+                                
         SyncCommandBufferBuilder {
             inner: cmd,
             resources: FnvHashMap::default(),
             pending_barrier: UnsafeCommandBufferBuilderPipelineBarrier::new(),
             commands: Arc::new(Mutex::new(Commands {
                                               first_unflushed: 0,
+                                              latest_render_pass_enter,
                                               commands: Vec::new(),
                                           })),
         }
@@ -395,11 +411,19 @@ impl<P> SyncCommandBufferBuilder<P> {
                             self.pending_barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
                             {
                                 let mut commands_lock = self.commands.lock().unwrap();
-                                let f = commands_lock.first_unflushed;
-                                for command in &mut commands_lock.commands[f .. latest_command_id] {
+                                let start = commands_lock.first_unflushed;
+                                let end = if let Some(rp_enter) = commands_lock.latest_render_pass_enter {
+                                    rp_enter
+                                } else {
+                                    latest_command_id
+                                };
+                                if collision_command_id >= end {
+                                    return Err(SyncCommandBufferBuilderError::Conflict);
+                                }
+                                for command in &mut commands_lock.commands[start .. end] {
                                     command.send(&mut self.inner);
                                 }
-                                commands_lock.first_unflushed = latest_command_id;
+                                commands_lock.first_unflushed = end;
                             }
                         }
                     }
@@ -516,6 +540,8 @@ impl<P> SyncCommandBufferBuilder<P> {
         where P: CommandPoolBuilderAlloc
     {
         let mut commands_lock = self.commands.lock().unwrap();
+        debug_assert!(commands_lock.latest_render_pass_enter.is_none() ||
+                      self.pending_barrier.is_empty());
 
         // Flush the commands that haven't been flushed yet.
         unsafe {
@@ -657,6 +683,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                                        .. AccessFlagBits::none()
                                    },       // TODO: suboptimal
                                    desc.initial_layout, desc.final_layout)?;
+        }
+
+        {
+            let mut cmd_lock = self.commands.lock().unwrap();
+            cmd_lock.latest_render_pass_enter = Some(cmd_lock.commands.len() - 1);
         }
 
         Ok(())
@@ -1553,7 +1584,10 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd));
+        let mut cmd_lock = self.commands.lock().unwrap();
+        cmd_lock.commands.push(Box::new(Cmd));
+        debug_assert!(cmd_lock.latest_render_pass_enter.is_some());
+        cmd_lock.latest_render_pass_enter = None;
     }
 
     /// Starts the process of executing secondary command buffers. Returns an intermediate struct
