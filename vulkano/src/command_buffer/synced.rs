@@ -93,6 +93,9 @@ pub struct SyncCommandBufferBuilder<P> {
     // Stores all the commands that were submitted or are going to be submitted to the inner
     // builder. A copy of this `Arc` is stored in each `BuilderKey`.
     commands: Arc<Mutex<Commands<P>>>,
+
+    // True if we're a secondary command buffer.
+    is_secondary: bool,
 }
 
 impl<P> fmt::Debug for SyncCommandBufferBuilder<P> {
@@ -320,13 +323,13 @@ impl<P> SyncCommandBufferBuilder<P> {
               R: RenderPassAbstract,
               F: FramebufferAbstract
     {
-        let inside_render_pass = match kind {
-            Kind::Primary => false,
-            Kind::Secondary { ref render_pass, .. } => render_pass.is_some()
+        let (is_secondary, inside_render_pass) = match kind {
+            Kind::Primary => (false, false),
+            Kind::Secondary { ref render_pass, .. } => (true, render_pass.is_some()),
         };
 
         let cmd = UnsafeCommandBufferBuilder::new(pool, kind, flags)?;
-        Ok(SyncCommandBufferBuilder::from_unsafe_cmd(cmd, inside_render_pass))
+        Ok(SyncCommandBufferBuilder::from_unsafe_cmd(cmd, is_secondary, inside_render_pass))
     }
 
     /// Builds a `SyncCommandBufferBuilder` from an existing `UnsafeCommandBufferBuilder`.
@@ -339,8 +342,8 @@ impl<P> SyncCommandBufferBuilder<P> {
     /// you must take into account the fact that the `SyncCommandBufferBuilder` won't be aware of
     /// any existing resource usage.
     #[inline]
-    pub unsafe fn from_unsafe_cmd(cmd: UnsafeCommandBufferBuilder<P>, inside_render_pass: bool)
-                                  -> SyncCommandBufferBuilder<P> {
+    pub unsafe fn from_unsafe_cmd(cmd: UnsafeCommandBufferBuilder<P>, is_secondary: bool,
+                                  inside_render_pass: bool) -> SyncCommandBufferBuilder<P> {
         let latest_render_pass_enter = if inside_render_pass {
             Some(0)
         } else {
@@ -356,6 +359,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                               latest_render_pass_enter,
                                               commands: Vec::new(),
                                           })),
+            is_secondary,
         }
     }
 
@@ -491,7 +495,8 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                 // Handle the case when the initial layout requirement of the image is different
                 // from the first layout usage.
-                if resource_ty == KeyTy::Image && start_layout != ImageLayout::Undefined &&
+                if !self.is_secondary && resource_ty == KeyTy::Image &&
+                    start_layout != ImageLayout::Undefined &&
                     start_layout != ImageLayout::Preinitialized
                 {
                     let commands_lock = self.commands.lock().unwrap();
@@ -553,37 +558,39 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         // Transition images to their desired final layout.
-        unsafe {
-            let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
+        if !self.is_secondary {
+            unsafe {
+                let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
 
-            for (key, mut state) in &mut self.resources {
-                if key.resource_ty != KeyTy::Image {
-                    continue;
+                for (key, mut state) in &mut self.resources {
+                    if key.resource_ty != KeyTy::Image {
+                        continue;
+                    }
+
+                    let img = commands_lock.commands[key.command_id].image(key.resource_index);
+                    if img.final_layout_requirement() == state.current_layout {
+                        continue;
+                    }
+
+                    state.exclusive_any = true;
+                    barrier.add_image_memory_barrier(img,
+                                                    0 .. img.mipmap_levels(),
+                                                    0 .. img.dimensions().array_layers(),
+                                                    state.stages,
+                                                    state.access,
+                                                    PipelineStages {
+                                                        bottom_of_pipe: true,
+                                                        ..PipelineStages::none()
+                                                    }, // TODO:?
+                                                    AccessFlagBits::none(),
+                                                    true,
+                                                    None, // TODO: access?
+                                                    state.current_layout,
+                                                    img.final_layout_requirement());
                 }
 
-                let img = commands_lock.commands[key.command_id].image(key.resource_index);
-                if img.final_layout_requirement() == state.current_layout {
-                    continue;
-                }
-
-                state.exclusive_any = true;
-                barrier.add_image_memory_barrier(img,
-                                                 0 .. img.mipmap_levels(),
-                                                 0 .. img.dimensions().array_layers(),
-                                                 state.stages,
-                                                 state.access,
-                                                 PipelineStages {
-                                                     bottom_of_pipe: true,
-                                                     ..PipelineStages::none()
-                                                 }, // TODO:?
-                                                 AccessFlagBits::none(),
-                                                 true,
-                                                 None, // TODO: access?
-                                                 state.current_layout,
-                                                 img.final_layout_requirement());
+                self.inner.pipeline_barrier(&barrier);
             }
-
-            self.inner.pipeline_barrier(&barrier);
         }
 
         // Fill the `commands` list.
