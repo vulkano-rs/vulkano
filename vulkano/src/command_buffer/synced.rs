@@ -36,6 +36,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
+use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
@@ -2088,10 +2089,26 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             let mut all_images = Vec::new();
             for ds in self.inner.iter() {
                 for img_num in 0 .. ds.num_images() {
-                    let desc = ds.descriptor(ds.image(img_num).unwrap().1 as usize).unwrap();
+                    let (image_view, desc_num) = ds.image(img_num).unwrap();
+                    let desc = ds.descriptor(desc_num as usize).unwrap();
                     let write = !desc.readonly;
                     let (stages, access) = desc.pipeline_stages_and_access();
-                    let layout = ImageLayout::ShaderReadOnlyOptimal;        // FIXME:
+                    let layout = match desc.ty {
+                        DescriptorDescTy::CombinedImageSampler(_) => {
+                            image_view.descriptor_set_combined_image_sampler_layout()
+                        },
+                        DescriptorDescTy::Image(ref img) => {
+                            if img.sampled {
+                                image_view.descriptor_set_sampled_image_layout()
+                            } else {
+                                image_view.descriptor_set_storage_image_layout()
+                            }
+                        },
+                        DescriptorDescTy::InputAttachment { .. } => {
+                            image_view.descriptor_set_input_attachment_layout()
+                        },
+                        _ => panic!("Tried to bind an image to a non-image descriptor")
+                    };
                     all_images.push((write, stages, access, layout));
                 }
             }
