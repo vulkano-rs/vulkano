@@ -282,12 +282,13 @@ void main() {
         .vertex_shader(vs.main_entry_point(), ())
         // The content of the vertex buffer describes a list of triangles.
         .triangle_list()
-        // TODO: switch to dynamic viewports and explain how it works
-        .viewports(iter::once(Viewport {
-            origin: [0.0, 0.0],
-            depth_range: 0.0 .. 1.0,
-            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        }))
+        // // TODO: switch to dynamic viewports and explain how it works
+        // .viewports(iter::once(Viewport {
+        //     origin: [0.0, 0.0],
+        //     depth_range: 0.0 .. 1.0,
+        //     dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+        // }))
+        .viewports_dynamic_scissors_irrelevant(1)
         // See `vertex_shader`.
         .fragment_shader(fs.main_entry_point(), ())
         // We have to indicate which subpass of which render pass this pipeline is going to be used
@@ -296,6 +297,10 @@ void main() {
         // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
         .build(device.clone())
         .unwrap());
+
+    // Get the dimensions of the viewport. These variables need to be mutable since the viewport
+    // can change size.
+    let (mut width, mut height) = window.window().get_inner_size_pixels().unwrap();
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
@@ -338,7 +343,11 @@ void main() {
 
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
-            let (width, height) = window.window().get_inner_size_pixels().unwrap();
+            // Get the new size for the viewport/framebuffers.
+            let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
+            width  = new_width;
+            height = new_height;
+            
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension([width, height]) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
@@ -408,7 +417,18 @@ void main() {
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-            .draw(pipeline.clone(), DynamicState::none(), vertex_buffer.clone(), (), ())
+            .draw(pipeline.clone(),
+                  DynamicState {
+                      line_width: None,
+                      // TODO: Find a way to do this without having to dynamically allocate a Vec every frame.
+                      viewports: Some(vec![Viewport {
+                          origin: [0.0, 0.0],
+                          dimensions: [width as f32, height as f32],
+                          depth_range: 0.0 .. 1.0,
+                      }]),
+                      scissors: None,
+                  },
+                  vertex_buffer.clone(), (), ())
             .unwrap()
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
