@@ -2380,6 +2380,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     let desc = ds.descriptor(desc_num as usize).unwrap();
                     let write = !desc.readonly;
                     let (stages, access) = desc.pipeline_stages_and_access();
+                    let mut ignore_me_hack = false;
                     let layout = match desc.ty {
                         DescriptorDescTy::CombinedImageSampler(_) => {
                             image_view.descriptor_set_combined_image_sampler_layout()
@@ -2392,11 +2393,17 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                             }
                         },
                         DescriptorDescTy::InputAttachment { .. } => {
+                            // FIXME: This is tricky. Since we read from the input attachment
+                            // and this input attachment is being written in an earlier pass,
+                            // vulkano will think that it needs to put a pipeline barrier and will
+                            // return a `Conflict` error. For now as a work-around we simply ignore
+                            // input attachments.
+                            ignore_me_hack = true;
                             image_view.descriptor_set_input_attachment_layout()
                         },
                         _ => panic!("Tried to bind an image to a non-image descriptor")
                     };
-                    all_images.push((write, stages, access, layout));
+                    all_images.push((write, stages, access, layout, ignore_me_hack));
                 }
             }
             all_images
@@ -2423,7 +2430,8 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                                    ImageLayout::Undefined)?;
         }
 
-        for (n, (write, stages, access, layout)) in all_images.into_iter().enumerate() {
+        for (n, (write, stages, access, layout, ignore_me_hack)) in all_images.into_iter().enumerate() {
+            if ignore_me_hack { continue; }
             self.builder
                 .prev_cmd_resource(KeyTy::Image,
                                    n, write, stages, access,
