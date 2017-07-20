@@ -448,7 +448,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     entry.access = access;
                     entry.exclusive_any = true;
                     entry.exclusive = exclusive;
-                    if exclusive {
+                    if exclusive || end_layout != ImageLayout::Undefined {
                         // Only modify the layout in case of a write, because buffer operations
                         // pass `Undefined` for the layout. While a buffer write *must* set the
                         // layout to `Undefined`, a buffer read must not touch it.
