@@ -55,21 +55,23 @@ use VulkanObject;
 ///
 /// # Example
 // TODO:
-pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
+pub struct PersistentDescriptorSet<L, R, P = StdDescriptorPoolAlloc> {
     inner: P,
     resources: R,
+    pipeline_layout: L,
+    set_id: usize,
     layout: Arc<UnsafeDescriptorSetLayout>
 }
 
-impl PersistentDescriptorSet<()> {
+impl<L> PersistentDescriptorSet<L, ()> {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
     ///
     /// # Panic
     ///
     /// - Panics if the set id is out of range.
     ///
-    pub fn start<Pl>(layout: Pl, set_id: usize) -> PersistentDescriptorSetBuilder<Pl, ()>
-        where Pl: PipelineLayoutAbstract
+    pub fn start(layout: L, set_id: usize) -> PersistentDescriptorSetBuilder<L, ()>
+        where L: PipelineLayoutAbstract
     {
         assert!(layout.num_sets() > set_id);
 
@@ -85,8 +87,9 @@ impl PersistentDescriptorSet<()> {
     }
 }
 
-unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
-    where P: DescriptorPoolAlloc,
+unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
+    where L: PipelineLayoutAbstract,
+          P: DescriptorPoolAlloc,
           R: PersistentDescriptorSetResources
 {
     #[inline]
@@ -115,16 +118,17 @@ unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
     }
 }
 
-// TODO: is DescriptorSetDesc really necessary?
-unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P> {
+unsafe impl<L, R, P> DescriptorSetDesc for PersistentDescriptorSet<L, R, P>
+    where L: PipelineLayoutAbstract
+{
     #[inline]
     fn num_bindings(&self) -> usize {
-        unimplemented!()        // FIXME:
+        self.pipeline_layout.num_bindings_in_set(self.set_id).unwrap()
     }
 
     #[inline]
     fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        unimplemented!()        // FIXME:
+        self.pipeline_layout.descriptor(self.set_id, binding)
     }
 }
 
@@ -164,7 +168,7 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
 {
     /// Builds a `PersistentDescriptorSet` from the builder.
     #[inline]
-    pub fn build(self) -> Result<PersistentDescriptorSet<R, StdDescriptorPoolAlloc>, PersistentDescriptorSetBuildError> {
+    pub fn build(self) -> Result<PersistentDescriptorSet<L, R, StdDescriptorPoolAlloc>, PersistentDescriptorSetBuildError> {
         let pool = Device::standard_descriptor_pool(self.layout.device());
         self.build_with_pool(pool)
     }
@@ -176,7 +180,7 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     /// Panics if the pool doesn't have the same device as the pipeline layout.
     ///
     pub fn build_with_pool<P>(self, pool: P)
-                              -> Result<PersistentDescriptorSet<R, P::Alloc>, PersistentDescriptorSetBuildError>
+                              -> Result<PersistentDescriptorSet<L, R, P::Alloc>, PersistentDescriptorSetBuildError>
         where P: DescriptorPool
     {
         assert_eq!(self.layout.device().internal_object(),
@@ -206,6 +210,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
         Ok(PersistentDescriptorSet {
             inner: set,
             resources: self.resources,
+            pipeline_layout: self.layout,
+            set_id: self.set_id,
             layout: set_layout,
         })
     }
