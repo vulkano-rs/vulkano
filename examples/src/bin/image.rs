@@ -131,11 +131,6 @@ fn main() {
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_strip()
         .viewports_dynamic_scissors_irrelevant(1)
-        // .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
-        //     origin: [0.0, 0.0],
-        //     depth_range: 0.0 .. 1.0,
-        //     dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        // }))
         .fragment_shader(fs.main_entry_point(), ())
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
@@ -205,7 +200,6 @@ fn main() {
                 framebuffers[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
-                  //vulkano::command_buffer::DynamicState::none(),
                    vulkano::command_buffer::DynamicState {
                       line_width: None,
                       viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
