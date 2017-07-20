@@ -2028,11 +2028,51 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(SmallVec<[Box<DescriptorSet + Send + Sync>; 12]>);
                 impl FinalCommand for Fin {
-                    /* TODO: implement buffer() and image() */
+                    fn buffer(&self, mut num: usize) -> &BufferAccess {
+                        for set in self.0.iter() {
+                            if let Some(buf) = set.buffer(num) {
+                                return buf.0;
+                            }
+                            num -= set.num_buffers();
+                        }
+                        panic!()
+                    }
+                    fn image(&self, mut num: usize) -> &ImageAccess {
+                        for set in self.0.iter() {
+                            if let Some(img) = set.image(num) {
+                                return img.0;
+                            }
+                            num -= set.num_images();
+                        }
+                        panic!()
+                    }
                 }
                 Box::new(Fin(self.inner))
             }
+
+            fn buffer(&self, mut num: usize) -> &BufferAccess {
+                for set in self.inner.iter() {
+                    if let Some(buf) = set.buffer(num) {
+                        return buf.0;
+                    }
+                    num -= set.num_buffers();
+                }
+                panic!()
+            }
+
+            fn image(&self, mut num: usize) -> &ImageAccess {
+                for set in self.inner.iter() {
+                    if let Some(img) = set.image(num) {
+                        return img.0;
+                    }
+                    num -= set.num_images();
+                }
+                panic!()
+            }
         }
+
+        let total_buffers_num = self.inner.iter().map(|d| d.num_buffers()).fold(0, |a, b| a + b);
+        let total_images_num = self.inner.iter().map(|d| d.num_images()).fold(0, |a, b| a + b);
 
         self.builder
             .commands
@@ -2047,7 +2087,51 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                                dynamic_offsets: Some(dynamic_offsets),
                            }));
 
-        // FIXME: add resources
+        for n in 0 .. total_buffers_num {
+            self.builder
+                .prev_cmd_resource(KeyTy::Buffer,
+                                   n,
+                                   false,       // TODO: wrong
+                                   PipelineStages {     // TODO: wrong
+                                       all_graphics: true,
+                                       ..PipelineStages::none()
+                                   },
+                                   AccessFlagBits {     // TODO: wrong
+                                        uniform_read: true,
+                                        input_attachment_read: true,
+                                        shader_read: true,
+                                        shader_write: true,
+                                        color_attachment_read: true,
+                                        color_attachment_write: true,
+                                        depth_stencil_attachment_read: true,
+                                       ..AccessFlagBits::none()
+                                   },
+                                   ImageLayout::Undefined,
+                                   ImageLayout::Undefined)?;
+        }
+
+        for n in 0 .. total_images_num {
+            self.builder
+                .prev_cmd_resource(KeyTy::Image,
+                                   n,
+                                   false,       // TODO: wrong
+                                   PipelineStages {     // TODO: wrong
+                                       all_graphics: true,
+                                       ..PipelineStages::none()
+                                   },
+                                   AccessFlagBits {     // TODO: wrong
+                                        uniform_read: true,
+                                        input_attachment_read: true,
+                                        shader_read: true,
+                                        shader_write: true,
+                                        color_attachment_read: true,
+                                        color_attachment_write: true,
+                                        depth_stencil_attachment_read: true,
+                                       ..AccessFlagBits::none()
+                                   },
+                                   ImageLayout::Undefined,      // TODO: wrong
+                                   ImageLayout::Undefined)?;      // TODO: wrong
+        }
 
         Ok(())
     }

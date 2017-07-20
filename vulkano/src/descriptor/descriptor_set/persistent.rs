@@ -32,11 +32,8 @@ use device::Device;
 use device::DeviceOwned;
 use format::Format;
 use image::ImageAccess;
-use image::ImageLayout;
 use image::ImageViewAccess;
 use sampler::Sampler;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 use OomError;
 use VulkanObject;
 
@@ -88,20 +85,33 @@ impl PersistentDescriptorSet<()> {
     }
 }
 
-unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P> where P: DescriptorPoolAlloc {
+unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
+    where P: DescriptorPoolAlloc,
+          R: PersistentDescriptorSetResources
+{
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-        unimplemented!()
+    fn num_buffers(&self) -> usize {
+        self.resources.num_buffers()
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-        unimplemented!()
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        self.resources.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.resources.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        self.resources.image(index)
     }
 }
 
@@ -419,9 +429,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: (self.builder.resources, PersistentDescriptorSetBuf {
                     buffer: buffer,
-                    write: !readonly,
-                    stage: PipelineStages::none(),      // FIXME:
-                    access: AccessFlagBits::none(),     // FIXME:
+                    descriptor_num: self.builder.binding_id as u32,
                 })
             },
             desc: self.desc,
@@ -487,9 +495,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: (self.builder.resources, PersistentDescriptorSetBufView {
                     view: view,
-                    write: !readonly,
-                    stage: PipelineStages::none(),      // FIXME:
-                    access: AccessFlagBits::none(),     // FIXME:
+                    descriptor_num: self.builder.binding_id as u32,
                 })
             },
             desc: self.desc,
@@ -581,14 +587,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: (self.builder.resources, PersistentDescriptorSetImg {
                     image: image_view,
-                    write: !readonly,
-                    first_mipmap: 0,            // FIXME:
-                    num_mipmaps: 1,         // FIXME:
-                    first_layer: 0,         // FIXME:
-                    num_layers: 1,          // FIXME:
-                    layout: ImageLayout::General,            // FIXME:
-                    stage: PipelineStages::none(),          // FIXME:
-                    access: AccessFlagBits::none(),         // FIXME:
+                    descriptor_num: self.builder.binding_id as u32,
                 })
             },
             desc: self.desc,
@@ -646,14 +645,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 writes: self.builder.writes,
                 resources: ((self.builder.resources, PersistentDescriptorSetImg {
                     image: image_view,
-                    write: !readonly,
-                    first_mipmap: 0,            // FIXME:
-                    num_mipmaps: 1,         // FIXME:
-                    first_layer: 0,         // FIXME:
-                    num_layers: 1,          // FIXME:
-                    layout: ImageLayout::General,            // FIXME:
-                    stage: PipelineStages::none(),          // FIXME:
-                    access: AccessFlagBits::none(),         // FIXME:
+                    descriptor_num: self.builder.binding_id as u32,
                 }), PersistentDescriptorSetSampler {
                     sampler: sampler,
                 }),
@@ -772,12 +764,70 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc)
     Ok(())
 }
 
+pub unsafe trait PersistentDescriptorSetResources {
+    fn num_buffers(&self) -> usize;
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)>;
+    fn num_images(&self) -> usize;
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)>;
+}
+
+unsafe impl PersistentDescriptorSetResources for () {
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        None
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        None
+    }
+}
+
 /// Internal object related to the `PersistentDescriptorSet` system.
 pub struct PersistentDescriptorSetBuf<B> {
     buffer: B,
-    write: bool,
-    stage: PipelineStages,
-    access: AccessFlagBits,
+    descriptor_num: u32,
+}
+
+unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorSetBuf<B>)
+    where R: PersistentDescriptorSetResources,
+          B: BufferAccess,
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers() + 1
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        if let Some(buf) = self.0.buffer(index) {
+            Some(buf)
+        } else if index == self.0.num_buffers() {
+            Some((&self.1.buffer, self.1.descriptor_num))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        self.0.image(index)
+    }
 }
 
 /// Internal object related to the `PersistentDescriptorSet` system.
@@ -785,27 +835,104 @@ pub struct PersistentDescriptorSetBufView<V>
     where V: BufferViewRef
 {
     view: V,
-    write: bool,
-    stage: PipelineStages,
-    access: AccessFlagBits,
+    descriptor_num: u32,
+}
+
+unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorSetBufView<V>)
+    where R: PersistentDescriptorSetResources,
+          V: BufferViewRef,
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers() + 1
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        if let Some(buf) = self.0.buffer(index) {
+            Some(buf)
+        } else if index == self.0.num_buffers() {
+            Some((self.1.view.view().buffer(), self.1.descriptor_num))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        self.0.image(index)
+    }
 }
 
 /// Internal object related to the `PersistentDescriptorSet` system.
 pub struct PersistentDescriptorSetImg<I> {
     image: I,
-    write: bool,
-    first_mipmap: u32,
-    num_mipmaps: u32,
-    first_layer: u32,
-    num_layers: u32,
-    layout: ImageLayout,
-    stage: PipelineStages,
-    access: AccessFlagBits,
+    descriptor_num: u32,
+}
+
+unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorSetImg<I>)
+    where R: PersistentDescriptorSetResources,
+          I: ImageAccess,
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        self.0.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images() + 1
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        if let Some(img) = self.0.image(index) {
+            Some(img)
+        } else if index == self.0.num_images() {
+            Some((&self.1.image, self.1.descriptor_num))
+        } else {
+            None
+        }
+    }
 }
 
 /// Internal object related to the `PersistentDescriptorSet` system.
 pub struct PersistentDescriptorSetSampler {
     sampler: Arc<Sampler>,
+}
+
+unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetSampler)
+    where R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        self.0.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+        self.0.image(index)
+    }
 }
 
 /// Error related to the persistent descriptor set.
