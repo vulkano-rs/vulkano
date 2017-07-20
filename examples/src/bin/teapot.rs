@@ -40,6 +40,11 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
+    let mut dimensions = {
+        let (width, height) = window.window().get_inner_size_pixels().unwrap();
+        [width, height]
+    };
+
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
@@ -54,10 +59,10 @@ fn main() {
                                .expect("failed to create device");
     let queue = queues.next().unwrap();
 
-    let (swapchain, images) = {
+    let (mut swapchain, mut images) = {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
 
-        let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
+        //let dimensions = caps.current_extent.unwrap_or([width, height]);
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
 
@@ -68,7 +73,7 @@ fn main() {
     };
 
 
-    let depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), images[0].dimensions(), vulkano::format::D16Unorm).unwrap();
+    let mut depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
                                 ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
@@ -84,7 +89,7 @@ fn main() {
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
     //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
-    let proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { let d = images[0].dimensions(); d[0] as f32 / d[1] as f32 }, 0.01, 100.0);
+    let mut proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
 
@@ -121,30 +126,65 @@ fn main() {
         .vertex_input(vulkano::pipeline::vertex::TwoBuffersDefinition::new())
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
-        .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
-            origin: [0.0, 0.0],
-            depth_range: 0.0 .. 1.0,
-            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        }))
+        // .viewports(std::iter::once(vulkano::pipeline::viewport::Viewport {
+        //     origin: [0.0, 0.0],
+        //     depth_range: 0.0 .. 1.0,
+        //     dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
+        // }))
+        .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .depth_stencil_simple_depth()
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap());
 
-    let framebuffers = images.iter().map(|image| {
+    let mut framebuffers = images.iter().map(|image| {
         Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
             .add(image.clone()).unwrap()
             .add(depth_buffer.clone()).unwrap()
             .build().unwrap())
     }).collect::<Vec<_>>();
 
+    let mut recreate_swapchain = false;
 
     let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
     let rotation_start = std::time::Instant::now();
 
     loop {
         previous_frame.cleanup_finished();
+
+        if recreate_swapchain {
+            dimensions = {
+                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
+                [new_width, new_height]
+            };
+            
+            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+                Ok(r) => r,
+                Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => {
+                    continue;
+                },
+                Err(err) => panic!("{:?}", err)
+            };
+
+            std::mem::replace(&mut swapchain, new_swapchain);
+            std::mem::replace(&mut images, new_images);
+
+            let new_depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
+            std::mem::replace(&mut depth_buffer, new_depth_buffer);
+
+            let new_framebuffers = images.iter().map(|image| {
+                Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
+                         .add(image.clone()).unwrap()
+                         .add(depth_buffer.clone()).unwrap()
+                         .build().unwrap())
+            }).collect::<Vec<_>>();
+            std::mem::replace(&mut framebuffers, new_framebuffers);
+
+            proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
+
+            recreate_swapchain = false;
+        }
 
         let uniform_buffer_subbuffer = {
             let elapsed = rotation_start.elapsed();
@@ -165,7 +205,15 @@ fn main() {
             .build().unwrap()
         );
 
-        let (image_num, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
+        let (image_num, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(),
+                                                                                       None) {
+            Ok(r) => r,
+            Err(vulkano::swapchain::AcquireError::OutOfDate) => {
+                recreate_swapchain = true;
+                continue;
+            },
+            Err(err) => panic!("{:?}", err)
+        };
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
@@ -175,7 +223,16 @@ fn main() {
                     1f32.into()
                 ]).unwrap()
             .draw_indexed(
-                pipeline.clone(), vulkano::command_buffer::DynamicState::none(),
+                pipeline.clone(),
+                vulkano::command_buffer::DynamicState {
+                      line_width: None,
+                      viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
+                          origin: [0.0, 0.0],
+                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                          depth_range: 0.0 .. 1.0,
+                      }]),
+                      scissors: None,
+                },
                 (vertex_buffer.clone(), normals_buffer.clone()), 
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
