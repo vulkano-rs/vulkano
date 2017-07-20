@@ -2040,7 +2040,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     fn image(&self, mut num: usize) -> &ImageAccess {
                         for set in self.0.iter() {
                             if let Some(img) = set.image(num) {
-                                return img.0;
+                                return img.0.parent();
                             }
                             num -= set.num_images();
                         }
@@ -2063,7 +2063,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn image(&self, mut num: usize) -> &ImageAccess {
                 for set in self.inner.iter() {
                     if let Some(img) = set.image(num) {
-                        return img.0;
+                        return img.0.parent();
                     }
                     num -= set.num_images();
                 }
@@ -2071,8 +2071,32 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             }
         }
 
-        let total_buffers_num = self.inner.iter().map(|d| d.num_buffers()).fold(0, |a, b| a + b);
-        let total_images_num = self.inner.iter().map(|d| d.num_images()).fold(0, |a, b| a + b);
+        let all_buffers = {
+            let mut all_buffers = Vec::new();
+            for ds in self.inner.iter() {
+                for buf_num in 0 .. ds.num_buffers() {
+                    let desc = ds.descriptor(ds.buffer(buf_num).unwrap().1 as usize).unwrap();
+                    let write = !desc.readonly;
+                    let (stages, access) = desc.pipeline_stages_and_access();
+                    all_buffers.push((write, stages, access));
+                }
+            }
+            all_buffers
+        };
+
+        let all_images = {
+            let mut all_images = Vec::new();
+            for ds in self.inner.iter() {
+                for img_num in 0 .. ds.num_images() {
+                    let desc = ds.descriptor(ds.image(img_num).unwrap().1 as usize).unwrap();
+                    let write = !desc.readonly;
+                    let (stages, access) = desc.pipeline_stages_and_access();
+                    let layout = ImageLayout::ShaderReadOnlyOptimal;        // FIXME:
+                    all_images.push((write, stages, access, layout));
+                }
+            }
+            all_images
+        };
 
         self.builder
             .commands
@@ -2087,50 +2111,20 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                                dynamic_offsets: Some(dynamic_offsets),
                            }));
 
-        for n in 0 .. total_buffers_num {
+        for (n, (write, stages, access)) in all_buffers.into_iter().enumerate() {
             self.builder
                 .prev_cmd_resource(KeyTy::Buffer,
-                                   n,
-                                   false,       // TODO: wrong
-                                   PipelineStages {     // TODO: wrong
-                                       all_graphics: true,
-                                       ..PipelineStages::none()
-                                   },
-                                   AccessFlagBits {     // TODO: wrong
-                                        uniform_read: true,
-                                        input_attachment_read: true,
-                                        shader_read: true,
-                                        shader_write: true,
-                                        color_attachment_read: true,
-                                        color_attachment_write: true,
-                                        depth_stencil_attachment_read: true,
-                                       ..AccessFlagBits::none()
-                                   },
+                                   n, write, stages, access,
                                    ImageLayout::Undefined,
                                    ImageLayout::Undefined)?;
         }
 
-        for n in 0 .. total_images_num {
+        for (n, (write, stages, access, layout)) in all_images.into_iter().enumerate() {
             self.builder
                 .prev_cmd_resource(KeyTy::Image,
-                                   n,
-                                   false,       // TODO: wrong
-                                   PipelineStages {     // TODO: wrong
-                                       all_graphics: true,
-                                       ..PipelineStages::none()
-                                   },
-                                   AccessFlagBits {     // TODO: wrong
-                                        uniform_read: true,
-                                        input_attachment_read: true,
-                                        shader_read: true,
-                                        shader_write: true,
-                                        color_attachment_read: true,
-                                        color_attachment_write: true,
-                                        depth_stencil_attachment_read: true,
-                                       ..AccessFlagBits::none()
-                                   },
-                                   ImageLayout::Undefined,      // TODO: wrong
-                                   ImageLayout::Undefined)?;      // TODO: wrong
+                                   n, write, stages, access,
+                                   layout,
+                                   layout)?;
         }
 
         Ok(())

@@ -28,7 +28,6 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageAccess;
 use image::ImageLayout;
 use image::ImageViewAccess;
 use sampler::Sampler;
@@ -102,7 +101,7 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P>
     }
     
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
         // Note that since the simple descriptor set is deprecated, and since buffers and images
         // within descriptor sets weren't supported before its deprecation, we just return a dummy
         // value.

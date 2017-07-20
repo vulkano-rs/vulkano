@@ -38,7 +38,7 @@
 use SafeDeref;
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use image::ImageAccess;
+use image::ImageViewAccess;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::persistent::PersistentDescriptorSet;
@@ -94,7 +94,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// the index of the descriptor that uses this image.
     ///
     /// The valid range is between 0 and `num_images()`.
-    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)>;
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)>;
 }
 
 unsafe impl<T> DescriptorSet for T
@@ -122,7 +122,7 @@ unsafe impl<T> DescriptorSet for T
     }
     
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
         (**self).image(index)
     }
 }
