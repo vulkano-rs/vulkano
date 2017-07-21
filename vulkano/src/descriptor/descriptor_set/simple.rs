@@ -28,7 +28,6 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageAccess;
 use image::ImageLayout;
 use image::ImageViewAccess;
 use sampler::Sampler;
@@ -78,13 +77,35 @@ unsafe impl<R, P> DescriptorSet for SimpleDescriptorSet<R, P>
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-        unimplemented!()
+    fn num_buffers(&self) -> usize {
+        // Note that since the simple descriptor set is deprecated, and since buffers and images
+        // within descriptor sets weren't supported before its deprecation, we just return a dummy
+        // value.
+        0
+    }
+    
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        // Note that since the simple descriptor set is deprecated, and since buffers and images
+        // within descriptor sets weren't supported before its deprecation, we just return a dummy
+        // value.
+        None
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-        unimplemented!()
+    fn num_images(&self) -> usize {
+        // Note that since the simple descriptor set is deprecated, and since buffers and images
+        // within descriptor sets weren't supported before its deprecation, we just return a dummy
+        // value.
+        0
+    }
+    
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+        // Note that since the simple descriptor set is deprecated, and since buffers and images
+        // within descriptor sets weren't supported before its deprecation, we just return a dummy
+        // value.
+        None
     }
 }
 

@@ -7,12 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorSet;
 use descriptor::descriptor_set::DescriptorSetDesc;
-use image::ImageAccess;
-use std::iter;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -21,18 +18,14 @@ pub unsafe trait DescriptorSetsCollection {
     /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
     ///
     /// Returns `None` if the set is out of range.
+    // TODO: remove ; user should just use `into_vec` instead
     fn num_bindings_in_set(&self, set: usize) -> Option<usize>;
 
     /// Returns the descriptor for the given binding of the given set.
     ///
     /// Returns `None` if out of range.
+    // TODO: remove ; user should just use `into_vec` instead
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc>;
-
-    /// Returns the list of buffers used by this descriptor set. Includes buffer views.
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
-
-    /// Returns the list of images used by this descriptor set. Includes image views.
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
 }
 
 unsafe impl DescriptorSetsCollection for () {
@@ -49,16 +42,6 @@ unsafe impl DescriptorSetsCollection for () {
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         None
-    }
-
-    #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-        Box::new(iter::empty())
-    }
-
-    #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-        Box::new(iter::empty())
     }
 }
 
@@ -84,16 +67,6 @@ unsafe impl<T> DescriptorSetsCollection for T
             0 => self.descriptor(binding),
             _ => None,
         }
-    }
-
-    #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-        DescriptorSet::buffers_list(self)
-    }
-
-    #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-        DescriptorSet::images_list(self)
     }
 }
 
@@ -157,32 +130,6 @@ macro_rules! impl_collection {
                 )*
 
                 None
-            }
-
-            #[inline]
-            fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-                #![allow(non_snake_case)]
-
-                let &(ref first, $(ref $others,)*) = self;
-                let mut output = Vec::new();
-                output.extend(first.buffers_list());
-                $(
-                    output.extend($others.buffers_list());
-                )*
-                Box::new(output.into_iter())
-            }
-
-            #[inline]
-            fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-                #![allow(non_snake_case)]
-
-                let &(ref first, $(ref $others,)*) = self;
-                let mut output = Vec::new();
-                output.extend(first.images_list());
-                $(
-                    output.extend($others.images_list());
-                )*
-                Box::new(output.into_iter())
             }
         }
 
