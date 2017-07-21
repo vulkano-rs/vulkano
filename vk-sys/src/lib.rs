@@ -2103,6 +2103,7 @@ pub struct BufferImageCopy {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub union ClearColorValue {
     pub float32: [f32; 4],
     pub int32: [i32; 4],
@@ -2110,6 +2111,7 @@ pub union ClearColorValue {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ClearDepthStencilValue {
     pub depth: f32,
     pub stencil: u32,
