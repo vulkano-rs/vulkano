@@ -75,6 +75,20 @@
 
 pub use self::auto::AutoCommandBuffer;
 pub use self::auto::AutoCommandBufferBuilder;
+pub use self::auto::AutoCommandBufferBuilderContextError;
+pub use self::auto::BeginRenderPassError;
+pub use self::auto::BlitImageError;
+pub use self::auto::BuildError;
+pub use self::auto::ClearColorImageError;
+pub use self::auto::CopyBufferError;
+pub use self::auto::CopyBufferImageError;
+pub use self::auto::DispatchError;
+pub use self::auto::DrawError;
+pub use self::auto::DrawIndexedError;
+pub use self::auto::DrawIndirectError;
+pub use self::auto::ExecuteCommandsError;
+pub use self::auto::FillBufferError;
+pub use self::auto::UpdateBufferError;
 pub use self::state_cacher::StateCacher;
 pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
