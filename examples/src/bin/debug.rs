@@ -11,7 +11,7 @@ extern crate vulkano;
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::ImmutableImage;
+use vulkano::image::{ImmutableImage, ImageUsage, ImageLayout};
 use vulkano::image::Dimensions;
 use vulkano::instance;
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -98,8 +98,12 @@ fn main() {
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
+    let usage = ImageUsage { sampled: true, ..ImageUsage::none() };
+    let layout = ImageLayout::ShaderReadOnlyOptimal;
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
-    ImmutableImage::new(device.clone(), dimensions, pixel_format, Some(queue.family())).unwrap();
+    const data: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
+    let (image, _) = ImmutableImage::from_iter(data.iter().cloned(), dimensions, pixel_format,
+                                               usage, layout, Some(queue.family()), queue.clone()).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
 }

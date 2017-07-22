@@ -313,6 +313,11 @@ impl Dimensions {
             Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
         }
     }
+
+    #[inline]
+    pub fn num_texels(&self) -> u32 {
+        self.width() * self.height() * self.depth() * self.array_layers_with_cube()
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
