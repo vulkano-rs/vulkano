@@ -1,13 +1,22 @@
+// Copyright (c) 2017 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+//
 // This example demostrates one way of preparing data structures and loading
 // SPIRV shaders from external source (file system).
 //
 // Note that you will need to do all correctness checking by yourself.
 //
-// spv.vert and spv.frag must be built by yourself.
+// runtime-shader.vert.glsl and runtime-shader.frag.glsl must be built by yourself.
 // One way of building them is to build Khronos' glslang and use
 // glslangValidator tool:
-// $ glslangValidator spv.vert -V -o spv.vert.spv
-// $ glslangValidator spv.frag -V -o spv.frag.spv
+// $ glslangValidator runtime-shader.vert.glsl -V -S vert -o runtime-shader.vert.spv
+// $ glslangValidator runtime-shader.frag.glsl -V -S frag -o runtime-shader.frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 #[macro_use]
 extern crate vulkano;
@@ -131,7 +140,7 @@ fn main() {
     );
 
     let vs = {
-        let mut f = File::open("src/bin/spv.vert.spv").unwrap();
+        let mut f = File::open("src/bin/runtime-shader.vert.spv").unwrap();
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
         // Create a ShaderModule on a device the same Shader::load does it.
@@ -140,7 +149,7 @@ fn main() {
     };
 
     let fs = {
-        let mut f = File::open("src/bin/spv.frag.spv").unwrap();
+        let mut f = File::open("src/bin/runtime-shader.frag.spv").unwrap();
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
         unsafe { ShaderModule::new(graphics_device.clone(), &v) }.unwrap()
