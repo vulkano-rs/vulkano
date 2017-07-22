@@ -603,11 +603,13 @@ impl<P> SyncCommandBufferBuilder<P> {
                     }
 
                     let img = commands_lock.commands[key.command_id].image(key.resource_index);
-                    if img.final_layout_requirement() == state.current_layout {
+                    let requested_layout = img.final_layout_requirement();
+                    if requested_layout == state.current_layout {
                         continue;
                     }
 
                     state.exclusive_any = true;
+                    state.current_layout = requested_layout;
                     barrier.add_image_memory_barrier(img,
                                                     0 .. img.mipmap_levels(),
                                                     0 .. img.dimensions().array_layers(),
@@ -621,7 +623,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                     true,
                                                     None, // TODO: access?
                                                     state.current_layout,
-                                                    img.final_layout_requirement());
+                                                    requested_layout);
                 }
 
                 self.inner.pipeline_barrier(&barrier);
