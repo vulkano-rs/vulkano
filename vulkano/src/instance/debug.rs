@@ -139,7 +139,7 @@ impl DebugCallback {
         };
 
         let infos = vk::DebugReportCallbackCreateInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT,
+            sType: vk::STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
             pNext: ptr::null(),
             flags: flags,
             pfnCallback: callback,
