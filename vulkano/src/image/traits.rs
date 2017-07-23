@@ -95,9 +95,23 @@ pub unsafe trait ImageAccess {
     }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
+    ///
+    /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
+    /// the image is in the layout returned by this function. Later when the command buffer is
+    /// submitted vulkano will check whether the image is actually in this layout, and if it is not
+    /// the case then an error will be returned.
+    /// TODO: ^ that check is not yet implemented
     fn initial_layout_requirement(&self) -> ImageLayout;
 
     /// Returns the layout that the image must be returned to before the end of the command buffer.
+    ///
+    /// When an image is used in an `AutoCommandBufferBuilder` vulkano will automatically
+    /// transition this image to the layout returned by this function at the end of the command
+    /// buffer, if necessary.
+    ///
+    /// Except for special cases, this value should likely be the same as the one returned by
+    /// `initial_layout_requirement` so that the user can submit multiple command buffers that use
+    /// this image one after the other.
     fn final_layout_requirement(&self) -> ImageLayout;
 
     /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
