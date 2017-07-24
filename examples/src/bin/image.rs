@@ -24,7 +24,6 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -102,22 +101,17 @@ fn main() {
         ).unwrap()
     );
 
-    let texture = vulkano::image::immutable::ImmutableImage::new(device.clone(), vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
-                                                                 vulkano::format::R8G8B8A8Srgb, Some(queue.family())).unwrap();
-
-
-    let pixel_buffer = {
+    let (texture, tex_future) = {
         let image = image::load_from_memory_with_format(include_bytes!("image_img.png"),
                                                         image::ImageFormat::PNG).unwrap().to_rgba();
         let image_data = image.into_raw().clone();
 
-        let image_data_chunks = image_data.chunks(4).map(|c| [c[0], c[1], c[2], c[3]]);
-
-        // TODO: staging buffer instead
-        vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[[u8; 4]]>
-            ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
-                        Some(queue.family()), image_data_chunks)
-                        .expect("failed to create buffer")
+        vulkano::image::immutable::ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
+            vulkano::format::R8G8B8A8Srgb,
+            Some(queue.family()),
+            queue.clone()).unwrap()
     };
 
 
@@ -138,6 +132,7 @@ fn main() {
             dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
         }))
         .fragment_shader(fs.main_entry_point(), ())
+        .blend_alpha_blending()
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap());
@@ -152,7 +147,7 @@ fn main() {
             .add(image.clone()).unwrap().build().unwrap())
     }).collect::<Vec<_>>();
 
-    let mut previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -161,12 +156,9 @@ fn main() {
 
         let cb = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
             .unwrap()
-            .copy_buffer_to_image(pixel_buffer.clone(), texture.clone())
-            .unwrap()
-            //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .begin_render_pass(
                 framebuffers[image_num].clone(), false,
-                vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
+                vec![[1.0, 1.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(), vulkano::command_buffer::DynamicState::none(), vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
