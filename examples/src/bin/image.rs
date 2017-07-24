@@ -110,8 +110,6 @@ fn main() {
             image_data.iter().cloned(),
             vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
             vulkano::format::R8G8B8A8Srgb,
-            vulkano::image::ImageUsage { sampled: true, ..vulkano::image::ImageUsage::none() },
-            vulkano::image::ImageLayout::ShaderReadOnlyOptimal,
             Some(queue.family()),
             queue.clone()).unwrap()
     };

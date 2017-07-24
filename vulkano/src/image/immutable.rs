@@ -187,8 +187,7 @@ impl<F> ImmutableImage<F> {
     ///
     /// TODO: Support mipmaps
     #[inline]
-    pub fn from_iter<'a, P, I, J>(iter: I, dimensions: Dimensions, format: F, usage: ImageUsage, layout: ImageLayout,
-                                  queue_families: J, queue: Arc<Queue>)
+    pub fn from_iter<'a, P, I, J>(iter: I, dimensions: Dimensions, format: F, queue_families: J, queue: Arc<Queue>)
                                   -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
                                             ImageCreationError>
         where P: Send + Sync + Clone + 'static,
@@ -200,13 +199,13 @@ impl<F> ImmutableImage<F> {
                                                     BufferUsage::transfer_source(),
                                                     iter::once(queue.family()),
                                                     iter)?;
-        ImmutableImage::from_buffer(source, dimensions, format, usage, layout, queue_families, queue)
+        ImmutableImage::from_buffer(source, dimensions, format, queue_families, queue)
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     ///
     /// TODO: Support mipmaps
-    pub fn from_buffer<'a, B, P, I>(source: B, dimensions: Dimensions, format: F, usage: ImageUsage, layout: ImageLayout, queue_families: I, queue: Arc<Queue>)
+    pub fn from_buffer<'a, B, P, I>(source: B, dimensions: Dimensions, format: F, queue_families: I, queue: Arc<Queue>)
                                     -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
                                               ImageCreationError>
         where B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
@@ -214,7 +213,8 @@ impl<F> ImmutableImage<F> {
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: IntoIterator<Item = QueueFamily<'a>>,
     {
-        let usage = ImageUsage { transfer_destination: true, ..usage }; // Ensure we can actually initialize the image
+        let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
+        let layout = ImageLayout::ShaderReadOnlyOptimal;
         // TODO: The following panics should be removed in favor of propagating errors from copy_buffer_to_image.
         format.ensure_accepts().unwrap();
         if source.len() % format.rate() as usize != 0 {
