@@ -306,11 +306,7 @@ void main() {
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let mut framebuffers = images.iter().map(|image| {
-        Arc::new(Framebuffer::start(render_pass.clone())
-            .add(image.clone()).unwrap()
-            .build().unwrap())
-    }).collect::<Vec<_>>();
+    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
 
     // Initialization is finally finished!
 
@@ -361,17 +357,20 @@ void main() {
             mem::replace(&mut swapchain, new_swapchain);
             mem::replace(&mut images, new_images);
 
-            // Because framebuffers contains an Arc on the old swapchain, we need to
-            // recreate framebuffers as well.  This is just like we did before, and so you
-            // might want to make a function for this in your code.
-            let new_framebuffers = images.iter().map(|image| {
+            framebuffers = None;
+
+            recreate_swapchain = false;
+        }
+
+        // Because framebuffers contains an Arc on the old swapchain, we need to
+        // recreate framebuffers as well.
+        if framebuffers.is_none() {
+            let new_framebuffers = Some(images.iter().map(|image| {
                 Arc::new(Framebuffer::start(render_pass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
-            }).collect::<Vec<_>>();
+            }).collect::<Vec<_>>());
             mem::replace(&mut framebuffers, new_framebuffers);
-
-            recreate_swapchain = false;
         }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
@@ -408,7 +407,7 @@ void main() {
             // The third parameter builds the list of values to clear the attachments with. The API
             // is similar to the list of attachments when building the framebuffers, except that
             // only the attachments that use `load: Clear` appear in the list.
-            .begin_render_pass(framebuffers[image_num].clone(), false,
+            .begin_render_pass(framebuffers.as_ref().unwrap()[image_num].clone(), false,
                                vec![[0.0, 0.0, 1.0, 1.0].into()])
             .unwrap()
 

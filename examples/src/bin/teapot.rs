@@ -130,14 +130,8 @@ fn main() {
         .depth_stencil_simple_depth()
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
-        .unwrap());
-
-    let mut framebuffers = images.iter().map(|image| {
-        Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
-            .add(image.clone()).unwrap()
-            .add(depth_buffer.clone()).unwrap()
-            .build().unwrap())
-    }).collect::<Vec<_>>();
+                            .unwrap());
+    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
 
     let mut recreate_swapchain = false;
 
@@ -167,17 +161,21 @@ fn main() {
             let new_depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
             std::mem::replace(&mut depth_buffer, new_depth_buffer);
 
-            let new_framebuffers = images.iter().map(|image| {
-                Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
-                         .add(image.clone()).unwrap()
-                         .add(depth_buffer.clone()).unwrap()
-                         .build().unwrap())
-            }).collect::<Vec<_>>();
-            std::mem::replace(&mut framebuffers, new_framebuffers);
+            framebuffers = None;
 
             proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
 
             recreate_swapchain = false;
+        }
+
+        if framebuffers.is_none() {
+            let new_framebuffers = Some(images.iter().map(|image| {
+                Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
+                         .add(image.clone()).unwrap()
+                         .add(depth_buffer.clone()).unwrap()
+                         .build().unwrap())
+            }).collect::<Vec<_>>());
+            std::mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         let uniform_buffer_subbuffer = {
@@ -211,7 +209,7 @@ fn main() {
 
         let command_buffer = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(
-                framebuffers[image_num].clone(), false,
+                framebuffers.as_ref().unwrap()[image_num].clone(), false,
                 vec![
                     [0.0, 0.0, 1.0, 1.0].into(),
                     1f32.into()

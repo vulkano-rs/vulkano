@@ -146,10 +146,7 @@ fn main() {
         .build().unwrap()
     );
 
-    let mut framebuffers = images.iter().map(|image| {
-        Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
-            .add(image.clone()).unwrap().build().unwrap())
-    }).collect::<Vec<_>>();
+    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
 
     let mut recreate_swapchain = false;
 
@@ -174,14 +171,18 @@ fn main() {
             std::mem::replace(&mut swapchain, new_swapchain);
             std::mem::replace(&mut images, new_images);
 
-            let new_framebuffers = images.iter().map(|image| {
+            framebuffers = None;
+
+            recreate_swapchain = false;
+        }
+
+        if framebuffers.is_none() {
+            let new_framebuffers = Some(images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
-            }).collect::<Vec<_>>();
+            }).collect::<Vec<_>>());
             std::mem::replace(&mut framebuffers, new_framebuffers);
-
-            recreate_swapchain = false;
         }
 
         let (image_num, future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(),
@@ -200,7 +201,7 @@ fn main() {
             .unwrap()
             //.clear_color_image(&texture, [0.0, 1.0, 0.0, 1.0])
             .begin_render_pass(
-                framebuffers[image_num].clone(), false,
+                framebuffers.as_ref().unwrap()[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
                    vulkano::command_buffer::DynamicState {
