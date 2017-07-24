@@ -2271,6 +2271,10 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
         where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
               I: Iterator<Item = u32> + Send + Sync + 'static
     {
+        if self.inner.is_empty() {
+            return Ok(());
+        }
+
         struct Cmd<Pl, I> {
             inner: SmallVec<[Box<DescriptorSet + Send + Sync>; 12]>,
             graphics: bool,
