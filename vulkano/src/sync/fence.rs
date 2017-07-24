@@ -261,11 +261,15 @@ impl<D> Fence<D>
     // This function takes a `&mut self` because the Vulkan API requires that the fence be
     // externally synchronized.
     #[inline]
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            vk.ResetFences(self.device.internal_object(), 1, &self.fence);
-            self.signaled.store(false, Ordering::Relaxed);
+            if check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence)).is_ok() {
+                Ok(self.signaled.store(false, Ordering::Relaxed))
+            }else {
+                Err(OomError::OutOfDeviceMemory)
+            }
+
         }
     }
 
@@ -275,7 +279,7 @@ impl<D> Fence<D>
     ///
     /// - Panics if not all fences belong to the same device.
     ///
-    pub fn multi_reset<'a, I>(iter: I)
+    pub fn multi_reset<'a, I>(iter: I) -> Result<(), OomError>
         where I: IntoIterator<Item = &'a mut Fence<D>>,
               D: 'a
     {
@@ -299,10 +303,16 @@ impl<D> Fence<D>
         if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                vk.ResetFences(device.internal_object(),
+                if check_errors(vk.ResetFences(device.internal_object(),
                                fences.len() as u32,
-                               fences.as_ptr());
+                               fences.as_ptr())).is_ok() {
+                    Ok(())
+                } else {
+                    Err(OomError::OutOfDeviceMemory)
+                }
             }
+        } else {
+            Err(OomError::OutOfDeviceMemory)
         }
     }
 }
