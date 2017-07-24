@@ -66,6 +66,42 @@ pub struct ImmutableImageInitialization<F, A = StdMemoryPoolAlloc> {
 }
 
 impl<F> ImmutableImage<F> {
+    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
+    #[inline]
+    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
+                      -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        #[allow(deprecated)]
+        ImmutableImage::with_mipmaps(device,
+                                     dimensions,
+                                     format,
+                                     MipmapsCount::One,
+                                     queue_families)
+    }
+
+    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
+    #[inline]
+    pub fn with_mipmaps<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
+                                  mipmaps: M, queue_families: I)
+                                  -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+         where F: FormatDesc,
+               I: IntoIterator<Item = QueueFamily<'a>>,
+               M: Into<MipmapsCount>
+    {
+        let usage = ImageUsage {
+            transfer_source: true, // for blits
+            transfer_destination: true,
+            sampled: true,
+            ..ImageUsage::none()
+        };
+
+        let (image, _) = ImmutableImage::uninitialized(device, dimensions, format, mipmaps, usage, ImageLayout::ShaderReadOnlyOptimal, queue_families)?;
+        image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
+        Ok(image)
+    }
+
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
