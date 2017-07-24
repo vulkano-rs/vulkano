@@ -64,6 +64,7 @@ pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 
 pub mod collection;
 
+mod fixed_size_pool;
 mod persistent;
 mod std_pool;
 mod sys;
