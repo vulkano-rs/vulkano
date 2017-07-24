@@ -179,19 +179,17 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
                            -> Result<Arc<Surface>, SurfaceCreationError> {
     use winit::os::macos::WindowExt;
 
-    unsafe {
-        let wnd: cocoa_id = mem::transmute(win.get_nswindow());
+    let wnd: cocoa_id = mem::transmute(win.get_nswindow());
 
-        let layer = CAMetalLayer::new();
+    let layer = CAMetalLayer::new();
 
-        layer.set_edge_antialiasing_mask(0);
-        layer.set_presents_with_transaction(false);
-        layer.remove_all_animations();
+    layer.set_edge_antialiasing_mask(0);
+    layer.set_presents_with_transaction(false);
+    layer.remove_all_animations();
 
-        let view = wnd.contentView();
-        view.setWantsLayer(YES);
-        view.setLayer(mem::transmute(layer.0)); // Bombs here with out of memory
-    }
+    let view = wnd.contentView();
+    view.setWantsLayer(YES);
+    view.setLayer(mem::transmute(layer.0)); // Bombs here with out of memory
 
     Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
