@@ -608,8 +608,6 @@ impl<P> SyncCommandBufferBuilder<P> {
                         continue;
                     }
 
-                    state.exclusive_any = true;
-                    state.current_layout = requested_layout;
                     barrier.add_image_memory_barrier(img,
                                                     0 .. img.mipmap_levels(),
                                                     0 .. img.dimensions().array_layers(),
@@ -624,6 +622,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                     None, // TODO: access?
                                                     state.current_layout,
                                                     requested_layout);
+
+                    state.exclusive_any = true;
+                    state.current_layout = requested_layout;
                 }
 
                 self.inner.pipeline_barrier(&barrier);
