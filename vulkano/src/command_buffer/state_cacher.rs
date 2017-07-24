@@ -10,9 +10,11 @@
 use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
+use descriptor::DescriptorSet;
 use pipeline::input_assembly::IndexType;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
+use smallvec::SmallVec;
 use vk;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
@@ -27,6 +29,15 @@ pub struct StateCacher {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The descriptor sets for the compute pipeline.
+    compute_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    // The descriptor sets for the graphics pipeline.
+    graphics_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    // If the user starts comparing descriptor sets, but drops the helper struct in the middle of
+    // the processing then we will end up in a weird state. This bool is true when we start
+    // comparing sets, and is set to false when we end up comparing. If it was true when we start
+    // comparing, we know that something bad happened and we flush the cache.
+    poisonned_descriptor_sets: bool,
     // The index buffer, offset, and index type currently bound. `None` if nothing bound.
     index_buffer: Option<(vk::Buffer, usize, IndexType)>,
 }
@@ -48,6 +59,9 @@ impl StateCacher {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            compute_descriptor_sets: SmallVec::new(),
+            graphics_descriptor_sets: SmallVec::new(),
+            poisonned_descriptor_sets: false,
             index_buffer: None,
         }
     }
@@ -59,6 +73,8 @@ impl StateCacher {
         self.dynamic_state = DynamicState::none();
         self.compute_pipeline = 0;
         self.graphics_pipeline = 0;
+        self.compute_descriptor_sets = SmallVec::new();
+        self.graphics_descriptor_sets = SmallVec::new();
         self.index_buffer = None;
     }
 
@@ -83,6 +99,36 @@ impl StateCacher {
         cmp!(scissors);
 
         incoming
+    }
+
+    /// Starts the process of comparing a list of descriptor sets to the descriptor sets currently
+    /// in cache.
+    ///
+    /// After calling this function, call `add` for each set one by one. Then call `compare` in
+    /// order to get the index of the first set to bind, or `None` if the sets were identical to
+    /// what is in cache.
+    ///
+    /// This process also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after the `compare` function returns.
+    #[inline]
+    pub fn bind_descriptor_sets(&mut self, graphics: bool) -> StateCacherDescriptorSets {
+        if self.poisonned_descriptor_sets {
+            self.compute_descriptor_sets = SmallVec::new();
+            self.graphics_descriptor_sets = SmallVec::new();
+        }
+
+        self.poisonned_descriptor_sets = true;
+
+        StateCacherDescriptorSets {
+            poisonned: &mut self.poisonned_descriptor_sets,
+            state: if graphics {
+                &mut self.graphics_descriptor_sets
+            } else {
+                &mut self.compute_descriptor_sets
+            },
+            offset: 0,
+            found_diff: None,
+        }
     }
 
     /// Checks whether we need to bind a graphics pipeline. Returns `StateCacherOutcome::AlreadyOk`
@@ -144,69 +190,61 @@ impl StateCacher {
     }
 }
 
-/*
-unsafe impl<I, O> AddCommand<commands_raw::CmdSetState> for StateCacher<I>
-    where I: AddCommand<commands_raw::CmdSetState, Out = O>
-{
-    type Out = StateCacher<O>;
+/// Helper struct for comparing descriptor sets.
+///
+/// > **Note**: For safety reasons, if you drop/leak this struct before calling `compare` then the
+/// > cache of the currently bound descriptor sets will be reset.
+pub struct StateCacherDescriptorSets<'s> {
+    // Reference to the parent's `poisonned_descriptor_sets`.
+    poisonned: &'s mut bool,
+    // Reference to the descriptor sets list to compare to.
+    state: &'s mut SmallVec<[vk::DescriptorSet; 12]>,
+    // Next offset within the list to compare to.
+    offset: usize,
+    // Contains the return value of `compare`.
+    found_diff: Option<u32>,
+}
 
+impl<'s> StateCacherDescriptorSets<'s> {
+    /// Adds a descriptor set to the list to compare.
     #[inline]
-    fn add(mut self, command: commands_raw::CmdSetState) -> Result<Self::Out, CommandAddError> {
-        // We need to synchronize `self.dynamic_state` with the state in `command`.
-        // While doing so, we tweak `command` to erase the states that are the same as what's
-        // already in `self.dynamic_state`.
+    pub fn add<S>(&mut self, set: &S)
+        where S: ?Sized + DescriptorSet
+    {
+        let raw = set.inner().internal_object();
 
-        let mut command_state = command.state().clone();
+        if self.offset < self.state.len() {
+            if self.state[self.offset] == raw {
+                return;
+            }
 
-        // Handle line width.
-        if let Some(new_val) = command_state.line_width {
-            if self.dynamic_state.line_width == Some(new_val) {
-                command_state.line_width = None;
-            } else {
-                self.dynamic_state.line_width = Some(new_val);
+            self.state[self.offset] = raw;
+
+        } else {
+            self.state.push(raw);
+        }
+
+        if self.found_diff.is_none() {
+            self.found_diff = Some(self.offset as u32);
+        }
+    }
+
+    /// Compares your list to the list in cache, and returns the offset of the first set to bind.
+    /// Returns `None` if the two lists were identical.
+    ///
+    /// After this function returns, the cache will be updated to match your list.
+    #[inline]
+    pub fn compare(self) -> Option<u32> {
+        *self.poisonned = false;
+
+        // Removing from the cache any set that wasn't added with `add`.
+        if self.offset < self.state.len() {
+            // TODO: SmallVec doesn't provide any method for this
+            for _ in self.offset .. self.state.len() {
+                self.state.remove(self.offset);
             }
         }
 
-        // TODO: missing implementations
-
-        Ok(StateCacher {
-            inner: self.inner.add(commands_raw::CmdSetState::new(command.device().clone(), command_state))?,
-            dynamic_state: self.dynamic_state,
-            graphics_pipeline: self.graphics_pipeline,
-            compute_pipeline: self.compute_pipeline,
-            vertex_buffers: self.vertex_buffers,
-        })
+        self.found_diff
     }
 }
-
-unsafe impl<I, O, B> AddCommand<commands_raw::CmdBindVertexBuffers<B>> for StateCacher<I>
-    where I: AddCommand<commands_raw::CmdBindVertexBuffers<B>, Out = O>
-{
-    type Out = StateCacher<O>;
-
-    #[inline]
-    fn add(mut self, mut command: commands_raw::CmdBindVertexBuffers<B>)
-           -> Result<Self::Out, CommandAddError>
-    {
-        match &mut self.vertex_buffers {
-            &mut Some(ref mut curr) => {
-                if *curr != *command.hash() {
-                    let new_hash = command.hash().clone();
-                    command.diff(curr);
-                    *curr = new_hash;
-                }
-            },
-            curr @ &mut None => {
-                *curr = Some(command.hash().clone());
-            }
-        };
-
-        Ok(StateCacher {
-            inner: self.inner.add(command)?,
-            dynamic_state: self.dynamic_state,
-            graphics_pipeline: self.graphics_pipeline,
-            compute_pipeline: self.compute_pipeline,
-            vertex_buffers: self.vertex_buffers,
-        })
-    }
-}*/
