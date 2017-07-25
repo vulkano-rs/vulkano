@@ -263,15 +263,10 @@ impl<D> Fence<D>
     #[inline]
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
-
-            match check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence)) {
-                Err(why) => Err(OomError::from(why)),
-                _ => {
-                    self.signaled.store(false, Ordering::Relaxed);
-                    Ok(())
-                }
-            }
+             let vk = self.device.pointers();
+             check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence))?;
+             self.signaled.store(false, Ordering::Relaxed);
+             Ok(())
         }
     }
 
@@ -305,18 +300,12 @@ impl<D> Fence<D>
         if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                match check_errors(vk.ResetFences(device.internal_object(),
+                check_errors(vk.ResetFences(device.internal_object(),
                                fences.len() as u32,
-                               fences.as_ptr())) {
-                    Err(why) => Err(OomError::from(why)),
-                    _ => {
-                        Ok(())
-                    }
-                }
+                               fences.as_ptr()))?;
             }
-        } else {
-            Ok(())
         }
+        Ok(())
     }
 }
 
@@ -441,8 +430,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let mut fence = Fence::alloc_signaled(device.clone()).unwrap();
-        fence.reset();
-        assert!(!fence.ready().unwrap());
+        if (fence.reset().is_ok()) {
+            assert!(!fence.ready().unwrap());
+        }
     }
 
     #[test]
