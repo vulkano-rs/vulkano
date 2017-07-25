@@ -7,10 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use fnv::FnvHasher;
+use fnv::FnvHashMap;
 use std::cmp;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -42,9 +40,7 @@ pub struct StandardCommandPool {
     queue_family: u32,
 
     // For each thread, we store thread-specific info.
-    per_thread: Mutex<HashMap<thread::ThreadId,
-                              Weak<Mutex<StandardCommandPoolPerThread>>,
-                              BuildHasherDefault<FnvHasher>>>,
+    per_thread: Mutex<FnvHashMap<thread::ThreadId, Weak<Mutex<StandardCommandPoolPerThread>>>>,
 }
 
 unsafe impl Send for StandardCommandPool {
