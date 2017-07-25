@@ -130,7 +130,6 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
         // Returning them as a chain.
         let device = self.device.clone();
-        let queue_family_id = self.queue_family;
         let per_thread = per_thread.clone();
         let final_iter = from_existing
             .chain(newly_allocated)
@@ -140,7 +139,6 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                     pool: per_thread.clone(),
                     secondary: secondary,
                     device: device.clone(),
-                    queue_family_id: queue_family_id,
                     dummy_avoid_send_sync: PhantomData,
                 }
             })
@@ -165,12 +163,18 @@ unsafe impl DeviceOwned for StandardCommandPool {
     }
 }
 
+/// Command buffer allocated from a `StandardCommandPool` and that is currently being built.
 pub struct StandardCommandPoolBuilder {
+    // The actual command buffer. Must always be `Some`. Value extracted in `into_alloc` or in the
+    // destructor.
     cmd: Option<UnsafeCommandPoolAlloc>,
+    // We hold a reference to the command pool for our destructor.
     pool: Arc<Mutex<StandardCommandPoolPerThread>>,
+    // True if secondary command buffer.
     secondary: bool,
+    // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
     device: Arc<Device>,
-    queue_family_id: u32,
+    // Unimplemented `Send` and `Sync` from the builder.
     dummy_avoid_send_sync: PhantomData<*const u8>,
 }
 
@@ -189,15 +193,16 @@ unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
             pool: self.pool.clone(),
             secondary: self.secondary,
             device: self.device.clone(),
-            queue_family_id: self.queue_family_id,
         }
     }
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
+        let queue_family_id = self.pool.lock().unwrap().pool.queue_family().id();
+
         self.device
             .physical_device()
-            .queue_family_by_id(self.queue_family_id)
+            .queue_family_by_id(queue_family_id)
             .unwrap()
     }
 }
@@ -212,6 +217,7 @@ unsafe impl DeviceOwned for StandardCommandPoolBuilder {
 impl Drop for StandardCommandPoolBuilder {
     fn drop(&mut self) {
         if let Some(cmd) = self.cmd.take() {
+            // This happens if the builder is dropped without `into_alloc` being called.
             let mut pool = self.pool.lock().unwrap();
 
             if self.secondary {
@@ -223,12 +229,16 @@ impl Drop for StandardCommandPoolBuilder {
     }
 }
 
+/// Command buffer allocated from a `StandardCommandPool`.
 pub struct StandardCommandPoolAlloc {
+    // The actual command buffer. Must always be `Some`. Value extracted in the destructor.
     cmd: Option<UnsafeCommandPoolAlloc>,
+    // We hold a reference to the command pool for our destructor.
     pool: Arc<Mutex<StandardCommandPoolPerThread>>,
+    // True if secondary command buffer.
     secondary: bool,
+    // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
     device: Arc<Device>,
-    queue_family_id: u32,
 }
 
 unsafe impl Send for StandardCommandPoolAlloc {
@@ -244,9 +254,11 @@ unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
+        let queue_family_id = self.pool.lock().unwrap().pool.queue_family().id();
+
         self.device
             .physical_device()
-            .queue_family_by_id(self.queue_family_id)
+            .queue_family_by_id(queue_family_id)
             .unwrap()
     }
 }
@@ -254,6 +266,8 @@ unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
 unsafe impl DeviceOwned for StandardCommandPoolAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
+        // Note that we could grab the device from `self.pool`. Unfortunately this requires a mutex
+        // lock, so it isn't compatible with the API of `DeviceOwned`.
         &self.device
     }
 }
