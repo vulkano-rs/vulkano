@@ -15,6 +15,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
+use std::thread;
 
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
@@ -28,14 +29,6 @@ use VulkanObject;
 use device::Device;
 use device::DeviceOwned;
 
-// Since the stdlib doesn't have a "thread ID" yet, we store a `Box<u8>` for each thread and the
-// value of the pointer will be used as a thread id.
-thread_local!(static THREAD_ID: Box<u8> = Box::new(0));
-#[inline]
-fn curr_thread_id() -> usize {
-    THREAD_ID.with(|data| &**data as *const u8 as usize)
-}
-
 /// Standard implementation of a command pool.
 ///
 /// Will use one Vulkan pool per thread in order to avoid locking. Will try to reuse command
@@ -48,8 +41,8 @@ pub struct StandardCommandPool {
     // Identifier of the queue family.
     queue_family: u32,
 
-    // For each "thread id" (see `THREAD_ID` above), we store thread-specific info.
-    per_thread: Mutex<HashMap<usize,
+    // For each thread, we store thread-specific info.
+    per_thread: Mutex<HashMap<thread::ThreadId,
                               Weak<Mutex<StandardCommandPoolPerThread>>,
                               BuildHasherDefault<FnvHasher>>>,
 }
@@ -98,7 +91,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         //hashmap.retain(|_, w| w.upgrade().is_some());     // TODO: unstable     // TODO: meh for iterating everything every time
 
         // TODO: this hashmap lookup can probably be optimized
-        let curr_thread_id = curr_thread_id();
+        let curr_thread_id = thread::current().id();
         let per_thread = hashmap.get(&curr_thread_id).and_then(|p| p.upgrade());
         let per_thread = match per_thread {
             Some(pt) => pt,
