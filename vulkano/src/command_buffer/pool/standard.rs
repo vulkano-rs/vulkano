@@ -135,10 +135,12 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             .chain(newly_allocated)
             .map(move |cmd| {
                 StandardCommandPoolBuilder {
-                    cmd: Some(cmd),
-                    pool: per_thread.clone(),
-                    secondary: secondary,
-                    device: device.clone(),
+                    inner: StandardCommandPoolAlloc {
+                        cmd: Some(cmd),
+                        pool: per_thread.clone(),
+                        secondary: secondary,
+                        device: device.clone(),
+                    },
                     dummy_avoid_send_sync: PhantomData,
                 }
             })
@@ -165,15 +167,9 @@ unsafe impl DeviceOwned for StandardCommandPool {
 
 /// Command buffer allocated from a `StandardCommandPool` and that is currently being built.
 pub struct StandardCommandPoolBuilder {
-    // The actual command buffer. Must always be `Some`. Value extracted in `into_alloc` or in the
-    // destructor.
-    cmd: Option<UnsafeCommandPoolAlloc>,
-    // We hold a reference to the command pool for our destructor.
-    pool: Arc<Mutex<StandardCommandPoolPerThread>>,
-    // True if secondary command buffer.
-    secondary: bool,
-    // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
-    device: Arc<Device>,
+    // The only difference between a `StandardCommandPoolBuilder` and a `StandardCommandPoolAlloc`
+    // is that the former must not implement `Send` and `Sync`. Therefore we just share the structs.
+    inner: StandardCommandPoolAlloc,
     // Unimplemented `Send` and `Sync` from the builder.
     dummy_avoid_send_sync: PhantomData<*const u8>,
 }
@@ -183,49 +179,24 @@ unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandPoolAlloc {
-        self.cmd.as_ref().unwrap()
+        self.inner.inner()
     }
 
     #[inline]
-    fn into_alloc(mut self) -> Self::Alloc {
-        StandardCommandPoolAlloc {
-            cmd: Some(self.cmd.take().unwrap()),
-            pool: self.pool.clone(),
-            secondary: self.secondary,
-            device: self.device.clone(),
-        }
+    fn into_alloc(self) -> Self::Alloc {
+        self.inner
     }
 
     #[inline]
     fn queue_family(&self) -> QueueFamily {
-        let queue_family_id = self.pool.lock().unwrap().pool.queue_family().id();
-
-        self.device
-            .physical_device()
-            .queue_family_by_id(queue_family_id)
-            .unwrap()
+        self.inner.queue_family()
     }
 }
 
 unsafe impl DeviceOwned for StandardCommandPoolBuilder {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl Drop for StandardCommandPoolBuilder {
-    fn drop(&mut self) {
-        if let Some(cmd) = self.cmd.take() {
-            // This happens if the builder is dropped without `into_alloc` being called.
-            let mut pool = self.pool.lock().unwrap();
-
-            if self.secondary {
-                pool.available_secondary_command_buffers.push(cmd);
-            } else {
-                pool.available_primary_command_buffers.push(cmd);
-            }
-        }
+        self.inner.device()
     }
 }
 
