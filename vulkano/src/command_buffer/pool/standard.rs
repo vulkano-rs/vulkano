@@ -276,3 +276,26 @@ impl Drop for StandardCommandPoolAlloc {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use command_buffer::pool::CommandPool;
+    use command_buffer::pool::CommandPoolBuilderAlloc;
+    use device::Device;
+    use VulkanObject;
+
+    #[test]
+    fn reuse_command_buffers() {
+        let (device, _) = gfx_dev_and_queue!();
+        let queue_family = device.physical_device().queue_families().next().unwrap();
+
+        let pool = Device::standard_command_pool(&device, queue_family);
+
+        let cb = pool.alloc(false, 1).unwrap().next().unwrap();
+        let raw = cb.inner().internal_object();
+        drop(cb);
+
+        let cb2 = pool.alloc(false, 1).unwrap().next().unwrap();
+        assert_eq!(raw, cb2.inner().internal_object());
+    }
+}
