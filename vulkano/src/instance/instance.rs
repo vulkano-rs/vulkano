@@ -92,6 +92,10 @@ pub struct Instance {
     function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>,
 }
 
+// TODO: fix the underlying cause instead
+impl ::std::panic::UnwindSafe for Instance {}
+impl ::std::panic::RefUnwindSafe for Instance {}
+
 impl Instance {
     /// Initializes a new instance of Vulkan.
     ///
