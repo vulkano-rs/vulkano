@@ -264,12 +264,14 @@ impl<D> Fence<D>
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            if check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence)).is_ok() {
-                Ok(self.signaled.store(false, Ordering::Relaxed))
-            }else {
-                Err(OomError::OutOfDeviceMemory)
-            }
 
+            match check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence)) {
+                Err(why) => Err(OomError::from(why)),
+                _ => {
+                    self.signaled.store(false, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -303,16 +305,17 @@ impl<D> Fence<D>
         if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                if check_errors(vk.ResetFences(device.internal_object(),
+                match check_errors(vk.ResetFences(device.internal_object(),
                                fences.len() as u32,
-                               fences.as_ptr())).is_ok() {
-                    Ok(())
-                } else {
-                    Err(OomError::OutOfDeviceMemory)
+                               fences.as_ptr())) {
+                    Err(why) => Err(OomError::from(why)),
+                    _ => {
+                        Ok(())
+                    }
                 }
             }
         } else {
-            Err(OomError::OutOfDeviceMemory)
+            Ok(())
         }
     }
 }
