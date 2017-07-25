@@ -13,6 +13,8 @@ use std::mem;
 use std::ops::Deref;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
+use std::path::Path;
+use shared_library;
 
 use SafeDeref;
 use vk;
@@ -34,6 +36,49 @@ unsafe impl<T> Loader for T
     fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
                               -> extern "system" fn() -> () {
         (**self).get_instance_proc_addr(instance, name)
+    }
+}
+
+/// Implementation of `Loader` that loads Vulkan from a dynamic library.
+pub struct DynamicLibraryLoader {
+    vk_lib: shared_library::dynamic_library::DynamicLibrary,
+    get_proc_addr: extern "system" fn(instance: vk::Instance, pName: *const c_char)
+                                        -> extern "system" fn() -> (),
+}
+
+impl DynamicLibraryLoader {
+    /// Tries to load the dynamic library at the given path, and tries to
+    /// load `vkGetInstanceProcAddr` in it.
+    ///
+    /// # Safety
+    ///
+    /// - The dynamic library must be a valid Vulkan implementation.
+    ///
+    pub unsafe fn new<P>(path: P) -> Result<DynamicLibraryLoader, LoadingError>
+        where P: AsRef<Path>
+    {
+        let vk_lib = shared_library::dynamic_library::DynamicLibrary::open(Some(path.as_ref()))
+            .map_err(LoadingError::LibraryLoadFailure)?;
+
+        let get_proc_addr = {
+            let ptr: *mut c_void = vk_lib
+                .symbol("GetInstanceProcAddr")
+                .map_err(|_| LoadingError::MissingEntryPoint("GetInstanceProcAddr".to_owned()))?;
+            mem::transmute(ptr)
+        };
+
+        Ok(DynamicLibraryLoader {
+            vk_lib,
+            get_proc_addr,
+        })
+    }
+}
+
+unsafe impl Loader for DynamicLibraryLoader {
+    #[inline]
+    fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
+                                -> extern "system" fn() -> () {
+        (self.get_proc_addr)(instance, name)
     }
 }
 
@@ -117,53 +162,24 @@ fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
-    use std::path::Path;
-    use shared_library;
-
-    let vk_lib = {
-        #[cfg(windows)]
-        fn get_path() -> &'static Path {
-            Path::new("vulkan-1.dll")
-        }
-        #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.so.1")
-        }
-        #[cfg(target_os = "android")]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.so")
-        }
-        let path = get_path();
-
-        shared_library::dynamic_library::DynamicLibrary::open(Some(path))
-            .map_err(LoadingError::LibraryLoadFailure)?
-    };
-
-    let get_proc_addr = unsafe {
-        let ptr: *mut c_void = vk_lib
-            .symbol("GetInstanceProcAddr")
-            .map_err(|_| LoadingError::MissingEntryPoint("GetInstanceProcAddr".to_owned()))?;
-        mem::transmute(ptr)
-    };
-
-    struct LoaderImpl {
-        vk_lib: shared_library::dynamic_library::DynamicLibrary,
-        get_proc_addr: extern "system" fn(instance: vk::Instance, pName: *const c_char)
-                                          -> extern "system" fn() -> (),
+    #[cfg(windows)]
+    fn get_path() -> &'static Path {
+        Path::new("vulkan-1.dll")
+    }
+    #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
+    fn get_path() -> &'static Path {
+        Path::new("libvulkan.so.1")
+    }
+    #[cfg(target_os = "android")]
+    fn get_path() -> &'static Path {
+        Path::new("libvulkan.so")
     }
 
-    unsafe impl Loader for LoaderImpl {
-        #[inline]
-        fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                                  -> extern "system" fn() -> () {
-            (self.get_proc_addr)(instance, name)
-        }
-    }
+    let loader = unsafe {
+        DynamicLibraryLoader::new(get_path())?
+    };
 
-    Ok(Box::new(LoaderImpl {
-                    vk_lib,
-                    get_proc_addr,
-                }))
+    Ok(Box::new(loader))
 }
 
 /// Error that can happen when loading the Vulkan loader.
