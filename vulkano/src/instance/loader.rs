@@ -157,6 +157,35 @@ macro_rules! statically_linked_vulkan_loader {
 pub fn default_function_pointers()
     -> Result<&'static FunctionPointers<Box<Loader + Send + Sync>>, LoadingError>
 {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[allow(non_snake_case)]
+    fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
+        let loader = statically_linked_vulkan_loader!();
+        Ok(Box::new(loader))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
+        #[cfg(windows)]
+        fn get_path() -> &'static Path {
+            Path::new("vulkan-1.dll")
+        }
+        #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
+        fn get_path() -> &'static Path {
+            Path::new("libvulkan.so.1")
+        }
+        #[cfg(target_os = "android")]
+        fn get_path() -> &'static Path {
+            Path::new("libvulkan.so")
+        }
+
+        let loader = unsafe {
+            DynamicLibraryLoader::new(get_path())?
+        };
+
+        Ok(Box::new(loader))
+    }
+
     lazy_static! {
         static ref DEFAULT_LOADER: Result<FunctionPointers<Box<Loader + Send + Sync>>, LoadingError> = {
             def_loader_impl().map(FunctionPointers::new)
@@ -167,35 +196,6 @@ pub fn default_function_pointers()
         &Ok(ref ptr) => Ok(ptr),
         &Err(ref err) => Err(err.clone())
     }
-}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[allow(non_snake_case)]
-fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
-    let loader = statically_linked_vulkan_loader!();
-    Ok(Box::new(loader))
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
-    #[cfg(windows)]
-    fn get_path() -> &'static Path {
-        Path::new("vulkan-1.dll")
-    }
-    #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-    fn get_path() -> &'static Path {
-        Path::new("libvulkan.so.1")
-    }
-    #[cfg(target_os = "android")]
-    fn get_path() -> &'static Path {
-        Path::new("libvulkan.so")
-    }
-
-    let loader = unsafe {
-        DynamicLibraryLoader::new(get_path())?
-    };
-
-    Ok(Box::new(loader))
 }
 
 /// Error that can happen when loading the Vulkan loader.
