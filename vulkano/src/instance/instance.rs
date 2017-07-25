@@ -132,6 +132,22 @@ impl Instance {
                             OwnedOrRef::Ref(loader::default_function_pointers()?))
     }
 
+    /// Same as `new`, but allows specifying a loader where to load Vulkan from.
+    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
+                                   app_infos: Option<&ApplicationInfo>, extensions: Ext,
+                                   layers: L) -> Result<Arc<Instance>, InstanceCreationError>
+        where L: IntoIterator<Item = &'a &'a str>,
+              Ext: Into<RawInstanceExtensions>
+    {
+        let layers = layers
+            .into_iter()
+            .map(|&layer| CString::new(layer).unwrap())
+            .collect::<SmallVec<[_; 16]>>();
+
+        Instance::new_inner(app_infos, extensions.into(), layers,
+                            OwnedOrRef::Owned(loader))
+    }
+
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>,
                  function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>)
