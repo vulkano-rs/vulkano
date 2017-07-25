@@ -8,6 +8,7 @@
 // according to those terms.
 
 use fnv::FnvHashMap;
+use std::collections::hash_map::Entry;
 use std::cmp;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -84,14 +85,28 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     fn alloc(&self, secondary: bool, count: u32) -> Result<Self::Iter, OomError> {
         // Find the correct `StandardCommandPoolPerThread` structure.
         let mut hashmap = self.per_thread.lock().unwrap();
-        //hashmap.retain(|_, w| w.upgrade().is_some());     // TODO: unstable     // TODO: meh for iterating everything every time
+        // TODO: meh for iterating everything every time
+        hashmap.retain(|_, w| w.upgrade().is_some());
 
-        // TODO: this hashmap lookup can probably be optimized
-        let curr_thread_id = thread::current().id();
-        let per_thread = hashmap.get(&curr_thread_id).and_then(|p| p.upgrade());
-        let per_thread = match per_thread {
-            Some(pt) => pt,
-            None => {
+        // Get an appropriate `Arc<Mutex<StandardCommandPoolPerThread>>`.
+        let per_thread = match hashmap.entry(thread::current().id()) {
+            Entry::Occupied(mut entry) => {
+                if let Some(entry) = entry.get().upgrade() {
+                    entry
+                } else {
+                    let new_pool =
+                        UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
+                    let pt = Arc::new(Mutex::new(StandardCommandPoolPerThread {
+                                                    pool: new_pool,
+                                                    available_primary_command_buffers: Vec::new(),
+                                                    available_secondary_command_buffers: Vec::new(),
+                                                }));
+
+                    entry.insert(Arc::downgrade(&pt));
+                    pt
+                }
+            },
+            Entry::Vacant(entry) => {
                 let new_pool =
                     UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
                 let pt = Arc::new(Mutex::new(StandardCommandPoolPerThread {
@@ -100,7 +115,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                                                  available_secondary_command_buffers: Vec::new(),
                                              }));
 
-                hashmap.insert(curr_thread_id, Arc::downgrade(&pt));
+                entry.insert(Arc::downgrade(&pt));
                 pt
             },
         };
