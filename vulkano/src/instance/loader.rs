@@ -62,8 +62,8 @@ impl DynamicLibraryLoader {
 
         let get_proc_addr = {
             let ptr: *mut c_void = vk_lib
-                .symbol("GetInstanceProcAddr")
-                .map_err(|_| LoadingError::MissingEntryPoint("GetInstanceProcAddr".to_owned()))?;
+                .symbol("vkGetInstanceProcAddr")
+                .map_err(|_| LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned()))?;
             mem::transmute(ptr)
         };
 
