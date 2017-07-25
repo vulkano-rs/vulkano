@@ -129,7 +129,7 @@ impl Instance {
             .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos, extensions.into(), layers,
-                            OwnedOrRef::Ref(loader::default_function_pointers()?))
+                            OwnedOrRef::Ref(loader::auto_loader()?))
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.

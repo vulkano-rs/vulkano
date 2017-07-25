@@ -7,6 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Vulkan implementation loading system.
+//! 
+//! Before vulkano can do anything, it first needs to find an implementation of Vulkan. A Vulkan
+//! implementation is defined as a single `vkGetInstanceProcAddr` function, which can be accessed
+//! through the `Loader` trait.
+//! 
+//! This module provides various implementations of the `Loader` trait.
+//! 
+//! Once you have a struct that implements `Loader`, you can create a `FunctionPointers` struct
+//! from it and use this `FunctionPointers` struct to build an `Instance`.
+//! 
+//! By default vulkano will use the `auto_loader()` function, which tries to automatically load
+//! a Vulkan implementation from the system.
+
 use std::error;
 use std::fmt;
 use std::mem;
@@ -129,6 +143,7 @@ impl<L> FunctionPointers<L> {
 ///
 /// This is provided as a macro and not as a regular function, because the macro contains an
 /// `extern {}` block.
+// TODO: should this be unsafe?
 #[macro_export]
 macro_rules! statically_linked_vulkan_loader {
     () => ({
@@ -154,7 +169,7 @@ macro_rules! statically_linked_vulkan_loader {
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
-pub fn default_function_pointers()
+pub fn auto_loader()
     -> Result<&'static FunctionPointers<Box<Loader + Send + Sync>>, LoadingError>
 {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
