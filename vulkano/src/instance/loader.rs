@@ -121,6 +121,34 @@ impl<L> FunctionPointers<L> {
     }
 }
 
+/// Expression that returns a loader that assumes that Vulkan is linked to the executable you're
+/// compiling.
+///
+/// If you use this macro, you must linked to a library that provides the `vkGetInstanceProcAddr`
+/// symbol.
+///
+/// This is provided as a macro and not as a regular function, because the macro contains an
+/// `extern {}` block.
+#[macro_export]
+macro_rules! statically_linked_vulkan_loader {
+    () => ({
+        extern "C" {
+            fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
+                                    -> vk::PFN_vkVoidFunction;
+        }
+
+        struct StaticallyLinkedVulkanLoader;
+        unsafe impl Loader for StaticallyLinkedVulkanLoader {
+            fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
+                                    -> extern "system" fn() -> () {
+                unsafe { vkGetInstanceProcAddr(instance, name) }
+            }
+        }
+
+        StaticallyLinkedVulkanLoader
+    })
+}
+
 /// Returns the default `FunctionPointers` for this system.
 ///
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
@@ -144,20 +172,8 @@ pub fn default_function_pointers()
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[allow(non_snake_case)]
 fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
-    extern "C" {
-        fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
-                                 -> vk::PFN_vkVoidFunction;
-    }
-
-    struct LoaderImpl;
-    unsafe impl Loader for LoaderImpl {
-        fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                                  -> extern "system" fn() -> () {
-            unsafe { vkGetInstanceProcAddr(instance, name) }
-        }
-    }
-
-    Ok(Box::new(LoaderImpl))
+    let loader = statically_linked_vulkan_loader!();
+    Ok(Box::new(loader))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
