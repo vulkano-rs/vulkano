@@ -51,12 +51,14 @@ use vulkano::swapchain;
 use vulkano::swapchain::PresentMode;
 use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
+use vulkano::swapchain::AcquireError;
+use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::iter;
 use std::sync::Arc;
-use std::time::Duration;
+use std::mem;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -104,6 +106,13 @@ fn main() {
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+
+    // Get the dimensions of the viewport. These variables need to be mutable since the viewport
+    // can change size.
+    let mut dimensions = {
+        let (width, height) = window.window().get_inner_size_pixels().unwrap();
+        [width, height]
+    };
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -157,7 +166,7 @@ fn main() {
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
     // be visible on the screen. These images are returned alongside with the swapchain.
-    let (swapchain, images) = {
+    let (mut swapchain, mut images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
         let caps = window.surface().capabilities(physical)
@@ -165,8 +174,8 @@ fn main() {
 
         // We choose the dimensions of the swapchain to match the current dimensions of the window.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
-        // by the dimensions of the swapchain, in which case we just use a default value.
-        let dimensions = caps.current_extent.unwrap_or([1280, 1024]);
+        // by the dimensions of the swapchain, in which case we just use the width and height defined above.
+        //let dimensions = caps.current_extent.unwrap_or([width, height]);
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
@@ -281,12 +290,8 @@ void main() {
         .vertex_shader(vs.main_entry_point(), ())
         // The content of the vertex buffer describes a list of triangles.
         .triangle_list()
-        // TODO: switch to dynamic viewports and explain how it works
-        .viewports(iter::once(Viewport {
-            origin: [0.0, 0.0],
-            depth_range: 0.0 .. 1.0,
-            dimensions: [images[0].dimensions()[0] as f32, images[0].dimensions()[1] as f32],
-        }))
+        // Use a resizable viewport set to draw over the entire window
+        .viewports_dynamic_scissors_irrelevant(1)
         // See `vertex_shader`.
         .fragment_shader(fs.main_entry_point(), ())
         // We have to indicate which subpass of which render pass this pipeline is going to be used
@@ -301,13 +306,20 @@ void main() {
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let framebuffers = images.iter().map(|image| {
-        Arc::new(Framebuffer::start(render_pass.clone())
-            .add(image.clone()).unwrap()
-            .build().unwrap())
-    }).collect::<Vec<_>>();
+    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
 
     // Initialization is finally finished!
+
+    // In some situations, the swapchain will become invalid by itself. This includes for example
+    // when the window is resized (as the images of the swapchain will no longer match the
+    // window's) or, on Android, when the application went to the background and goes back to the
+    // foreground.
+    //
+    // In this situation, acquiring a swapchain image or presenting it will return an error.
+    // Rendering to an image of that swapchain will not produce any error, but may or may not work.
+    // To continue rendering, we need to recreate the swapchain by creating a new swapchain.
+    // Here, we remember that we need to do this for the next loop iteration.
+    let mut recreate_swapchain = false;
 
     // In the loop below we are going to submit commands to the GPU. Submitting a command produces
     // an object that implements the `GpuFuture` trait, which holds the resources for as long as
@@ -324,6 +336,43 @@ void main() {
         // already processed, and frees the resources that are no longer needed.
         previous_frame_end.cleanup_finished();
 
+        // If the swapchain needs to be recreated, recreate it
+        if recreate_swapchain {
+            // Get the new dimensions for the viewport/framebuffers.
+            dimensions = {
+                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
+                [new_width, new_height]
+            };
+            
+            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+                Ok(r) => r,
+                // This error tends to happen when the user is manually resizing the window.
+                // Simply restarting the loop is the easiest way to fix this issue.
+                Err(SwapchainCreationError::UnsupportedDimensions) => {
+                    continue;
+                },
+                Err(err) => panic!("{:?}", err)
+            };
+
+            mem::replace(&mut swapchain, new_swapchain);
+            mem::replace(&mut images, new_images);
+
+            framebuffers = None;
+
+            recreate_swapchain = false;
+        }
+
+        // Because framebuffers contains an Arc on the old swapchain, we need to
+        // recreate framebuffers as well.
+        if framebuffers.is_none() {
+            let new_framebuffers = Some(images.iter().map(|image| {
+                Arc::new(Framebuffer::start(render_pass.clone())
+                         .add(image.clone()).unwrap()
+                         .build().unwrap())
+            }).collect::<Vec<_>>());
+            mem::replace(&mut framebuffers, new_framebuffers);
+        }
+
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
         // no image is available (which happens if you submit draw commands too quickly), then the
         // function will block.
@@ -331,8 +380,15 @@ void main() {
         //
         // This function can block if no image is available. The parameter is an optional timeout
         // after which the function call will return an error.
-        let (image_num, acquire_future) = swapchain::acquire_next_image(swapchain.clone(),
-                                                                        None).unwrap();
+        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(),
+                                                                              None) {
+            Ok(r) => r,
+            Err(AcquireError::OutOfDate) => {
+                recreate_swapchain = true;
+                continue;
+            },
+            Err(err) => panic!("{:?}", err)
+        };
 
         // In order to draw, we have to build a *command buffer*. The command buffer object holds
         // the list of commands that are going to be executed.
@@ -351,7 +407,7 @@ void main() {
             // The third parameter builds the list of values to clear the attachments with. The API
             // is similar to the list of attachments when building the framebuffers, except that
             // only the attachments that use `load: Clear` appear in the list.
-            .begin_render_pass(framebuffers[image_num].clone(), false,
+            .begin_render_pass(framebuffers.as_ref().unwrap()[image_num].clone(), false,
                                vec![[0.0, 0.0, 1.0, 1.0].into()])
             .unwrap()
 
@@ -359,7 +415,18 @@ void main() {
             //
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
-            .draw(pipeline.clone(), DynamicState::none(), vertex_buffer.clone(), (), ())
+            .draw(pipeline.clone(),
+                  DynamicState {
+                      line_width: None,
+                      // TODO: Find a way to do this without having to dynamically allocate a Vec every frame.
+                      viewports: Some(vec![Viewport {
+                          origin: [0.0, 0.0],
+                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                          depth_range: 0.0 .. 1.0,
+                      }]),
+                      scissors: None,
+                  },
+                  vertex_buffer.clone(), (), ())
             .unwrap()
 
             // We leave the render pass by calling `draw_end`. Note that if we had multiple
