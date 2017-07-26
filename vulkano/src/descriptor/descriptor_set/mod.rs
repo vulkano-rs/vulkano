@@ -38,7 +38,7 @@
 use SafeDeref;
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
-use image::ImageAccess;
+use image::ImageViewAccess;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::persistent::PersistentDescriptorSet;
@@ -78,13 +78,23 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 
-    /// Returns the list of buffers used by this descriptor set. Includes buffer views.
-    // TODO: meh for boxing
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a>;
+    /// Returns the number of buffers within this descriptor set.
+    fn num_buffers(&self) -> usize;
+    
+    /// Returns the `index`th buffer of this descriptor set, or `None` if out of range. Also
+    /// returns the index of the descriptor that uses this buffer.
+    ///
+    /// The valid range is between 0 and `num_buffers()`.
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)>;
 
-    /// Returns the list of images used by this descriptor set. Includes image views.
-    // TODO: meh for boxing
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a>;
+    /// Returns the number of images within this descriptor set.
+    fn num_images(&self) -> usize;
+    
+    /// Returns the `index`th image of this descriptor set, or `None` if out of range. Also returns
+    /// the index of the descriptor that uses this image.
+    ///
+    /// The valid range is between 0 and `num_images()`.
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)>;
 }
 
 unsafe impl<T> DescriptorSet for T
@@ -97,13 +107,23 @@ unsafe impl<T> DescriptorSet for T
     }
 
     #[inline]
-    fn buffers_list<'a>(&'a self) -> Box<Iterator<Item = &'a BufferAccess> + 'a> {
-        (**self).buffers_list()
+    fn num_buffers(&self) -> usize {
+        (**self).num_buffers()
+    }
+    
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+        (**self).buffer(index)
     }
 
     #[inline]
-    fn images_list<'a>(&'a self) -> Box<Iterator<Item = &'a ImageAccess> + 'a> {
-        (**self).images_list()
+    fn num_images(&self) -> usize {
+        (**self).num_images()
+    }
+    
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+        (**self).image(index)
     }
 }
 

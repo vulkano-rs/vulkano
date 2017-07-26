@@ -1052,11 +1052,17 @@ impl<P> Drop for PresentFuture<P>
     fn drop(&mut self) {
         unsafe {
             if !*self.finished.get_mut() {
-                // TODO: handle errors?
-                self.flush().unwrap();
-                // Block until the queue finished.
-                self.queue().unwrap().wait().unwrap();
-                self.previous.signal_finished();
+                match self.flush() {
+                    Ok(()) => {
+                        // Block until the queue finished.
+                        self.queue().unwrap().wait().unwrap();
+                        self.previous.signal_finished();
+                    },
+                    Err(_) => {
+                        // In case of error we simply do nothing, as there's nothing to do
+                        // anyway.
+                    },
+                }
             }
         }
     }

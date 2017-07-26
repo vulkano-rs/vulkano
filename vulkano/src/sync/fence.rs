@@ -261,11 +261,12 @@ impl<D> Fence<D>
     // This function takes a `&mut self` because the Vulkan API requires that the fence be
     // externally synchronized.
     #[inline]
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            vk.ResetFences(self.device.internal_object(), 1, &self.fence);
-            self.signaled.store(false, Ordering::Relaxed);
+             let vk = self.device.pointers();
+             check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence))?;
+             self.signaled.store(false, Ordering::Relaxed);
+             Ok(())
         }
     }
 
@@ -275,7 +276,7 @@ impl<D> Fence<D>
     ///
     /// - Panics if not all fences belong to the same device.
     ///
-    pub fn multi_reset<'a, I>(iter: I)
+    pub fn multi_reset<'a, I>(iter: I) -> Result<(), OomError>
         where I: IntoIterator<Item = &'a mut Fence<D>>,
               D: 'a
     {
@@ -299,11 +300,12 @@ impl<D> Fence<D>
         if let Some(device) = device {
             unsafe {
                 let vk = device.pointers();
-                vk.ResetFences(device.internal_object(),
+                check_errors(vk.ResetFences(device.internal_object(),
                                fences.len() as u32,
-                               fences.as_ptr());
+                               fences.as_ptr()))?;
             }
         }
+        Ok(())
     }
 }
 
@@ -428,7 +430,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let mut fence = Fence::alloc_signaled(device.clone()).unwrap();
-        fence.reset();
+        fence.reset().unwrap();
         assert!(!fence.ready().unwrap());
     }
 

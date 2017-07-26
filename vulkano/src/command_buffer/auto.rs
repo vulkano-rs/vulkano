@@ -751,7 +751,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            descriptor_sets(&mut self.inner, false, pipeline.clone(), sets)?;
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, false, pipeline.clone(), sets)?;
 
             self.inner.dispatch(dimensions);
             Ok(self)
@@ -783,7 +783,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
@@ -830,7 +830,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
@@ -874,7 +874,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, true, pipeline.clone(), sets)?;
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
             vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
@@ -1077,19 +1077,33 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
     Ok(())
 }
 
-unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>, gfx: bool,
-                                    pipeline: Pl, sets: S)
+unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>,
+                                    state_cacher: &mut StateCacher,
+                                    gfx: bool, pipeline: Pl, sets: S)
                                     -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
 {
-    let mut sets_binder = destination.bind_descriptor_sets();
+    let sets = sets.into_vec();
 
-    for set in sets.into_vec() {
+    let first_binding = {
+        let mut compare = state_cacher.bind_descriptor_sets(gfx);
+        for set in sets.iter() {
+            compare.add(set);
+        }
+        compare.compare()
+    };
+
+    let first_binding = match first_binding {
+        None => return Ok(()),
+        Some(fb) => fb,
+    };
+
+    let mut sets_binder = destination.bind_descriptor_sets();
+    for set in sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-
-    sets_binder.submit(gfx, pipeline.clone(), 0, iter::empty())?;
+    sets_binder.submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
     Ok(())
 }
 

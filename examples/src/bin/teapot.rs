@@ -64,10 +64,11 @@ fn main() {
 
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
+        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count, format, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
-                                           vulkano::swapchain::CompositeAlpha::Opaque,
+                                           alpha,
                                            vulkano::swapchain::PresentMode::Fifo, true, None).expect("failed to create swapchain")
     };
 

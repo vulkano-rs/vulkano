@@ -165,7 +165,9 @@ pub const STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR: u32 = 1000006000;
 pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
+#[deprecated(note = "Use STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT instead")]
 pub const STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT: u32 = 1000011000;
+pub const STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT: u32 = 1000011000;
 pub const STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (52 * 1000);
 pub const STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (53 * 1000);
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
@@ -2103,33 +2105,24 @@ pub struct BufferImageCopy {
 }
 
 #[repr(C)]
-pub struct ClearColorValue([u32; 4]);
-
-impl ClearColorValue {
-    #[inline] pub fn as_float32(&self) -> &[f32; 4] { unsafe { mem::transmute(&self.0) } }
-    #[inline] pub fn as_int32(&self) -> &[i32; 4] { unsafe { mem::transmute(&self.0) } }
-    #[inline] pub fn as_uint32(&self) -> &[u32; 4] { &self.0 }
-
-    #[inline] pub fn float32(val: [f32; 4]) -> ClearColorValue { ClearColorValue(unsafe { mem::transmute(val) }) }
-    #[inline] pub fn int32(val: [i32; 4]) -> ClearColorValue { ClearColorValue(unsafe { mem::transmute(val) }) }
-    #[inline] pub fn uint32(val: [u32; 4]) -> ClearColorValue { ClearColorValue(val) }
+#[derive(Copy, Clone)]
+pub union ClearColorValue {
+    pub float32: [f32; 4],
+    pub int32: [i32; 4],
+    pub uint32: [u32; 4]
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ClearDepthStencilValue {
     pub depth: f32,
     pub stencil: u32,
 }
 
 #[repr(C)]
-pub struct ClearValue(ClearColorValue);
-
-impl ClearValue {
-    #[inline] pub fn as_color(&self) -> &ClearColorValue { &self.0 }
-    #[inline] pub fn as_depth_stencil(&self) -> &ClearDepthStencilValue { unsafe { mem::transmute(&self.0) } }
-
-    #[inline] pub fn color(val: ClearColorValue) -> ClearValue { ClearValue(val) }
-    #[inline] pub fn depth_stencil(val: ClearDepthStencilValue) -> ClearValue { let val = (val, [0u32, 0u32]); ClearValue(unsafe { mem::transmute(val) }) }
+pub union ClearValue {
+    pub color: ClearColorValue,
+    pub depthStencil: ClearDepthStencilValue
 }
 
 #[repr(C)]

@@ -68,6 +68,7 @@ extern crate lazy_static;
 extern crate shared_library;
 extern crate smallvec;
 extern crate vk_sys as vk;
+pub extern crate half;
 
 #[macro_use]
 mod tests;

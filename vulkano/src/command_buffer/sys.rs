@@ -360,34 +360,34 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .map(|clear_value| match clear_value {
                      ClearValue::None => {
-                         vk::ClearValue::color(vk::ClearColorValue::float32([0.0; 4]))
+                         vk::ClearValue { color: vk::ClearColorValue { float32: [0.0; 4] } }
                      },
                      ClearValue::Float(val) => {
-                         vk::ClearValue::color(vk::ClearColorValue::float32(val))
+                         vk::ClearValue { color: vk::ClearColorValue { float32: val } }
                      },
                      ClearValue::Int(val) => {
-                         vk::ClearValue::color(vk::ClearColorValue::int32(val))
+                         vk::ClearValue { color: vk::ClearColorValue { int32: val } }
                      },
                      ClearValue::Uint(val) => {
-                         vk::ClearValue::color(vk::ClearColorValue::uint32(val))
+                         vk::ClearValue { color: vk::ClearColorValue { uint32: val } }
                      },
                      ClearValue::Depth(val) => {
-                         vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
                                                            depth: val,
                                                            stencil: 0,
-                                                       })
+                                                       }}
                      },
                      ClearValue::Stencil(val) => {
-                         vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
                                                            depth: 0.0,
                                                            stencil: val,
-                                                       })
+                                                       }}
                      },
                      ClearValue::DepthStencil((depth, stencil)) => {
-                         vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
+                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
                                                            depth: depth,
                                                            stencil: stencil,
-                                                       })
+                                                       }}
                      },
                  })
             .collect();
@@ -676,16 +676,16 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         let color = match color {
             ClearValue::Float(val) => {
-                vk::ClearColorValue::float32(val)
+                vk::ClearColorValue { float32: val }
             },
             ClearValue::Int(val) => {
-                vk::ClearColorValue::int32(val)
+                vk::ClearColorValue { int32: val }
             },
             ClearValue::Uint(val) => {
-                vk::ClearColorValue::uint32(val)
+                vk::ClearColorValue { uint32: val }
             },
             _ => {
-                vk::ClearColorValue::float32([0.0; 4])
+                vk::ClearColorValue { float32: [0.0; 4] }
             },
         };
 

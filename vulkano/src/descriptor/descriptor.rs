@@ -43,6 +43,8 @@
 
 use format::Format;
 use image::Dimensions;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use std::cmp;
 use std::ops::BitOr;
 use vk;
@@ -99,6 +101,56 @@ impl DescriptorDesc {
                  stages: self.stages | other.stages,
                  readonly: self.readonly && other.readonly,
              })
+    }
+
+    /// Returns the pipeline stages and access flags corresponding to the usage of this descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panicks if the type if `Sampler`.
+    ///
+    pub fn pipeline_stages_and_access(&self) -> (PipelineStages, AccessFlagBits) {
+        let stages: PipelineStages = self.stages.into();
+
+        let access = match self.ty {
+            DescriptorDescTy::Sampler => panic!(),
+            DescriptorDescTy::CombinedImageSampler(_) | DescriptorDescTy::Image(_) => {
+                AccessFlagBits {
+                    shader_read: true,
+                    shader_write: !self.readonly,
+                    .. AccessFlagBits::none()
+                }
+            },
+            DescriptorDescTy::TexelBuffer { .. } => {
+                AccessFlagBits {
+                    shader_read: true,
+                    shader_write: !self.readonly,
+                    .. AccessFlagBits::none()
+                }
+            },
+            DescriptorDescTy::InputAttachment { .. } => {
+                AccessFlagBits {
+                    input_attachment_read: true,
+                    .. AccessFlagBits::none()
+                }
+            },
+            DescriptorDescTy::Buffer(ref buf) => {
+                if buf.storage {
+                    AccessFlagBits {
+                        shader_read: true,
+                        shader_write: !self.readonly,
+                        .. AccessFlagBits::none()
+                    }
+                } else {
+                    AccessFlagBits {
+                        uniform_read: true,
+                        .. AccessFlagBits::none()
+                    }
+                }
+            },
+        };
+
+        (stages, access)
     }
 }
 
@@ -468,6 +520,21 @@ impl BitOr for ShaderStages {
             geometry: self.geometry || other.geometry,
             fragment: self.fragment || other.fragment,
             compute: self.compute || other.compute,
+        }
+    }
+}
+
+impl From<ShaderStages> for PipelineStages {
+    #[inline]
+    fn from(stages: ShaderStages) -> PipelineStages {
+        PipelineStages {
+            vertex_shader: stages.vertex,
+            tessellation_control_shader: stages.tessellation_control,
+            tessellation_evaluation_shader: stages.tessellation_evaluation,
+            geometry_shader: stages.geometry,
+            fragment_shader: stages.fragment,
+            compute_shader: stages.compute,
+            .. PipelineStages::none()
         }
     }
 }
