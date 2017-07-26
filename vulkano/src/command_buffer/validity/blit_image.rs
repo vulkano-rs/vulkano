@@ -94,6 +94,7 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
+    // TODO: wrong because we don't take the mipmap level into account for the dimensions
     let source_dimensions = source.dimensions();
     let destination_dimensions = destination.dimensions();
 
