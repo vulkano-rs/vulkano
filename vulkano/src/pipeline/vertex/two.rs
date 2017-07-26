@@ -100,7 +100,14 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for TwoBuff
     #[inline]
     fn decode(&self, source: Vec<Arc<BufferAccess + Send + Sync>>)
               -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
-        unimplemented!() // FIXME: implement
+        // FIXME: safety
+        assert_eq!(source.len(), 2);
+        let vertices = [source[0].size() / mem::size_of::<T>(), source[1].size() / mem::size_of::<U>()]
+            .iter()
+            .cloned()
+            .min()
+            .unwrap();
+        (vec![Box::new(source[0].clone()), Box::new(source[1].clone())], vertices, 1)
     }
 }
 
