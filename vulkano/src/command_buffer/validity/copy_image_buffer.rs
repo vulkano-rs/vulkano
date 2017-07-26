@@ -41,7 +41,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
                                         -> Result<(), CheckCopyBufferImageError>
     where I: ?Sized + ImageAccess,
           B: ?Sized + TypedBufferAccess<Content = [P]>,
-          Format: AcceptsPixels<P>,
+          Format: AcceptsPixels<P>,     // TODO: use a trait on the image itself instead
 {
     let buffer_inner = buffer.inner();
     let image_inner = image.inner();
