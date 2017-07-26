@@ -430,9 +430,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let mut fence = Fence::alloc_signaled(device.clone()).unwrap();
-        if (fence.reset().is_ok()) {
-            assert!(!fence.ready().unwrap());
-        }
+        fence.reset();
+        assert!(!fence.ready().unwrap());
     }
 
     #[test]
