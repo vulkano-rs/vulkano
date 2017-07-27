@@ -131,8 +131,8 @@ pub use features::Features;
 pub use version::Version;
 
 pub mod debug;
+pub mod loader;
 
 mod extensions;
 mod instance;
 mod layers;
-mod loader;
