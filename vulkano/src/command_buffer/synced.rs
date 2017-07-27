@@ -527,6 +527,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
             Entry::Vacant(entry) => {
                 let mut actually_exclusive = exclusive;
+                let mut actual_start_layout = start_layout;
 
                 // Handle the case when the initial layout requirement of the image is different
                 // from the first layout usage.
@@ -540,6 +541,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                     if initial_layout_requirement != start_layout {
                         actually_exclusive = true;
+                        actual_start_layout = initial_layout_requirement;
 
                         unsafe {
                             let b = &mut self.pending_barrier;
@@ -566,7 +568,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     access: access,
                     exclusive_any: actually_exclusive,
                     exclusive: actually_exclusive,
-                    initial_layout: initial_layout_requirement,
+                    initial_layout: actual_start_layout,
                     current_layout: end_layout,     // TODO: what if we reach the end with Undefined? that's not correct?
                 });
             },
