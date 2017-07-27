@@ -225,17 +225,23 @@ pub unsafe trait RenderPassCompatible<Other: ?Sized>: RenderPassDesc
     fn is_compatible_with(&self, other: &Other) -> bool;
 }
 
-unsafe impl<A, B: ?Sized> RenderPassCompatible<B> for A
+unsafe impl<A: ?Sized, B: ?Sized> RenderPassCompatible<B> for A
     where A: RenderPassDesc,
           B: RenderPassDesc
 {
     fn is_compatible_with(&self, other: &B) -> bool {
-        // FIXME:
-        /*for (atch1, atch2) in (&self).attachments().zip(other.attachments()) {
-            if !atch1.is_compatible_with(&atch2) {
+        if self.num_attachments() != other.num_attachments() {
+            return false;
+        }
+
+        for atch_num in 0 .. self.num_attachments() {
+            let my_atch = self.attachment_desc(atch_num).unwrap();
+            let other_atch = other.attachment_desc(atch_num).unwrap();
+
+            if !my_atch.is_compatible_with(&other_atch) {
                 return false;
             }
-        }*/
+        }
 
         return true;
 
