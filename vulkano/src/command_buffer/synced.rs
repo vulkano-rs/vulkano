@@ -536,8 +536,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                 {
                     let commands_lock = self.commands.lock().unwrap();
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
+                    let initial_layout_requirement = img.initial_layout_requirement();
 
-                    if img.initial_layout_requirement() != start_layout {
+                    if initial_layout_requirement != start_layout {
                         actually_exclusive = true;
 
                         unsafe {
@@ -554,7 +555,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                        access,
                                                        true,
                                                        None,
-                                                       img.initial_layout_requirement(),
+                                                       initial_layout_requirement,
                                                        start_layout);
                         }
                     }
@@ -565,7 +566,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     access: access,
                     exclusive_any: actually_exclusive,
                     exclusive: actually_exclusive,
-                    initial_layout: start_layout,
+                    initial_layout: initial_layout_requirement,
                     current_layout: end_layout,     // TODO: what if we reach the end with Undefined? that's not correct?
                 });
             },
