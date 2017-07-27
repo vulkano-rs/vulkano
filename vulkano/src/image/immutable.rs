@@ -24,6 +24,7 @@ use command_buffer::CommandBufferExecFuture;
 use device::Device;
 use device::Queue;
 use format::AcceptsPixels;
+use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ImageInner;
@@ -194,6 +195,7 @@ impl<F> ImmutableImage<F> {
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: ExactSizeIterator<Item = P>,
               J: IntoIterator<Item = QueueFamily<'a>>,
+              Format: AcceptsPixels<P>,
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
@@ -212,17 +214,10 @@ impl<F> ImmutableImage<F> {
               P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: IntoIterator<Item = QueueFamily<'a>>,
+              Format: AcceptsPixels<P>,
     {
         let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
         let layout = ImageLayout::ShaderReadOnlyOptimal;
-        // TODO: The following panics should be removed in favor of propagating errors from copy_buffer_to_image.
-        format.ensure_accepts().unwrap();
-        if source.len() % format.rate() as usize != 0 {
-            panic!("cannot divide {} datums into an image with {} channels", source.len(), format.rate());
-        }
-        if dimensions.num_texels() as usize * format.rate() as usize != source.len() {
-            panic!("image with {} texels cannot be initialized with {}", dimensions.num_texels(), source.len() / format.rate() as usize);
-        }
 
         let (buffer, init) = ImmutableImage::uninitialized(source.device().clone(),
                                                            dimensions, format,

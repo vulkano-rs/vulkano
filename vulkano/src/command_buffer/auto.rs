@@ -46,7 +46,9 @@ use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use format::AcceptsPixels;
 use format::ClearValue;
+use format::Format;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
@@ -653,10 +655,11 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image<S, D>(self, source: S, destination: D)
+    pub fn copy_buffer_to_image<S, D, Px>(self, source: S, destination: D)
                                       -> Result<Self, CopyBufferImageError>
-        where S: BufferAccess + Send + Sync + 'static,
-              D: ImageAccess + Send + Sync + 'static
+        where S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static,
+              Format: AcceptsPixels<Px>,
     {
         self.ensure_outside_render_pass()?;
 
@@ -665,17 +668,19 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image_dimensions<S, D>(
+    pub fn copy_buffer_to_image_dimensions<S, D, Px>(
         mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
         num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
-        where S: BufferAccess + Send + Sync + 'static,
-              D: ImageAccess + Send + Sync + 'static
+        where S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static,
+              Format: AcceptsPixels<Px>,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
 
-            // TODO: check validity
-            // TODO: hastily implemented
+            check_copy_buffer_image(self.device(), &source, &destination,
+                                    CheckCopyBufferImageTy::BufferToImage, offset, size,
+                                    first_layer, num_layers, mipmap)?;
 
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
@@ -704,10 +709,11 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer<S, D>(self, source: S, destination: D)
-                                      -> Result<Self, CopyBufferImageError>
+    pub fn copy_image_to_buffer<S, D, Px>(self, source: S, destination: D)
+                                         -> Result<Self, CopyBufferImageError>
         where S: ImageAccess + Send + Sync + 'static,
-              D: BufferAccess + Send + Sync + 'static
+              D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+              Format: AcceptsPixels<Px>,
     {
         self.ensure_outside_render_pass()?;
 
@@ -716,17 +722,19 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer_dimensions<S, D>(
+    pub fn copy_image_to_buffer_dimensions<S, D, Px>(
         mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
         num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
         where S: ImageAccess + Send + Sync + 'static,
-              D: BufferAccess + Send + Sync + 'static
+              D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+              Format: AcceptsPixels<Px>,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
 
-            // TODO: check validity
-            // TODO: hastily implemented
+            check_copy_buffer_image(self.device(), &destination, &source,
+                                    CheckCopyBufferImageTy::ImageToBuffer, offset, size,
+                                    first_layer, num_layers, mipmap)?;
 
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
@@ -1317,6 +1325,7 @@ err_gen!(CopyBufferError {
 
 err_gen!(CopyBufferImageError {
     AutoCommandBufferBuilderContextError,
+    CheckCopyBufferImageError,
     SyncCommandBufferBuilderError
 });
 

@@ -136,7 +136,7 @@ unsafe impl Data for u8 {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct IncompatiblePixelsType;
 
 impl error::Error for IncompatiblePixelsType {
