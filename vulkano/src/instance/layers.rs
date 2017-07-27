@@ -45,8 +45,16 @@ use vk;
 /// }
 /// ```
 pub fn layers_list() -> Result<LayersIterator, LayersListError> {
+    layers_list_from_loader(loader::auto_loader()?)
+}
+
+/// Same as `layers_list()`, but allows specifying a loader.
+pub fn layers_list_from_loader<L>(ptrs: &loader::FunctionPointers<L>)
+                                  -> Result<LayersIterator, LayersListError>
+    where L: loader::Loader
+{
     unsafe {
-        let entry_points = loader::entry_points()?;
+        let entry_points = ptrs.entry_points();
 
         let mut num = 0;
         check_errors({

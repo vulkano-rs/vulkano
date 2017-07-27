@@ -182,7 +182,15 @@ macro_rules! instance_extensions {
         impl $rawname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                let entry_points = try!(loader::entry_points());
+                $rawname::supported_by_core_raw_with_loader(loader::auto_loader()?)
+            }
+
+            /// Same as `supported_by_core_raw()`, but allows specifying a loader.
+            pub fn supported_by_core_raw_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
+                        -> Result<Self, SupportedExtensionsError>
+                where L: loader::Loader
+            {
+                let entry_points = ptrs.entry_points();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
@@ -206,12 +214,32 @@ macro_rules! instance_extensions {
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
+
+            /// Same as `supported_by_core`, but allows specifying a loader.
+            pub fn supported_by_core_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
+                        -> Result<Self, LoadingError>
+                where L: loader::Loader
+            {
+                match $rawname::supported_by_core_raw_with_loader(ptrs) {
+                    Ok(l) => Ok(l),
+                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+                }
+            }
         }
 
         impl $sname {
             /// See the docs of supported_by_core().
             pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                let entry_points = try!(loader::entry_points());
+                $sname::supported_by_core_raw_with_loader(loader::auto_loader()?)
+            }
+
+            /// See the docs of supported_by_core().
+            pub fn supported_by_core_raw_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
+                        -> Result<Self, SupportedExtensionsError>
+                where L: loader::Loader
+            {
+                let entry_points = ptrs.entry_points();
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
@@ -241,6 +269,18 @@ macro_rules! instance_extensions {
             /// Returns a `RawExtensions` object with extensions supported by the core driver.
             pub fn supported_by_core() -> Result<Self, LoadingError> {
                 match $sname::supported_by_core_raw() {
+                    Ok(l) => Ok(l),
+                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+                }
+            }
+
+            /// Same as `supported_by_core`, but allows specifying a loader.
+            pub fn supported_by_core_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
+                        -> Result<Self, LoadingError>
+                where L: loader::Loader
+            {
+                match $sname::supported_by_core_raw_with_loader(ptrs) {
                     Ok(l) => Ok(l),
                     Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
