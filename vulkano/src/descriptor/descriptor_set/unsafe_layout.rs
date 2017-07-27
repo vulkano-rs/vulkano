@@ -145,7 +145,6 @@ impl Drop for UnsafeDescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::descriptor::DescriptorBufferContentDesc;
     use descriptor::descriptor::DescriptorBufferDesc;
     use descriptor::descriptor::DescriptorDesc;
     use descriptor::descriptor::DescriptorDescTy;
@@ -168,7 +167,6 @@ mod tests {
             ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
                                              dynamic: Some(false),
                                              storage: false,
-                                             content: DescriptorBufferContentDesc::F32,
                                          }),
             array_count: 1,
             stages: ShaderStages::all_graphics(),
