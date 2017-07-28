@@ -376,19 +376,6 @@ impl DescriptorImageDescDimensions {
 pub struct DescriptorBufferDesc {
     pub dynamic: Option<bool>,
     pub storage: bool,
-    pub content: DescriptorBufferContentDesc,
-}
-
-// TODO: documentation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DescriptorBufferContentDesc {
-    F32,
-    F64,
-    Struct {},
-    Array {
-        len: Box<DescriptorBufferContentDesc>,
-        num_array: usize,
-    },
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.

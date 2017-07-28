@@ -89,8 +89,6 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorBufferDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorBufferContentDesc;
-        #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDesc;
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
