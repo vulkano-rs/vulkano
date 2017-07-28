@@ -31,6 +31,7 @@ use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
@@ -144,7 +145,8 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                                     mem_ty,
                                     mem_reqs.size,
                                     mem_reqs.alignment,
-                                    AllocLayout::Linear)?;
+                                    AllocLayout::Linear,
+                                    MappingRequirement::DoNotMap)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 

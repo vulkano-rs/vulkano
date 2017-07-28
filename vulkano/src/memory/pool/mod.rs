@@ -40,11 +40,12 @@ pub unsafe trait MemoryPool {
     ///
     /// - Panics if `memory_type` doesn't belong to the same physical device as the device which
     ///   was used to create this pool.
+    /// - Panics if the memory type is not host-visible and `map` is `MappingRequirement::Map`.
     /// - Panics if `size` is 0.
     /// - Panics if `alignment` is 0.
     ///
-    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout)
-             -> Result<Self::Alloc, DeviceMemoryAllocError>;
+    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout,
+             map: MappingRequirement) -> Result<Self::Alloc, DeviceMemoryAllocError>;
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.
@@ -59,6 +60,15 @@ pub unsafe trait MemoryPoolAlloc {
     /// Returns the offset at the start of the memory where the first byte of this allocation
     /// resides.
     fn offset(&self) -> usize;
+}
+
+/// Whether an allocation should map the memory or not.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum MappingRequirement {
+    /// Should map.
+    Map,
+    /// Shouldn't map.
+    DoNotMap,
 }
 
 /// Layout of the object being allocated.
