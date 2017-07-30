@@ -113,7 +113,7 @@ impl<L> PipelineLayout<L>
                 }
 
                 out.push(vk::PushConstantRange {
-                             stageFlags: stages.into(),
+                             stageFlags: stages.into_vulkan_bits(),
                              offset: offset as u32,
                              size: size as u32,
                          });
