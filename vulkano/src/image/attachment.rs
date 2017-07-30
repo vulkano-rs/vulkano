@@ -32,6 +32,7 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPoolAlloc;
@@ -228,7 +229,8 @@ impl<F> AttachmentImage<F> {
                                     mem_ty,
                                     mem_reqs.size,
                                     mem_reqs.alignment,
-                                    AllocLayout::Optimal)?;
+                                    AllocLayout::Optimal,
+                                    MappingRequirement::DoNotMap)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;

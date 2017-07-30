@@ -34,6 +34,7 @@ use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::StdMemoryPool;
@@ -352,7 +353,8 @@ impl<T, A> CpuBufferPool<T, A>
                                         mem_ty,
                                         mem_reqs.size,
                                         mem_reqs.alignment,
-                                        AllocLayout::Linear)?;
+                                        AllocLayout::Linear,
+                                        MappingRequirement::Map)?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
             debug_assert!(mem.mapped_memory().is_some());
             buffer.bind_memory(mem.memory(), mem.offset())?;
