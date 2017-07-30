@@ -67,12 +67,7 @@
 //! ## Creating a descriptor set
 //!
 //! ```ignore
-//! // Creates a set that corresponds to the shader above.
-//! // Note that the value `0` must match the set number.
-//! let set0 = simple_descriptor_set!(&graphics_pipeline, 0, {
-//!     u_texture: &my_buffer1,
-//!     u_buffer: &my_buffer2,
-//! });
+//! // TODO: write example for: PersistentDescriptorSet::start(pipeline.clone(), 0).add_buffer(data_buffer.clone())
 //! ```
 //!
 //! ## Passing the descriptor set when drawing

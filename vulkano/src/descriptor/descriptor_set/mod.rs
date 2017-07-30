@@ -50,7 +50,6 @@ pub use self::persistent::PersistentDescriptorSetBufView;
 pub use self::persistent::PersistentDescriptorSetError;
 pub use self::persistent::PersistentDescriptorSetImg;
 pub use self::persistent::PersistentDescriptorSetSampler;
-pub use self::simple::*;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;
 pub use self::sys::DescriptorPool;
@@ -66,7 +65,6 @@ pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 pub mod collection;
 
 mod persistent;
-mod simple;
 mod std_pool;
 mod sys;
 mod unsafe_layout;
