@@ -62,7 +62,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::new(device.clone()).unwrap();
+    ///     let fence = Fence::from_pool(device.clone()).unwrap();
     ///
     ///     let mut builder = SubmitCommandBufferBuilder::new();
     ///     assert!(!builder.has_fence());
@@ -87,7 +87,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::new(device.clone()).unwrap();
+    ///     let fence = Fence::from_pool(device.clone()).unwrap();
     ///
     ///     let mut builder = SubmitCommandBufferBuilder::new();
     ///     builder.set_fence_signal(&fence);

@@ -58,12 +58,6 @@ impl<D> Semaphore<D>
         }
     }
 
-    #[deprecated(note = "use `Semaphore::from_pool` instead")]
-    #[inline]
-    pub fn new(device: D) -> Result<Semaphore<D>, OomError> {
-        Semaphore::alloc(device)
-    }
-
     /// Builds a new semaphore.
     #[inline]
     pub fn alloc(device: D) -> Result<Semaphore<D>, OomError> {

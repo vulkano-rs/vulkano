@@ -66,7 +66,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::new(device.clone()).unwrap();
+    ///     let fence = Fence::from_pool(device.clone()).unwrap();
     ///
     ///     let mut builder = SubmitBindSparseBuilder::new();
     ///     assert!(!builder.has_fence());
@@ -91,7 +91,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::new(device.clone()).unwrap();
+    ///     let fence = Fence::from_pool(device.clone()).unwrap();
     ///
     ///     let mut builder = SubmitBindSparseBuilder::new();
     ///     builder.set_fence_signal(&fence);
