@@ -1204,9 +1204,10 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
             SubmitState::Concurrent => (),
         };
 
-        if let Ok(()) = self.inner.lock_submit(future, queue) {
-            return Ok(());
-        }
+        let err = match self.inner.lock_submit(future, queue) {
+            Ok(()) => return Ok(()),
+            Err(err) => err,
+        };
 
         // If `self.inner.lock_submit()` failed, we revert action.
         match self.submit_state {
@@ -1218,6 +1219,8 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
             },
             SubmitState::Concurrent => (),
         };
+
+        Err(err)
     }
 
     #[inline]
