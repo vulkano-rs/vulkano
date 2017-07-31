@@ -429,6 +429,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     pub(super) fn append_command<C>(&mut self, command: C)
         where C: Command<P> + Send + Sync + 'static
     {
+        // Note that we don't submit the command to the inner command buffer yet.
         self.commands
             .lock()
             .unwrap()
@@ -454,11 +455,21 @@ impl<P> SyncCommandBufferBuilder<P> {
     // After a command is added to the list of pending commands, this function must be called for
     // each resource used by the command that has just been added.
     // The function will take care of handling the pipeline barrier or flushing.
+    //
+    // `resource_ty` and `resource_index` designate the resource in the previous command (accessed
+    // through `Command::buffer(..)` or `Command::image(..)`.
+    //
+    // `exclusive`, `stages` and `access` must match the way the resource has been used.
+    //
+    // `start_layout` and `end_layout` designate the image layout that the image is expected to be
+    // in when the command starts, and the image layout that the image will be transitionned to
+    // during the command. When it comes to buffers, you should pass `Undefined` for both.
     pub(super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
                                      exclusive: bool, stages: PipelineStages,
                                      access: AccessFlagBits, start_layout: ImageLayout,
                                      end_layout: ImageLayout)
                                      -> Result<(), SyncCommandBufferBuilderError> {
+        // Anti-dumbness checks.
         debug_assert!(exclusive || start_layout == end_layout);
         debug_assert!(access.is_compatible_with(&stages));
         debug_assert!(resource_ty != KeyTy::Image || end_layout != ImageLayout::Undefined);
@@ -466,7 +477,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         debug_assert!(resource_ty != KeyTy::Buffer || end_layout == ImageLayout::Undefined);
         debug_assert_ne!(end_layout, ImageLayout::Preinitialized);
 
-        let (first_unflushed, latest_command_id) = {
+        let (first_unflushed_cmd_id, latest_command_id) = {
             let commands_lock = self.commands.lock().unwrap();
             debug_assert!(commands_lock.commands.len() >= 1);
             (commands_lock.first_unflushed, commands_lock.commands.len() - 1)
@@ -479,10 +490,17 @@ impl<P> SyncCommandBufferBuilder<P> {
             resource_index,
         };
 
+        // Note that the call to `entry()` will lock the mutex, so we can't keep it locked
+        // throughout the function.
         match self.resources.entry(key) {
+
+
+            // Situation where this resource was used before in this command buffer.
             Entry::Occupied(entry) => {
-                let collision_command_id = entry.key().command_id;
-                debug_assert!(collision_command_id <= latest_command_id);
+                // `collision_cmd_id` contains the ID of the command that we are potentially
+                // colliding with.
+                let collision_cmd_id = entry.key().command_id;
+                debug_assert!(collision_cmd_id <= latest_command_id);
 
                 let entry_key_resource_index = entry.key().resource_index;
                 let entry_key_resource_ty = entry.key().resource_ty;
@@ -490,17 +508,19 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                 // Find out if we have a collision with the pending commands.
                 if exclusive || entry.exclusive || entry.current_layout != start_layout {
-                    // Collision found.
+                    // Collision found between `latest_command_id` and `collision_cmd_id`.
 
-                    // We now want to modify the current pipeline barrier in order to include the
-                    // transition. But since the pipeline barrier is going to be submitted before
-                    // the flushed commands, it would be a mistake if the command we transition
-                    // from hasn't been flushed yet.
-                    if collision_command_id >= first_unflushed {
-                        // Flush.
+                    // We now want to modify the current pipeline barrier in order to handle the
+                    // collision. But since the pipeline barrier is going to be submitted before
+                    // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
+                    // been flushed yet.
+                    if collision_cmd_id >= first_unflushed_cmd_id {
                         unsafe {
+                            // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
                             self.pending_barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
+
+                            // Flush the commands if possible, or return an error if not possible.
                             {
                                 let mut commands_lock = self.commands.lock().unwrap();
                                 let start = commands_lock.first_unflushed;
@@ -509,19 +529,21 @@ impl<P> SyncCommandBufferBuilder<P> {
                                 } else {
                                     latest_command_id
                                 };
-                                if collision_command_id >= end {
+                                if collision_cmd_id >= end {
+                                    let cmd1 = commands_lock.commands[collision_cmd_id];
+                                    let cmd2 = commands_lock.commands[latest_command_id];
                                     return Err(SyncCommandBufferBuilderError::Conflict {
-                                        command1_name: commands_lock.commands[collision_command_id].name(),
+                                        command1_name: cmd1.name(),
                                         command1_param: match entry_key_resource_ty {
-                                            KeyTy::Buffer => commands_lock.commands[collision_command_id].buffer_name(entry_key_resource_index),
-                                            KeyTy::Image => commands_lock.commands[collision_command_id].image_name(entry_key_resource_index),
+                                            KeyTy::Buffer => cmd1.buffer_name(entry_key_resource_index),
+                                            KeyTy::Image => cmd1.image_name(entry_key_resource_index),
                                         },
-                                        command1_offset: collision_command_id,
+                                        command1_offset: collision_cmd_id,
 
-                                        command2_name: commands_lock.commands[latest_command_id].name(),
+                                        command2_name: cmd2.name(),
                                         command2_param: match resource_ty {
-                                            KeyTy::Buffer => commands_lock.commands[latest_command_id].buffer_name(resource_index),
-                                            KeyTy::Image => commands_lock.commands[latest_command_id].image_name(resource_index),
+                                            KeyTy::Buffer => cmd2.buffer_name(resource_index),
+                                            KeyTy::Image => cmd2.image_name(resource_index),
                                         },
                                         command2_offset: latest_command_id,
                                     });
@@ -534,7 +556,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                         }
                     }
 
-                    // Modify the pipeline barrier to include the transition.
+                    // Modify the pipeline barrier to handle the collision.
                     unsafe {
                         let commands_lock = self.commands.lock().unwrap();
                         match resource_ty {
@@ -587,17 +609,22 @@ impl<P> SyncCommandBufferBuilder<P> {
                     }
 
                 } else {
+                    // There is no collision. Simply merge the stages and accesses.
+                    // TODO: what about simplifying the newly-constructed stages/accesses?
+                    //       this would simplify the job of the driver, but is it worth it?
                     entry.stages = entry.stages | stages;
                     entry.access = entry.access | access;
                 }
             },
 
+
+            // Situation where this is the first time we use this resource in this command buffer.
             Entry::Vacant(entry) => {
+                // We need to perform some tweaks if the initial layout requirement of the image
+                // is different from the first layout usage.
                 let mut actually_exclusive = exclusive;
                 let mut actual_start_layout = start_layout;
 
-                // Handle the case when the initial layout requirement of the image is different
-                // from the first layout usage.
                 if !self.is_secondary && resource_ty == KeyTy::Image &&
                     start_layout != ImageLayout::Undefined &&
                     start_layout != ImageLayout::Preinitialized
@@ -610,6 +637,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                         actually_exclusive = true;
                         actual_start_layout = initial_layout_requirement;
 
+                        // Note that we transition from `bottom_of_pipe`, which means that we
+                        // wait for all the previous commands to be entirely finished. This is
+                        // suboptimal, but:
+                        //
+                        // - If we're at the start of the command buffer we have no choice anyway,
+                        //   because we have no knowledge about what comes before.
+                        // - If we're in the middle of the command buffer, this pipeline is going
+                        //   to be merged with an existing barrier. While it may still be
+                        //   suboptimal in some cases, in the general situation it will be ok.
+                        //
                         unsafe {
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img,
@@ -640,6 +677,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 });
             },
         }
+
 
         Ok(())
     }
