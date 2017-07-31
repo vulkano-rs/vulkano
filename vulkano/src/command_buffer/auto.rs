@@ -1204,11 +1204,27 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
             SubmitState::Concurrent => (),
         };
 
-        self.inner.lock_submit(future, queue)
+        if let Ok(()) = self.inner.lock_submit(future, queue) {
+            return Ok(());
+        }
+
+        // If `self.inner.lock_submit()` failed, we revert action.
+        match self.submit_state {
+            SubmitState::OneTime { ref already_submitted } => {
+                already_submitted.store(false, Ordering::SeqCst);
+            },
+            SubmitState::ExclusiveUse { ref in_use } => {
+                in_use.store(false, Ordering::SeqCst);
+            },
+            SubmitState::Concurrent => (),
+        };
     }
 
     #[inline]
     unsafe fn unlock(&self) {
+        // Because of panic safety, we unlock the inner command buffer first.
+        self.inner.unlock();
+
         match self.submit_state {
             SubmitState::OneTime { ref already_submitted } => {
                 debug_assert!(already_submitted.load(Ordering::SeqCst));
@@ -1219,8 +1235,6 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
             },
             SubmitState::Concurrent => (),
         };
-
-        self.inner.unlock()
     }
 
     #[inline]
