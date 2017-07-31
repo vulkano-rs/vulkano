@@ -1182,7 +1182,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer<P> {
-        self.inner.inner()
+        self.inner.as_ref()
     }
 
     #[inline]

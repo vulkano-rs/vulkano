@@ -18,7 +18,6 @@ use std::sync::Mutex;
 
 use OomError;
 use buffer::BufferAccess;
-use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
@@ -968,17 +967,19 @@ impl<'a> Hash for CbKey<'a> {
     }
 }
 
-// TODO: should we really implement this trait on this type?
-unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
-    type PoolAlloc = P;
-
+impl<P> AsRef<UnsafeCommandBuffer<P>> for SyncCommandBuffer<P> {
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::PoolAlloc> {
+    fn as_ref(&self) -> &UnsafeCommandBuffer<P> {
         &self.inner
     }
+}
 
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError> {
+impl<P> SyncCommandBuffer<P> {
+    /// Tries to lock the resources used by the command buffer.
+    ///
+    /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
+    pub fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+                       -> Result<(), CommandBufferExecError> {
         // TODO: if at any point we return an error, we can't recover
 
         let commands_lock = self.commands.lock().unwrap();
@@ -1045,7 +1046,15 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         Ok(())
     }
 
-    unsafe fn unlock(&self) {
+    /// Unlocks the resources used by the command buffer.
+    ///
+    /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
+    ///
+    /// # Safety
+    ///
+    /// The command buffer must have been successfully locked with `lock_submit()`.
+    ///
+    pub unsafe fn unlock(&self) {
         let commands_lock = self.commands.lock().unwrap();
 
         for (key, entry) in self.resources.iter() {
@@ -1076,8 +1085,11 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         }
     }
 
+    /// Checks whether this command buffer has access to a buffer.
+    ///
+    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
     #[inline]
-    fn check_buffer_access(
+    pub fn check_buffer_access(
         &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
@@ -1093,10 +1105,13 @@ unsafe impl<P> CommandBuffer for SyncCommandBuffer<P> {
         Err(AccessCheckError::Unknown)
     }
 
+    /// Checks whether this command buffer has access to an image.
+    ///
+    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    pub fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+                              queue: &Queue)
+                              -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::ImageRef(image)) {
