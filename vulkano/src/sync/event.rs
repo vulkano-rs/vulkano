@@ -64,25 +64,6 @@ impl Event {
         }
     }
 
-    /// See the docs of new().
-    #[deprecated(note = "use `Event::from_pool` instead")]
-    #[inline]
-    pub fn raw(device: Arc<Device>) -> Result<Event, OomError> {
-        Event::alloc(device)
-    }
-
-    /// Builds a new event.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[deprecated(note = "use `Event::from_pool` instead")]
-    #[inline]
-    pub fn new(device: Arc<Device>) -> Arc<Event> {
-        Arc::new(Event::alloc(device).unwrap())
-    }
-
     /// Builds a new event.
     #[inline]
     pub fn alloc(device: Arc<Device>) -> Result<Event, OomError> {

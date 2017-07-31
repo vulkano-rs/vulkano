@@ -83,23 +83,9 @@ impl<D> Fence<D>
     }
 
     /// Builds a new fence.
-    #[deprecated(note = "use `Fence::from_pool` instead")]
-    #[inline]
-    pub fn new(device: D) -> Result<Fence<D>, OomError> {
-        Fence::alloc(device)
-    }
-
-    /// Builds a new fence.
     #[inline]
     pub fn alloc(device: D) -> Result<Fence<D>, OomError> {
         Fence::alloc_impl(device, false, false)
-    }
-
-    /// See the docs of `alloc_signaled()`.
-    #[deprecated(note = "use `Fence::alloc_signaled` instead")]
-    #[inline]
-    pub fn signaled(device: D) -> Result<Fence<D>, OomError> {
-        Fence::alloc_signaled(device)
     }
 
     /// Builds a new fence in signaled state.

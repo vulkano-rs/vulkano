@@ -88,16 +88,6 @@ enum CurrentGpuAccess {
 }
 
 impl<T> CpuAccessibleBuffer<T> {
-    /// Deprecated. Use `from_data` instead.
-    #[deprecated]
-    #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        unsafe { CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
-    }
-
     /// Builds a new buffer with some data in it. Only allowed for sized data.
     pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
                             -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
@@ -160,17 +150,6 @@ impl<T> CpuAccessibleBuffer<[T]> {
 
             Ok(uninitialized)
         }
-    }
-
-    /// Deprecated. Use `uninitialized_array` or `from_iter` instead.
-    // TODO: remove
-    #[inline]
-    #[deprecated]
-    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        unsafe { CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families) }
     }
 
     /// Builds a new buffer. Can be used for arrays.

@@ -82,16 +82,6 @@ impl<F, B> BufferView<F, B>
         unsafe { BufferView::unchecked(buffer, format) }
     }
 
-    /// Builds a new buffer view from a `BufferAccess` object.
-    #[inline]
-    #[deprecated = "Use new() instead"]
-    pub fn from_access(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
-        where B: TypedBufferAccess<Content = [F::Pixel]>,
-              F: StrongStorage + 'static
-    {
-        unsafe { BufferView::unchecked(buffer, format) }
-    }
-
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(org_buffer: B, format: F)
                             -> Result<BufferView<F, B>, BufferViewCreationError>

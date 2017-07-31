@@ -7,9 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// TODO: since we use some deprecated methods in there, we allow it ; remove this eventually
-#![allow(deprecated)]
-
 use smallvec::SmallVec;
 use std::cmp;
 use std::iter;
@@ -164,7 +161,21 @@ impl<T> CpuBufferPool<T> {
                       -> CpuBufferPool<T>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe { CpuBufferPool::raw(device, mem::size_of::<T>(), usage, queue_families) }
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
+
+        let pool = Device::standard_pool(&device);
+
+        CpuBufferPool {
+            device: device,
+            pool: pool,
+            current_buffer: Mutex::new(None),
+            usage: usage.clone(),
+            queue_families: queue_families,
+            marker: PhantomData,
+        }
     }
 
     /// Builds a `CpuBufferPool` meant for simple uploads.
@@ -183,34 +194,6 @@ impl<T> CpuBufferPool<T> {
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::transfer_destination(), iter::empty())
-    }
-}
-
-impl<T> CpuBufferPool<T> {
-    #[deprecated(note = "Useless ; use new instead")]
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, one_size: usize, usage: BufferUsage,
-                             queue_families: I) -> CpuBufferPool<T>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        // This assertion was added after the method was deprecated. The logic of the
-        // implementation doesn't hold if `one_size` is not equal to the size of `T`.
-        assert_eq!(one_size, mem::size_of::<T>());
-
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
-
-        let pool = Device::standard_pool(&device);
-
-        CpuBufferPool {
-            device: device,
-            pool: pool,
-            current_buffer: Mutex::new(None),
-            usage: usage.clone(),
-            queue_families: queue_families,
-            marker: PhantomData,
-        }
     }
 }
 

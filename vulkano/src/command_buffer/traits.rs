@@ -49,13 +49,6 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         self.inner().queue_family()
     }*/
 
-    #[deprecated(note = "Renamed to `lock_submit`")]
-    fn prepare_submit(&self, future: &GpuFuture, queue: &Queue)
-                      -> Result<(), CommandBufferExecError>
-    {
-        self.lock_submit(future, queue)
-    }
-
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue, and if so locks it.
     ///
