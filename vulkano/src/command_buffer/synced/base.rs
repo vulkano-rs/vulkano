@@ -62,15 +62,16 @@ pub struct SyncCommandBufferBuilder<P> {
     // The actual Vulkan command buffer builder.
     inner: UnsafeCommandBufferBuilder<P>,
 
-    // Stores the current state of all resources that are in use by the command buffer.
+    // Stores the current state of all resources (buffers and images) that are in use by the
+    // command buffer.
     resources: FnvHashMap<BuilderKey<P>, ResourceState>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
     pending_barrier: UnsafeCommandBufferBuilderPipelineBarrier,
 
-    // Stores all the commands that were submitted or are going to be submitted to the inner
-    // builder. A copy of this `Arc` is stored in each `BuilderKey`.
+    // Stores all the commands that were added to the sync builder. Some of them are maybe not
+    // submitted to the inner builder yet. A copy of this `Arc` is stored in each `BuilderKey`.
     pub(super) commands: Arc<Mutex<Commands<P>>>,
 
     // True if we're a secondary command buffer.
@@ -172,7 +173,7 @@ impl fmt::Display for SyncCommandBufferBuilderError {
     }
 }
 
-// List of commands of a `SyncCommandBufferBuilder`.
+// List of commands stored inside a `SyncCommandBufferBuilder`.
 pub struct Commands<P> {
     // Only the commands before `first_unflushed` have already been sent to the inner
     // `UnsafeCommandBufferBuilder`.
@@ -186,13 +187,13 @@ pub struct Commands<P> {
     pub commands: Vec<Box<Command<P> + Send + Sync>>,
 }
 
-// A single command within the list of commands.
+// Trait for single commands within the list of commands.
 pub trait Command<P> {
-    // Returns a user-friendly name for the command for error reporting purposes.
+    // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
 
     // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
-    // object may lead to a panic.
+    // object will likely lead to a panic.
     unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>);
 
     // Turns this command into a `FinalCommand`.
@@ -202,6 +203,7 @@ pub trait Command<P> {
     fn buffer(&self, num: usize) -> &BufferAccess {
         panic!()
     }
+
     // Gives access to the `num`th image used by the command.
     fn image(&self, num: usize) -> &ImageAccess {
         panic!()
@@ -212,11 +214,19 @@ pub trait Command<P> {
     fn buffer_name(&self, num: usize) -> Cow<'static, str> {
         panic!()
     }
+
     // Returns a user-friendly name for the `num`th image used by the command, for error
     // reporting purposes.
     fn image_name(&self, num: usize) -> Cow<'static, str> {
         panic!()
     }
+}
+
+/// Type of resource whose state is to be tracked.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum KeyTy {
+    Buffer,
+    Image,
 }
 
 // Key that identifies a resource. Implements `PartialEq`, `Eq` and `Hash` so that two resources
@@ -225,7 +235,7 @@ pub trait Command<P> {
 // This works by holding an Arc to the list of commands and the index of the command that holds
 // the resource.
 struct BuilderKey<P> {
-    // Same `Arc` as the `SyncCommandBufferBuilder`.
+    // Same `Arc` as in the `SyncCommandBufferBuilder`.
     commands: Arc<Mutex<Commands<P>>>,
     // Index of the command that holds the resource within `commands`.
     command_id: usize,
@@ -233,12 +243,6 @@ struct BuilderKey<P> {
     resource_ty: KeyTy,
     // Index of the resource within the command.
     resource_index: usize,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum KeyTy {
-    Buffer,
-    Image,
 }
 
 impl<P> BuilderKey<P> {
@@ -325,16 +329,16 @@ impl<P> Hash for BuilderKey<P> {
     }
 }
 
-// Current state of a resource during the building of the command buffer.
+// State of a resource during the building of the command buffer.
 #[derive(Debug, Clone)]
 struct ResourceState {
-    // Stages of the command that last used this resource.
+    // Stage of the command that last used this resource.
     stages: PipelineStages,
     // Access for the command that last used this resource.
     access: AccessFlagBits,
 
     // True if the resource was used in exclusive mode at any point during the building of the
-    // command buffer.
+    // command buffer. Also true if an image layout transition or queue transfer has been performed.
     exclusive_any: bool,
 
     // True if the last command that used this resource used it in exclusive mode.
@@ -421,10 +425,11 @@ impl<P> SyncCommandBufferBuilder<P> {
     // After a command is added to the list of pending commands, this function must be called for
     // each resource used by the command that has just been added.
     // The function will take care of handling the pipeline barrier or flushing.
-    pub (super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize, exclusive: bool,
-                         stages: PipelineStages, access: AccessFlagBits,
-                         start_layout: ImageLayout, end_layout: ImageLayout)
-                         -> Result<(), SyncCommandBufferBuilderError> {
+    pub (super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
+                                     exclusive: bool, stages: PipelineStages,
+                                     access: AccessFlagBits, start_layout: ImageLayout,
+                                     end_layout: ImageLayout)
+                                     -> Result<(), SyncCommandBufferBuilderError> {
         debug_assert!(exclusive || start_layout == end_layout);
         debug_assert!(access.is_compatible_with(&stages));
         debug_assert!(resource_ty != KeyTy::Image || end_layout != ImageLayout::Undefined);
@@ -610,7 +615,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         Ok(())
     }
 
-    /// Builds the command buffer.
+    /// Builds the command buffer and turns it into a `SyncCommandBuffer`.
     #[inline]
     pub fn build(mut self) -> Result<SyncCommandBuffer<P::Alloc>, OomError>
         where P: CommandPoolBuilderAlloc
@@ -619,7 +624,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         debug_assert!(commands_lock.latest_render_pass_enter.is_none() ||
                       self.pending_barrier.is_empty());
 
-        // Flush the commands that haven't been flushed yet.
+        // The commands that haven't been sent to the inner command buffer yet need to be sent.
         unsafe {
             self.inner.pipeline_barrier(&self.pending_barrier);
             let f = commands_lock.first_unflushed;
@@ -631,6 +636,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         // Transition images to their desired final layout.
         if !self.is_secondary {
             unsafe {
+                // TODO: this could be optimized by merging the barrier with the barrier above?
                 let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
 
                 for (key, mut state) in &mut self.resources {
@@ -667,9 +673,9 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        // Fill the `commands` list.
+        // Turns the commands into a list of "final commands" that are slimmer.
         let final_commands = {
-            let mut final_commands = Vec::new();
+            let mut final_commands = Vec::with_capacity(commands_lock.commands.len());
             for command in commands_lock.commands.drain(..) {
                 final_commands.push(command.into_final_command());
             }
@@ -701,6 +707,8 @@ unsafe impl<P> DeviceOwned for SyncCommandBufferBuilder<P> {
     }
 }
 
+/// Command buffer built from a `SyncCommandBufferBuilder` that provides utilities to handle
+/// synchronization.
 pub struct SyncCommandBuffer<P> {
     // The actual Vulkan command buffer.
     inner: UnsafeCommandBuffer<P>,
@@ -740,6 +748,7 @@ pub trait FinalCommand {
     fn buffer(&self, num: usize) -> &BufferAccess {
         panic!()
     }
+
     // Gives access to the `num`th image used by the command.
     fn image(&self, num: usize) -> &ImageAccess {
         panic!()
@@ -751,11 +760,16 @@ impl FinalCommand for () {
 
 // Equivalent of `BuilderKey` for a finished command buffer.
 //
-// In addition to this, it also add other variants. TODO: document
+// In addition to this, it also add two other variants which are `BufferRef` and `ImageRef`. These
+// variants are used in order to make it possible to compare a `CbKey` stored in the
+// `SyncCommandBuffer` with a temporarily-created `CbKey`. The Rust HashMap doesn't allow us to do
+// that otherwise.
+//
+// You should never store a `BufferRef` or a `ImageRef` inside the `SyncCommandBuffer`.
 enum CbKey<'a> {
     // The resource is held in the list of commands.
     Command {
-        // Same `Arc` as the `SyncCommandBufferBuilder`.
+        // Same `Arc` as in the `SyncCommandBufferBuilder`.
         commands: Arc<Mutex<Vec<Box<FinalCommand + Send + Sync>>>>,
         // Index of the command that holds the resource within `commands`.
         command_id: usize,
@@ -768,13 +782,15 @@ enum CbKey<'a> {
     // Temporary key that holds a reference to a buffer. Should never be stored in the list of
     // resources of `SyncCommandBuffer`.
     BufferRef(&'a BufferAccess),
+
     // Temporary key that holds a reference to an image. Should never be stored in the list of
     // resources of `SyncCommandBuffer`.
     ImageRef(&'a ImageAccess),
 }
 
-// The `CbKey::Command` variants implements `Send` and `Sync`, but not the other two variants
+// The `CbKey::Command` variants implements `Send` and `Sync`, but the other two variants don't
 // because it would be too constraining.
+//
 // Since only `CbKey::Command` must be stored in the resources hashmap, we force-implement `Send`
 // and `Sync` so that the hashmap itself implements `Send` and `Sync`.
 unsafe impl<'a> Send for CbKey<'a> {
