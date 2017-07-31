@@ -530,8 +530,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     latest_command_id
                                 };
                                 if collision_cmd_id >= end {
-                                    let cmd1 = commands_lock.commands[collision_cmd_id];
-                                    let cmd2 = commands_lock.commands[latest_command_id];
+                                    let cmd1 = &commands_lock.commands[collision_cmd_id];
+                                    let cmd2 = &commands_lock.commands[latest_command_id];
                                     return Err(SyncCommandBufferBuilderError::Conflict {
                                         command1_name: cmd1.name(),
                                         command1_param: match entry_key_resource_ty {
