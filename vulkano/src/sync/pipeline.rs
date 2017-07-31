@@ -29,6 +29,15 @@ macro_rules! pipeline_stages {
                     )+
                 }
             }
+
+            #[inline]
+            pub(crate) fn into_vulkan_bits(self) -> vk::PipelineStageFlagBits {
+                let mut result = 0;
+                $(
+                    if self.$elem { result |= $val }
+                )+
+                result
+            }
         }
 
         impl ops::BitOr for PipelineStages {
@@ -50,18 +59,6 @@ macro_rules! pipeline_stages {
                 $(
                     self.$elem = self.$elem || rhs.$elem;
                 )+
-            }
-        }
-
-        #[doc(hidden)]
-        impl Into<vk::PipelineStageFlagBits> for PipelineStages {
-            #[inline]
-            fn into(self) -> vk::PipelineStageFlagBits {
-                let mut result = 0;
-                $(
-                    if self.$elem { result |= $val }
-                )+
-                result
             }
         }
     );
@@ -115,6 +112,15 @@ macro_rules! access_flags {
                     )+
                 }
             }
+
+            #[inline]
+            pub(crate) fn into_vulkan_bits(self) -> vk::AccessFlagBits {
+                let mut result = 0;
+                $(
+                    if self.$elem { result |= $val }
+                )+
+                result
+            }
         }
 
         impl ops::BitOr for AccessFlagBits {
@@ -136,18 +142,6 @@ macro_rules! access_flags {
                 $(
                     self.$elem = self.$elem || rhs.$elem;
                 )+
-            }
-        }
-
-        #[doc(hidden)]
-        impl Into<vk::AccessFlagBits> for AccessFlagBits {
-            #[inline]
-            fn into(self) -> vk::AccessFlagBits {
-                let mut result = 0;
-                $(
-                    if self.$elem { result |= $val }
-                )+
-                result
             }
         }
     );

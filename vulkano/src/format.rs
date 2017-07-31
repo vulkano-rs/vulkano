@@ -200,8 +200,7 @@ macro_rules! formats {
             }
 
             /// Returns the `Format` corresponding to a Vulkan constant.
-            #[doc(hidden)]
-            pub fn from_num(val: u32) -> Option<Format> {
+            pub(crate) fn from_vulkan_num(val: u32) -> Option<Format> {
                 match val {
                     $(
                         vk::$vk => Some(Format::$name),

@@ -561,7 +561,7 @@ impl Surface {
                     usage
                 },
                 supported_formats: formats.into_iter().map(|f| {
-                    (Format::from_num(f.format).unwrap(), capabilities::color_space_from_num(f.colorSpace))
+                    (Format::from_vulkan_num(f.format).unwrap(), capabilities::color_space_from_num(f.colorSpace))
                 }).collect(),
                 present_modes: modes,
             })

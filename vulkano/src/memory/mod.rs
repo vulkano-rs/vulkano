@@ -126,10 +126,9 @@ pub struct MemoryRequirements {
     pub prefer_dedicated: bool,
 }
 
-#[doc(hidden)]
-impl From<vk::MemoryRequirements> for MemoryRequirements {
+impl MemoryRequirements {
     #[inline]
-    fn from(reqs: vk::MemoryRequirements) -> MemoryRequirements {
+    pub(crate) fn from_vulkan_reqs(reqs: vk::MemoryRequirements) -> MemoryRequirements {
         MemoryRequirements {
             size: reqs.size as usize,
             alignment: reqs.alignment as usize,

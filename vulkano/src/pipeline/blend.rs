@@ -149,12 +149,9 @@ impl AttachmentBlend {
             mask_alpha: true,
         }
     }
-}
 
-#[doc(hidden)]
-impl Into<vk::PipelineColorBlendAttachmentState> for AttachmentBlend {
     #[inline]
-    fn into(self) -> vk::PipelineColorBlendAttachmentState {
+    pub(crate) fn into_vulkan_state(self) -> vk::PipelineColorBlendAttachmentState {
         vk::PipelineColorBlendAttachmentState {
             blendEnable: if self.enabled { vk::TRUE } else { vk::FALSE },
             srcColorBlendFactor: self.color_source as u32,

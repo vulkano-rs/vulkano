@@ -330,7 +330,7 @@ impl Instance {
                             properties: properties,
                             memory: memory,
                             queue_families: queue_families,
-                            available_features: Features::from(available_features),
+                            available_features: Features::from_vulkan_features(available_features),
                         });
         }
         output
@@ -404,7 +404,7 @@ impl Instance {
                             properties: properties,
                             memory: memory,
                             queue_families: queue_families,
-                            available_features: Features::from(available_features),
+                            available_features: Features::from_vulkan_features(available_features),
                         });
         }
         output

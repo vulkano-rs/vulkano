@@ -1102,7 +1102,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         vk.CmdPushConstants(cmd,
                             pipeline_layout.sys().internal_object(),
-                            stages.into(),
+                            stages.into_vulkan_bits(),
                             offset as u32,
                             size as u32,
                             data as *const D as *const _);
@@ -1117,7 +1117,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
+        vk.CmdResetEvent(cmd, event.internal_object(), stages.into_vulkan_bits());
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
@@ -1156,7 +1156,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
+        vk.CmdSetEvent(cmd, event.internal_object(), stages.into_vulkan_bits());
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
@@ -1203,7 +1203,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         where I: Iterator<Item = Scissor>
     {
         let scissors = scissors
-            .map(|v| v.clone().into())
+            .map(|v| v.clone().into_vulkan_rect())
             .collect::<SmallVec<[_; 16]>>();
         if scissors.is_empty() {
             return;
@@ -1230,7 +1230,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         where I: Iterator<Item = Viewport>
     {
         let viewports = viewports
-            .map(|v| v.clone().into())
+            .map(|v| v.clone().into_vulkan_viewport())
             .collect::<SmallVec<[_; 16]>>();
         if viewports.is_empty() {
             return;
@@ -1490,8 +1490,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         debug_assert_ne!(source, PipelineStages::none());
         debug_assert_ne!(destination, PipelineStages::none());
 
-        self.src_stage_mask |= Into::<vk::PipelineStageFlags>::into(source);
-        self.dst_stage_mask |= Into::<vk::PipelineStageFlags>::into(destination);
+        self.src_stage_mask |= source.into_vulkan_bits();
+        self.dst_stage_mask |= destination.into_vulkan_bits();
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
@@ -1516,8 +1516,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.memory_barriers.push(vk::MemoryBarrier {
                                       sType: vk::STRUCTURE_TYPE_MEMORY_BARRIER,
                                       pNext: ptr::null(),
-                                      srcAccessMask: source_access.into(),
-                                      dstAccessMask: destination_access.into(),
+                                      srcAccessMask: source_access.into_vulkan_bits(),
+                                      dstAccessMask: destination_access.into_vulkan_bits(),
                                   });
     }
 
@@ -1565,8 +1565,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.buffer_barriers.push(vk::BufferMemoryBarrier {
                                       sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                                       pNext: ptr::null(),
-                                      srcAccessMask: source_access.into(),
-                                      dstAccessMask: destination_access.into(),
+                                      srcAccessMask: source_access.into_vulkan_bits(),
+                                      dstAccessMask: destination_access.into_vulkan_bits(),
                                       srcQueueFamilyIndex: src_queue,
                                       dstQueueFamilyIndex: dest_queue,
                                       buffer: buffer.internal_object(),
@@ -1637,8 +1637,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.image_barriers.push(vk::ImageMemoryBarrier {
                                      sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                                      pNext: ptr::null(),
-                                     srcAccessMask: source_access.into(),
-                                     dstAccessMask: destination_access.into(),
+                                     srcAccessMask: source_access.into_vulkan_bits(),
+                                     dstAccessMask: destination_access.into_vulkan_bits(),
                                      oldLayout: current_layout as u32,
                                      newLayout: new_layout as u32,
                                      srcQueueFamilyIndex: src_queue,

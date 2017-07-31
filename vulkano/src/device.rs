@@ -263,7 +263,7 @@ impl Device {
             //       Note that if we ever remove this, don't forget to adjust the change in
             //       `Device`'s construction below.
             let features = {
-                let mut features: vk::PhysicalDeviceFeatures = requested_features.clone().into();
+                let mut features = requested_features.clone().into_vulkan_features();
                 features.robustBufferAccess = vk::TRUE;
                 features
             };

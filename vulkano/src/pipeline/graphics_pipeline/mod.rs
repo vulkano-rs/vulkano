@@ -931,17 +931,17 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         let (vp_vp, vp_sc, vp_num) = match params.viewport {
             ViewportsState::Fixed { ref data } => (data.iter()
-                                                       .map(|e| e.0.clone().into())
+                                                       .map(|e| e.0.clone().into_vulkan_viewport())
                                                        .collect::<SmallVec<[vk::Viewport; 4]>>(),
                                                    data.iter()
-                                                       .map(|e| e.1.clone().into())
+                                                       .map(|e| e.1.clone().into_vulkan_rect())
                                                        .collect::<SmallVec<[vk::Rect2D; 4]>>(),
                                                    data.len() as u32),
             ViewportsState::DynamicViewports { ref scissors } => {
                 let num = scissors.len() as u32;
                 let scissors = scissors
                     .iter()
-                    .map(|e| e.clone().into())
+                    .map(|e| e.clone().into_vulkan_rect())
                     .collect::<SmallVec<[vk::Rect2D; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 (SmallVec::new(), scissors, num)
@@ -950,7 +950,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                 let num = viewports.len() as u32;
                 let viewports = viewports
                     .iter()
-                    .map(|e| e.clone().into())
+                    .map(|e| e.clone().into_vulkan_viewport())
                     .collect::<SmallVec<[vk::Viewport; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (viewports, SmallVec::new(), num)
@@ -1231,7 +1231,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
             match params.blend.attachments {
                 AttachmentsBlend::Collective(blend) => {
-                    (0 .. num_atch).map(|_| blend.clone().into()).collect()
+                    (0 .. num_atch).map(|_| blend.clone().into_vulkan_state()).collect()
                 },
                 AttachmentsBlend::Individual(blend) => {
                     if blend.len() != num_atch as usize {
@@ -1242,7 +1242,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                         return Err(GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled);
                     }
 
-                    blend.iter().map(|b| b.clone().into()).collect()
+                    blend.iter().map(|b| b.clone().into_vulkan_state()).collect()
                 },
             }
         };

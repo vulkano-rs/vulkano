@@ -100,22 +100,16 @@ macro_rules! features {
                     )+
                 }
             }
-        }
 
-        #[doc(hidden)]
-        impl From<vk::PhysicalDeviceFeatures> for Features {
-            fn from(features: vk::PhysicalDeviceFeatures) -> Features {
+            pub(crate) fn from_vulkan_features(features: vk::PhysicalDeviceFeatures) -> Features {
                 Features {
                     $(
                         $name: features.$vk != 0,
                     )+
                 }
             }
-        }
 
-        #[doc(hidden)]
-        impl Into<vk::PhysicalDeviceFeatures> for Features {
-            fn into(self) -> vk::PhysicalDeviceFeatures {
+            pub(crate) fn into_vulkan_features(self) -> vk::PhysicalDeviceFeatures {
                 vk::PhysicalDeviceFeatures {
                     $(
                         $vk: if self.$name { vk::TRUE } else { vk::FALSE },

@@ -32,7 +32,6 @@ use std::ptr;
 use std::sync::Arc;
 
 use buffer::BufferUsage;
-use buffer::usage::usage_to_bits;
 use device::Device;
 use device::DeviceOwned;
 use memory::DeviceMemory;
@@ -79,7 +78,7 @@ impl UnsafeBuffer {
             size
         };
 
-        let usage_bits = usage_to_bits(usage);
+        let usage_bits = usage.to_vulkan_bits();
 
         // Checking sparse features.
         assert!(sparse.sparse || !sparse.sparse_residency,
@@ -156,7 +155,7 @@ impl UnsafeBuffer {
                 debug_assert!(output.memoryRequirements.size >= size as u64);
                 debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
 
-                let mut out: MemoryRequirements = output.memoryRequirements.into();
+                let mut out = MemoryRequirements::from_vulkan_reqs(output.memoryRequirements);
                 if let Some(output2) = output2 {
                     debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
                     out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
@@ -168,7 +167,7 @@ impl UnsafeBuffer {
                 vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
                 debug_assert!(output.size >= size as u64);
                 debug_assert!(output.memoryTypeBits != 0);
-                output.into()
+                MemoryRequirements::from_vulkan_reqs(output)
             };
 
             // We have to manually enforce some additional requirements for some buffer types.

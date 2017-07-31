@@ -93,10 +93,8 @@ impl ImageUsage {
         }
     }
 
-    // TODO: these functions shouldn't be public-hidden
-    #[doc(hidden)]
     #[inline]
-    pub fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
+    pub(crate) fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
         let mut result = 0;
         if self.transfer_source {
             result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -125,10 +123,8 @@ impl ImageUsage {
         result
     }
 
-    // TODO: these functions shouldn't be public-hidden
     #[inline]
-    #[doc(hidden)]
-    pub fn from_bits(val: u32) -> ImageUsage {
+    pub(crate) fn from_bits(val: u32) -> ImageUsage {
         ImageUsage {
             transfer_source: (val & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0,
             transfer_destination: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,
