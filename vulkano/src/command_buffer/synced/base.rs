@@ -72,7 +72,7 @@ pub struct SyncCommandBufferBuilder<P> {
 
     // Stores all the commands that were added to the sync builder. Some of them are maybe not
     // submitted to the inner builder yet. A copy of this `Arc` is stored in each `BuilderKey`.
-    pub(super) commands: Arc<Mutex<Commands<P>>>,
+    commands: Arc<Mutex<Commands<P>>>,
 
     // True if we're a secondary command buffer.
     is_secondary: bool,
@@ -174,17 +174,17 @@ impl fmt::Display for SyncCommandBufferBuilderError {
 }
 
 // List of commands stored inside a `SyncCommandBufferBuilder`.
-pub struct Commands<P> {
+struct Commands<P> {
     // Only the commands before `first_unflushed` have already been sent to the inner
     // `UnsafeCommandBufferBuilder`.
-    pub first_unflushed: usize,
+    first_unflushed: usize,
 
     // If we're currently inside a render pass, contains the index of the `CmdBeginRenderPass`
     // command.
-    pub latest_render_pass_enter: Option<usize>,
+    latest_render_pass_enter: Option<usize>,
 
     // The actual list.
-    pub commands: Vec<Box<Command<P> + Send + Sync>>,
+    commands: Vec<Box<Command<P> + Send + Sync>>,
 }
 
 // Trait for single commands within the list of commands.
@@ -422,10 +422,40 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
     }
 
+    // Adds a command to be processed by the builder.
+    //
+    // After this method has been called, call `prev_cmd_resource` for each buffer or image used
+    // by the command.
+    #[inline]
+    pub(super) fn append_command<C>(&mut self, command: C)
+        where C: Command<P> + Send + Sync + 'static
+    {
+        self.commands
+            .lock()
+            .unwrap()
+            .commands
+            .push(Box::new(command));
+    }
+
+    // Call this when the previous command entered a render pass.
+    #[inline]
+    pub(super) fn prev_cmd_entered_render_pass(&mut self) {
+        let mut cmd_lock = self.commands.lock().unwrap();
+        cmd_lock.latest_render_pass_enter = Some(cmd_lock.commands.len() - 1);
+    }
+
+    // Call this when the previous command left a render pass.
+    #[inline]
+    pub(super) fn prev_cmd_left_render_pass(&mut self) {
+        let mut cmd_lock = self.commands.lock().unwrap();
+        debug_assert!(cmd_lock.latest_render_pass_enter.is_some());
+        cmd_lock.latest_render_pass_enter = None;
+    }
+
     // After a command is added to the list of pending commands, this function must be called for
     // each resource used by the command that has just been added.
     // The function will take care of handling the pipeline barrier or flushing.
-    pub (super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
+    pub(super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
                                      exclusive: bool, stages: PipelineStages,
                                      access: AccessFlagBits, start_layout: ImageLayout,
                                      end_layout: ImageLayout)

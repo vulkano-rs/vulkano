@@ -103,13 +103,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             .map(|atch| framebuffer.attachment_desc(atch).unwrap())
             .collect::<Vec<_>>();
 
-        // FIXME: this is bad because dropping the command buffer doesn't drop the
-        //        attachments of the framebuffer, meaning that they will stay locked
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 framebuffer,
-                                                                 subpass_contents,
-                                                                 clear_values: Some(clear_values),
-                                                             }));
+        self.append_command(Cmd {
+                                framebuffer,
+                                subpass_contents,
+                                clear_values: Some(clear_values),
+                            });
 
         for (atch, desc) in atch_desc.into_iter().enumerate() {
             self.prev_cmd_resource(KeyTy::Image, atch, true,        // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
@@ -128,11 +126,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                    desc.initial_layout, desc.final_layout)?;
         }
 
-        {
-            let mut cmd_lock = self.commands.lock().unwrap();
-            cmd_lock.latest_render_pass_enter = Some(cmd_lock.commands.len() - 1);
-        }
-
+        self.prev_cmd_entered_render_pass();
         Ok(())
     }
 
@@ -182,11 +176,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { buffer, index_ty }));
+        self.append_command(Cmd { buffer, index_ty });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -233,11 +223,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { pipeline }));
+        self.append_command(Cmd { pipeline });
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -270,11 +256,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { pipeline }));
+        self.append_command(Cmd { pipeline });
     }
 
     /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
@@ -379,14 +361,14 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 source: Some(source),
-                                                                 source_layout,
-                                                                 destination: Some(destination),
-                                                                 destination_layout,
-                                                                 regions: Some(regions),
-                                                                 filter,
-                                                             }));
+        self.append_command(Cmd {
+                                source: Some(source),
+                                source_layout,
+                                destination: Some(destination),
+                                destination_layout,
+                                regions: Some(regions),
+                                filter,
+                            });
         self.prev_cmd_resource(KeyTy::Image,
                                0,
                                false,
@@ -472,12 +454,12 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 image: Some(image),
-                                                                 layout,
-                                                                 color,
-                                                                 regions: Some(regions),
-                                                             }));
+        self.append_command(Cmd {
+                                image: Some(image),
+                                layout,
+                                color,
+                                regions: Some(regions),
+                            });
         self.prev_cmd_resource(KeyTy::Image,
                                0,
                                true,
@@ -563,11 +545,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 source: Some(source),
-                                                                 destination: Some(destination),
-                                                                 regions: Some(regions),
-                                                             }));
+        self.append_command(Cmd {
+                                source: Some(source),
+                                destination: Some(destination),
+                                regions: Some(regions),
+                            });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -676,12 +658,12 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 source: Some(source),
-                                                                 destination: Some(destination),
-            destination_layout: destination_layout,
-                                                                 regions: Some(regions),
-                                                             }));
+        self.append_command(Cmd {
+                                source: Some(source),
+                                destination: Some(destination),
+                                destination_layout: destination_layout,
+                                regions: Some(regions),
+                            });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -790,12 +772,12 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 source: Some(source),
-                                                                 destination: Some(destination),
-                                                                 source_layout: source_layout,
-                                                                 regions: Some(regions),
-                                                             }));
+        self.append_command(Cmd {
+                                source: Some(source),
+                                destination: Some(destination),
+                                source_layout: source_layout,
+                                regions: Some(regions),
+                            });
         self.prev_cmd_resource(KeyTy::Image,
                                0,
                                false,
@@ -846,11 +828,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { dimensions }));
+        self.append_command(Cmd { dimensions });
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -898,11 +876,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { buffer }));
+        self.append_command(Cmd { buffer });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -947,12 +921,12 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 vertex_count,
-                                                                 instance_count,
-                                                                 first_vertex,
-                                                                 first_instance,
-                                                             }));
+        self.append_command(Cmd {
+                                vertex_count,
+                                instance_count,
+                                first_vertex,
+                                first_instance,
+                            });
 
     }
 
@@ -986,13 +960,13 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 index_count,
-                                                                 instance_count,
-                                                                 first_index,
-                                                                 vertex_offset,
-                                                                 first_instance,
-                                                             }));
+        self.append_command(Cmd {
+                                index_count,
+                                instance_count,
+                                first_index,
+                                vertex_offset,
+                                first_instance,
+                            });
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
@@ -1042,11 +1016,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 buffer,
-                                                                 draw_count,
-                                                                 stride,
-                                                             }));
+        self.append_command(Cmd {
+                                buffer,
+                                draw_count,
+                                stride,
+                            });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -1110,11 +1084,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 buffer,
-                                                                 draw_count,
-                                                                 stride,
-                                                             }));
+        self.append_command(Cmd {
+                                buffer,
+                                draw_count,
+                                stride,
+                            });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                false,
@@ -1150,10 +1124,8 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        let mut cmd_lock = self.commands.lock().unwrap();
-        cmd_lock.commands.push(Box::new(Cmd));
-        debug_assert!(cmd_lock.latest_render_pass_enter.is_some());
-        cmd_lock.latest_render_pass_enter = None;
+        self.append_command(Cmd);
+        self.prev_cmd_left_render_pass();
     }
 
     /// Starts the process of executing secondary command buffers. Returns an intermediate struct
@@ -1211,11 +1183,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { buffer, data }));
+        self.append_command(Cmd { buffer, data });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                true,
@@ -1253,11 +1221,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { subpass_contents }));
+        self.append_command(Cmd { subpass_contents });
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
@@ -1308,13 +1272,13 @@ impl<P> SyncCommandBufferBuilder<P> {
                         size as usize);
         out.set_len(size as usize);
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 pipeline_layout,
-                                                                 stages,
-                                                                 offset,
-                                                                 size,
-                                                                 data: out.into(),
-                                                             }));
+        self.append_command(Cmd {
+                                pipeline_layout,
+                                stages,
+                                offset,
+                                size,
+                                data: out.into(),
+                            });
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -1342,11 +1306,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { event, stages }));
+        self.append_command(Cmd { event, stages });
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
@@ -1370,11 +1330,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { constants }));
+        self.append_command(Cmd { constants });
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
@@ -1400,11 +1356,11 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 constant_factor,
-                                                                 clamp,
-                                                                 slope_factor,
-                                                             }));
+        self.append_command(Cmd {
+                                constant_factor,
+                                clamp,
+                                slope_factor,
+                            });
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
@@ -1429,11 +1385,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { min, max }));
+        self.append_command(Cmd { min, max });
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
@@ -1461,11 +1413,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { event, stages }));
+        self.append_command(Cmd { event, stages });
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
@@ -1489,11 +1437,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { line_width }));
+        self.append_command(Cmd { line_width });
     }
 
     // TODO: stencil states
@@ -1526,10 +1470,10 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 first_scissor,
-                                                                 scissors: Some(scissors),
-                                                             }));
+        self.append_command(Cmd {
+                                first_scissor,
+                                scissors: Some(scissors),
+                            });
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -1560,10 +1504,10 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands.lock().unwrap().commands.push(Box::new(Cmd {
-                                                                 first_viewport,
-                                                                 viewports: Some(viewports),
-                                                             }));
+        self.append_command(Cmd {
+                                first_viewport,
+                                viewports: Some(viewports),
+                            });
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
@@ -1612,11 +1556,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
         }
 
-        self.commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd { buffer, data }));
+        self.append_command(Cmd { buffer, data });
         self.prev_cmd_resource(KeyTy::Buffer,
                                0,
                                true,
@@ -1800,17 +1740,13 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
         };
 
         self.builder
-            .commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd {
+            .append_command(Cmd {
                                inner: self.inner,
                                graphics,
                                pipeline_layout,
                                first_binding,
                                dynamic_offsets: Some(dynamic_offsets),
-                           }));
+                           });
 
         for (n, (write, stages, access)) in all_buffers.into_iter().enumerate() {
             self.builder
@@ -1889,15 +1825,11 @@ impl<'a, P> SyncCommandBufferBuilderBindVertexBuffer<'a, P> {
         let num_buffers = self.buffers.len();
 
         self.builder
-            .commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd {
+            .append_command(Cmd {
                                first_binding,
                                inner: Some(self.inner),
                                buffers: self.buffers,
-                           }));
+                           });
 
         for n in 0 .. num_buffers {
             self.builder
@@ -1963,14 +1895,10 @@ impl<'a, P> SyncCommandBufferBuilderExecuteCommands<'a, P> {
         }
 
         self.builder
-            .commands
-            .lock()
-            .unwrap()
-            .commands
-            .push(Box::new(Cmd {
+            .append_command(Cmd {
                                inner: Some(self.inner),
                                command_buffers: self.command_buffers,
-                           }));
+                           });
         Ok(())
     }
 }
