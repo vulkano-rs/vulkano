@@ -9,11 +9,12 @@
 
 //! Contains `SyncCommandBufferBuilder` and `SyncCommandBuffer`.
 
-pub use self::synced::SyncCommandBuffer;
-pub use self::synced::SyncCommandBufferBuilder;
-pub use self::synced::SyncCommandBufferBuilderBindDescriptorSets;
-pub use self::synced::SyncCommandBufferBuilderBindVertexBuffer;
-pub use self::synced::SyncCommandBufferBuilderError;
-pub use self::synced::SyncCommandBufferBuilderExecuteCommands;
+pub use self::base::SyncCommandBuffer;
+pub use self::base::SyncCommandBufferBuilder;
+pub use self::base::SyncCommandBufferBuilderError;
+pub use self::commands::SyncCommandBufferBuilderBindDescriptorSets;
+pub use self::commands::SyncCommandBufferBuilderBindVertexBuffer;
+pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
 
-mod synced;
+mod base;
+mod commands;
