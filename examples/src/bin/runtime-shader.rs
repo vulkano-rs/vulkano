@@ -39,6 +39,7 @@ use vulkano::format;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::shader::GraphicsShaderType;
 use vulkano::pipeline::shader::ShaderInterfaceDef;
 use vulkano::pipeline::shader::ShaderInterfaceDefEntry;
 use vulkano::pipeline::shader::ShaderModule;
@@ -374,18 +375,20 @@ fn main() {
     // You must be extra careful to specify correct entry point, or program will
     // crash at runtime outside of rust and you will get NO meaningful error
     // information!
-    let vert_main = unsafe { vs.vertex_shader_entry_point(
+    let vert_main = unsafe { vs.graphics_entry_point(
         CStr::from_bytes_with_nul_unchecked(b"main\0"),
         VertInput,
         VertOutput,
-        VertLayout(ShaderStages { vertex: true, ..ShaderStages::none() })
+        VertLayout(ShaderStages { vertex: true, ..ShaderStages::none() }),
+        GraphicsShaderType::Vertex
     ) };
 
-    let frag_main = unsafe { fs.fragment_shader_entry_point(
+    let frag_main = unsafe { fs.graphics_entry_point(
         CStr::from_bytes_with_nul_unchecked(b"main\0"),
         FragInput,
         FragOutput,
-        FragLayout(ShaderStages { fragment: true, ..ShaderStages::none() })
+        FragLayout(ShaderStages { fragment: true, ..ShaderStages::none() }),
+        GraphicsShaderType::Fragment
     ) };
 
     let graphics_pipeline = Arc::new(
