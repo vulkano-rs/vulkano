@@ -29,7 +29,6 @@ use check_errors;
 use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::EmptyPipelineDesc;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescNames;
@@ -63,15 +62,11 @@ use pipeline::multisample::Multisample;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
-use pipeline::shader::EmptyShaderInterfaceDef;
-use pipeline::shader::FragmentShaderEntryPoint;
-use pipeline::shader::GeometryShaderEntryPoint;
-use pipeline::shader::ShaderInterfaceDef;
+use pipeline::shader::EmptyEntryPointDummy;
+use pipeline::shader::GraphicsEntryPointAbstract;
+use pipeline::shader::GraphicsShaderType;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::ShaderInterfaceMismatchError;
-use pipeline::shader::TessControlShaderEntryPoint;
-use pipeline::shader::TessEvaluationShaderEntryPoint;
-use pipeline::shader::VertexShaderEntryPoint;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
@@ -86,28 +81,13 @@ mod builder;
 
 /// Description of a `GraphicsPipeline`.
 #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-pub struct GraphicsPipelineParams<'a,
+pub struct GraphicsPipelineParams<
  Vdef,
- Vsp,
- Vi,
- Vo,
- Vl,
+ Vs,
  Tcs,
- Tci,
- Tco,
- Tcl,
  Tes,
- Tei,
- Teo,
- Tel,
  Gs,
- Gi,
- Go,
- Gl,
  Fs,
- Fi,
- Fo,
- Fl,
  Rp>
 {
     /// Describes the layout of the vertex input.
@@ -119,7 +99,7 @@ pub struct GraphicsPipelineParams<'a,
     pub vertex_input: Vdef,
 
     /// The entry point of the vertex shader that will be run on the vertex input.
-    pub vertex_shader: VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>,
+    pub vertex_shader: Vs,
 
     /// Describes how vertices should be assembled into primitives. Essentially contains the type
     /// of primitives.
@@ -127,12 +107,11 @@ pub struct GraphicsPipelineParams<'a,
 
     /// Parameters of the tessellation stage. `None` if you don't want to use tessellation.
     /// If you use tessellation, you must enable the `tessellation_shader` feature on the device.
-    pub tessellation:
-        Option<GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel>>,
+    pub tessellation: Option<GraphicsPipelineParamsTess<Tcs, Tes>>,
 
     /// The entry point of the geometry shader. `None` if you don't want a geometry shader.
     /// If you use a geometry shader, you must enable the `geometry_shader` feature on the device.
-    pub geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
+    pub geometry_shader: Option<Gs>,
 
     /// Describes the subsection of the framebuffer attachments where the scene will be drawn.
     /// You can use one or multiple viewports, but using multiple viewports is only relevant with
@@ -146,7 +125,7 @@ pub struct GraphicsPipelineParams<'a,
     pub multisample: Multisample,
 
     /// The entry point of the fragment shader that will be run on the pixels.
-    pub fragment_shader: FragmentShaderEntryPoint<'a, Fs, Fi, Fo, Fl>,
+    pub fragment_shader: Fs,
 
     /// Describes how the implementation should perform the depth and stencil tests.
     pub depth_stencil: DepthStencil,
@@ -162,11 +141,11 @@ pub struct GraphicsPipelineParams<'a,
 
 /// Additional parameters if you use tessellation.
 #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-pub struct GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel> {
+pub struct GraphicsPipelineParamsTess<Tcs, Tes> {
     /// The entry point of the tessellation control shader.
-    pub tessellation_control_shader: TessControlShaderEntryPoint<'a, Tcs, Tci, Tco, Tcl>,
+    pub tessellation_control_shader: Tcs,
     /// The entry point of the tessellation evaluation shader.
-    pub tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, Tes, Tei, Teo, Tel>,
+    pub tessellation_evaluation_shader: Tes,
 }
 
 /// Defines how the implementation should perform a draw operation.
@@ -204,28 +183,12 @@ impl GraphicsPipeline<(), (), ()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     pub fn start<'a>()
-        -> GraphicsPipelineBuilder<'a,
-                                   SingleBufferDefinition<()>,
-                                   (),
-                                   (),
-                                   (),
-                                   (),
-                                   (),
-                                   EmptyShaderInterfaceDef,
-                                   EmptyShaderInterfaceDef,
-                                   EmptyPipelineDesc,
-                                   (),
-                                   EmptyShaderInterfaceDef,
-                                   EmptyShaderInterfaceDef,
-                                   EmptyPipelineDesc,
-                                   (),
-                                   EmptyShaderInterfaceDef,
-                                   EmptyShaderInterfaceDef,
-                                   EmptyPipelineDesc,
-                                   (),
-                                   EmptyShaderInterfaceDef,
-                                   EmptyShaderInterfaceDef,
-                                   EmptyPipelineDesc,
+        -> GraphicsPipelineBuilder<SingleBufferDefinition<()>,
+                                   EmptyEntryPointDummy,
+                                   EmptyEntryPointDummy,
+                                   EmptyEntryPointDummy,
+                                   EmptyEntryPointDummy,
+                                   EmptyEntryPointDummy,
                                    ()>
     {
         GraphicsPipelineBuilder::new()
@@ -244,19 +207,17 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// the other constructors for other possibilities.
     #[inline]
     #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn new<'a, Vsp, Vi, Vo, Vl, Fs, Fi, Fo, Fl>
+    pub fn new<Vs, Fs>
               (device: Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
-                                              (), (), (), EmptyPipelineDesc, (), (), (), EmptyPipelineDesc,
-                                              Fs, Fi, Fo, Fl, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vl, Fl>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vi>,
-              Vl: PipelineLayoutDescNames + Clone,
-              Fl: PipelineLayoutDescNames + Clone,
-              Fi: ShaderInterfaceDefMatch<Vo>,
-              Fo: ShaderInterfaceDef,
-              Vo: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+               params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, EmptyEntryPointDummy, Fs, Rp>)
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vs::InputDefinition>,
+              Vs: GraphicsEntryPointAbstract,
+              Fs: GraphicsEntryPointAbstract,
+              Vs::PipelineLayout: Clone,
+              Fs::PipelineLayout: Clone,
+              Fs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Rp: RenderPassSubpassInterface<Fs::OutputDefinition>,
     {
         if let Err(err) = params
             .fragment_shader
@@ -275,24 +236,9 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
             .unwrap(); // TODO: error
 
         GraphicsPipeline::new_inner::<_,
-                                      _,
-                                      _,
-                                      _,
-                                      (),
-                                      (),
-                                      (),
-                                      EmptyPipelineDesc,
-                                      (),
-                                      (),
-                                      (),
-                                      EmptyPipelineDesc,
-                                      (),
-                                      (),
-                                      (),
-                                      EmptyPipelineDesc,
-                                      _,
-                                      _,
-                                      _,
+                                      EmptyEntryPointDummy,
+                                      EmptyEntryPointDummy,
+                                      EmptyEntryPointDummy,
                                       _>(device, params, pl)
     }
 
@@ -305,22 +251,20 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// shader. See the other constructors for other possibilities.
     #[inline]
     #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_geometry_shader<'a, Vsp, Vi, Vo, Vl, Gsp, Gi, Go, Gl, Fs, Fi, Fo, Fl>
+    pub fn with_geometry_shader<Vs, Gs, Fs>
               (device: Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, (), (), (), EmptyPipelineDesc,
-                                              (), (), (), EmptyPipelineDesc, Gsp, Gi, Go, Gl, Fs, Fi,
-                                              Fo, Fl, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Gl>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vi>,
-              Vl: PipelineLayoutDescNames + Clone,
-              Fl: PipelineLayoutDescNames + Clone,
-              Gl: PipelineLayoutDescNames + Clone,
-              Gi: ShaderInterfaceDefMatch<Vo>,
-              Vo: ShaderInterfaceDef,
-              Fi: ShaderInterfaceDefMatch<Go> + ShaderInterfaceDefMatch<Vo>,
-              Fo: ShaderInterfaceDef,
-              Go: ShaderInterfaceDef,
-              Rp: RenderPassSubpassInterface<Fo>,
+               params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, Gs, Fs, Rp>)
+              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Gs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vs::InputDefinition>,
+              Vs: GraphicsEntryPointAbstract,
+              Fs: GraphicsEntryPointAbstract,
+              Gs: GraphicsEntryPointAbstract,
+              Vs::PipelineLayout: Clone,
+              Fs::PipelineLayout: Clone,
+              Gs::PipelineLayout: Clone,
+              Gs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition> + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Rp: RenderPassSubpassInterface<Fs::OutputDefinition>,
     {
         if let Some(ref geometry_shader) = params.geometry_shader {
             if let Err(err) = geometry_shader
@@ -365,26 +309,23 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// possibilities.
     #[inline]
     #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_tessellation<'a, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Fs, Fi,
-                            Fo, Fl>
+    pub fn with_tessellation<Vs, Tcs, Tes, Fs>
               (device: Arc<Device>,
-               params: GraphicsPipelineParams<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes,
-                                              Tei, Teo, Tel, (), (), (), EmptyPipelineDesc, Fs, Fi,
-                                              Fo, Fl, Rp>)
-               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vl, Fl>, Tcl>, Tel>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vi>,
-              Vl: PipelineLayoutDescNames + Clone,
-              Fl: PipelineLayoutDescNames + Clone,
-              Tcl: PipelineLayoutDescNames + Clone,
-              Tel: PipelineLayoutDescNames + Clone,
-              Tci: ShaderInterfaceDefMatch<Vo>,
-              Tei: ShaderInterfaceDefMatch<Tco>,
-              Vo: ShaderInterfaceDef,
-              Tco: ShaderInterfaceDef,
-              Teo: ShaderInterfaceDef,
-              Fi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
-              Fo: ShaderInterfaceDef,
-              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>,
+               params: GraphicsPipelineParams<Vdef, Vs, Tcs, Tes, EmptyEntryPointDummy, Fs, Rp>)
+               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Tcs::PipelineLayout>, Tes::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
+        where Vdef: VertexDefinition<Vs::InputDefinition>,
+              Vs: GraphicsEntryPointAbstract,
+              Fs: GraphicsEntryPointAbstract,
+              Tcs: GraphicsEntryPointAbstract,
+              Tes: GraphicsEntryPointAbstract,
+              Vs::PipelineLayout: Clone,
+              Fs::PipelineLayout: Clone,
+              Tcs::PipelineLayout: Clone,
+              Tes::PipelineLayout: Clone,
+              Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
+              Fs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition> + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>,
     {
         if let Some(ref tess) = params.tessellation {
             if let Err(err) = tess.tessellation_control_shader
@@ -437,71 +378,39 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     #[inline]
     #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_tessellation_and_geometry<'a,
-                                          Vsp,
-                                          Vi,
-                                          Vo,
-                                          Vl,
+    pub fn with_tessellation_and_geometry<Vs,
                                           Tcs,
-                                          Tci,
-                                          Tco,
-                                          Tcl,
                                           Tes,
-                                          Tei,
-                                          Teo,
-                                          Tel,
-                                          Gsp,
-                                          Gi,
-                                          Go,
-                                          Gl,
-                                          Fs,
-                                          Fi,
-                                          Fo,
-                                          Fl>(
+                                          Gs,
+                                          Fs>(
         device: Arc<Device>,
-        params: GraphicsPipelineParams<'a,
-                                       Vdef,
-                                       Vsp,
-                                       Vi,
-                                       Vo,
-                                       Vl,
+        params: GraphicsPipelineParams<Vdef,
+                                       Vs,
                                        Tcs,
-                                       Tci,
-                                       Tco,
-                                       Tcl,
                                        Tes,
-                                       Tei,
-                                       Teo,
-                                       Tel,
-                                       Gsp,
-                                       Gi,
-                                       Go,
-                                       Gl,
+                                       Gs,
                                        Fs,
-                                       Fi,
-                                       Fo,
-                                       Fl,
                                        Rp>)
         -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
                   GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vi>,
-              Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-              Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-              Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-              Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-              Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-              Tci: ShaderInterfaceDefMatch<Vo>,
-              Tei: ShaderInterfaceDefMatch<Tco>,
-              Gi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
-              Vo: ShaderInterfaceDef,
-              Tco: ShaderInterfaceDef,
-              Teo: ShaderInterfaceDef,
-              Go: ShaderInterfaceDef,
-              Fi: ShaderInterfaceDefMatch<Go>
-                      + ShaderInterfaceDefMatch<Teo>
-                      + ShaderInterfaceDefMatch<Vo>,
-              Fo: ShaderInterfaceDef,
-              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>
+        where Vdef: VertexDefinition<Vs::InputDefinition>,
+              Vs: GraphicsEntryPointAbstract,
+              Fs: GraphicsEntryPointAbstract,
+              Gs: GraphicsEntryPointAbstract,
+              Tcs: GraphicsEntryPointAbstract,
+              Tes: GraphicsEntryPointAbstract,
+              Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+              Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+              Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+              Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+              Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+              Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
+              Gs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition> + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
+                      + ShaderInterfaceDefMatch<Tes::OutputDefinition>
+                      + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>
     {
         let pl;
 
@@ -610,61 +519,28 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
 impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
     where L: PipelineLayoutAbstract
 {
-    fn new_inner<'a,
-                 Vsp,
-                 Vi,
-                 Vo,
-                 Vl,
+    fn new_inner<Vs,
                  Tcs,
-                 Tci,
-                 Tco,
-                 Tcl,
                  Tes,
-                 Tei,
-                 Teo,
-                 Tel,
-                 Gsp,
-                 Gi,
-                 Go,
-                 Gl,
-                 Fs,
-                 Fi,
-                 Fo,
-                 Fl>(
+                 Gs,
+                 Fs>(
         device: Arc<Device>,
-        params: GraphicsPipelineParams<'a,
-                                       Vdef,
-                                       Vsp,
-                                       Vi,
-                                       Vo,
-                                       Vl,
+        params: GraphicsPipelineParams<Vdef,
+                                       Vs,
                                        Tcs,
-                                       Tci,
-                                       Tco,
-                                       Tcl,
                                        Tes,
-                                       Tei,
-                                       Teo,
-                                       Tel,
-                                       Gsp,
-                                       Gi,
-                                       Go,
-                                       Gl,
+                                       Gs,
                                        Fs,
-                                       Fi,
-                                       Fo,
-                                       Fl,
                                        Rp>,
         pipeline_layout: L)
         -> Result<GraphicsPipeline<Vdef, L, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vi>,
-              Fo: ShaderInterfaceDef,
-              Vl: PipelineLayoutDescNames,
-              Fl: PipelineLayoutDescNames,
-              Gl: PipelineLayoutDescNames,
-              Tcl: PipelineLayoutDescNames,
-              Tel: PipelineLayoutDescNames,
-              Rp: RenderPassAbstract + RenderPassDesc + RenderPassSubpassInterface<Fo>
+        where Vdef: VertexDefinition<Vs::InputDefinition>,
+              Vs: GraphicsEntryPointAbstract,
+              Fs: GraphicsEntryPointAbstract,
+              Gs: GraphicsEntryPointAbstract,
+              Tcs: GraphicsEntryPointAbstract,
+              Tes: GraphicsEntryPointAbstract,
+              Rp: RenderPassAbstract + RenderPassDesc + RenderPassSubpassInterface<Fs::OutputDefinition>
     {
         let vk = device.pointers();
 
@@ -700,6 +576,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
         let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
 
+            match params.vertex_shader.ty() {
+                GraphicsShaderType::Vertex => {},
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+            };
+
             stages.push(vk::PipelineShaderStageCreateInfo {
                             sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                             pNext: ptr::null(),
@@ -709,6 +590,11 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                             pName: params.vertex_shader.name().as_ptr(),
                             pSpecializationInfo: ptr::null(), // TODO:
                         });
+
+            match params.fragment_shader.ty() {
+                GraphicsShaderType::Fragment => {},
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+            };
 
             stages.push(vk::PipelineShaderStageCreateInfo {
                             sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -743,6 +629,16 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
                     return Err(GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled);
                 }
 
+                match tess.tessellation_control_shader.ty() {
+                    GraphicsShaderType::TessellationControl => {},
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                };
+
+                match tess.tessellation_evaluation_shader.ty() {
+                    GraphicsShaderType::TessellationControl => {},
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                };
+
                 stages.push(vk::PipelineShaderStageCreateInfo {
                                 sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                                 pNext: ptr::null(),
@@ -774,7 +670,7 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
             let (buffers_iter, attribs_iter) =
                 params
                     .vertex_input
-                    .definition(params.vertex_shader.input_definition())?;
+                    .definition(params.vertex_shader.input())?;
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             for (num, stride, rate) in buffers_iter {
@@ -882,8 +778,13 @@ impl<Vdef, L, Rp> GraphicsPipeline<Vdef, L, Rp>
 
         // TODO: should check from the tess eval shader instead of the input assembly
         if let Some(ref gs) = params.geometry_shader {
-            if !gs.primitives().matches(params.input_assembly.topology) {
-                return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
+            match gs.ty() {
+                GraphicsShaderType::Geometry(primitives) => {
+                    if !primitives.matches(params.input_assembly.topology) {
+                        return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
+                    }
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             }
         }
 
@@ -1922,6 +1823,11 @@ pub enum GraphicsPipelineCreationError {
 
     /// The `maxTessellationPatchSize` limit was exceeded.
     MaxTessellationPatchSizeExceeded,
+
+    /// The wrong type of shader has been passed.
+    ///
+    /// For example you passed a vertex shader as the fragment shader.
+    WrongShaderType,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -2049,6 +1955,9 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded => {
                 "the maximum tessellation patch size was exceeded"
+            },
+            GraphicsPipelineCreationError::WrongShaderType => {
+                "the wrong type of shader has been passed"
             },
         }
     }
