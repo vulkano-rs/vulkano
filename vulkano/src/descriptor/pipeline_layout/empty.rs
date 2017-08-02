@@ -9,7 +9,6 @@
 
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
 /// Description of an empty pipeline layout.
@@ -51,13 +50,6 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
 
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        None
-    }
-}
-
-unsafe impl PipelineLayoutDescNames for EmptyPipelineDesc {
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
         None
     }
 }
