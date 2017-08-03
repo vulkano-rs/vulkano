@@ -133,6 +133,7 @@ pub struct Device {
         Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
+    active_queue_families: SmallVec<[u32; 8]>,
     allocation_count: Mutex<u32>,
     fence_pool: Mutex<Vec<vk::Fence>>,
     semaphore_pool: Mutex<Vec<vk::Semaphore>>,
@@ -309,6 +310,8 @@ impl Device {
                                       .. requested_features.clone()
                                   },
                                   extensions: (&extensions).into(),
+                                  active_queue_families: output_queues.iter()
+                                                                      .map(|&(q, _)| q).collect(),
                                   allocation_count: Mutex::new(0),
                                   fence_pool: Mutex::new(Vec::new()),
                                   semaphore_pool: Mutex::new(Vec::new()),
@@ -357,6 +360,17 @@ impl Device {
     #[inline]
     pub fn physical_device(&self) -> PhysicalDevice {
         PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    }
+
+    /// Returns an iterator to the list of queues families that this device uses.
+    ///
+    /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
+    // TODO: ^
+    #[inline]
+    pub fn active_queue_families<'a>(&'a self) -> Box<ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+        let physical_device = self.physical_device();
+        Box::new(self.active_queue_families.iter()
+            .map(move |&id| physical_device.queue_family_by_id(id).unwrap()))
     }
 
     /// Returns the features that are enabled in the device.
