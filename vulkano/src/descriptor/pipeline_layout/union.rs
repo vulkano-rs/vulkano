@@ -10,7 +10,6 @@
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use std::cmp;
 use std::sync::Arc;
@@ -132,26 +131,5 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
         }
 
         None
-    }
-}
-
-unsafe impl<A, B> PipelineLayoutDescNames for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDescNames,
-          B: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        let a = self.a.descriptor_by_name(name);
-        let b = self.b.descriptor_by_name(name);
-
-        match (a, b) {
-            (None, None) => None,
-            (Some(r), None) => Some(r),
-            (None, Some(r)) => Some(r),
-            (Some(a), Some(b)) => {
-                assert_eq!(a, b);
-                Some(a)
-            },
-        }
     }
 }

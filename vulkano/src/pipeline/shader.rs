@@ -30,7 +30,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use descriptor::pipeline_layout::EmptyPipelineDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
 use format::Format;
 use pipeline::input_assembly::PrimitiveTopology;
 
@@ -186,7 +186,7 @@ pub struct GraphicsEntryPoint<'a, S, I, O, L> {
 }
 
 unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-    where L: PipelineLayoutDescNames,
+    where L: PipelineLayoutDesc,
           I: ShaderInterfaceDef,
           O: ShaderInterfaceDef,
           S: SpecializationConstants,
@@ -211,7 +211,7 @@ unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, 
 }
 
 unsafe impl<'a, S, I, O, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-    where L: PipelineLayoutDescNames,
+    where L: PipelineLayoutDesc,
           I: ShaderInterfaceDef,
           O: ShaderInterfaceDef,
           S: SpecializationConstants,
@@ -279,7 +279,7 @@ impl GeometryShaderExecutionMode {
 }
 
 pub unsafe trait EntryPointAbstract {
-    type PipelineLayout: PipelineLayoutDescNames;
+    type PipelineLayout: PipelineLayoutDesc;
     type SpecializationConstants: SpecializationConstants;
 
     /// Returns the module this entry point comes from.
@@ -304,7 +304,7 @@ pub struct ComputeEntryPoint<'a, S, L> {
 }
 
 unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
-    where L: PipelineLayoutDescNames,
+    where L: PipelineLayoutDesc,
           S: SpecializationConstants,
 {
     type PipelineLayout = L;

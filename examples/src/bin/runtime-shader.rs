@@ -31,7 +31,6 @@ use vulkano::command_buffer::DynamicState;
 use vulkano::descriptor::descriptor::DescriptorDesc;
 use vulkano::descriptor::descriptor::ShaderStages;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-use vulkano::descriptor::pipeline_layout::PipelineLayoutDescNames;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
@@ -266,11 +265,6 @@ fn main() {
                                              stages: ShaderStages::all() })
         }
     }
-    unsafe impl PipelineLayoutDescNames for VertLayout {
-        fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-            match name { _ => None, }
-        }
-    }
 
     // Same as with our vertex shader, but for fragment one instead.
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -360,11 +354,6 @@ fn main() {
             Some(PipelineLayoutDescPcRange { offset: 0,
                                              size: 0,
                                              stages: ShaderStages::all() })
-        }
-    }
-    unsafe impl PipelineLayoutDescNames for FragLayout {
-        fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-            match name { _ => None, }
         }
     }
 

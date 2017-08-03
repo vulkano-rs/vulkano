@@ -20,7 +20,6 @@ use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
@@ -259,15 +258,6 @@ unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         self.pipeline_layout.push_constants_range(num)
-    }
-}
-
-unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl>
-    where Pl: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        self.pipeline_layout.descriptor_by_name(name)
     }
 }
 

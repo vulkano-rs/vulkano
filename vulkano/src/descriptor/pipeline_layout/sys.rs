@@ -25,7 +25,6 @@ use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use device::Device;
 use device::DeviceOwned;
@@ -181,7 +180,7 @@ impl<L> PipelineLayout<L>
 }
 
 unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D>
-    where D: PipelineLayoutDescNames
+    where D: PipelineLayoutDesc
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -220,15 +219,6 @@ unsafe impl<D> PipelineLayoutDesc for PipelineLayout<D>
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         self.desc.push_constants_range(num)
-    }
-}
-
-unsafe impl<D> PipelineLayoutDescNames for PipelineLayout<D>
-    where D: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        self.desc.descriptor_by_name(name)
     }
 }
 
