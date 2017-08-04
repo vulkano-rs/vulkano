@@ -204,6 +204,8 @@ pub use self::capabilities::SupportedPresentModesIter;
 pub use self::capabilities::SupportedSurfaceTransforms;
 pub use self::capabilities::SupportedSurfaceTransformsIter;
 pub use self::capabilities::SurfaceTransform;
+pub use self::present_region::PresentRegion;
+pub use self::present_region::RectangleLayer;
 pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
@@ -216,9 +218,11 @@ pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
+pub use self::swapchain::present_incremental;
 
 mod capabilities;
 pub mod display;
+mod present_region;
 mod surface;
 mod swapchain;
 

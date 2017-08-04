@@ -14,8 +14,10 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 
+use device::DeviceOwned;
 use device::Queue;
 use swapchain::Swapchain;
+use swapchain::PresentRegion;
 use sync::Semaphore;
 
 use Error;
@@ -32,6 +34,7 @@ pub struct SubmitPresentBuilder<'a> {
     wait_semaphores: SmallVec<[vk::Semaphore; 8]>,
     swapchains: SmallVec<[vk::SwapchainKHR; 4]>,
     image_indices: SmallVec<[u32; 4]>,
+    present_regions: SmallVec<[vk::PresentRegionKHR; 4]>,
     marker: PhantomData<&'a ()>,
 }
 
@@ -43,6 +46,7 @@ impl<'a> SubmitPresentBuilder<'a> {
             wait_semaphores: SmallVec::new(),
             swapchains: SmallVec::new(),
             image_indices: SmallVec::new(),
+            present_regions: SmallVec::new(),
             marker: PhantomData,
         }
     }
@@ -71,6 +75,9 @@ impl<'a> SubmitPresentBuilder<'a> {
 
     /// Adds an image of a swapchain to be presented.
     ///
+    /// Allows to specify a present region (VK_KHR_incremental_present).
+    /// Areas outside the present region *can* be ignored by the vulkan implementation for
+    /// optimizations purposes.
     /// # Safety
     ///
     /// - If you submit this builder, the swapchain must be kept alive until you are
@@ -79,11 +86,32 @@ impl<'a> SubmitPresentBuilder<'a> {
     /// - The swapchains and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_swapchain(&mut self, swapchain: &'a Swapchain, image_num: u32) {
+    pub unsafe fn add_swapchain(&mut self, swapchain: &'a Swapchain, image_num: u32,
+                                 present_region: Option<&'a PresentRegion>) {
         debug_assert!(image_num < swapchain.num_images());
+
+        if swapchain
+            .device()
+            .loaded_extensions()
+            .khr_incremental_present
+        {
+            let vk_present_region = match present_region {
+                Some(present_region) => {
+                    assert!(present_region.is_compatible_with(swapchain));
+                    present_region.into()
+                }
+                None => vk::PresentRegionKHR {
+                    rectangleCount: 0,
+                    pRectangles: ptr::null(),
+                },
+            };
+            self.present_regions.push(vk_present_region);
+        }
+
         self.swapchains.push(swapchain.internal_object());
         self.image_indices.push(image_num);
     }
+
 
     /// Submits the command. Calls `vkQueuePresentKHR`.
     ///
@@ -97,14 +125,28 @@ impl<'a> SubmitPresentBuilder<'a> {
             assert!(!self.swapchains.is_empty(),
                     "Tried to submit a present command without any swapchain");
 
-            let vk = queue.device().pointers();
-            let queue = queue.internal_object_guard();
+            let mut p_next = ptr::null();
+            let present_regions;
+            if !self.present_regions.is_empty() {
+                debug_assert!(queue.device().loaded_extensions().khr_incremental_present);
+                debug_assert_eq!(self.swapchains.len(), self.present_regions.len());
+                present_regions = vk::PresentRegionsKHR {
+                    sType: vk::STRUCTURE_TYPE_PRESENT_REGIONS_KHR,
+                    pNext: ptr::null(),
+                    swapchainCount: self.present_regions.len() as u32,
+                    pRegions: self.present_regions.as_ptr(),
+                };
+                p_next = &present_regions as *const _ as *const _;
+            }
 
             let mut results = vec![mem::uninitialized(); self.swapchains.len()]; // TODO: alloca
 
+            let vk = queue.device().pointers();
+            let queue = queue.internal_object_guard();
+
             let infos = vk::PresentInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                pNext: ptr::null(),
+                pNext: p_next,
                 waitSemaphoreCount: self.wait_semaphores.len() as u32,
                 pWaitSemaphores: self.wait_semaphores.as_ptr(),
                 swapchainCount: self.swapchains.len() as u32,
