@@ -23,25 +23,20 @@ use device::Device;
 
 use Error;
 use OomError;
-use SafeDeref;
 use VulkanObject;
 use check_errors;
 use vk;
 
-pub struct UnsafeQueryPool<P = Arc<Device>>
-    where P: SafeDeref<Target = Device>
-{
+pub struct UnsafeQueryPool {
     pool: vk::QueryPool,
-    device: P,
+    device: Arc<Device>,
     num_slots: u32,
 }
 
-impl<P> UnsafeQueryPool<P>
-    where P: SafeDeref<Target = Device>
-{
+impl UnsafeQueryPool {
     /// Builds a new query pool.
-    pub fn new(device: P, ty: QueryType, num_slots: u32)
-               -> Result<UnsafeQueryPool<P>, QueryPoolCreationError> {
+    pub fn new(device: Arc<Device>, ty: QueryType, num_slots: u32)
+               -> Result<UnsafeQueryPool, QueryPoolCreationError> {
         let (vk_ty, statistics) = match ty {
             QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
             QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
@@ -88,7 +83,7 @@ impl<P> UnsafeQueryPool<P>
 
     /// Returns the device used to create the pool.
     #[inline]
-    pub fn device(&self) -> &P {
+    pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
@@ -174,9 +169,7 @@ impl Into<vk::QueryPipelineStatisticFlags> for QueryPipelineStatisticFlags {
     }
 }
 
-impl<P> Drop for UnsafeQueryPool<P>
-    where P: SafeDeref<Target = Device>
-{
+impl Drop for UnsafeQueryPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
