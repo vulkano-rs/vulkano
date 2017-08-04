@@ -81,12 +81,92 @@ impl UnsafeQueryPool {
     pub fn num_slots(&self) -> u32 {
         self.num_slots
     }
+
+    #[inline]
+    pub fn query(&self, index: u32) -> Option<UnsafeQuery> {
+        if index < self.num_slots() {
+            Some(UnsafeQuery {
+                pool: self,
+                index,
+            })
+        } else {
+            None
+        }
+    }
+
+    ///
+    /// # Panic
+    ///
+    /// Panicks if `count` is 0.
+    #[inline]
+    pub fn queries_range(&self, first_index: u32, count: u32) -> Option<UnsafeQueriesRange> {
+        assert!(count >= 1);
+
+        if first_index + count < self.num_slots() {
+            Some(UnsafeQueriesRange {
+                pool: self,
+                first: first_index,
+                count,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+unsafe impl VulkanObject for UnsafeQueryPool {
+    type Object = vk::QueryPool;
+
+    #[inline]
+    fn internal_object(&self) -> vk::QueryPool {
+        self.pool
+    }
 }
 
 unsafe impl DeviceOwned for UnsafeQueryPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+pub struct UnsafeQuery<'a> {
+    pool: &'a UnsafeQueryPool,
+    index: u32,
+}
+
+impl<'a> UnsafeQuery<'a> {
+    #[inline]
+    pub fn pool(&self) -> &'a UnsafeQueryPool {
+        &self.pool
+    }
+
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+}
+
+pub struct UnsafeQueriesRange<'a> {
+    pool: &'a UnsafeQueryPool,
+    first: u32,
+    count: u32,
+}
+
+impl<'a> UnsafeQueriesRange<'a> {
+    #[inline]
+    pub fn pool(&self) -> &'a UnsafeQueryPool {
+        &self.pool
+    }
+
+    #[inline]
+    pub fn first_index(&self) -> u32 {
+        self.first
+    }
+
+    #[inline]
+    pub fn count(&self) -> u32 {
+        self.count
     }
 }
 

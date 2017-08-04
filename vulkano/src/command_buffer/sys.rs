@@ -46,6 +46,8 @@ use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use query::QueryPipelineStatisticFlags;
+use query::UnsafeQueriesRange;
+use query::UnsafeQuery;
 use sampler::Filter;
 use sync::AccessFlagBits;
 use sync::Event;
@@ -341,6 +343,19 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                    device: self.device.clone(),
                })
         }
+    }
+
+    /// Calls `vkCmdBeginQuery` on the builder.
+    #[inline]
+    pub unsafe fn begin_query(&mut self, query: UnsafeQuery, precise: bool) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let flags = if precise {
+            vk::QUERY_CONTROL_PRECISE_BIT
+        } else {
+            0
+        };
+        vk.CmdBeginQuery(cmd, query.pool().internal_object(), query.index(), flags);
     }
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
@@ -893,6 +908,25 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                                 regions.as_ptr());
     }
 
+    /// Calls `vkCmdCopyQueryPoolResults` on the builder.
+    #[inline]
+    pub unsafe fn copy_query_pool_results(&mut self, queries: UnsafeQueriesRange,
+                                          destination: &BufferAccess, stride: usize)
+    {
+        let destination = destination.inner();
+        debug_assert!(destination.offset < destination.buffer.size());
+        debug_assert!(destination.buffer.usage_transfer_destination());
+
+        let flags = 0;      // FIXME:
+
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdCopyQueryPoolResults(cmd, queries.pool().internal_object(), queries.first_index(),
+                                   queries.count(), destination.buffer.internal_object(),
+                                   destination.offset as vk::DeviceSize,
+                                   stride as vk::DeviceSize, flags);
+    }
+
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
     pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
@@ -995,6 +1029,14 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                                   inner.offset as vk::DeviceSize,
                                   draw_count,
                                   stride);
+    }
+
+    /// Calls `vkCmdEndQuery` on the builder.
+    #[inline]
+    pub unsafe fn end_query(&mut self, query: UnsafeQuery) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdEndQuery(cmd, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
@@ -1118,6 +1160,15 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         debug_assert_ne!(stages, PipelineStages::none());
 
         vk.CmdResetEvent(cmd, event.internal_object(), stages.into_vulkan_bits());
+    }
+
+    /// Calls `vkCmdResetQueryPool` on the builder.
+    #[inline]
+    pub unsafe fn reset_query_pool(&mut self, queries: UnsafeQueriesRange) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdResetQueryPool(cmd, queries.pool().internal_object(), queries.first_index(),
+                             queries.count());
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
@@ -1280,6 +1331,15 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                            offset as vk::DeviceSize,
                            size as vk::DeviceSize,
                            data as *const D as *const _);
+    }
+
+    /// Calls `vkCmdWriteTimestamp` on the builder.
+    #[inline]
+    pub unsafe fn write_timestamp(&mut self, query: UnsafeQuery, stages: PipelineStages) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdWriteTimestamp(cmd, stages.into_vulkan_bits(), query.pool().internal_object(),
+                             query.index());
     }
 }
 
